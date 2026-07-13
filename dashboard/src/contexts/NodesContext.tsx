@@ -217,6 +217,7 @@ export type NodeStore = {
 	regenerateNodeCertificate: (node: NodeType) => Promise<NodeType>;
 	reconnectNode: (node: NodeType) => Promise<unknown>;
 	restartNodeService: (node: NodeType) => Promise<unknown>;
+	rebootNodeHost: (node: NodeType) => Promise<unknown>;
 	updateNodeService: (node: NodeServiceUpdateRequest) => Promise<unknown>;
 	resetNodeUsage: (node: NodeType) => Promise<unknown>;
 	deletingNode?: NodeType | null;
@@ -370,6 +371,11 @@ export const useNodes = create<NodeStore>((set, get) => ({
 	},
 	restartNodeService(body) {
 		return fetch(`/node/${body.id}/service/restart`, {
+			method: "POST",
+		});
+	},
+	rebootNodeHost(body) {
+		return fetch(`/node/${body.id}/host/reboot`, {
 			method: "POST",
 		});
 	},

@@ -5,40 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	userread "github.com/rebeccapanel/rebecca/internal/app/user"
 )
-
-func (c Controller) legacyApplyUserOperation(ctx context.Context, node NodeRow, operation OperationRow) error {
-	client, err := c.newLegacyRESTClient(ctx, node)
-	if err != nil {
-		return err
-	}
-	if _, err := client.connect(ctx); err != nil {
-		return err
-	}
-	c.rememberNodeProtocol(node.ID, "legacy")
-	email, err := c.legacyOperationEmail(ctx, operation)
-	if err != nil {
-		if operation.OperationType == "remove_user" || operation.OperationType == "disable_user" {
-			return c.legacySyncRuntimeConfig(ctx, node)
-		}
-		return err
-	}
-	switch operation.OperationType {
-	case "remove_user", "disable_user":
-		return c.legacyRemoveUserFromNode(ctx, client, node, email)
-	case "add_user", "enable_user":
-		return c.legacyAddUserToNode(ctx, client, node, operation.UserID.Int64, email, true)
-	case "update_user":
-		if err := c.legacyRemoveUserFromNode(ctx, client, node, email); err != nil {
-			return err
-		}
-		return c.legacyAddUserToNode(ctx, client, node, operation.UserID.Int64, email, true)
-	default:
-		return fmt.Errorf("unsupported legacy user operation: %s", operation.OperationType)
-	}
-}
 
 func (c Controller) legacyOperationEmail(ctx context.Context, operation OperationRow) (string, error) {
 	if len(operation.Payload) > 0 {
@@ -57,91 +24,6 @@ func (c Controller) legacyOperationEmail(ctx context.Context, operation Operatio
 		return "", err
 	}
 	return fmt.Sprintf("%d.%s", identity.ID, identity.Username), nil
-}
-
-func (c Controller) legacySyncRuntimeConfig(ctx context.Context, node NodeRow) error {
-	configJSON, err := c.buildRuntimeConfig(ctx, node)
-	if err != nil {
-		return err
-	}
-	_, err = c.legacySyncConfig(ctx, node, configJSON)
-	return err
-}
-
-func (c Controller) legacyRemoveUserFromNode(ctx context.Context, client *legacyRESTClient, node NodeRow, email string) error {
-	tags, err := c.legacyRuntimeInboundTags(ctx, node)
-	if err != nil {
-		return err
-	}
-	var lastErr error
-	for _, tag := range tags {
-		if err := client.removeInboundUser(ctx, tag, email); err != nil {
-			if isIgnorableLegacyRemoveError(err) {
-				continue
-			}
-			lastErr = err
-		}
-	}
-	return lastErr
-}
-
-func (c Controller) legacyAddUserToNode(ctx context.Context, client *legacyRESTClient, node NodeRow, userID int64, email string, refreshExisting bool) error {
-	raw, err := c.repo.NodeRawConfig(ctx, node)
-	if err != nil {
-		return err
-	}
-	users, err := c.repo.RuntimeUsersByID(ctx, userID)
-	if err != nil {
-		return err
-	}
-	if len(users) == 0 {
-		return nil
-	}
-	serviceTags, err := c.repo.ServiceAllowedTags(ctx)
-	if err != nil {
-		return err
-	}
-	masks, err := c.repo.UUIDMasks(ctx)
-	if err != nil {
-		return err
-	}
-	inbounds := listOfMaps(raw["inbounds"])
-	var lastErr error
-	for _, runtimeUser := range users {
-		if !runtimeUser.ServiceID.Valid || runtimeUser.ServiceID.Int64 <= 0 {
-			continue
-		}
-		for _, inbound := range inbounds {
-			tag := stringValue(inbound["tag"])
-			protocol := strings.ToLower(stringValue(inbound["protocol"]))
-			if tag == "" || protocol == "" || protocol != runtimeUser.Protocol {
-				continue
-			}
-			if !serviceTags[runtimeUser.ServiceID.Int64][tag] {
-				continue
-			}
-			settings, err := userread.RuntimeProxySettings(runtimeUser.Settings, runtimeUser.Protocol, runtimeUser.CredentialKey, runtimeUser.Flow, masks)
-			if err != nil {
-				lastErr = err
-				continue
-			}
-			if flow := stringValue(settings["flow"]); flow != "" && !flowSupportedForInbound(inbound) {
-				delete(settings, "flow")
-			}
-			settings["email"] = email
-			settings["protocol"] = protocol
-			if refreshExisting {
-				_ = client.removeInboundUser(ctx, tag, email)
-			}
-			if err := client.addInboundUser(ctx, tag, legacyInboundUserPayload(settings)); err != nil {
-				if isIgnorableLegacyAddError(err) {
-					continue
-				}
-				lastErr = err
-			}
-		}
-	}
-	return lastErr
 }
 
 func (c Controller) legacyRuntimeInboundTags(ctx context.Context, node NodeRow) ([]string, error) {

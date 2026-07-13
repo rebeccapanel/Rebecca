@@ -528,7 +528,6 @@ func (r Repository) resolvedInboundsByTagTx(ctx context.Context, tx *sql.Tx) (ma
 	}
 	result := map[string]ResolvedInbound{}
 	order := make([]string, 0)
-	excluded := excludedInboundTags()
 	for _, raw := range rawConfigs {
 		inbounds := listOfMaps(raw["inbounds"])
 		for _, inbound := range inbounds {
@@ -538,9 +537,6 @@ func (r Repository) resolvedInboundsByTagTx(ctx context.Context, tx *sql.Tx) (ma
 				continue
 			}
 			if _, ok := proxyProtocols[protocol]; !ok {
-				continue
-			}
-			if _, skip := excluded[tag]; skip {
 				continue
 			}
 			resolved, err := resolveInbound(inbound)

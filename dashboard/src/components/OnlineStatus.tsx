@@ -11,11 +11,14 @@ import {
 type UserStatusProps = {
 	lastOnline: string | null;
 	withMargin?: boolean;
+	/** Render the relative time in short units (e.g. "2H, 4m") for tight cells. */
+	compact?: boolean;
 };
 
 export const OnlineStatus: FC<UserStatusProps> = ({
 	lastOnline,
 	withMargin = true,
+	compact = false,
 }) => {
 	const { t, i18n } = useTranslation();
 	const isRTL = i18n.language === "fa";
@@ -48,7 +51,7 @@ export const OnlineStatus: FC<UserStatusProps> = ({
 	}
 
 	const parts = buildRelativeTimeParts(unixTime, currentTimeInSeconds);
-	const formattedParts = formatRelativeTimeParts(parts);
+	const formattedParts = formatRelativeTimeParts(parts, { compact });
 
 	// A user seen between the online window and one minute ago produces no
 	// non-zero hour/minute parts, so the relative string is empty. Treat that

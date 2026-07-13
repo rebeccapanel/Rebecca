@@ -6,6 +6,10 @@ export type Protocol =
 	| "trojan"
 	| "shadowsocks"
 	| "hysteria"
+	| "openvpn"
+	| "wireguard"
+	| "l2tp"
+	| "pptp"
 	| "http"
 	| "socks";
 export type StreamNetwork =
@@ -275,6 +279,56 @@ export type InboundFormValues = {
 	socksUdpEnabled: boolean;
 	socksUdpIp: string;
 
+	// OpenVPN virtual inbound
+	ovTransport: "udp" | "tcp";
+	ovTunnelPort: string;
+	ovIPv4Pool: string;
+	ovDNSServers: string;
+	ovRedirectGateway: boolean;
+	ovTproxyEnabled: boolean;
+	ovRequireDCO: boolean;
+	ovAccountingEnabled: boolean;
+	ovManagementPort: string;
+	ovCipher: string;
+	ovAuth: string;
+	ovInlineCA: boolean;
+	ovSetClientCertNone: boolean;
+	ovAuthNoCache: boolean;
+	ovEmbedCredentials: boolean;
+	ovRouteNoPull: boolean;
+	ovBlockOutsideDNS: boolean;
+	ovCA: string;
+	ovServerCertificate: string;
+	ovServerKey: string;
+	ovDH: string;
+	ovTlsCrypt: string;
+	ovTlsAuth: string;
+	ovExtraClientConfig: string;
+
+	// WireGuard virtual inbound
+	wgTunnelPort: string;
+	wgIPv4Pool: string;
+	wgServerAddress: string;
+	wgPrivateKey: string;
+	wgPublicKey: string;
+	wgMTU: string;
+	wgPersistentKeepalive: string;
+	wgTproxyEnabled: boolean;
+	wgNatEnabled: boolean;
+	wgAccountingEnabled: boolean;
+
+	l2tpTunnelPort: string;
+	l2tpIPv4Pool: string;
+	l2tpDNSServers: string;
+	l2tpIPSecPSK: string;
+	l2tpRedirectGateway: boolean;
+	l2tpTproxyEnabled: boolean;
+	l2tpAccountingEnabled: boolean;
+	l2tpMTU: string;
+	l2tpMRU: string;
+	l2tpLcpEchoInterval: string;
+	l2tpLcpEchoFailure: string;
+
 	targetIds: string[];
 };
 
@@ -312,6 +366,10 @@ export const protocolOptions: Protocol[] = [
 	"trojan",
 	"shadowsocks",
 	"hysteria",
+	"openvpn",
+	"wireguard",
+	"l2tp",
+	"pptp",
 	"http",
 	"socks",
 ];
@@ -379,6 +437,25 @@ const randomLowerAndNum = (length: number): string => {
 	}
 	return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
 };
+
+const randomPortText = (): string => {
+	const blocked = new Set([21, 22, 23, 25, 53, 67, 68, 110, 111, 123, 137, 143, 161, 162, 993]);
+	for (let i = 0; i < 12; i += 1) {
+		const candidate = Math.floor(Math.random() * 55000) + 10000;
+		if (candidate <= 65535 && !blocked.has(candidate)) {
+			return String(candidate);
+		}
+	}
+	return "443";
+};
+
+const defaultPortText = (protocol: Protocol): string => {
+	if (protocol === "l2tp") return "1701";
+	if (protocol === "pptp") return "1723";
+	return randomPortText();
+};
+
+const defaultL2TPPSK = (): string => `rb-l2tp-${randomLowerAndNum(24)}`;
 
 export const createDefaultHysteriaUdpMask = (): HysteriaUdpMaskForm => ({
 	type: "salamander",
@@ -518,6 +595,12 @@ export const validateInboundFormFields = (
 	if (!isValidPortText(values.port ?? "")) {
 		errors.port = "Port must be a number between 1 and 65535.";
 	}
+	if (values.protocol === "pptp" && values.port.trim() !== "1723") {
+		errors.port = "PPTP port must be 1723.";
+	}
+	if (values.protocol === "l2tp" && values.port.trim() !== "1701") {
+		errors.port = "L2TP/IPsec port must be 1701.";
+	}
 	if (values.streamNetwork === "ws") {
 		const error = validatePath(values.wsPath ?? "", "WebSocket path");
 		if (error) errors.wsPath = error;
@@ -590,6 +673,151 @@ export const validateInboundFormFields = (
 				break;
 			}
 		}
+	}
+	if (values.protocol === "openvpn") {
+		if (!["udp", "tcp"].includes(values.ovTransport)) {
+			errors.ovTransport = "OpenVPN transport must be udp or tcp.";
+		}
+		if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(values.ovIPv4Pool.trim())) {
+			errors.ovIPv4Pool = "IPv4 pool must be a CIDR, for example 10.66.0.0/16.";
+		}
+		if (values.ovTproxyEnabled && !values.ovTunnelPort.trim()) {
+			errors.ovTunnelPort = "Tunnel port is required.";
+		}
+		if (
+			values.ovTunnelPort.trim() &&
+			!isValidPortText(values.ovTunnelPort)
+		) {
+			errors.ovTunnelPort =
+				"Tunnel port must be a number between 1 and 65535.";
+		}
+		if (
+			values.ovTunnelPort.trim() &&
+			isValidPortText(values.ovTunnelPort) &&
+			values.ovTunnelPort.trim() === values.port.trim()
+		) {
+			errors.ovTunnelPort =
+				"Tunnel port must be different from the OpenVPN port.";
+		}
+		if (
+			values.ovManagementPort.trim() &&
+			!isValidPortText(values.ovManagementPort)
+		) {
+			errors.ovManagementPort =
+				"Management port must be a number between 1 and 65535.";
+		}
+		if (values.ovRequireDCO) {
+			const cipher = values.ovCipher.trim().toUpperCase();
+			if (
+				cipher &&
+				!["AES-256-GCM", "AES-128-GCM", "CHACHA20-POLY1305"].includes(
+					cipher,
+				)
+			) {
+				errors.ovCipher =
+					"Require DCO only supports AES-256-GCM, AES-128-GCM, or CHACHA20-POLY1305.";
+			}
+		}
+		if (!values.ovCA.trim()) {
+			errors.ovCA = "CA certificate is required.";
+		}
+		if (!values.ovServerCertificate.trim()) {
+			errors.ovServerCertificate = "Server certificate is required.";
+		}
+		if (!values.ovServerKey.trim()) {
+			errors.ovServerKey = "Server key is required.";
+		}
+	}
+	if (values.protocol === "wireguard") {
+		if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(values.wgIPv4Pool.trim())) {
+			errors.wgIPv4Pool =
+				"IPv4 pool must be a CIDR, for example 10.69.0.0/16.";
+		}
+		if (
+			!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(
+				values.wgServerAddress.trim(),
+			)
+		) {
+			errors.wgServerAddress =
+				"Server address must be a CIDR, for example 10.69.0.1/16.";
+		}
+		if (values.wgTproxyEnabled && !values.wgTunnelPort.trim()) {
+			errors.wgTunnelPort = "Tunnel port is required.";
+		}
+		if (
+			values.wgTunnelPort.trim() &&
+			!isValidPortText(values.wgTunnelPort)
+		) {
+			errors.wgTunnelPort =
+				"Tunnel port must be a number between 1 and 65535.";
+		}
+		if (
+			values.wgTunnelPort.trim() &&
+			isValidPortText(values.wgTunnelPort) &&
+			values.wgTunnelPort.trim() === values.port.trim()
+		) {
+			errors.wgTunnelPort =
+				"Tunnel port must be different from the WireGuard port.";
+		}
+		if (!values.wgPrivateKey.trim()) {
+			errors.wgPrivateKey = "WireGuard private key is required.";
+		}
+		const validateWGNumber = (
+			key: "wgMTU" | "wgPersistentKeepalive",
+			label: string,
+			min: number,
+			max: number,
+		) => {
+			const raw = values[key].trim();
+			if (!raw) return;
+			const parsed = Number(raw);
+			if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+				errors[key] = `${label} must be a number between ${min} and ${max}.`;
+			}
+		};
+		validateWGNumber("wgMTU", "MTU", 576, 1500);
+		validateWGNumber("wgPersistentKeepalive", "Persistent keepalive", 0, 3600);
+	}
+	if (values.protocol === "l2tp" || values.protocol === "pptp") {
+		if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(values.l2tpIPv4Pool.trim())) {
+			errors.l2tpIPv4Pool = "IPv4 pool must be a CIDR, for example 10.67.0.0/16.";
+		}
+		if (values.l2tpTproxyEnabled && !values.l2tpTunnelPort.trim()) {
+			errors.l2tpTunnelPort = "Tunnel port is required.";
+		}
+		if (values.l2tpTunnelPort.trim() && !isValidPortText(values.l2tpTunnelPort)) {
+			errors.l2tpTunnelPort = "Tunnel port must be a number between 1 and 65535.";
+		}
+		if (values.protocol === "l2tp" && values.l2tpTproxyEnabled && values.l2tpTunnelPort.trim() !== "1702") {
+			errors.l2tpTunnelPort = "L2TP tunnel port must be 1702.";
+		}
+		if (
+			values.l2tpTunnelPort.trim() &&
+			isValidPortText(values.l2tpTunnelPort) &&
+			values.l2tpTunnelPort.trim() === values.port.trim()
+		) {
+			errors.l2tpTunnelPort = "Tunnel port must be different from the VPN port.";
+		}
+		if (values.protocol === "l2tp" && !values.l2tpIPSecPSK.trim()) {
+			errors.l2tpIPSecPSK = "IPsec pre-shared key is required.";
+		}
+		const validateL2TPNumber = (
+			key: "l2tpMTU" | "l2tpMRU" | "l2tpLcpEchoInterval" | "l2tpLcpEchoFailure",
+			label: string,
+			min: number,
+			max: number,
+		) => {
+			const raw = values[key].trim();
+			if (!raw) return;
+			const parsed = Number(raw);
+			if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+				errors[key] = `${label} must be a number between ${min} and ${max}.`;
+			}
+		};
+		validateL2TPNumber("l2tpMTU", "MTU", 576, 1500);
+		validateL2TPNumber("l2tpMRU", "MRU", 576, 1500);
+		validateL2TPNumber("l2tpLcpEchoInterval", "LCP echo interval", 1, 3600);
+		validateL2TPNumber("l2tpLcpEchoFailure", "LCP echo failure", 1, 20);
 	}
 	if (values.streamSecurity === "reality") {
 		if (!isHostPortTarget(values.realityTarget ?? "")) {
@@ -822,7 +1050,7 @@ export const createDefaultInboundForm = (
 ): InboundFormValues => ({
 	tag: "",
 	listen: "",
-	port: "",
+	port: defaultPortText(protocol),
 	protocol,
 	tcpAcceptProxyProtocol: false,
 	wsAcceptProxyProtocol: false,
@@ -849,7 +1077,11 @@ export const createDefaultInboundForm = (
 	hysteriaUdpMasks:
 		protocol === "hysteria" ? [createDefaultHysteriaUdpMask()] : [],
 	hysteriaQuicParams: createDefaultHysteriaQuicParams(),
-	sniffingEnabled: true,
+	sniffingEnabled:
+		protocol !== "openvpn" &&
+		protocol !== "wireguard" &&
+		protocol !== "l2tp" &&
+		protocol !== "pptp",
 	sniffingDestinations: ["http", "tls"],
 	sniffingRouteOnly: false,
 	sniffingMetadataOnly: false,
@@ -860,7 +1092,7 @@ export const createDefaultInboundForm = (
 	tlsMaxVersion: "1.3",
 	tlsCipherSuites: "",
 	tlsRejectUnknownSni: false,
-	tlsVerifyPeerCertByName: "dns.google",
+	tlsVerifyPeerCertByName: "",
 	tlsDisableSystemRoot: false,
 	tlsEnableSessionResumption: false,
 	tlsCertificates: [createDefaultTlsCertificate()],
@@ -944,6 +1176,51 @@ export const createDefaultInboundForm = (
 	socksAccounts: [createDefaultProxyAccount()],
 	socksUdpEnabled: false,
 	socksUdpIp: "",
+	ovTransport: "udp",
+	ovTunnelPort: "",
+	ovIPv4Pool: "10.66.0.0/16",
+	ovDNSServers: "1.1.1.1\n8.8.8.8",
+	ovRedirectGateway: true,
+	ovTproxyEnabled: true,
+	ovRequireDCO: false,
+	ovAccountingEnabled: true,
+	ovManagementPort: "",
+	ovCipher: "AES-256-GCM",
+	ovAuth: "SHA256",
+	ovInlineCA: true,
+	ovSetClientCertNone: true,
+	ovAuthNoCache: true,
+	ovEmbedCredentials: true,
+	ovRouteNoPull: false,
+	ovBlockOutsideDNS: false,
+	ovCA: "",
+	ovServerCertificate: "",
+	ovServerKey: "",
+	ovDH: "",
+	ovTlsCrypt: "",
+	ovTlsAuth: "",
+	ovExtraClientConfig: "",
+	wgTunnelPort: "",
+	wgIPv4Pool: "10.69.0.0/16",
+	wgServerAddress: "10.69.0.1/16",
+	wgPrivateKey: "",
+	wgPublicKey: "",
+	wgMTU: "1420",
+	wgPersistentKeepalive: "25",
+	wgTproxyEnabled: true,
+	wgNatEnabled: false,
+	wgAccountingEnabled: true,
+	l2tpTunnelPort: protocol === "l2tp" ? "1702" : protocol === "pptp" ? "41942" : "",
+	l2tpIPv4Pool: "10.67.0.0/16",
+	l2tpDNSServers: "1.1.1.1\n8.8.8.8",
+	l2tpIPSecPSK: protocol === "l2tp" ? defaultL2TPPSK() : "",
+	l2tpRedirectGateway: true,
+	l2tpTproxyEnabled: true,
+	l2tpAccountingEnabled: true,
+	l2tpMTU: "1410",
+	l2tpMRU: "1410",
+	l2tpLcpEchoInterval: "30",
+	l2tpLcpEchoFailure: "4",
 	targetIds: ["master"],
 });
 
@@ -1438,6 +1715,203 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			protocol === "socks" && settings.ip !== undefined && settings.ip !== null
 				? String(settings.ip)
 				: base.socksUdpIp,
+		ovTransport:
+			protocol === "openvpn" && settings.transport === "tcp"
+				? "tcp"
+				: base.ovTransport,
+		ovTunnelPort:
+			protocol === "openvpn"
+				? toInputValue(
+						settings.tunnel_port ??
+							settings.xray_tunnel_port ??
+							settings.tproxy_port,
+					)
+				: base.ovTunnelPort,
+		ovIPv4Pool:
+			protocol === "openvpn"
+				? (settings.ipv4_pool_cidr ?? settings.ipv4PoolCidr ?? base.ovIPv4Pool)
+				: base.ovIPv4Pool,
+		ovDNSServers:
+			protocol === "openvpn"
+				? joinLines(parseStringList(settings.dns_servers ?? settings.dnsServers))
+				: base.ovDNSServers,
+		ovRedirectGateway:
+			protocol === "openvpn"
+				? Boolean(settings.redirect_gateway ?? base.ovRedirectGateway)
+				: base.ovRedirectGateway,
+		ovTproxyEnabled:
+			protocol === "openvpn"
+				? Boolean(settings.tproxy_enabled ?? base.ovTproxyEnabled)
+				: base.ovTproxyEnabled,
+		ovRequireDCO:
+			protocol === "openvpn"
+				? Boolean(settings.require_dco ?? base.ovRequireDCO)
+				: base.ovRequireDCO,
+		ovAccountingEnabled:
+			protocol === "openvpn"
+				? Boolean(settings.accounting_enabled ?? base.ovAccountingEnabled)
+				: base.ovAccountingEnabled,
+		ovManagementPort:
+			protocol === "openvpn"
+				? toInputValue(settings.management_port)
+				: base.ovManagementPort,
+		ovCipher:
+			protocol === "openvpn"
+				? (settings.cipher ?? base.ovCipher)
+				: base.ovCipher,
+		ovAuth:
+			protocol === "openvpn"
+				? (settings.auth ?? base.ovAuth)
+				: base.ovAuth,
+		ovInlineCA:
+			protocol === "openvpn"
+				? Boolean(settings.inline_ca ?? base.ovInlineCA)
+				: base.ovInlineCA,
+		ovSetClientCertNone:
+			protocol === "openvpn"
+				? Boolean(settings.set_client_cert_none ?? base.ovSetClientCertNone)
+				: base.ovSetClientCertNone,
+		ovAuthNoCache:
+			protocol === "openvpn"
+				? Boolean(settings.auth_nocache ?? base.ovAuthNoCache)
+				: base.ovAuthNoCache,
+		ovEmbedCredentials:
+			protocol === "openvpn"
+				? Boolean(settings.embed_credentials ?? base.ovEmbedCredentials)
+				: base.ovEmbedCredentials,
+		ovRouteNoPull:
+			protocol === "openvpn"
+				? Boolean(settings.route_nopull ?? base.ovRouteNoPull)
+				: base.ovRouteNoPull,
+		ovBlockOutsideDNS:
+			protocol === "openvpn"
+				? Boolean(settings.block_outside_dns ?? base.ovBlockOutsideDNS)
+				: base.ovBlockOutsideDNS,
+		ovCA:
+			protocol === "openvpn" ? (settings.ca ?? base.ovCA) : base.ovCA,
+		ovServerCertificate:
+			protocol === "openvpn"
+				? (settings.server_certificate ??
+					settings.serverCertificate ??
+					base.ovServerCertificate)
+				: base.ovServerCertificate,
+		ovServerKey:
+			protocol === "openvpn"
+				? (settings.server_key ?? settings.serverKey ?? base.ovServerKey)
+				: base.ovServerKey,
+		ovDH:
+			protocol === "openvpn" ? (settings.dh ?? base.ovDH) : base.ovDH,
+		ovTlsCrypt:
+			protocol === "openvpn"
+				? (settings.tls_crypt ?? base.ovTlsCrypt)
+				: base.ovTlsCrypt,
+		ovTlsAuth:
+			protocol === "openvpn"
+				? (settings.tls_auth ?? base.ovTlsAuth)
+				: base.ovTlsAuth,
+		ovExtraClientConfig:
+			protocol === "openvpn"
+				? (settings.extra_client_config ?? base.ovExtraClientConfig)
+				: base.ovExtraClientConfig,
+		wgTunnelPort:
+			protocol === "wireguard"
+				? toInputValue(
+						settings.tunnel_port ??
+							settings.xray_tunnel_port ??
+							settings.tproxy_port,
+					)
+				: base.wgTunnelPort,
+		wgIPv4Pool:
+			protocol === "wireguard"
+				? (settings.address_pool ??
+					settings.ipv4_pool_cidr ??
+					settings.ipv4PoolCidr ??
+					base.wgIPv4Pool)
+				: base.wgIPv4Pool,
+		wgServerAddress:
+			protocol === "wireguard"
+				? (settings.server_address ??
+					settings.serverAddress ??
+					base.wgServerAddress)
+				: base.wgServerAddress,
+		wgPrivateKey:
+			protocol === "wireguard"
+				? (settings.private_key ?? settings.privateKey ?? base.wgPrivateKey)
+				: base.wgPrivateKey,
+		wgPublicKey:
+			protocol === "wireguard"
+				? (settings.public_key ?? settings.publicKey ?? base.wgPublicKey)
+				: base.wgPublicKey,
+		wgMTU:
+			protocol === "wireguard"
+				? toInputValue(settings.mtu ?? base.wgMTU)
+				: base.wgMTU,
+		wgPersistentKeepalive:
+			protocol === "wireguard"
+				? toInputValue(
+						settings.persistent_keepalive ??
+							settings.persistentKeepalive ??
+							base.wgPersistentKeepalive,
+					)
+				: base.wgPersistentKeepalive,
+		wgTproxyEnabled:
+			protocol === "wireguard"
+				? Boolean(settings.tproxy_enabled ?? base.wgTproxyEnabled)
+				: base.wgTproxyEnabled,
+		wgNatEnabled:
+			protocol === "wireguard"
+				? Boolean(settings.nat_enabled ?? base.wgNatEnabled)
+				: base.wgNatEnabled,
+		wgAccountingEnabled:
+			protocol === "wireguard"
+				? Boolean(settings.accounting_enabled ?? base.wgAccountingEnabled)
+				: base.wgAccountingEnabled,
+		l2tpTunnelPort:
+			protocol === "l2tp"
+				? "1702"
+				: protocol === "pptp"
+				? toInputValue(
+						settings.tunnel_port ??
+							settings.xray_tunnel_port ??
+							settings.tproxy_port,
+					)
+				: base.l2tpTunnelPort,
+		l2tpIPv4Pool:
+			protocol === "l2tp" || protocol === "pptp"
+				? (settings.ipv4_pool_cidr ?? settings.ipv4PoolCidr ?? base.l2tpIPv4Pool)
+				: base.l2tpIPv4Pool,
+		l2tpDNSServers:
+			protocol === "l2tp" || protocol === "pptp"
+				? joinLines(parseStringList(settings.dns_servers ?? settings.dnsServers))
+				: base.l2tpDNSServers,
+		l2tpIPSecPSK:
+			protocol === "l2tp"
+				? (settings.ipsec_psk ?? base.l2tpIPSecPSK)
+				: base.l2tpIPSecPSK,
+		l2tpRedirectGateway:
+			protocol === "l2tp" || protocol === "pptp"
+				? Boolean(settings.redirect_gateway ?? base.l2tpRedirectGateway)
+				: base.l2tpRedirectGateway,
+		l2tpTproxyEnabled:
+			protocol === "l2tp" || protocol === "pptp"
+				? Boolean(settings.tproxy_enabled ?? base.l2tpTproxyEnabled)
+				: base.l2tpTproxyEnabled,
+		l2tpAccountingEnabled:
+			protocol === "l2tp" || protocol === "pptp"
+				? Boolean(settings.accounting_enabled ?? base.l2tpAccountingEnabled)
+				: base.l2tpAccountingEnabled,
+		l2tpMTU:
+			protocol === "l2tp" || protocol === "pptp" ? toInputValue(settings.mtu) : base.l2tpMTU,
+		l2tpMRU:
+			protocol === "l2tp" || protocol === "pptp" ? toInputValue(settings.mru) : base.l2tpMRU,
+		l2tpLcpEchoInterval:
+			protocol === "l2tp" || protocol === "pptp"
+				? toInputValue(settings.lcp_echo_interval)
+				: base.l2tpLcpEchoInterval,
+		l2tpLcpEchoFailure:
+			protocol === "l2tp" || protocol === "pptp"
+				? toInputValue(settings.lcp_echo_failure)
+				: base.l2tpLcpEchoFailure,
 		targetIds: raw.targets?.length ? raw.targets : base.targetIds,
 	};
 };
@@ -2093,9 +2567,82 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 			}
 			break;
 		}
+		case "openvpn":
+			base.transport = values.ovTransport;
+			base.ipv4_pool_cidr = values.ovIPv4Pool.trim() || "10.66.0.0/16";
+			base.dns_servers = splitLines(values.ovDNSServers);
+			base.redirect_gateway = values.ovRedirectGateway;
+			base.tproxy_enabled = values.ovTproxyEnabled;
+			base.require_dco = values.ovRequireDCO;
+			base.accounting_enabled = values.ovAccountingEnabled;
+			base.tunnel_port = values.ovTproxyEnabled
+				? parseOptionalNumber(values.ovTunnelPort)
+				: undefined;
+			base.management_port = parseOptionalNumber(values.ovManagementPort);
+			base.cipher = values.ovCipher.trim() || undefined;
+			base.auth = values.ovAuth.trim() || undefined;
+			base.inline_ca = values.ovInlineCA;
+			base.set_client_cert_none = values.ovSetClientCertNone;
+			base.auth_nocache = values.ovAuthNoCache;
+			base.embed_credentials = values.ovEmbedCredentials;
+			base.route_nopull = values.ovRouteNoPull;
+			base.block_outside_dns = values.ovBlockOutsideDNS;
+			base.ca = values.ovCA.trim() || undefined;
+			base.server_certificate =
+				values.ovServerCertificate.trim() || undefined;
+			base.server_key = values.ovServerKey.trim() || undefined;
+			base.dh = values.ovDH.trim() || undefined;
+			base.tls_crypt = values.ovTlsCrypt.trim() || undefined;
+			base.tls_auth = values.ovTlsAuth.trim() || undefined;
+			base.extra_client_config =
+				values.ovExtraClientConfig.trim() || undefined;
+			break;
+		case "wireguard":
+			base.address_pool = values.wgIPv4Pool.trim() || "10.69.0.0/16";
+			base.ipv4_pool_cidr = base.address_pool;
+			base.server_address =
+				values.wgServerAddress.trim() || "10.69.0.1/16";
+			base.private_key = values.wgPrivateKey.trim() || undefined;
+			base.public_key = values.wgPublicKey.trim() || undefined;
+			base.tunnel_port = values.wgTproxyEnabled
+				? parseOptionalNumber(values.wgTunnelPort)
+				: undefined;
+			base.mtu = parseOptionalNumber(values.wgMTU);
+			base.persistent_keepalive = parseOptionalNumber(
+				values.wgPersistentKeepalive,
+			);
+			base.tproxy_enabled = values.wgTproxyEnabled;
+			base.nat_enabled = !values.wgTproxyEnabled || values.wgNatEnabled;
+			base.accounting_enabled = values.wgAccountingEnabled;
+			break;
+		case "l2tp":
+		case "pptp":
+			base.ipv4_pool_cidr = values.l2tpIPv4Pool.trim() || "10.67.0.0/16";
+			base.dns_servers = splitLines(values.l2tpDNSServers);
+			if (values.protocol === "l2tp") {
+				base.ipsec_psk = values.l2tpIPSecPSK.trim() || undefined;
+				base.l2tp_port = 1701;
+				base.ipsec_ike_port = 500;
+				base.ipsec_nat_port = 4500;
+			} else {
+				base.pptp_port = parsePort(values.port) || 1723;
+			}
+			base.redirect_gateway = values.l2tpRedirectGateway;
+			base.tproxy_enabled = values.l2tpTproxyEnabled;
+			base.accounting_enabled = values.l2tpAccountingEnabled;
+			base.tunnel_port = values.l2tpTproxyEnabled
+				? values.protocol === "l2tp"
+					? 1702
+					: parseOptionalNumber(values.l2tpTunnelPort)
+				: undefined;
+			base.mtu = parseOptionalNumber(values.l2tpMTU);
+			base.mru = parseOptionalNumber(values.l2tpMRU);
+			base.lcp_echo_interval = parseOptionalNumber(values.l2tpLcpEchoInterval);
+			base.lcp_echo_failure = parseOptionalNumber(values.l2tpLcpEchoFailure);
+			break;
 	}
 
-	return base;
+	return cleanObject(base);
 };
 
 export const buildInboundPayload = (
@@ -2103,7 +2650,12 @@ export const buildInboundPayload = (
 	options?: BuildInboundOptions,
 ): RawInbound => {
 	const supportsStream =
-		values.protocol !== "http" && values.protocol !== "socks";
+		values.protocol !== "http" &&
+		values.protocol !== "socks" &&
+		values.protocol !== "openvpn" &&
+		values.protocol !== "wireguard" &&
+		values.protocol !== "l2tp" &&
+		values.protocol !== "pptp";
 	const streamSettings = supportsStream
 		? buildStreamSettings(values, options)
 		: undefined;
@@ -2119,7 +2671,14 @@ export const buildInboundPayload = (
 		payload.streamSettings = streamSettings;
 	}
 
-	if (values.sniffingEnabled) {
+	if (
+		values.protocol === "openvpn" ||
+		values.protocol === "wireguard" ||
+		values.protocol === "l2tp" ||
+		values.protocol === "pptp"
+	) {
+		delete payload.sniffing;
+	} else if (values.sniffingEnabled) {
 		const initial = options?.initial ?? null;
 		const sniffing = cleanObject({
 			enabled: true,

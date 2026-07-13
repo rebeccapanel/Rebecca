@@ -95,6 +95,7 @@ func effectiveSubscriptionSettings(base SubscriptionSettings, admin AdminLinkSet
 		UseCustomJSONForV2rayNG:    base.UseCustomJSONForV2rayNG,
 		UseCustomJSONForStreisand:  base.UseCustomJSONForStreisand,
 		UseCustomJSONForHapp:       base.UseCustomJSONForHapp,
+		UseCustomJSONForIncy:       base.UseCustomJSONForIncy,
 		RawPanelSettings:           base.RawPanelSettings,
 		RawSubscriptionSettings:    base.RawSubscriptionSettings,
 	}
@@ -142,6 +143,8 @@ func effectiveSubscriptionSettings(base SubscriptionSettings, admin AdminLinkSet
 			effective.UseCustomJSONForStreisand = truthy(value)
 		case "use_custom_json_for_happ":
 			effective.UseCustomJSONForHapp = truthy(value)
+		case "use_custom_json_for_incy":
+			effective.UseCustomJSONForIncy = truthy(value)
 		}
 	}
 

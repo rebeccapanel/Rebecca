@@ -23,7 +23,7 @@ func LoadConfig() Config {
 		Addr:          gatewayListenAddr(env),
 		TLSCertFile:   lookupEnv(env, "UVICORN_SSL_CERTFILE", ""),
 		TLSKeyFile:    lookupEnv(env, "UVICORN_SSL_KEYFILE", ""),
-		DashboardPath: lookupEnv(env, "DASHBOARD_PATH", "/dashboard/"),
+		DashboardPath: "/dashboard/",
 	}
 }
 

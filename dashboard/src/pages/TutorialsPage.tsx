@@ -958,7 +958,9 @@ const TutorialsPage: FC = () => {
 			if (!parent) return Array.from(ids);
 			ids.add(parent.id);
 			if (parent.id === targetId && parent.children?.length) {
-				parent.children.forEach((child) => ids.add(child.id));
+				parent.children.forEach((child) => {
+					ids.add(child.id);
+				});
 			}
 			return Array.from(ids);
 		},
@@ -971,7 +973,9 @@ const TutorialsPage: FC = () => {
 			setNewMenuIds((prev) => {
 				if (!ids.some((id) => prev.has(id))) return prev;
 				const next = new Set(prev);
-				ids.forEach((id) => next.delete(id));
+				ids.forEach((id) => {
+					next.delete(id);
+				});
 				return next;
 			});
 			const langKey = normalizeTutorialLang(i18n.language);

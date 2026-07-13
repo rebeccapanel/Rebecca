@@ -87,7 +87,6 @@ func TestInboundRoutesListFullAndDetail(t *testing.T) {
 
 func TestInboundCreateUpdateValidationAndOperations(t *testing.T) {
 	server, db := testAdminServer(t)
-	server.configRepo = xrayconfig.NewRepository(db, "sqlite", xrayconfig.Options{FallbackInboundTag: "reserved"})
 	insertMasterAPIAdmin(t, db, 1, "pouria", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
 	insertCoreConfigNode(t, db, 7, "de-7", xrayconfig.ConfigModeDefault, nil)
 	insertRawMasterXrayConfig(t, db, inboundConfig(inboundEntry("base", "vless", 443)))
@@ -108,12 +107,6 @@ func TestInboundCreateUpdateValidationAndOperations(t *testing.T) {
 		t.Fatalf("duplicate port status=%d body=%s", rec.Code, rec.Body.String())
 	}
 
-	reservedPayload := `{"tag":"reserved","protocol":"vless","port":9443,"settings":{"clients":[]},"target_ids":["master"]}`
-	rec = adminJSONRequest(t, server, http.MethodPost, "/api/inbounds", token, reservedPayload)
-	if rec.Code != http.StatusBadRequest {
-		t.Fatalf("reserved tag status=%d body=%s", rec.Code, rec.Body.String())
-	}
-
 	updatePayload := `{"tag":"new-vless","protocol":"vless","port":9443,"settings":{"clients":[]},"target_ids":["node:7"]}`
 	rec = adminJSONRequest(t, server, http.MethodPut, "/api/inbounds/new-vless", token, updatePayload)
 	if rec.Code != http.StatusOK {
@@ -126,6 +119,38 @@ func TestInboundCreateUpdateValidationAndOperations(t *testing.T) {
 	}
 	if !nodeRaw.Valid || !strings.Contains(nodeRaw.String, `"new-vless"`) || strings.Contains(nodeRaw.String, `"port":8443`) {
 		t.Fatalf("node custom config was not updated: %s", nodeRaw.String)
+	}
+}
+
+func TestInboundCreateRejectsMissingTLSCertificateFiles(t *testing.T) {
+	server, db := testAdminServer(t)
+	insertMasterAPIAdmin(t, db, 1, "pouria", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
+	insertRawMasterXrayConfig(t, db, inboundConfig())
+	token := adminBearerToken(t, server, "pouria", "pass123")
+
+	payload := `{
+		"tag":"bad-cert",
+		"protocol":"vless",
+		"port":9443,
+		"settings":{"decryption":"none"},
+		"streamSettings":{
+			"network":"tcp",
+			"security":"tls",
+			"tlsSettings":{
+				"certificates":[{
+					"certificateFile":"/missing/rebecca/fullchain.pem",
+					"keyFile":"/missing/rebecca/privkey.pem"
+				}]
+			}
+		},
+		"target_ids":["master"]
+	}`
+	rec := adminJSONRequest(t, server, http.MethodPost, "/api/inbounds", token, payload)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("missing certificate path status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "does not exist") || !strings.Contains(rec.Body.String(), "directory") {
+		t.Fatalf("expected missing file/directory error, got %s", rec.Body.String())
 	}
 }
 

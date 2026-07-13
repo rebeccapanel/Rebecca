@@ -20,6 +20,7 @@ const useGetUser = (): UseGetUserReturn => {
 		UserApi,
 		Error
 	>({
+		queryKey: ["current-admin"],
 		queryFn: () => fetchUser(),
 	});
 

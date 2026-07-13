@@ -57,6 +57,10 @@ func (d *dashboardFiles) serve(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
+	if r.URL.Path == d.root {
+		http.Redirect(w, r, d.root+"/login", http.StatusTemporaryRedirect)
+		return
+	}
 	name := ""
 	switch {
 	case strings.HasPrefix(r.URL.Path, "/statics/"):

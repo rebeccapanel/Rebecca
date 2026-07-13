@@ -114,6 +114,10 @@ func (r Repository) UserGet(ctx context.Context, req UserGetRequest) (UserDetail
 	if row.Flow != nil {
 		configUser.Flow = *row.Flow
 	}
+	configUser.Hosts = hosts
+	if err := r.populateWGAddresses(ctx, &configUser, inboundsByTag); err != nil {
+		return UserDetail{}, err
+	}
 	links, err := BuildConfigLinks(configUser, inboundsByTag, inboundOrder, hosts, masks, false)
 	if err != nil {
 		return UserDetail{}, err

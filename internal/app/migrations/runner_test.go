@@ -78,8 +78,11 @@ func TestRunMigrationsFreshSQLiteAndDoubleRun(t *testing.T) {
 	assertTableColumns(t, ctx, db, "sqlite", "services", []string{"id", "name", "description", "flow", "used_traffic", "lifetime_used_traffic", "users_usage"})
 	assertTableColumns(t, ctx, db, "sqlite", "admins_services", []string{"admin_id", "service_id", "used_traffic", "lifetime_used_traffic", "created_traffic", "data_limit", "users_limit", "traffic_limit_mode", "show_user_traffic", "delete_user_usage_limit", "deleted_users_usage"})
 	assertTableColumns(t, ctx, db, "sqlite", "service_hosts", []string{"service_id", "host_id", "sort", "created_at"})
-	assertTableColumns(t, ctx, db, "sqlite", "subscription_settings", []string{"subscription_profile_title", "subscription_support_url", "subscription_aliases", "subscription_path", "subscription_ports"})
+	assertTableColumns(t, ctx, db, "sqlite", "settings", []string{"dashboard_path", "record_node_usage", "phpmyadmin_enabled", "phpmyadmin_port", "phpmyadmin_path", "phpmyadmin_public_url", "phpmyadmin_login_mode", "phpmyadmin_username", "phpmyadmin_password"})
+	assertTableColumns(t, ctx, db, "sqlite", "subscription_settings", []string{"subscription_profile_title", "subscription_support_url", "subscription_aliases", "subscription_path", "subscription_ports", "happ_subscription_template", "incy_subscription_template", "use_custom_json_for_incy"})
 	assertTableColumns(t, ctx, db, "sqlite", "subscription_domains", []string{"domain", "admin_id", "email", "provider", "alt_names"})
+	assertTableColumns(t, ctx, db, "sqlite", "vpn_user_sessions", []string{"node_id", "user_id", "protocol", "session_id", "assigned_ip", "client_ip", "ended_at"})
+	assertTableColumns(t, ctx, db, "sqlite", "user_online_ips", []string{"node_id", "user_id", "protocol", "ip", "last_seen_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "telegram_settings", []string{"use_telegram", "event_toggles", "backup_enabled", "backup_scope", "backup_interval_value", "backup_chat_id", "backup_chat_is_forum", "last_sent_at", "last_error"})
 	assertNoColumn(t, ctx, db, "sqlite", "jwt", "vmess_mask")
 	assertNoColumn(t, ctx, db, "sqlite", "jwt", "vless_mask")
@@ -362,8 +365,10 @@ VALUES
 	assertNoColumn(t, ctx, db, "sqlite", "hosts", "sort")
 	assertNoColumn(t, ctx, db, "sqlite", "jwt", "vmess_mask")
 	assertNoColumn(t, ctx, db, "sqlite", "jwt", "vless_mask")
+	assertTableColumns(t, ctx, db, "sqlite", "vpn_user_sessions", []string{"client_ip"})
+	assertTableColumns(t, ctx, db, "sqlite", "user_online_ips", []string{"node_id", "user_id", "protocol", "ip"})
 	assertTableColumns(t, ctx, db, "sqlite", "nodes", []string{"note"})
-	assertDBStringMigration(t, db, `SELECT username FROM users WHERE id = 1`, "dupe_2")
+	assertDBStringMigration(t, db, `SELECT username FROM users WHERE id = 1`, "dupe")
 	assertDBStringMigration(t, db, `SELECT username FROM users WHERE id = 2`, "DUPE")
 	assertDBStringMigration(t, db, `SELECT status FROM users WHERE id = 3`, "disabled")
 	var proxyRows int
@@ -373,8 +378,8 @@ VALUES
 	if proxyRows != 6 {
 		t.Fatalf("expected legacy VMess/VLESS proxy materialization for three users, got %d rows", proxyRows)
 	}
-	if _, err := db.ExecContext(ctx, `INSERT INTO users (id, username) VALUES (99, 'DUPE')`); err == nil {
-		t.Fatal("expected duplicate username insert to fail after legacy repair")
+	if _, err := db.ExecContext(ctx, `INSERT INTO users (id, username) VALUES (99, 'dupe')`); err != nil {
+		t.Fatalf("duplicate username insert should remain database-compatible: %v", err)
 	}
 }
 
@@ -420,6 +425,37 @@ func TestRunMigrationsToSQLite(t *testing.T) {
 		t.Fatalf("unexpected final version: %#v", finalVersion)
 	}
 	assertTableColumns(t, ctx, db, "sqlite", "services", []string{"id", "name", "used_traffic"})
+}
+
+func TestRepairDuplicateUsernamesPreservesExistingUsernames(t *testing.T) {
+	ctx := context.Background()
+	db := openSQLiteTestDB(t)
+	if _, err := db.ExecContext(ctx, `
+CREATE TABLE users (
+	id INTEGER PRIMARY KEY,
+	username TEXT,
+	status TEXT
+);
+INSERT INTO users (id, username, status) VALUES
+	(1, 'seller', 'deleted'),
+	(2, 'Seller', 'active'),
+	(3, 'seller', 'disabled');`); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repairDuplicateUsernames(ctx, tx); err != nil {
+		_ = tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	assertDBStringMigration(t, db, `SELECT username FROM users WHERE id = 1`, "seller")
+	assertDBStringMigration(t, db, `SELECT username FROM users WHERE id = 2`, "Seller")
+	assertDBStringMigration(t, db, `SELECT username FROM users WHERE id = 3`, "seller")
 }
 
 func TestUnsupportedDowngrade(t *testing.T) {
@@ -654,12 +690,12 @@ VALUES
 		t.Fatalf("run migrations: %v", err)
 	}
 
-	assertUserRow(t, db, 1, "Alice_2", "disabled", "11111111111141118111111111111111", "xtls-rprx-vision")
+	assertUserRow(t, db, 1, "Alice", "disabled", "11111111111141118111111111111111", "xtls-rprx-vision")
 	assertUserRow(t, db, 2, "alice", "active", "22222222222242228222222222222222", "")
 	assertUserStatus(t, db, 3, "expired")
 	assertUserStatus(t, db, 4, "limited")
 	assertCredentialKeyNull(t, db, 5)
-	assertUserName(t, db, 6, "bob_2_6")
+	assertUserName(t, db, 6, "bob")
 	assertUserName(t, db, 7, "bob")
 	assertTableColumns(t, ctx, db, "sqlite", "next_plans", []string{"position", "increase_data_limit", "start_on_first_connect", "trigger_on"})
 

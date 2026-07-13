@@ -357,6 +357,10 @@ func (r Repository) DeleteNode(ctx context.Context, nodeID int64) error {
 	}
 	for _, stmt := range []string{
 		`DELETE FROM node_operations WHERE node_id = ?`,
+		`DELETE FROM node_usage_user_queue WHERE node_id = ?`,
+		`DELETE FROM node_usage_outbound_queue WHERE node_id = ?`,
+		`DELETE FROM vpn_user_sessions WHERE node_id = ?`,
+		`DELETE FROM user_online_ips WHERE node_id = ?`,
 		`DELETE FROM node_usages WHERE node_id = ?`,
 		`DELETE FROM node_user_usages WHERE node_id = ?`,
 		`DELETE FROM outbound_traffic WHERE node_id = ?`,

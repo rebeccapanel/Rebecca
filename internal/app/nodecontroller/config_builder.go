@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	userread "github.com/rebeccapanel/rebecca/internal/app/user"
+	"github.com/rebeccapanel/rebecca/internal/app/xrayconfig"
 )
 
 var proxyProtocols = map[string]struct{}{
@@ -52,7 +53,8 @@ func (c Controller) buildRuntimeConfigWithData(ctx context.Context, node NodeRow
 	if merged, err := c.outboundSubs.MergeActiveIntoConfig(ctx, raw); err == nil {
 		raw = merged
 	}
-	applyRuntimeAPI(raw, node.APIPort)
+	raw = mergeNodeVirtualTunnelConfig(raw, node.XrayConfig)
+	raw = xrayconfig.TranslateVirtualTunnelInboundsForRuntime(raw)
 	if err := inlineTLSCertificateFiles(raw); err != nil {
 		return "", err
 	}
@@ -64,6 +66,89 @@ func (c Controller) buildRuntimeConfigWithData(ctx context.Context, node NodeRow
 		return "", err
 	}
 	return string(encoded), nil
+}
+
+func mergeNodeVirtualTunnelConfig(raw map[string]any, nodeConfig json.RawMessage) map[string]any {
+	if len(nodeConfig) == 0 {
+		return raw
+	}
+	nodeRaw := jsonMap(nodeConfig)
+	if len(nodeRaw) == 0 {
+		return raw
+	}
+	nodeVirtualInbounds := []map[string]any{}
+	nodeVirtualTags := map[string]struct{}{}
+	existingTags := map[string]struct{}{}
+	for _, inbound := range listOfMaps(raw["inbounds"]) {
+		if tag := stringValue(inbound["tag"]); tag != "" {
+			existingTags[tag] = struct{}{}
+		}
+	}
+	for _, inbound := range listOfMaps(nodeRaw["inbounds"]) {
+		protocol := strings.ToLower(stringValue(inbound["protocol"]))
+		if !xrayconfig.IsVirtualTunnelInboundProtocol(protocol) {
+			continue
+		}
+		tag := stringValue(inbound["tag"])
+		if tag == "" {
+			continue
+		}
+		nodeVirtualTags[tag] = struct{}{}
+		if _, exists := existingTags[tag]; exists {
+			continue
+		}
+		nodeVirtualInbounds = append(nodeVirtualInbounds, inbound)
+		existingTags[tag] = struct{}{}
+	}
+	if len(nodeVirtualInbounds) == 0 && len(nodeVirtualTags) == 0 {
+		return raw
+	}
+	inbounds := interfaceSlice(raw["inbounds"])
+	for _, inbound := range nodeVirtualInbounds {
+		inbounds = append(inbounds, inbound)
+	}
+	raw["inbounds"] = inbounds
+
+	nodeRules := interfaceSlice(mapValue(nodeRaw["routing"])["rules"])
+	if len(nodeRules) == 0 {
+		return raw
+	}
+	routing := ensureMap(raw, "routing")
+	rules := interfaceSlice(routing["rules"])
+	seenRules := map[string]struct{}{}
+	for _, rule := range rules {
+		if encoded, err := json.Marshal(rule); err == nil {
+			seenRules[string(encoded)] = struct{}{}
+		}
+	}
+	for _, item := range nodeRules {
+		rule := mapValue(item)
+		if len(rule) == 0 || !ruleReferencesAnyInbound(rule, nodeVirtualTags) {
+			continue
+		}
+		encoded, err := json.Marshal(rule)
+		if err == nil {
+			if _, exists := seenRules[string(encoded)]; exists {
+				continue
+			}
+			seenRules[string(encoded)] = struct{}{}
+		}
+		rules = append(rules, rule)
+	}
+	routing["rules"] = rules
+	return raw
+}
+
+func ruleReferencesAnyInbound(rule map[string]any, tags map[string]struct{}) bool {
+	if len(tags) == 0 {
+		return false
+	}
+	for _, item := range interfaceSlice(rule["inboundTag"]) {
+		if _, ok := tags[stringValue(item)]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func (c Controller) includeDBUsers(ctx context.Context, raw map[string]any, data *runtimeConfigData) error {
@@ -83,7 +168,11 @@ func (c Controller) includeDBUsers(ctx context.Context, raw map[string]any, data
 	}
 
 	if data == nil {
-		loaded, err := c.loadRuntimeConfigData(ctx)
+		protocols := make([]string, 0, len(inboundsByProtocol))
+		for protocol := range inboundsByProtocol {
+			protocols = append(protocols, protocol)
+		}
+		loaded, err := c.loadRuntimeConfigDataForProtocols(ctx, protocols)
 		if err != nil {
 			return err
 		}
@@ -119,11 +208,43 @@ func (c Controller) userOperationRequiresConfigSync(ctx context.Context, node No
 	if !isRuntimeUserOperation(operation.OperationType) || !operation.UserID.Valid {
 		return false, nil
 	}
+	var serviceID sql.NullInt64
+	if err := c.repo.db.QueryRowContext(ctx, `SELECT service_id FROM users WHERE id = ?`, operation.UserID.Int64).Scan(&serviceID); err != nil {
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+	if !serviceID.Valid || serviceID.Int64 <= 0 {
+		return false, nil
+	}
+	serviceTags, err := c.repo.ServiceAllowedTags(ctx)
+	if err != nil {
+		return false, err
+	}
+	inbounds, err := xrayconfig.NewRepository(c.repo.db, c.repo.dialect, xrayconfig.Options{}).FullInbounds(ctx)
+	if err != nil {
+		return false, err
+	}
+	target := xrayconfig.NodeTargetID(node.ID)
+	for _, inbound := range inbounds {
+		switch strings.ToLower(stringValue(inbound["protocol"])) {
+		case xrayconfig.OVProtocol, xrayconfig.L2TPProtocol, xrayconfig.PPTPProtocol, xrayconfig.WGProtocol:
+			tag := stringValue(inbound["tag"])
+			if tag != "" && serviceTags[serviceID.Int64][tag] && OVInboundMatchesTarget(inbound, target) {
+				return true, nil
+			}
+		}
+	}
 	return false, nil
 }
 
 func (c Controller) loadRuntimeConfigData(ctx context.Context) (*runtimeConfigData, error) {
-	users, err := c.repo.RuntimeUsers(ctx)
+	return c.loadRuntimeConfigDataForProtocols(ctx, nil)
+}
+
+func (c Controller) loadRuntimeConfigDataForProtocols(ctx context.Context, protocols []string) (*runtimeConfigData, error) {
+	users, err := c.repo.RuntimeUsersForProtocols(ctx, protocols)
 	if err != nil {
 		return nil, err
 	}
@@ -172,15 +293,22 @@ func applyRuntimeAPI(raw map[string]any, apiPort int) {
 		apiInbound = map[string]any{
 			"listen":   "127.0.0.1",
 			"port":     apiPort,
-			"protocol": "dokodemo-door",
-			"settings": map[string]any{"address": "127.0.0.1"},
-			"tag":      "API_INBOUND",
+			"protocol": "tunnel",
+			"settings": map[string]any{
+				"allowedNetwork": "tcp",
+				"rewriteAddress": "127.0.0.1",
+			},
+			"tag": "API_INBOUND",
 		}
 		raw["inbounds"] = append([]any{apiInbound}, interfaceSlice(raw["inbounds"])...)
 	} else {
 		apiInbound["listen"] = "127.0.0.1"
 		apiInbound["port"] = apiPort
-		ensureMap(apiInbound, "settings")["address"] = "127.0.0.1"
+		apiInbound["protocol"] = "tunnel"
+		settings := ensureMap(apiInbound, "settings")
+		delete(settings, "address")
+		settings["allowedNetwork"] = "tcp"
+		settings["rewriteAddress"] = "127.0.0.1"
 	}
 
 	routing := ensureMap(raw, "routing")

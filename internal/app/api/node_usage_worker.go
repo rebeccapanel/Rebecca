@@ -57,9 +57,15 @@ func (s *Server) flushNodeUsage(ctx context.Context) {
 	workerCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 
+	runtimeSettings, err := s.settingsRepo.RuntimeSettings(workerCtx)
+	if err != nil {
+		logging.Warnf(logging.ComponentNode, "usage settings read failed: %v", err)
+		runtimeSettings.RecordNodeUsage = s.cfg.RecordNodeUsage
+		runtimeSettings.RecordNodeUserUsages = s.cfg.RecordNodeUserUsages
+	}
 	result, err := s.nodeController.FlushStagedUsage(workerCtx, s.cfg.NodeUsageFlushBatchSize, nodecontroller.UsagePersistOptions{
-		SkipNodeUsageHistory:     s.cfg.DisableNodeUsageHistory,
-		SkipNodeUserUsageHistory: s.cfg.DisableNodeUserUsageHistory,
+		SkipNodeUsageHistory:     !runtimeSettings.RecordNodeUsage,
+		SkipNodeUserUsageHistory: !runtimeSettings.RecordNodeUserUsages,
 	})
 	if err != nil {
 		if ctx.Err() != nil {
@@ -84,13 +90,19 @@ func (s *Server) collectNodeUsage(ctx context.Context) {
 	workerCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
+	runtimeSettings, err := s.settingsRepo.RuntimeSettings(workerCtx)
+	if err != nil {
+		logging.Warnf(logging.ComponentNode, "usage settings read failed: %v", err)
+		runtimeSettings.RecordNodeUsage = s.cfg.RecordNodeUsage
+		runtimeSettings.RecordNodeUserUsages = s.cfg.RecordNodeUserUsages
+	}
 	result, err := s.nodeController.CollectUsage(workerCtx, nodecontroller.CollectUsageRequest{
 		Limit:                    s.cfg.NodeUsageCollectionLimit,
 		Users:                    true,
 		Outbound:                 true,
 		Reset:                    true,
-		SkipNodeUsageHistory:     s.cfg.DisableNodeUsageHistory,
-		SkipNodeUserUsageHistory: s.cfg.DisableNodeUserUsageHistory,
+		SkipNodeUsageHistory:     !runtimeSettings.RecordNodeUsage,
+		SkipNodeUserUsageHistory: !runtimeSettings.RecordNodeUserUsages,
 	})
 	if err != nil {
 		if ctx.Err() != nil {

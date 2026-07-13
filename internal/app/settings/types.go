@@ -8,6 +8,36 @@ type PanelSettingsUpdate struct {
 	DefaultSubscriptionType *string `json:"default_subscription_type,omitempty"`
 }
 
+type RuntimeSettings struct {
+	DashboardPath        string `json:"dashboard_path"`
+	RecordNodeUsage      bool   `json:"record_node_usage"`
+	RecordNodeUserUsages bool   `json:"record_node_user_usages"`
+	SubscriptionReadOnly bool   `json:"subscription_read_only"`
+	APIDocsEnabled       bool   `json:"api_docs_enabled"`
+	PHPMyAdminEnabled    bool   `json:"phpmyadmin_enabled"`
+	PHPMyAdminPort       int    `json:"phpmyadmin_port"`
+	PHPMyAdminPath       string `json:"phpmyadmin_path"`
+	PHPMyAdminPublicURL  string `json:"phpmyadmin_public_url"`
+	PHPMyAdminLoginMode  string `json:"phpmyadmin_login_mode"`
+	PHPMyAdminUsername   string `json:"phpmyadmin_username"`
+	PHPMyAdminPassword   string `json:"phpmyadmin_password"`
+}
+
+type RuntimeSettingsUpdate struct {
+	DashboardPath        *string `json:"dashboard_path,omitempty"`
+	RecordNodeUsage      *bool   `json:"record_node_usage,omitempty"`
+	RecordNodeUserUsages *bool   `json:"record_node_user_usages,omitempty"`
+	SubscriptionReadOnly *bool   `json:"subscription_read_only,omitempty"`
+	APIDocsEnabled       *bool   `json:"api_docs_enabled,omitempty"`
+	PHPMyAdminEnabled    *bool   `json:"phpmyadmin_enabled,omitempty"`
+	PHPMyAdminPort       *int    `json:"phpmyadmin_port,omitempty"`
+	PHPMyAdminPath       *string `json:"phpmyadmin_path,omitempty"`
+	PHPMyAdminPublicURL  *string `json:"phpmyadmin_public_url,omitempty"`
+	PHPMyAdminLoginMode  *string `json:"phpmyadmin_login_mode,omitempty"`
+	PHPMyAdminUsername   *string `json:"phpmyadmin_username,omitempty"`
+	PHPMyAdminPassword   *string `json:"phpmyadmin_password,omitempty"`
+}
+
 type SubscriptionSettings struct {
 	SubscriptionURLPrefix       string   `json:"subscription_url_prefix"`
 	SubscriptionProfileTitle    string   `json:"subscription_profile_title"`
@@ -20,6 +50,8 @@ type SubscriptionSettings struct {
 	HomePageTemplate            string   `json:"home_page_template"`
 	V2RaySubscriptionTemplate   string   `json:"v2ray_subscription_template"`
 	V2RaySettingsTemplate       string   `json:"v2ray_settings_template"`
+	HappSubscriptionTemplate    string   `json:"happ_subscription_template"`
+	IncySubscriptionTemplate    string   `json:"incy_subscription_template"`
 	SingBoxSubscriptionTemplate string   `json:"singbox_subscription_template"`
 	SingBoxSettingsTemplate     string   `json:"singbox_settings_template"`
 	MuxTemplate                 string   `json:"mux_template"`
@@ -28,6 +60,7 @@ type SubscriptionSettings struct {
 	UseCustomJSONForV2RayNG     bool     `json:"use_custom_json_for_v2rayng"`
 	UseCustomJSONForStreisand   bool     `json:"use_custom_json_for_streisand"`
 	UseCustomJSONForHapp        bool     `json:"use_custom_json_for_happ"`
+	UseCustomJSONForIncy        bool     `json:"use_custom_json_for_incy"`
 	SubscriptionPath            string   `json:"subscription_path"`
 	SubscriptionAliases         []string `json:"subscription_aliases"`
 	SubscriptionPorts           []int    `json:"subscription_ports"`
@@ -45,6 +78,8 @@ type SubscriptionSettingsUpdate struct {
 	HomePageTemplate            *string   `json:"home_page_template,omitempty"`
 	V2RaySubscriptionTemplate   *string   `json:"v2ray_subscription_template,omitempty"`
 	V2RaySettingsTemplate       *string   `json:"v2ray_settings_template,omitempty"`
+	HappSubscriptionTemplate    *string   `json:"happ_subscription_template,omitempty"`
+	IncySubscriptionTemplate    *string   `json:"incy_subscription_template,omitempty"`
 	SingBoxSubscriptionTemplate *string   `json:"singbox_subscription_template,omitempty"`
 	SingBoxSettingsTemplate     *string   `json:"singbox_settings_template,omitempty"`
 	MuxTemplate                 *string   `json:"mux_template,omitempty"`
@@ -53,6 +88,7 @@ type SubscriptionSettingsUpdate struct {
 	UseCustomJSONForV2RayNG     *bool     `json:"use_custom_json_for_v2rayng,omitempty"`
 	UseCustomJSONForStreisand   *bool     `json:"use_custom_json_for_streisand,omitempty"`
 	UseCustomJSONForHapp        *bool     `json:"use_custom_json_for_happ,omitempty"`
+	UseCustomJSONForIncy        *bool     `json:"use_custom_json_for_incy,omitempty"`
 	SubscriptionPath            *string   `json:"subscription_path,omitempty"`
 	SubscriptionAliases         *[]string `json:"subscription_aliases,omitempty"`
 	SubscriptionPorts           *[]int    `json:"subscription_ports,omitempty"`

@@ -753,10 +753,48 @@ detect_os() {
     fi
 }
 
+remove_broken_xanmod_apt_sources() {
+    local matches
+    matches=$(grep -RIlE 'deb\.xanmod\.org|xanmod\.org' /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null || true)
+    if [ -z "$matches" ]; then
+        return 1
+    fi
+    colorized_echo yellow "Removing broken XanMod apt source entries"
+    while IFS= read -r file; do
+        [ -n "$file" ] || continue
+        case "$file" in
+            /etc/apt/sources.list)
+                sed -i.bak '/deb\.xanmod\.org/d;/xanmod\.org/d' "$file"
+            ;;
+            /etc/apt/sources.list.d/*)
+                rm -f "$file"
+            ;;
+        esac
+    done <<< "$matches"
+    return 0
+}
+
+apt_update_with_repo_repair() {
+    local log_file
+    log_file=$(mktemp)
+    if DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a "$PKG_MANAGER" "$@" update -qq >"$log_file" 2>&1; then
+        rm -f "$log_file"
+        return 0
+    fi
+    cat "$log_file" >&2
+    if grep -qiE 'deb\.xanmod\.org|xanmod.*release file|does not have a release file' "$log_file" && remove_broken_xanmod_apt_sources; then
+        rm -f "$log_file"
+        DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a "$PKG_MANAGER" "$@" update -qq
+        return
+    fi
+    rm -f "$log_file"
+    return 1
+}
+
 detect_and_update_package_manager() {
     if [[ "$OS" == "Ubuntu"* ]] || [[ "$OS" == "Debian"* ]]; then
         PKG_MANAGER="apt-get"
-        ui_spinner_run "Updating package index" bash -c "DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a $PKG_MANAGER update -qq"
+        ui_spinner_run "Updating package index" apt_update_with_repo_repair
     elif [[ "$OS" == "CentOS"* ]] || [[ "$OS" == "AlmaLinux"* ]]; then
         PKG_MANAGER="yum"
         ui_spinner_run "Updating package index" "$PKG_MANAGER" update -y -q
@@ -817,6 +855,30 @@ install_package () {
 
     local PACKAGE="$1"
     ui_spinner_run "Installing $PACKAGE" install_package_impl "$PACKAGE"
+}
+
+ensure_ov_binary_prerequisites() {
+    detect_os
+    local packages=()
+    if ! command -v openvpn >/dev/null 2>&1; then
+        packages+=("openvpn")
+    fi
+    if ! command -v nft >/dev/null 2>&1; then
+        packages+=("nftables")
+    fi
+    if ! command -v ip >/dev/null 2>&1; then
+        if [[ "$OS" == "CentOS"* ]] || [[ "$OS" == "AlmaLinux"* ]] || [[ "$OS" == "Fedora"* ]]; then
+            packages+=("iproute")
+        else
+            packages+=("iproute2")
+        fi
+    fi
+    for package in "${packages[@]}"; do
+        install_package "$package"
+    done
+    if command -v modprobe >/dev/null 2>&1 && [ ! -c /dev/net/tun ]; then
+        modprobe tun >/dev/null 2>&1 || colorized_echo yellow "Unable to load tun module automatically; OpenVPN needs /dev/net/tun."
+    fi
 }
 
 ensure_python3_venv() {
@@ -1192,6 +1254,7 @@ install_binary_rebecca_node() {
             install_package "$package"
         fi
     done
+    ensure_ov_binary_prerequisites
 
     binary_arch=$(detect_node_binary_arch)
     tmp_dir=$(mktemp -d)

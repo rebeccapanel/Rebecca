@@ -14,14 +14,14 @@ func TestHomeRouteServesHomeTemplateFromGo(t *testing.T) {
 	server, db := testAdminServer(t)
 	createSettingsTables(t, db)
 
-	defaultTemplates := filepath.Join(t.TempDir(), "app-templates")
-	if err := os.MkdirAll(filepath.Join(defaultTemplates, "home"), 0o755); err != nil {
+	templateRoot := t.TempDir()
+	t.Chdir(templateRoot)
+	if err := os.MkdirAll(filepath.Join(templateRoot, "templates", "home"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(defaultTemplates, "home", "index.html"), []byte("<html>Rebecca Home</html>"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(templateRoot, "templates", "home", "index.html"), []byte("<html>Rebecca Home</html>"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("REBECCA_APP_TEMPLATE_BASE", defaultTemplates)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()

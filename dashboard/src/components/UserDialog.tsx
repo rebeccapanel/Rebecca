@@ -105,7 +105,7 @@ import { NumericInput } from "./common/NumericInput";
 import { AnimatedSubmitButton } from "./common/AnimatedSubmitButton";
 import { DeleteIcon } from "./common/DeleteIcon";
 import { DateTimePicker } from "./DateTimePicker";
-import { DeleteConfirmPopover } from "./DeleteConfirmPopover";
+import { DeleteConfirmDialog } from "./dialogs/ConfirmDialog";
 import { Icon } from "./Icon";
 import { Input } from "./Input";
 import { createUsageConfig, UsageFilter } from "./UsageFilter";
@@ -578,6 +578,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		linkTemplates,
 		setQRCode,
 		setSubLink,
+		editingUserInitialTab,
 	} = useDashboard();
 
 	const isEditing = !!editingUser;
@@ -1391,8 +1392,21 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			setExpireDays(deriveDaysFromSeconds(formatted.expire));
 			setUsage(createUsageConfig(colorMode, usageTitle));
 			setUsageFilter("1m");
-			setUsageFetched(false);
-			setActiveTab(0);
+			// Deep-link support: open directly on the Usage tab (index 1) when
+			// requested via onEditingUser(user, 1), otherwise the Edit tab.
+			const wantsUsageTab = editingUserInitialTab === 1 && canViewTraffic;
+			if (wantsUsageTab) {
+				setUsageFetched(true);
+				fetchUsageWithFilter({
+					start: dayjs()
+						.utc()
+						.subtract(30, "day")
+						.format("YYYY-MM-DDTHH:00:00"),
+				});
+			} else {
+				setUsageFetched(false);
+			}
+			setActiveTab(wantsUsageTab ? 1 : 0);
 			setCopiedSubscriptionKey(null);
 			setCopiedAllConfigs(false);
 			setCopiedConfigIndex(null);
@@ -1438,6 +1452,9 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		}
 	}, [
 		editingUser,
+		editingUserInitialTab,
+		canViewTraffic,
+		fetchUsageWithFilter,
 		deriveDaysFromSeconds,
 		form.reset,
 		resetAutoRenewFormValues,
@@ -4027,8 +4044,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 										{isEditing && (
 											<>
 												{canDeleteUsersVisible && (
-													<DeleteConfirmPopover
-														message={t("deleteUser.prompt", {
+											<DeleteConfirmDialog
+												description={t("deleteUser.prompt", {
 															username: editingUser?.username ?? "",
 														})}
 														isLoading={deleteLoading}
@@ -4042,7 +4059,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 																<DeleteIcon />
 															</IconButton>
 														</Tooltip>
-													</DeleteConfirmPopover>
+											</DeleteConfirmDialog>
 												)}
 
 												{canResetUsageVisible && (

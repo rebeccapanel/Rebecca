@@ -13,6 +13,7 @@ import {
 	BookOpenIcon,
 	BriefcaseIcon,
 	ChartBarIcon,
+	CircleStackIcon,
 	CodeBracketSquareIcon,
 	Cog6ToothIcon,
 	Cog8ToothIcon,
@@ -68,6 +69,7 @@ const TutorialIconStyled = chakra(BookOpenIcon, iconProps);
 const XraySettingsIconStyled = chakra(WrenchScrewdriverIcon, iconProps);
 const XrayLogsIconStyled = chakra(DocumentTextIcon, iconProps);
 const ApiDocsIconStyled = chakra(CodeBracketSquareIcon, iconProps);
+const PHPMyAdminIconStyled = chakra(CircleStackIcon, iconProps);
 const TutorialUpdateIconStyled = chakra(BellAlertIcon, {
 	baseStyle: {
 		w: 3,
@@ -312,8 +314,8 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 			: null,
 		sectionAccess?.[AdminSection.Integrations]
 			? {
-					title: t("header.integrationSettings", "Master Settings"),
-					url: "/integrations",
+					title: t("header.integrationSettings", "Settings"),
+					url: "/settings",
 					icon: MasterSettingsIconStyled,
 				}
 			: null,
@@ -345,6 +347,13 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 					icon: ApiDocsIconStyled,
 				}
 			: null,
+		isPrivilegedAdmin
+			? {
+					title: t("phpmyadmin.menu", "phpMyAdmin"),
+					url: "/phpmyadmin",
+					icon: PHPMyAdminIconStyled,
+				}
+			: null,
 		{
 			title: t("tutorials.menu", "Tutorials"),
 			url: "/tutorials",
@@ -362,7 +371,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 	}
 
 	const defaultTabByPath: Record<string, string> = {
-		"/integrations": "panel",
+		"/settings": "panel",
 		"/hosts": "inbounds",
 		"/usage": "services",
 		"/xray-settings": "basic",
@@ -455,11 +464,12 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 		{
 			title: t("sidebar.groups.system", "System"),
 			items: [
-				pickSetting("/integrations"),
+				pickSetting("/settings"),
 				pickSetting("/xray-settings"),
 				pickSetting("/xray-logs"),
 				pickSetting("/access-insights"),
 				pickSetting("/api-docs"),
+				pickSetting("/phpmyadmin"),
 				pickSetting("/tutorials"),
 			],
 		},

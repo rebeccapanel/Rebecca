@@ -51,6 +51,10 @@
   --primary-700: #990029;
   --primary-800: #73001f;
   --primary-900: #4c0015;
+  --rb-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --rb-ease-standard: cubic-bezier(0.77, 0, 0.175, 1);
+  --rb-duration-fast: 140ms;
+  --rb-duration-ui: 180ms;
 }
 
 .rb-theme-dark,
@@ -136,43 +140,12 @@ body {
 }
 
 .rb-sidebar-scroll {
-  scrollbar-color: var(--rb-panel-border-strong) var(--rb-panel-sidebar);
-  scrollbar-gutter: stable;
-  --rb-sidebar-scroll-edge-offset: 12px;
-}
-
-.rb-sidebar-scroll[data-dir="rtl"] {
-  direction: ltr;
-}
-
-.rb-sidebar-scroll[data-dir="rtl"] > * {
-  direction: rtl;
-}
-
-.rb-sidebar-scroll[data-dir="ltr"] {
-  direction: rtl;
-}
-
-.rb-sidebar-scroll[data-dir="ltr"] > * {
-  direction: ltr;
-}
-
-.rb-sidebar-scroll[data-dir="ltr"][data-collapsed="false"] {
-  margin-left: calc(var(--rb-sidebar-scroll-edge-offset) * -1);
-  padding-left: var(--rb-sidebar-scroll-edge-offset);
-}
-
-.rb-sidebar-scroll[data-dir="rtl"][data-collapsed="false"] {
-  margin-right: calc(var(--rb-sidebar-scroll-edge-offset) * -1);
-  padding-right: var(--rb-sidebar-scroll-edge-offset);
-}
-
-.rb-sidebar-scroll[data-collapsed="true"] {
   scrollbar-width: none;
   scrollbar-color: transparent transparent;
+  scrollbar-gutter: auto;
 }
 
-.rb-sidebar-scroll[data-collapsed="true"]::-webkit-scrollbar {
+.rb-sidebar-scroll::-webkit-scrollbar {
   width: 0;
   height: 0;
   display: none;
@@ -1137,18 +1110,8 @@ body {
 }
 
 .bg-blue-animate {
-  animation: blur-animate 200ms ease-in;
   backdrop-filter: blur(10px);
-}
-
-@keyframes blur-animate {
-  from {
-    backdrop-filter: blur(1px);
-  }
-
-  to {
-    backdrop-filter: blur(10px);
-  }
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .animate-spin {
@@ -1440,7 +1403,9 @@ table thead {
   width: 28px;
   height: 28px;
   border-radius: 6px;
-  transition: all 0.2s;
+  transition:
+    background-color var(--rb-duration-ui) var(--rb-ease-out),
+    color var(--rb-duration-ui) var(--rb-ease-out);
   border: none;
   display: flex;
   align-items: center;
@@ -1492,7 +1457,10 @@ table thead {
   margin: 2px;
   border-radius: 6px;
   font-size: 0.9rem;
-  transition: all 0.2s;
+  transition:
+    background-color var(--rb-duration-ui) var(--rb-ease-out),
+    border-color var(--rb-duration-ui) var(--rb-ease-out),
+    color var(--rb-duration-ui) var(--rb-ease-out);
 }
 
 .datepicker-with-quickselect .react-datepicker__day:hover {
@@ -1540,7 +1508,15 @@ table thead {
   background-color: transparent;
   border: 1.5px solid var(--chakra-colors-gray-300);
   color: var(--chakra-colors-gray-700);
-  transition: all 0.2s;
+  transition:
+    background-color var(--rb-duration-ui) var(--rb-ease-out),
+    border-color var(--rb-duration-ui) var(--rb-ease-out),
+    color var(--rb-duration-ui) var(--rb-ease-out),
+    transform 120ms var(--rb-ease-out);
+}
+
+.datepicker-quickselect-panel button:active {
+  transform: scale(0.97);
 }
 
 .chakra-ui-dark .datepicker-quickselect-panel button {
@@ -1810,11 +1786,11 @@ table thead {
   }
 }
 
-img.twemoji-emoji {
+img.apple-emoji {
   display: inline-block;
-  height: 1.2em;
   width: 1.2em;
-  margin: 0 0.1em 0 0.1em;
+  height: 1.2em;
+  margin: 0 0.1em;
   vertical-align: -0.1em;
 }
 
@@ -1907,4 +1883,291 @@ img.twemoji-emoji {
 .rb-seasonal-christmas select,
 .rb-seasonal-christmas textarea {
   cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Cg transform='rotate(-18 20 20)'%3E%3Cpath d='M20 4l-4 6h8l-4-6z' fill='%23fff' stroke='%23c62828' stroke-width='1.6'/%3E%3Cpath d='M20 8l-5 7h10l-5-7z' fill='%23e8f5e9' stroke='%232e7d32' stroke-width='1.6'/%3E%3Cpath d='M20 12l-6 8h12l-6-8z' fill='%23c8e6c9' stroke='%232e7d32' stroke-width='1.6'/%3E%3Cpath d='M20 17l-7 9h14l-7-9z' fill='%23a5d6a7' stroke='%232e7d32' stroke-width='1.6'/%3E%3Crect x='17' y='26' width='6' height='7' rx='1.2' fill='%238d6e63'/%3E%3Ccircle cx='20' cy='10' r='1.4' fill='%23c62828'/%3E%3Ccircle cx='18' cy='15' r='1.4' fill='%23fbc02d'/%3E%3Ccircle cx='22' cy='17' r='1.4' fill='%2300acc1'/%3E%3Ccircle cx='16.5' cy='20' r='1.4' fill='%23ef6c00'/%3E%3Ccircle cx='23.5' cy='22' r='1.4' fill='%238e24aa'/%3E%3C/g%3E%3C/svg%3E") 10 4, auto;
+}
+
+/* ============================================================
+   Users section
+   Everything below is scoped to the Users page: either under the
+   .rb-users-section wrapper (overrides of shared rb-* pieces) or
+   via rb-user-* / rb-users-* classes that only the Users
+   components render. Other pages are intentionally unaffected.
+   ============================================================ */
+
+/* --- online dot ----------------------------------------------------- */
+
+/* Online indicator only: green (pulsing) while the user is connected,
+   neutral gray otherwise. Subscription status lives in the badge column. */
+.rb-user-status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  min-width: 10px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--rb-panel-border-strong);
+}
+
+.rb-user-status-dot[data-online="true"] {
+  background: #22c55e;
+}
+
+/* --- username meta row (admin chip + last-seen) --------------------- */
+
+.rb-user-username-meta {
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+/* both truncate/clip on their own single line instead of wrapping */
+.rb-user-username-meta > .rb-user-admin-chip {
+  flex: 0 1 auto;
+  min-width: 3.5em;
+}
+
+.rb-user-username-meta > span:not(.rb-user-admin-chip) {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  flex-wrap: nowrap !important;
+  white-space: nowrap;
+}
+
+/* --- "by admin" chip ---------------------------------------------- */
+
+/* inline-block (not flex) so text-overflow can ellipsize the admin name;
+   deliberately slim and uniformly muted (one neutral look for every
+   reseller) so it reads as quiet metadata, not a colored label */
+.rb-user-admin-chip {
+  display: inline-block;
+  vertical-align: middle;
+  border: 1px solid var(--rb-panel-border);
+  border-radius: 999px;
+  padding: 0 6px;
+  font-size: 0.62rem;
+  font-weight: 500;
+  line-height: 1.45;
+  white-space: nowrap;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--rb-panel-elevated);
+  color: var(--rb-panel-text-secondary);
+}
+
+/* Mobile: the tag stays out of the collapsed card row (it re-appears as
+   an "Admin" row inside the expanded details instead). */
+.rb-users-section .rb-resource-card-main .rb-user-admin-chip {
+  display: none;
+}
+
+/* --- gradient usage meter ------------------------------------------ */
+
+.rb-user-usage-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--rb-panel-elevated);
+  overflow: hidden;
+}
+
+.rb-user-usage[data-variant="compact"] .rb-user-usage-track {
+  height: 5px;
+}
+
+.rb-user-usage-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.rb-user-usage[data-tone="unlimited"] .rb-user-usage-fill {
+  opacity: 0.55;
+  background-size: 200% 100%;
+}
+
+.rb-user-usage-pair {
+  color: var(--rb-panel-text-secondary);
+  font-weight: 600;
+}
+
+.rb-user-usage-percent {
+  color: var(--rb-panel-text-muted);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.rb-user-usage[data-tone="warn"] .rb-user-usage-percent {
+  color: #f59e0b;
+}
+
+.rb-user-usage[data-tone="critical"] .rb-user-usage-percent {
+  color: #ef4444;
+}
+
+/* --- page header accent --------------------------------------------- */
+
+.rb-users-section .rb-users-header {
+  position: relative;
+  overflow: hidden;
+}
+
+.rb-users-section .rb-users-header::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(
+    180deg,
+    var(--primary-400),
+    var(--primary-600)
+  );
+}
+
+/* --- shared-piece overrides, scoped to the Users page ---------------- */
+
+/* summary count tags read as colorful pills */
+.rb-users-section .chakra-tag {
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+/* Data-usage summary cell (mobile card row + its column header): the
+   shared component sizes this box to fit its own content ("auto" basis),
+   which let the progress bar render at a different width on every row
+   depending on the usage/lifetime text length. Pin it to a fixed basis
+   instead so every row's bar is identical, while staying responsive.
+   Sized smaller than the shared default so it doesn't crowd out the
+   username column on narrow phones. */
+.rb-users-section .rb-resource-mobile-head-summary,
+.rb-users-section .rb-resource-summary {
+  flex-grow: 0;
+  flex-basis: min(30vw, 8rem);
+}
+
+/* softer corners on desktop rows */
+.rb-users-section .rb-data-table-row > td:first-child {
+  border-top-left-radius: 10px;
+  border-bottom-left-radius: 10px;
+}
+
+.rb-users-section .rb-data-table-row > td:last-child {
+  border-top-right-radius: 10px;
+  border-bottom-right-radius: 10px;
+}
+
+/* mobile cards: rounder, and glowing accent while expanded */
+.rb-users-section .rb-resource-card {
+  border-radius: 14px;
+  padding: 0.85rem;
+}
+
+.rb-users-section .rb-resource-card[data-expanded="true"] {
+  border-color: color-mix(in srgb, var(--rb-panel-accent) 45%, var(--rb-panel-border));
+  box-shadow: 0 12px 30px rgb(0 0 0 / 24%);
+}
+
+.rb-theme-light .rb-users-section .rb-resource-card[data-expanded="true"],
+.chakra-ui-light .rb-users-section .rb-resource-card[data-expanded="true"] {
+  box-shadow: 0 12px 26px rgb(15 23 42 / 12%);
+}
+
+/* crisp scale-in when a card expands */
+@media (prefers-reduced-motion: no-preference) {
+  .rb-users-section .rb-resource-expanded {
+    animation: rb-users-expand-in var(--rb-duration-ui) var(--rb-ease-out);
+    transform-origin: top center;
+  }
+}
+
+@keyframes rb-users-expand-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Lighter detail rows: drop the per-row divider lines in favour of plain
+   spacing. Scoped to the Users page so other resource cards keep dividers. */
+.rb-users-section .rb-resource-details .rb-resource-meta {
+  border-bottom: 0;
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+}
+
+/* Expanded-card actions: the full inline action strip, kept flat (ghost
+   line icons, no filled circles) and tightly grouped in a wrapping row. */
+.rb-users-section .rb-resource-expanded-actions .rb-inline-actions {
+  gap: 0.25rem;
+}
+
+.rb-users-section .rb-resource-expanded-actions .rb-inline-actions .chakra-button {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 8px;
+}
+
+.rb-users-section .rb-resource-expanded-actions .rb-inline-actions .chakra-button:active {
+  transform: scale(0.92);
+}
+
+/* floating bulk action bar: fast slide up, accent tint */
+.rb-users-section .rb-bulk-action-bar {
+  border-radius: 14px;
+  border-color: color-mix(in srgb, var(--rb-panel-accent) 35%, var(--rb-panel-border-strong));
+  background: color-mix(in srgb, var(--rb-panel-surface) 94%, var(--rb-panel-accent));
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.rb-users-section .rb-bulk-action-bar .chakra-button {
+  border-radius: 999px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rb-users-section .rb-bulk-action-bar[data-visible="true"] {
+    animation: rb-users-bulk-in 220ms var(--rb-ease-out);
+  }
+}
+
+@keyframes rb-users-bulk-in {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-blue-animate,
+  .rb-users-section .rb-resource-expanded,
+  .rb-users-section .rb-bulk-action-bar[data-visible="true"],
+  .rb-snow-layer,
+  .rb-snow-layer::after {
+    animation: none !important;
+    transition-duration: 1ms !important;
+  }
+
+  .rb-users-section .rb-resource-expanded,
+  .rb-users-section .rb-bulk-action-bar[data-visible="true"] {
+    transform: none !important;
+  }
+}
+
+/* skeleton loading rows: match the rounded look */
+.rb-users-section .chakra-skeleton {
+  border-radius: 8px;
 }

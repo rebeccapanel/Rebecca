@@ -4,26 +4,23 @@ import {
 	Box,
 	Button,
 	Checkbox,
+	chakra,
 	FormControl,
 	FormHelperText,
 	FormLabel,
 	HStack,
-	Modal,
-	ModalBody,
-	ModalCloseButton,
-	ModalContent,
-	ModalFooter,
-	ModalHeader,
-	ModalOverlay,
+	IconButton,
 	Stack,
 	Text,
+	Tooltip,
 	useBreakpointValue,
 	useDisclosure,
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
-import { PanelSelect as Select } from "components/common/PanelSelect";
 import { SparklesIcon } from "@heroicons/react/24/outline";
+import { PanelSelect as Select } from "components/common/PanelSelect";
+import { AppDialog } from "components/dialogs/AppDialog";
 import { useAdminsStore } from "contexts/AdminsContext";
 import { useDashboard } from "contexts/DashboardContext";
 import { useServicesStore } from "contexts/ServicesContext";
@@ -31,14 +28,22 @@ import useGetUser from "hooks/useGetUser";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AdminRole, AdminTrafficLimitMode } from "types/Admin";
-import { NumericInput } from "./common/NumericInput";
-import { isUserManagementLocked } from "utils/adminTraffic";
 import type {
 	AdvancedUserActionPayload,
 	AdvancedUserActionScopeStatus,
 	AdvancedUserActionStatus,
 	AdvancedUserActionType,
 } from "types/User";
+import { isUserManagementLocked } from "utils/adminTraffic";
+import { NumericInput } from "./common/NumericInput";
+
+// `className="w-4 h-4"` (Tailwind) is a no-op in this project - there is no
+// Tailwind build step - so the raw 24x24 heroicon rendered ~2.4x oversized
+// next to the neighboring 16px icons. Size it the same way every other
+// toolbar icon in this codebase is sized, via Chakra's style props.
+const AdvancedActionsIcon = chakra(SparklesIcon, {
+	baseStyle: { w: 4, h: 4 },
+});
 
 const cleanupOptions: AdvancedUserActionStatus[] = ["expired", "limited"];
 const scopeStatusOptions: AdvancedUserActionScopeStatus[] = [
@@ -54,7 +59,12 @@ type ServiceScopePayload = Partial<
 
 type OwnerSelection = "my_users" | "all_users" | `admin:${string}`;
 
-const AdvancedUserActions = () => {
+type AdvancedUserActionsProps = {
+	/** Render the trigger as a round icon button for tight toolbars. */
+	compact?: boolean;
+};
+
+const AdvancedUserActions = ({ compact = false }: AdvancedUserActionsProps) => {
 	const { t } = useTranslation();
 	const toast = useToast();
 	const { performBulkUserAction } = useDashboard();
@@ -314,7 +324,10 @@ const AdvancedUserActions = () => {
 			return;
 		}
 		const resolvedTargetServiceId = Number(targetServiceValue);
-		if (!Number.isFinite(resolvedTargetServiceId) || resolvedTargetServiceId <= 0) {
+		if (
+			!Number.isFinite(resolvedTargetServiceId) ||
+			resolvedTargetServiceId <= 0
+		) {
 			showToast(
 				t(
 					"filters.advancedActions.error.targetServiceRequired",
@@ -370,28 +383,48 @@ const AdvancedUserActions = () => {
 
 	return (
 		<>
-			<Button
-				leftIcon={<SparklesIcon className="w-4 h-4" />}
-				onClick={onOpen}
-				size={isMobile ? "sm" : "md"}
-				variant="outline"
-				h={isMobile ? "36px" : undefined}
-				minW={isMobile ? "auto" : "8.5rem"}
-				fontSize={isMobile ? "xs" : "sm"}
-				fontWeight="semibold"
-				whiteSpace="nowrap"
-			>
-				{t("filters.advancedActions.button", "Advanced actions")}
-			</Button>
+			{compact ? (
+				<Tooltip
+					label={t("filters.advancedActions.button", "Advanced actions")}
+				>
+					<IconButton
+						aria-label={t("filters.advancedActions.button", "Advanced actions")}
+						icon={<AdvancedActionsIcon />}
+						onClick={onOpen}
+						variant="outline"
+						borderRadius="full"
+						w="40px"
+						h="40px"
+						flexShrink={0}
+					/>
+				</Tooltip>
+			) : (
+				<Button
+					leftIcon={<AdvancedActionsIcon />}
+					onClick={onOpen}
+					size={isMobile ? "sm" : "md"}
+					variant="outline"
+					h={isMobile ? "36px" : undefined}
+					minW={isMobile ? "auto" : "8.5rem"}
+					fontSize={isMobile ? "xs" : "sm"}
+					fontWeight="semibold"
+					whiteSpace="nowrap"
+				>
+					{t("filters.advancedActions.button", "Advanced actions")}
+				</Button>
+			)}
 
-			<Modal isOpen={isOpen} onClose={onClose} size="lg">
-				<ModalOverlay />
-				<ModalContent>
-					<ModalHeader>
-						{t("filters.advancedActions.modalTitle", "Advanced actions")}
-					</ModalHeader>
-					<ModalCloseButton />
-					<ModalBody>
+			<AppDialog
+				isOpen={isOpen}
+				onClose={onClose}
+				size="lg"
+				title={t("filters.advancedActions.modalTitle", "Advanced actions")}
+				footer={
+					<Button variant="ghost" onClick={onClose}>
+						{t("filters.advancedActions.close", "Close")}
+					</Button>
+				}
+			>
 						<VStack spacing={6} align="stretch">
 							<Alert status="warning" borderRadius="md">
 								<AlertIcon />
@@ -485,51 +518,51 @@ const AdvancedUserActions = () => {
 									</FormControl>
 
 									{!serviceTransferDisabled && (
-									<Box borderWidth="1px" borderRadius="md" px={4} py={4}>
-										<Stack spacing={3}>
-											<Text fontWeight="semibold">
-												{t(
-													"filters.advancedActions.serviceChange.title",
-													"Change users' service",
-												)}
-											</Text>
-											<Text fontSize="sm" color="gray.500">
-												{t(
-													"filters.advancedActions.serviceChange.helper",
-													"Move the filtered users to another service.",
-												)}
-											</Text>
-											<Select
-												placeholder={t(
-													"filters.advancedActions.serviceChange.placeholder",
-													"Select target service",
-												)}
-												value={targetServiceValue}
-												onChange={(event) =>
-													setTargetServiceValue(event.target.value)
-												}
-												size="sm"
-											>
-												{servicesStore.serviceOptions.map((service) => (
-													<option key={service.id} value={String(service.id)}>
-														{service.name}
-													</option>
-												))}
-											</Select>
-											<Button
-												colorScheme="primary"
-												size="sm"
-												alignSelf="flex-start"
-												isLoading={isChangingService}
-												onClick={handleChangeService}
-											>
-												{t(
-													"filters.advancedActions.serviceChange.button",
-													"Move to service",
-												)}
-											</Button>
-										</Stack>
-									</Box>
+										<Box borderWidth="1px" borderRadius="md" px={4} py={4}>
+											<Stack spacing={3}>
+												<Text fontWeight="semibold">
+													{t(
+														"filters.advancedActions.serviceChange.title",
+														"Change users' service",
+													)}
+												</Text>
+												<Text fontSize="sm" color="gray.500">
+													{t(
+														"filters.advancedActions.serviceChange.helper",
+														"Move the filtered users to another service.",
+													)}
+												</Text>
+												<Select
+													placeholder={t(
+														"filters.advancedActions.serviceChange.placeholder",
+														"Select target service",
+													)}
+													value={targetServiceValue}
+													onChange={(event) =>
+														setTargetServiceValue(event.target.value)
+													}
+													size="sm"
+												>
+													{servicesStore.serviceOptions.map((service) => (
+														<option key={service.id} value={String(service.id)}>
+															{service.name}
+														</option>
+													))}
+												</Select>
+												<Button
+													colorScheme="primary"
+													size="sm"
+													alignSelf="flex-start"
+													isLoading={isChangingService}
+													onClick={handleChangeService}
+												>
+													{t(
+														"filters.advancedActions.serviceChange.button",
+														"Move to service",
+													)}
+												</Button>
+											</Stack>
+										</Box>
 									)}
 								</>
 							)}
@@ -748,14 +781,7 @@ const AdvancedUserActions = () => {
 								</Box>
 							</Stack>
 						</VStack>
-					</ModalBody>
-					<ModalFooter>
-						<Button variant="ghost" onClick={onClose}>
-							{t("filters.advancedActions.close", "Close")}
-						</Button>
-					</ModalFooter>
-				</ModalContent>
-			</Modal>
+			</AppDialog>
 		</>
 	);
 };

@@ -13,11 +13,7 @@ import {
 	HStack,
 	IconButton,
 	Modal,
-	ModalBody,
 	ModalCloseButton,
-	ModalContent,
-	ModalFooter,
-	ModalHeader,
 	ModalOverlay,
 	Radio,
 	RadioGroup,
@@ -42,7 +38,8 @@ import {
 	TrashIcon,
 } from "@heroicons/react/24/outline";
 import { Input } from "components/Input";
-import { ConfirmActionDialog } from "components/ConfirmActionDialog";
+import { AppDialog } from "components/dialogs/AppDialog";
+import { ConfirmDialog } from "components/dialogs/ConfirmDialog";
 import {
 	DataTable,
 	PageHeader,
@@ -68,7 +65,7 @@ import { useHosts } from "contexts/HostsContext";
 import { useServicesStore } from "contexts/ServicesContext";
 import { motion } from "framer-motion";
 import useGetUser from "hooks/useGetUser";
-import { type FC, useEffect, useMemo, useState } from "react";
+import { type FC, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { fetch } from "service/http";
 import type { Admin, AdminPermissions } from "types/Admin";
@@ -1303,50 +1300,53 @@ const ServicesPage: FC = () => {
 
 	const selectedService = servicesStore.serviceDetail;
 
-	const saveServiceAdminLimit = async (
-		adminId: number,
-		payload: {
-			traffic_limit_mode?: AdminTrafficLimitMode;
-			data_limit?: number | null;
-			show_user_traffic?: boolean;
-			users_limit?: number | null;
-			delete_user_usage_limit_enabled?: boolean;
-			delete_user_usage_limit?: number | null;
-		},
-	) => {
-		if (!selectedService) return false;
-		setSavingAdminLimitId(adminId);
-		try {
-			if (payload.delete_user_usage_limit_enabled === true) {
-				const targetAdmin = adminStore.adminOptions.find(
-					(item) => item.id === adminId,
-				);
-				if (targetAdmin && !adminCanDeleteUsers(targetAdmin)) {
-					await adminStore.updateAdmin(targetAdmin.username, {
-						permissions: withDeleteUserPermission(targetAdmin.permissions),
-					});
+	const saveServiceAdminLimit = useCallback(
+		async (
+			adminId: number,
+			payload: {
+				traffic_limit_mode?: AdminTrafficLimitMode;
+				data_limit?: number | null;
+				show_user_traffic?: boolean;
+				users_limit?: number | null;
+				delete_user_usage_limit_enabled?: boolean;
+				delete_user_usage_limit?: number | null;
+			},
+		) => {
+			if (!selectedService) return false;
+			setSavingAdminLimitId(adminId);
+			try {
+				if (payload.delete_user_usage_limit_enabled === true) {
+					const targetAdmin = adminStore.adminOptions.find(
+						(item) => item.id === adminId,
+					);
+					if (targetAdmin && !adminCanDeleteUsers(targetAdmin)) {
+						await adminStore.updateAdmin(targetAdmin.username, {
+							permissions: withDeleteUserPermission(targetAdmin.permissions),
+						});
+					}
 				}
+				await servicesStore.updateServiceAdminLimits(
+					selectedService.id,
+					adminId,
+					payload,
+				);
+				if (payload.delete_user_usage_limit_enabled === true) {
+					await servicesStore.fetchServiceDetail(selectedService.id);
+				}
+				return true;
+			} catch (error) {
+				toast({
+					status: "error",
+					title: t("services.adminLimitSaveFailed", "Unable to save limits"),
+					description: error instanceof Error ? error.message : undefined,
+				});
+				return false;
+			} finally {
+				setSavingAdminLimitId(null);
 			}
-			await servicesStore.updateServiceAdminLimits(
-				selectedService.id,
-				adminId,
-				payload,
-			);
-			if (payload.delete_user_usage_limit_enabled === true) {
-				await servicesStore.fetchServiceDetail(selectedService.id);
-			}
-			return true;
-		} catch (error) {
-			toast({
-				status: "error",
-				title: t("services.adminLimitSaveFailed", "Unable to save limits"),
-				description: error instanceof Error ? error.message : undefined,
-			});
-			return false;
-		} finally {
-			setSavingAdminLimitId(null);
-		}
-	};
+		},
+		[adminStore, selectedService, servicesStore, t, toast],
+	);
 
 	const openServiceAdminLimitEditor = (link: ServiceAdmin) => {
 		setEditingServiceAdminLimit(link);
@@ -1646,7 +1646,7 @@ const ServicesPage: FC = () => {
 				),
 			},
 		],
-		[labelColor, savingAdminLimitId, t],
+		[saveServiceAdminLimit, savingAdminLimitId, t],
 	);
 
 	const serviceAdminRowActions = (
@@ -1940,23 +1940,38 @@ const ServicesPage: FC = () => {
 				</Stack>
 			)}
 
-			<Modal
+			<AppDialog
 				isOpen={Boolean(editingServiceAdminLimit)}
 				onClose={closeServiceAdminLimitEditor}
 				size="lg"
 				scrollBehavior="inside"
 				isCentered
-			>
-				<ModalOverlay bg="blackAlpha.300" backdropFilter="blur(6px)" />
-				<ModalContent>
-					<ModalHeader>
-						{t("services.editAdminLimits", "Edit limits")}
-						{editingServiceAdminLimit
+				title={`${t("services.editAdminLimits", "Edit limits")}${
+					editingServiceAdminLimit
 							? ` - ${editingServiceAdminLimit.username}`
-							: ""}
-					</ModalHeader>
-					<ModalCloseButton />
-					<ModalBody>
+						: ""
+				}`}
+				overlayProps={{ bg: "blackAlpha.300", backdropFilter: "blur(6px)" }}
+				footerProps={{ gap: 3 }}
+				footer={
+					<>
+						<Button variant="ghost" onClick={closeServiceAdminLimitEditor}>
+							{t("cancel", "Cancel")}
+						</Button>
+						<Button
+							colorScheme="primary"
+							onClick={submitServiceAdminLimitEditor}
+							isLoading={
+								editingServiceAdminLimit
+									? savingAdminLimitId === editingServiceAdminLimit.id
+									: false
+							}
+						>
+							{t("save", "Save")}
+						</Button>
+					</>
+				}
+			>
 						<Stack spacing={4}>
 							<FormControl>
 								<FormLabel>
@@ -2084,54 +2099,52 @@ const ServicesPage: FC = () => {
 								</FormControl>
 							</Stack>
 						</Stack>
-					</ModalBody>
-					<ModalFooter gap={3}>
-						<Button variant="ghost" onClick={closeServiceAdminLimitEditor}>
-							{t("cancel", "Cancel")}
-						</Button>
-						<Button
-							colorScheme="primary"
-							onClick={submitServiceAdminLimitEditor}
-							isLoading={
-								editingServiceAdminLimit
-									? savingAdminLimitId === editingServiceAdminLimit.id
-									: false
-							}
-						>
-							{t("save", "Save")}
-						</Button>
-					</ModalFooter>
-				</ModalContent>
-			</Modal>
+			</AppDialog>
 
-			<ConfirmActionDialog
+			<ConfirmDialog
 				isOpen={isResetDialogOpen}
 				onClose={closeResetDialog}
 				onConfirm={confirmResetUsage}
 				title={t("services.resetUsage", "Reset usage")}
-				message={t("services.resetUsageConfirm", "Reset usage for {{name}}?", {
+				description={t("services.resetUsageConfirm", "Reset usage for {{name}}?", {
 					name: resetTargetName ?? t("services.thisService", "this service"),
 				})}
 				confirmLabel={t("services.resetUsage", "Reset usage")}
-				cancelLabel={t("cancel", "Cancel")}
 				colorScheme="primary"
 				isLoading={isResetting}
 				isConfirmDisabled={resetServiceId == null}
 			/>
 
-			<Modal
+			<AppDialog
 				isOpen={isDeleteDialogOpen}
 				onClose={handleCloseDeleteDialog}
 				size="lg"
+				title={`${t("services.deleteDialogTitle", "Delete Service")}${
+					servicePendingDelete ? ` – ${servicePendingDelete.name}` : ""
+				}`}
+				overlayProps={{ bg: "blackAlpha.300", backdropFilter: "blur(6px)" }}
+				footerProps={{ gap: 3 }}
+				footer={
+					<>
+						<Button variant="ghost" onClick={handleCloseDeleteDialog}>
+							{t("cancel", "Cancel")}
+						</Button>
+						<Button
+							colorScheme="red"
+							onClick={confirmDeleteService}
+							isLoading={isDeleting}
+							isDisabled={
+								!servicePendingDelete ||
+								(deleteMode === "transfer_users" &&
+									servicePendingDelete.user_count > 0 &&
+									!targetServiceId)
+							}
+						>
+							{t("services.delete", "Delete")}
+						</Button>
+					</>
+				}
 			>
-				<ModalOverlay bg="blackAlpha.300" backdropFilter="blur(6px)" />
-				<ModalContent>
-					<ModalHeader>
-						{t("services.deleteDialogTitle", "Delete Service")}
-						{servicePendingDelete ? ` – ${servicePendingDelete.name}` : ""}
-					</ModalHeader>
-					<ModalCloseButton />
-					<ModalBody>
 						{servicePendingDelete ? (
 							<VStack align="stretch" spacing={4}>
 								<Text>
@@ -2239,27 +2252,7 @@ const ServicesPage: FC = () => {
 						) : (
 							<Text>{t("services.loading", "Loading...")}</Text>
 						)}
-					</ModalBody>
-					<ModalFooter gap={3}>
-						<Button variant="ghost" onClick={handleCloseDeleteDialog}>
-							{t("cancel", "Cancel")}
-						</Button>
-						<Button
-							colorScheme="red"
-							onClick={confirmDeleteService}
-							isLoading={isDeleting}
-							isDisabled={
-								!servicePendingDelete ||
-								(deleteMode === "transfer_users" &&
-									servicePendingDelete.user_count > 0 &&
-									!targetServiceId)
-							}
-						>
-							{t("services.delete", "Delete")}
-						</Button>
-					</ModalFooter>
-				</ModalContent>
-			</Modal>
+			</AppDialog>
 
 			<ServiceDialog
 				isOpen={dialogDisclosure.isOpen}

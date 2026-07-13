@@ -18,10 +18,11 @@ func (c Controller) grpcApplyUserOperation(ctx context.Context, client *nodeclie
 			if syncErr != nil {
 				return syncErr
 			}
-			res, syncErr := client.Runtime().SyncConfig(ctx, &nodev1.RuntimeConfigRequest{
-				OperationId: fmt.Sprintf("%s-missing-user-%d", operation.OperationType, operation.ID),
-				ConfigJson:  configJSON,
-			})
+			runtimeReq, syncErr := c.runtimeConfigRequest(ctx, node, fmt.Sprintf("%s-missing-user-%d", operation.OperationType, operation.ID), configJSON)
+			if syncErr != nil {
+				return syncErr
+			}
+			res, syncErr := client.Runtime().SyncConfig(ctx, runtimeReq)
 			if syncErr != nil {
 				return syncErr
 			}

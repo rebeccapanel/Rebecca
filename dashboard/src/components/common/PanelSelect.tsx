@@ -32,8 +32,10 @@ import {
 	type KeyboardEvent,
 	type MouseEvent,
 	type ReactNode,
+	useEffect,
 	useId,
 	useMemo,
+	useRef,
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
@@ -238,6 +240,13 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 		const [search, setSearch] = useState("");
 		const [customInput, setCustomInput] = useState("");
 		const [multiOpen, setMultiOpen] = useState(false);
+		const multiContainerRef = useRef<HTMLDivElement | null>(null);
+		const [multiMenuRect, setMultiMenuRect] = useState<{
+			left: number;
+			top?: number;
+			bottom?: number;
+			width: number;
+		} | null>(null);
 		const normalizedOptions = useMemo(
 			() =>
 				dedupeOptions([
@@ -332,6 +341,32 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 		const controlHeight = size === "md" ? "40px" : "36px";
 		const disabledState = isDisabled || Boolean(disabled);
 		const resolvedBorderColor = isInvalid ? invalidBorderColor : borderColor;
+		const updateMultiMenuRect = () => {
+			const rect = multiContainerRef.current?.getBoundingClientRect();
+			if (!rect) return;
+			const menuHeight = 240;
+			const gap = 6;
+			const spaceBelow = window.innerHeight - rect.bottom;
+			const opensUp = spaceBelow < menuHeight + gap && rect.top > spaceBelow;
+			setMultiMenuRect({
+				left: rect.left,
+				width: rect.width,
+				...(opensUp
+					? { bottom: window.innerHeight - rect.top + gap }
+					: { top: rect.bottom + gap }),
+			});
+		};
+
+		useEffect(() => {
+			if (!multiOpen) return;
+			updateMultiMenuRect();
+			window.addEventListener("resize", updateMultiMenuRect);
+			window.addEventListener("scroll", updateMultiMenuRect, true);
+			return () => {
+				window.removeEventListener("resize", updateMultiMenuRect);
+				window.removeEventListener("scroll", updateMultiMenuRect, true);
+			};
+		}, [multiOpen]);
 
 		const emitValue = (nextValue: string | string[]) => {
 			onValueChange?.(nextValue);
@@ -497,20 +532,19 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 						return renderOptionRow(
 							option.value || option.searchLabel,
 							<>
-								<HStack w="full" justifyContent="space-between" spacing={2}>
-									<HStack minW={0} spacing={2}>
-										<Box
-											w="16px"
-											color={selected ? "primary.500" : "transparent"}
-										>
-											<Check />
-										</Box>
-										<Text noOfLines={1} title={option.title}>
-											{option.label}
-										</Text>
-									</HStack>
-									{selected && mode === "multiple" && (
-										<Box
+									<HStack w="full" justifyContent="space-between" spacing={2}>
+										<HStack minW={0} spacing={2}>
+											<Text noOfLines={1} title={option.title}>
+												{option.label}
+											</Text>
+										</HStack>
+										{selected && mode === "single" && (
+											<Box color="primary.500" flexShrink={0}>
+												<Check />
+											</Box>
+										)}
+										{selected && mode === "multiple" && (
+											<Box
 											as="span"
 											role="button"
 											aria-label={`Remove ${option.title}`}
@@ -541,6 +575,7 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 		if (mode === "multiple") {
 			return (
 				<Box
+					ref={multiContainerRef}
 					position="relative"
 					w={w ?? width}
 					maxW={maxW}
@@ -652,12 +687,22 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 							</Box>
 						)}
 					</Box>
-					{multiOpen && !disabledState && (
+					{multiOpen && !disabledState && multiMenuRect && (
+						<Portal>
 						<Box
-							position="absolute"
-							top="calc(100% + 6px)"
-							left={0}
-							right={0}
+							position="fixed"
+							left={`${multiMenuRect.left}px`}
+							top={
+								multiMenuRect.top === undefined
+									? undefined
+									: `${multiMenuRect.top}px`
+							}
+							bottom={
+								multiMenuRect.bottom === undefined
+									? undefined
+									: `${multiMenuRect.bottom}px`
+							}
+							w={`${multiMenuRect.width}px`}
 							zIndex={16060}
 							borderWidth="1px"
 							borderColor={borderColor}
@@ -676,6 +721,7 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 						>
 							{optionList}
 						</Box>
+						</Portal>
 					)}
 				</Box>
 			);

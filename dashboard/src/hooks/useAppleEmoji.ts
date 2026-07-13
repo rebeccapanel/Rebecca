@@ -1,80 +1,71 @@
 import { useEffect } from "react";
-import { useLocation } from "react-router-dom";
 import twemojiModule from "twemoji";
 
 const twemoji = twemojiModule as typeof twemojiModule & {
 	test?: (value: string) => boolean;
 };
 
-// Use Twemoji CDN which has complete emoji support (all Unicode emojis)
-const TWEMOJI_BASE =
-	"https://cdn.jsdelivr.net/gh/twitter/twemoji@latest/assets/";
-
 const EMOJI_OPTIONS = {
-	base: TWEMOJI_BASE,
-	folder: "72x72",
+	base: "https://cdn.jsdelivr.net/npm/emoji-datasource-apple@16.0.0/img/",
+	folder: "apple/64",
 	ext: ".png",
-	className: "twemoji-emoji",
-	size: "72x72",
+	className: "apple-emoji",
 };
 
 const hasEmoji = (value: string | null | undefined) =>
 	typeof value === "string" && (twemoji.test?.(value) ?? false);
 
-const shouldParseMutations = (mutations: MutationRecord[]) =>
-	mutations.some((mutation) => {
-		if (mutation.type === "characterData") {
-			return hasEmoji((mutation.target as CharacterData)?.data);
-		}
-
-		if (mutation.type === "childList") {
-			return Array.from(mutation.addedNodes).some((node) => {
-				if (node.nodeType === Node.TEXT_NODE) {
-					return hasEmoji(node.textContent);
-				}
-				if (node.nodeType === Node.ELEMENT_NODE) {
-					const element = node as Element;
-					if (
-						element.tagName === "IMG" &&
-						element.classList.contains(EMOJI_OPTIONS.className)
-					) {
-						return false;
-					}
-					return hasEmoji(element.textContent);
-				}
-				return false;
-			});
-		}
-
-		return false;
-	});
-
 export const useAppleEmoji = () => {
-	const _location = useLocation();
-
 	useEffect(() => {
-		const root = document.body ?? document.getElementById("root");
+		const root = document.getElementById("root");
 		if (!root) return;
 
-		const parse = () => {
-			twemoji.parse(root, EMOJI_OPTIONS);
+		const pending = new Set<HTMLElement>();
+		let frame: number | null = null;
+
+		const flush = () => {
+			frame = null;
+			for (const element of pending) {
+				if (
+					element.isConnected &&
+					!element.matches("img.apple-emoji") &&
+					hasEmoji(element.textContent)
+				) {
+					twemoji.parse(element, EMOJI_OPTIONS);
+				}
+			}
+			pending.clear();
 		};
 
-		parse();
+		const queue = (node: Node) => {
+			if (!hasEmoji(node.textContent)) return;
+			const element =
+				node instanceof HTMLElement ? node : node.parentElement;
+			if (!element || element.matches("img.apple-emoji")) return;
+			pending.add(element);
+			frame ??= window.requestAnimationFrame(flush);
+		};
 
+		queue(root);
 		const observer = new MutationObserver((mutations) => {
-			if (shouldParseMutations(mutations)) {
-				requestAnimationFrame(parse);
+			for (const mutation of mutations) {
+				if (mutation.type === "characterData") {
+					queue(mutation.target);
+					continue;
+				}
+				mutation.addedNodes.forEach(queue);
 			}
 		});
-
-		observer.observe(root, {
+		observer.observe(document.body, {
 			childList: true,
 			subtree: true,
 			characterData: true,
 		});
 
-		return () => observer.disconnect();
+		return () => {
+			observer.disconnect();
+			if (frame !== null) window.cancelAnimationFrame(frame);
+		};
 	}, []);
 };
 

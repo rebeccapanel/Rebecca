@@ -1477,10 +1477,7 @@ func (c *cli) subscriptionGetLink(args []string) error {
 	if err != nil {
 		return err
 	}
-	prefix := strings.TrimRight(os.Getenv("XRAY_SUBSCRIPTION_URL_PREFIX"), "/")
-	if prefix == "" {
-		prefix = "/sub"
-	}
+	prefix := c.subscriptionURLPrefix()
 	if subadress.Valid && strings.TrimSpace(subadress.String) != "" {
 		fmt.Println(prefix + "/" + strings.TrimSpace(subadress.String))
 		return nil
@@ -1490,6 +1487,23 @@ func (c *cli) subscriptionGetLink(args []string) error {
 		return nil
 	}
 	return fmt.Errorf("user %q does not have a subscription key", username)
+}
+
+func (c *cli) subscriptionURLPrefix() string {
+	prefix := ""
+	path := "sub"
+	var dbPrefix, dbPath sql.NullString
+	err := c.db.QueryRow("SELECT subscription_url_prefix, subscription_path FROM subscription_settings ORDER BY id LIMIT 1").Scan(&dbPrefix, &dbPath)
+	if err == nil {
+		prefix = strings.TrimRight(strings.TrimSpace(dbPrefix.String), "/")
+		if dbPath.Valid && strings.TrimSpace(dbPath.String) != "" {
+			path = strings.Trim(strings.TrimSpace(dbPath.String), "/")
+		}
+	}
+	if prefix == "" {
+		return "/" + path
+	}
+	return prefix + "/" + path
 }
 
 func (c *cli) subscriptionGetConfig(args []string) error {

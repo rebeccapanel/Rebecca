@@ -48,7 +48,7 @@ func testRepository(t *testing.T) (Repository, *sql.DB) {
 			t.Fatalf("exec %q: %v", statement, err)
 		}
 	}
-	return NewRepository(db, "sqlite", Options{ExcludedInboundTags: []string{"ignored"}}), db
+	return NewRepository(db, "sqlite", Options{}), db
 }
 
 func repositoryConfig(tag string, protocol string, port int) map[string]any {
@@ -170,8 +170,8 @@ func TestRepositoryListTargetsAndCollections(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CollectManageableInbounds() error = %v", err)
 	}
-	if _, ok := manageable["ignored"]; ok {
-		t.Fatal("excluded inbound should not be manageable")
+	if _, ok := manageable["ignored"]; !ok {
+		t.Fatal("inbound tag should be manageable")
 	}
 	if manageable["master-vless"]["protocol"] != "vless" || manageable["custom-ss"]["protocol"] != "shadowsocks" {
 		t.Fatalf("unexpected manageable inbounds: %#v", manageable)

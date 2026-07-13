@@ -63,38 +63,6 @@ func TestLoadClientTLSFromPEMRejectsUnpinnedServerCertificate(t *testing.T) {
 	}
 }
 
-func TestLoadClientTLSFromPEMLegacyRESTAcceptsDifferentServerCertificate(t *testing.T) {
-	clientCertPEM, clientKeyPEM := testCertificatePEM(t, "legacy-client", nil)
-	serverCertPEM, serverKeyPEM := testCertificatePEM(t, "legacy-rest-node", nil)
-	serverTLS := testServerTLS(t, serverCertPEM, serverKeyPEM)
-
-	listener, err := tls.Listen("tcp", "127.0.0.1:0", serverTLS)
-	if err != nil {
-		t.Fatalf("listen: %v", err)
-	}
-	defer listener.Close()
-	go acceptOneTLS(t, listener)
-
-	clientTLS, err := LoadClientTLSFromPEM(PEMTLSConfig{
-		ClientCertPEM: clientCertPEM,
-		ClientKeyPEM:  clientKeyPEM,
-		ServerCertPEM: clientCertPEM,
-		LegacyREST:    true,
-	})
-	if err != nil {
-		t.Fatalf("LoadClientTLSFromPEM: %v", err)
-	}
-	if len(clientTLS.Certificates) != 1 {
-		t.Fatalf("expected legacy client certificate, got %d", len(clientTLS.Certificates))
-	}
-
-	conn, err := tls.Dial("tcp", listener.Addr().String(), clientTLS)
-	if err != nil {
-		t.Fatalf("dial legacy REST with different server certificate: %v", err)
-	}
-	_ = conn.Close()
-}
-
 func TestLoadClientTLSFromPEMUsesMutualTLSWhenKeyMatches(t *testing.T) {
 	certPEM, keyPEM := testCertificatePEM(t, "node-client", []string{"node-client.test"})
 	clientTLS, err := LoadClientTLSFromPEM(PEMTLSConfig{

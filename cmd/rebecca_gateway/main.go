@@ -26,6 +26,11 @@ func main() {
 	if err != nil {
 		logging.Fatalf(logging.ComponentRuntime, "failed to initialize Rebecca API: %v", err)
 	}
+	if runtimeSettings, err := api.RuntimeSettings(ctx); err == nil {
+		cfg.DashboardPath = runtimeSettings.DashboardPath
+	} else {
+		logging.Warnf(logging.ComponentRuntime, "failed to load dashboard path from settings: %v", err)
+	}
 	api.StartBackground(ctx)
 	cfg.APIHandler = api.Handler()
 

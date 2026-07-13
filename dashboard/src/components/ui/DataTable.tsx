@@ -39,6 +39,7 @@ import {
 	useReactTable,
 } from "@tanstack/react-table";
 import {
+	Children,
 	Fragment,
 	type KeyboardEvent as ReactKeyboardEvent,
 	type MouseEvent as ReactMouseEvent,
@@ -109,8 +110,7 @@ const installSelectAllShortcut = () => {
 		const fallbackHandle = Array.from(selectableTables.values())
 			.filter((handle) => handle.isVisible())
 			.sort((a, b) => b.updatedAt - a.updatedAt)[0];
-		const handle =
-			activeHandle && activeHandle.isVisible() ? activeHandle : fallbackHandle;
+		const handle = activeHandle?.isVisible() ? activeHandle : fallbackHandle;
 
 		if (!handle) return;
 		event.preventDefault();
@@ -541,9 +541,9 @@ export function DataTable<TData>({
 	const contextMenuActions = contextMenu.row
 		? getResolvedRowActions(contextMenu.row)
 		: [];
-	const closeContextMenu = () => {
+	const closeContextMenu = useCallback(() => {
 		setContextMenu({ row: null, x: 0, y: 0 });
-	};
+	}, []);
 	const handleTableContextMenu = (
 		event: ReactMouseEvent,
 		row: TData,
@@ -563,14 +563,23 @@ export function DataTable<TData>({
 		const handleEscape = (event: KeyboardEvent) => {
 			if (event.key === "Escape") closeContextMenu();
 		};
-		const handleScroll = () => closeContextMenu();
+		const handleScroll = (event: Event) => {
+			const target = event.target;
+			if (
+				target instanceof Element &&
+				target.closest("[data-rb-context-menu]")
+			) {
+				return;
+			}
+			closeContextMenu();
+		};
 		window.addEventListener("keydown", handleEscape);
 		window.addEventListener("scroll", handleScroll, true);
 		return () => {
 			window.removeEventListener("keydown", handleEscape);
 			window.removeEventListener("scroll", handleScroll, true);
 		};
-	}, [contextMenu.row]);
+	}, [closeContextMenu, contextMenu.row]);
 	const renderConfiguredActions = useMemo(
 		() => (row: TData) => {
 			if (resolvedActionsDisplay === "none") return null;
@@ -601,7 +610,9 @@ export function DataTable<TData>({
 	const [expandedMobileRows, setExpandedMobileRows] = useState<Record<string, boolean>>({});
 	const rowDataById = useMemo(() => {
 		const map = new Map<string, TData>();
-		data.forEach((row, index) => map.set(getRowId(row, index), row));
+		data.forEach((row, index) => {
+			map.set(getRowId(row, index), row);
+		});
 		return map;
 	}, [data, getRowId]);
 	const controlledSelection = useMemo(
@@ -782,6 +793,20 @@ export function DataTable<TData>({
 		return { primary, rest, summary };
 	}, [columns]);
 	const visibleColumnCount = table.getVisibleFlatColumns().length || 1;
+	const loadingRowKeys = useMemo(
+		() =>
+			Array.from({ length: loadingRows }, (_, rowNumber) => ({
+				id: `resource-skeleton-row-${rowNumber + 1}`,
+			})),
+		[loadingRows],
+	);
+	const loadingCellKeys = useMemo(
+		() =>
+			Array.from({ length: visibleColumnCount }, (_, columnNumber) => ({
+				id: `resource-skeleton-cell-${columnNumber + 1}`,
+			})),
+		[visibleColumnCount],
+	);
 	const bulkChildren =
 		renderBulkActions?.(selectedRows, selectedIds) ??
 		bulkActions?.map((action) => {
@@ -834,7 +859,11 @@ export function DataTable<TData>({
 			);
 		}
 		if (!showLoadingState && rows.length === 0) {
-			return <Box className="rb-resource-state">{emptyState ?? "No data found."}</Box>;
+			return (
+				<Box className="rb-resource-state">
+					{emptyState ?? "Nothing to show yet."}
+				</Box>
+			);
 		}
 		return null;
 	};
@@ -925,8 +954,8 @@ export function DataTable<TData>({
 						</HStack>
 					)}
 					{showLoadingState
-						? Array.from({ length: loadingRows }, (_, index) => (
-								<Box className="rb-resource-card" key={`resource-skeleton-${index}`}>
+						? loadingRowKeys.map((rowKey) => (
+								<Box className="rb-resource-card" key={rowKey.id}>
 									<SkeletonText noOfLines={1} w="50%" />
 									<Skeleton h="3" w="80%" mt={3} />
 									<Skeleton h="3" w="62%" mt={2} />
@@ -1189,10 +1218,10 @@ export function DataTable<TData>({
 						</Thead>
 						<Tbody>
 							{showLoadingState
-								? Array.from({ length: loadingRows }, (_, rowIndex) => (
-										<Tr key={`resource-table-skeleton-${rowIndex}`}>
-											{Array.from({ length: visibleColumnCount }, (_, cellIndex) => (
-												<Td key={`resource-table-skeleton-${rowIndex}-${cellIndex}`}>
+								? loadingRowKeys.map((rowKey) => (
+										<Tr key={rowKey.id}>
+											{loadingCellKeys.map((cellKey) => (
+												<Td key={`${rowKey.id}-${cellKey.id}`}>
 													<Skeleton h="4" />
 												</Td>
 											))}
@@ -1312,9 +1341,7 @@ export function DataTable<TData>({
 					selectedLabel={resolveSelectedLabel(selectedLabel, selectedCount)}
 				>
 					{Array.isArray(bulkChildren)
-						? bulkChildren.map((child, index) => (
-								<Fragment key={`bulk-action-${index}`}>{child}</Fragment>
-							))
+						? Children.toArray(bulkChildren)
 						: bulkChildren}
 				</BulkActionBar>
 			)}
@@ -1338,10 +1365,13 @@ export function DataTable<TData>({
 					/>
 					<Portal>
 						<MenuList
+							data-rb-context-menu=""
 							minW="220px"
 							maxW="calc(100vw - 24px)"
 							maxH="min(70vh, 420px)"
 							overflowY="auto"
+							overflowX="hidden"
+							overscrollBehavior="contain"
 							zIndex={2500}
 							onClick={(event) => event.stopPropagation()}
 							onContextMenu={(event) => {

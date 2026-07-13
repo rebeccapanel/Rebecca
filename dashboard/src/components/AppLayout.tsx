@@ -31,8 +31,9 @@ import {
 	Bars3Icon,
 	BookOpenIcon,
 	BriefcaseIcon,
-	CodeBracketSquareIcon,
 	CheckIcon,
+	CircleStackIcon,
+	CodeBracketSquareIcon,
 	Cog6ToothIcon,
 	Cog8ToothIcon,
 	EyeIcon,
@@ -46,7 +47,6 @@ import {
 	WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import { motion } from "framer-motion";
-import { useAppleEmoji } from "hooks/useAppleEmoji";
 import useGetUser from "hooks/useGetUser";
 import {
 	type ElementType,
@@ -80,6 +80,7 @@ const LogoutIcon = chakra(ArrowLeftOnRectangleIcon, iconProps);
 const MenuIcon = chakra(Bars3Icon, iconProps);
 const LanguageIconStyled = chakra(LanguageIcon, iconProps);
 const DocsIcon = chakra(CodeBracketSquareIcon, iconProps);
+const PHPMyAdminIcon = chakra(CircleStackIcon, iconProps);
 const UserIcon = chakra(UserCircleIcon, iconProps);
 const HomeIcon = chakra(HeroHomeIcon, iconProps);
 const UsersIcon = chakra(UserGroupIcon, iconProps);
@@ -121,7 +122,6 @@ export function AppLayout() {
 	const { userData, getUserIsSuccess } = useGetUser();
 	const navigate = useNavigate();
 	const location = useLocation();
-	useAppleEmoji();
 	const isRTL = i18n.dir(i18n.language) === "rtl";
 	const sectionAccess = userData.permissions?.sections;
 	const userMenuContentRef = useRef<HTMLDivElement | null>(null);
@@ -169,30 +169,6 @@ export function AppLayout() {
 	const secondaryTextColor = useColorModeValue(
 		"panel.textSecondary",
 		"panel.textSecondary",
-	);
-	const glassPanelBg = useColorModeValue(
-		"rgba(255, 255, 255, 0.45)",
-		"rgba(18, 18, 22, 0.35)",
-	);
-	const glassPanelFallbackBg = useColorModeValue(
-		"rgba(255, 255, 255, 0.85)",
-		"rgba(24, 24, 28, 0.75)",
-	);
-	const glassPanelBorder = useColorModeValue(
-		"rgba(255, 255, 255, 0.35)",
-		"rgba(255, 255, 255, 0.14)",
-	);
-	const glassPanelShadow = useColorModeValue(
-		"0 12px 32px rgba(15, 23, 42, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.45)",
-		"0 12px 32px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.12)",
-	);
-	const glassPanelRefraction = useColorModeValue(
-		"radial-gradient(closest-side at 28% 20%, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0.2) 55%, transparent 70%), radial-gradient(closest-side at 78% 70%, rgba(255, 255, 255, 0.35), transparent 60%), radial-gradient(closest-side at 52% 58%, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0.05) 60%, transparent 78%), conic-gradient(from 180deg at 50% 50%, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 30%, rgba(255, 255, 255, 0.18) 55%, rgba(255, 255, 255, 0) 78%, rgba(255, 255, 255, 0.12))",
-		"radial-gradient(closest-side at 28% 20%, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0.12) 55%, transparent 70%), radial-gradient(closest-side at 78% 70%, rgba(255, 255, 255, 0.2), transparent 60%), radial-gradient(closest-side at 52% 58%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.06) 60%, transparent 78%), conic-gradient(from 180deg at 50% 50%, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0) 30%, rgba(255, 255, 255, 0.12) 55%, rgba(255, 255, 255, 0) 78%, rgba(255, 255, 255, 0.08))",
-	);
-	const glassPanelInnerShadow = useColorModeValue(
-		"inset 0 0 0 1px rgba(255, 255, 255, 0.28), inset 0 -14px 28px rgba(255, 255, 255, 0.14), inset 0 12px 28px rgba(0, 0, 0, 0.06)",
-		"inset 0 0 0 1px rgba(255, 255, 255, 0.1), inset 0 -14px 28px rgba(255, 255, 255, 0.07), inset 0 12px 28px rgba(0, 0, 0, 0.28)",
 	);
 	const activePillBg = useColorModeValue(
 		"rgba(255, 255, 255, 0.18)",
@@ -274,9 +250,9 @@ export function AppLayout() {
 				: null,
 			isPrivilegedAdmin && sectionAccess?.[AdminSection.Integrations]
 				? {
-						key: "integrations",
-						label: t("header.integrationSettings", "Master settings"),
-						to: "/integrations",
+						key: "settings",
+						label: t("header.integrationSettings", "Settings"),
+						to: "/settings",
 						icon: MasterSettingsIcon,
 					}
 				: null,
@@ -298,10 +274,18 @@ export function AppLayout() {
 				: null,
 			isPrivilegedAdmin
 				? {
-				key: "api-docs",
-				label: t("apiDocs.menu", "API Docs"),
-				to: "/api-docs",
-				icon: DocsIcon,
+						key: "api-docs",
+						label: t("apiDocs.menu", "API Docs"),
+						to: "/api-docs",
+						icon: DocsIcon,
+					}
+				: null,
+			isPrivilegedAdmin
+				? {
+						key: "phpmyadmin",
+						label: t("phpmyadmin.menu", "phpMyAdmin"),
+						to: "/phpmyadmin",
+						icon: PHPMyAdminIcon,
 					}
 				: null,
 			{
@@ -704,7 +688,7 @@ export function AppLayout() {
 	};
 
 	const settingsDefaultTabByPath: Record<string, string> = {
-		"/integrations": "panel",
+		"/settings": "panel",
 		"/hosts": "inbounds",
 		"/usage": "services",
 		"/xray-settings": "basic",
@@ -1073,12 +1057,10 @@ export function AppLayout() {
 								zIndex={2000}
 							>
 								<Box
-									bg="whiteAlpha.800"
-									_dark={{ bg: "whiteAlpha.200" }}
-									backdropFilter="blur(16px)"
+									bg={menuBg}
 									borderRadius="20px"
 									borderWidth="1px"
-									borderColor="whiteAlpha.300"
+									borderColor={menuBorder}
 									px="4"
 									py="3"
 									display="flex"
@@ -1137,49 +1119,18 @@ export function AppLayout() {
 							pt="1"
 						>
 							<Box
-								bg={glassPanelBg}
-								borderColor={glassPanelBorder}
-								boxShadow={glassPanelShadow}
+								bg={menuBg}
+								borderColor={menuBorder}
+								boxShadow="xl"
 								borderWidth="1px"
-								backdropFilter="blur(20px) saturate(1.35)"
 								borderRadius="26px"
-								clipPath="inset(0 round 26px)"
 								px="3"
 								pt="2"
 								pb="calc(env(safe-area-inset-bottom) + 6px)"
 								maxW="min(520px, 100%)"
 								mx="auto"
-								sx={{
-									WebkitBackdropFilter: "blur(20px) saturate(1.35)",
-									position: "relative",
-									overflow: "hidden",
-									isolation: "isolate",
-									transform: "translateZ(0)",
-									willChange: "transform",
-									"@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px)))":
-										{
-											backgroundColor: glassPanelFallbackBg,
-										},
-									"&::before": {
-										content: '""',
-										position: "absolute",
-										inset: "-40%",
-										borderRadius: "inherit",
-										background: glassPanelRefraction,
-										filter: "blur(0.2px) contrast(1.15) saturate(1.1)",
-										mixBlendMode: "screen",
-										opacity: 0.7,
-										pointerEvents: "none",
-									},
-									"&::after": {
-										content: '""',
-										position: "absolute",
-										inset: "0",
-										borderRadius: "inherit",
-										boxShadow: glassPanelInnerShadow,
-										pointerEvents: "none",
-									},
-								}}
+								position="relative"
+								overflow="hidden"
 							>
 								<HStack
 									justify="space-between"
@@ -1365,40 +1316,10 @@ export function AppLayout() {
 															maxH="calc(100vh - 160px)"
 															overflowY="auto"
 															borderRadius="18px"
-															bg={glassPanelBg}
-															borderColor={glassPanelBorder}
+															bg={menuBg}
+															borderColor={menuBorder}
 															borderWidth="1px"
-															boxShadow={glassPanelShadow}
-															backdropFilter="blur(18px) saturate(1.3)"
-															sx={{
-																WebkitBackdropFilter:
-																	"blur(18px) saturate(1.3)",
-																position: "relative",
-																overflow: "hidden",
-																"@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px)))":
-																	{
-																		backgroundColor: glassPanelFallbackBg,
-																	},
-																"&::before": {
-																	content: '""',
-																	position: "absolute",
-																	inset: "-40%",
-																	background: glassPanelRefraction,
-																	filter:
-																		"blur(0.2px) contrast(1.15) saturate(1.1)",
-																	mixBlendMode: "screen",
-																	opacity: 0.7,
-																	pointerEvents: "none",
-																},
-																"&::after": {
-																	content: '""',
-																	position: "absolute",
-																	inset: "0",
-																	borderRadius: "inherit",
-																	boxShadow: glassPanelInnerShadow,
-																	pointerEvents: "none",
-																},
-															}}
+															boxShadow="xl"
 														>
 															<PopoverBody position="relative" zIndex={1} p="2">
 																<VStack align="stretch" spacing={1}>
@@ -1523,40 +1444,10 @@ export function AppLayout() {
 															maxH="calc(100vh - 160px)"
 															overflowY="auto"
 															borderRadius="18px"
-															bg={glassPanelBg}
-															borderColor={glassPanelBorder}
+															bg={menuBg}
+															borderColor={menuBorder}
 															borderWidth="1px"
-															boxShadow={glassPanelShadow}
-															backdropFilter="blur(18px) saturate(1.3)"
-															sx={{
-																WebkitBackdropFilter:
-																	"blur(18px) saturate(1.3)",
-																position: "relative",
-																overflow: "hidden",
-																"@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px)))":
-																	{
-																		backgroundColor: glassPanelFallbackBg,
-																	},
-																"&::before": {
-																	content: '""',
-																	position: "absolute",
-																	inset: "-40%",
-																	background: glassPanelRefraction,
-																	filter:
-																		"blur(0.2px) contrast(1.15) saturate(1.1)",
-																	mixBlendMode: "screen",
-																	opacity: 0.7,
-																	pointerEvents: "none",
-																},
-																"&::after": {
-																	content: '""',
-																	position: "absolute",
-																	inset: "0",
-																	borderRadius: "inherit",
-																	boxShadow: glassPanelInnerShadow,
-																	pointerEvents: "none",
-																},
-															}}
+															boxShadow="xl"
 														>
 															<PopoverBody position="relative" zIndex={1} p="2">
 																<Button

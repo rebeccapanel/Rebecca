@@ -27,6 +27,7 @@ func (s *Server) Handler() http.Handler {
 	}
 	r.HandleFunc("/admin/token", s.handleAdminToken)
 	r.HandleFunc("/internal/admin/validate", s.handleInternalAdminValidate)
+	r.HandleFunc("/internal/node/session-event", s.handleNodeSessionEvent)
 	r.HandleFunc("/xray/*", s.requireSudo(s.handleXrayHelperPath))
 	r.HandleFunc("/inbounds/full", s.requireSudo(s.handleInboundsFull))
 	r.HandleFunc("/inbounds/*", s.requireSudo(s.handleInboundPath))
@@ -96,6 +97,7 @@ func (s *Server) registerConfigRoutes(r chi.Router) {
 
 func (s *Server) registerInboundHostRoutes(r chi.Router) {
 	r.HandleFunc("/inbounds/full", s.requireSudo(s.handleInboundsFull))
+	r.HandleFunc("/inbounds/openvpn/runtime", s.requireSudo(s.handleOVRuntime))
 	r.HandleFunc("/inbounds/*", s.requireSudo(s.handleInboundPath))
 	r.HandleFunc("/inbounds", s.handleInboundsRootEntry)
 	r.HandleFunc("/hosts/*", s.requireAdmin(s.handleHostStatusPath))
@@ -113,9 +115,13 @@ func (s *Server) registerSystemRoutes(r chi.Router) {
 }
 
 func (s *Server) registerSettingsRoutes(r chi.Router) {
+	r.HandleFunc("/settings", s.requireAdmin(s.handleRuntimeSettings))
 	r.HandleFunc("/settings/backup/export", s.requireSudo(s.handleBackupExport))
 	r.HandleFunc("/settings/backup/import", s.requireSudo(s.handleBackupImport))
 	r.HandleFunc("/settings/panel", s.requireAdmin(s.handlePanelSettings))
+	r.HandleFunc("/settings/phpmyadmin/embed/*", s.handlePHPMyAdmin)
+	r.HandleFunc("/settings/phpmyadmin/*", s.requireSudo(s.handlePHPMyAdmin))
+	r.HandleFunc("/settings/phpmyadmin", s.requireSudo(s.handlePHPMyAdmin))
 	r.HandleFunc("/settings/telegram/backup/send", s.requireSudo(s.handleTelegramBackupSend))
 	r.HandleFunc("/settings/telegram/test", s.requireSudo(s.handleTelegramSettingsTest))
 	r.HandleFunc("/settings/telegram", s.requireSudo(s.handleTelegramSettings))
@@ -124,7 +130,6 @@ func (s *Server) registerSettingsRoutes(r chi.Router) {
 	r.HandleFunc("/settings/subscriptions/admins/*", s.requireSudo(s.handleAdminSubscriptionSettingsPath))
 	r.HandleFunc("/settings/subscriptions/templates/*", s.requireSudo(s.handleSubscriptionTemplatePath))
 	r.HandleFunc("/settings/subscriptions", s.requireSudo(s.handleSubscriptionSettings))
-	r.HandleFunc("/settings/database/3xui/*", s.requireSudo(s.handleThreeXUISettingsPath))
 }
 
 func (s *Server) registerServiceRoutes(r chi.Router) {

@@ -20,7 +20,7 @@ var gooseMu sync.Mutex
 var migrationDialect string
 
 const (
-	latestGooseVersion         int64 = 31
+	latestGooseVersion         int64 = 38
 	legacyAlembicFinalRevision       = "23_drop_access_insights"
 	legacyAlembicFinalBaseline int64 = 16
 )
@@ -164,7 +164,7 @@ func runPreGooseLegacyRepairs(ctx context.Context, db *sql.DB, dialect string) e
 	if err := dropUserUsernameIndexIfPossible(ctx, tx, dialect, "username"); err != nil {
 		return err
 	}
-	if err := createIndex(ctx, tx, dialect, "users", "ix_users_username", []string{"username"}, true); err != nil {
+	if err := createIndex(ctx, tx, dialect, "users", "ix_users_username", []string{"username"}, false); err != nil {
 		return err
 	}
 	return tx.Commit()
@@ -198,6 +198,7 @@ func schemaLooksGoLatest(ctx context.Context, db *sql.DB, dialect string) (bool,
 		{"node_operations", "idempotency_key"},
 		{"telegram_settings", "backup_chat_id"},
 		{"telegram_settings", "last_sent_at"},
+		{"settings", "dashboard_path"},
 	}
 	for _, check := range checks {
 		ok, err := HasColumn(ctx, db, dialect, check.table, check.column)

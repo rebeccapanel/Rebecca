@@ -292,15 +292,8 @@ server {
 | USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS | auto-delete 是否包含 limited 用户。                                                                                       |
 | JWT_ACCESS_TOKEN_EXPIRE_MINUTES          | JWT access token 过期时间（分钟）。                                                                                       |
 | USERS_LIST_TIMEOUT_SECONDS               | 大型 user list 查询超时；`0` 表示禁用。                                                                                   |
-| SUBSCRIPTION_READ_ONLY                   | 读取 subscription 时不更新 last-used metadata。                                                                           |
-| XRAY_SUBSCRIPTION_URL_PREFIX             | CLI subscription-link helper 使用的 URL 前缀。                                                                            |
-| XRAY_FALLBACKS_INBOUND_TAG               | 包含 fallback 的 inbound tag。                                                                                            |
-| XRAY_EXCLUDE_INBOUND_TAGS                | 从 config/link 生成中排除的 inbound tags。                                                                                |
-| REBECCA_APP_TEMPLATE_BASE                | 内置 templates 基础路径。                                                                                                 |
 | REBECCA_CERT_BASE                        | 管理证书的基础路径。                                                                                                      |
 | REBECCA_CONFIG_DIR                       | full backup 中包含的配置根目录。                                                                                          |
-| GEO_TEMPLATES_INDEX_URL                  | 可选的 Geo template index URL。                                                                                           |
-| REBECCA_WARP_API_BASE                    | Cloudflare WARP API base URL 覆盖值。                                                                                     |
 
 
 # Telegram bot

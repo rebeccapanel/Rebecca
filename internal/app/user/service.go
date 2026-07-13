@@ -104,6 +104,9 @@ func (s Service) ConfigLinks(ctx context.Context, req ConfigLinksRequest) (Confi
 	if strings.TrimSpace(item.ServerIP) == "" {
 		item.ServerIP = s.repo.configServerIP(ctx)
 	}
+	if err := s.repo.populateWGAddresses(ctx, &item, item.XrayInboundsByTag); err != nil {
+		return ConfigLinksResponse{}, err
+	}
 	return BuildConfigLinks(item, item.XrayInboundsByTag, inboundOrder, item.Hosts, masks, req.Reverse)
 }
 

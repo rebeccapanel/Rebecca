@@ -71,6 +71,7 @@ type ConfigLinkUser struct {
 	XrayInboundOrder     []string                   `json:"xray_inbound_order,omitempty"`
 	Hosts                []Host                     `json:"hosts,omitempty"`
 	ServerIP             string                     `json:"server_ip,omitempty"`
+	WireGuardAddresses   map[string]string          `json:"wireguard_addresses,omitempty"`
 }
 
 type UserListItem struct {
@@ -291,6 +292,7 @@ type SubscriptionSettings struct {
 	UseCustomJSONForV2rayNG    bool            `json:"use_custom_json_for_v2rayng"`
 	UseCustomJSONForStreisand  bool            `json:"use_custom_json_for_streisand"`
 	UseCustomJSONForHapp       bool            `json:"use_custom_json_for_happ"`
+	UseCustomJSONForIncy       bool            `json:"use_custom_json_for_incy"`
 	RawPanelSettings           json.RawMessage `json:"raw_panel_settings,omitempty"`
 	RawSubscriptionSettings    json.RawMessage `json:"raw_subscription_settings,omitempty"`
 }

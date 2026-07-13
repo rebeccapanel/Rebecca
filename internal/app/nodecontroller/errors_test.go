@@ -3,17 +3,29 @@ package nodecontroller
 import (
 	"context"
 	"errors"
-	"strings"
 	"testing"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func TestFriendlyNodeErrorClassifiesTimeoutChains(t *testing.T) {
-	err := friendlyNodeError("metrics", 16, errors.New(`node gRPC dial failed: 109.176.202.15:6252: context deadline exceeded; legacy REST failed: Get "https://109.176.202.15:6250/connect": context deadline exceeded`))
+	err := friendlyNodeError("metrics", 16, errors.New(`node gRPC dial failed: 109.176.202.15:6252: context deadline exceeded`))
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if got := err.Error(); !strings.HasPrefix(got, "Connection timeout during metrics for node 16") {
-		t.Fatalf("expected timeout title, got %q", got)
+	if got, want := err.Error(), "Connection timeout during metrics for node 16"; got != want {
+		t.Fatalf("unexpected error: got %q want %q", got, want)
+	}
+}
+
+func TestFriendlyNodeErrorCompactsGRPCTimeout(t *testing.T) {
+	err := friendlyNodeError("metrics", 139, status.Error(codes.Unavailable, `node gRPC dial failed: 195.15.242.225:62052: context deadline exceeded`))
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if got, want := err.Error(), "Connection timeout during metrics for node 139"; got != want {
+		t.Fatalf("unexpected error: got %q want %q", got, want)
 	}
 }
 
@@ -32,8 +44,8 @@ func TestFriendlyNodeErrorClassifiesConnectionRefused(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if got := err.Error(); !strings.HasPrefix(got, "Connection refused during health for node 5") {
-		t.Fatalf("expected refused title, got %q", got)
+	if got, want := err.Error(), "Connection refused during health for node 5"; got != want {
+		t.Fatalf("unexpected error: got %q want %q", got, want)
 	}
 }
 
@@ -60,8 +72,8 @@ func TestFriendlyNodeErrorClassifiesDNSAndTLS(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error")
 			}
-			if got := err.Error(); !strings.HasPrefix(got, tc.want) {
-				t.Fatalf("unexpected error: %q", got)
+			if got := err.Error(); got != tc.want {
+				t.Fatalf("unexpected error: got %q want %q", got, tc.want)
 			}
 		})
 	}

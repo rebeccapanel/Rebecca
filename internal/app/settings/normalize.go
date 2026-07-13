@@ -44,6 +44,46 @@ func normalizePath(value string) string {
 	return cleaned
 }
 
+func normalizeDashboardPath(value string) string {
+	cleaned := strings.TrimSpace(value)
+	if cleaned == "" {
+		cleaned = defaultDashboardPath
+	}
+	cleaned = "/" + strings.Trim(cleaned, "/") + "/"
+	if cleaned == "//" {
+		return defaultDashboardPath
+	}
+	return cleaned
+}
+
+func normalizeURLPath(value string, fallback string) string {
+	cleaned := strings.TrimSpace(value)
+	if cleaned == "" {
+		cleaned = fallback
+	}
+	cleaned = "/" + strings.Trim(cleaned, "/") + "/"
+	if cleaned == "//" {
+		return "/"
+	}
+	return cleaned
+}
+
+func normalizePort(value int, fallback int) int {
+	if value < 1 || value > 65535 {
+		return fallback
+	}
+	return value
+}
+
+func normalizePHPMyAdminLoginMode(value string) string {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "custom":
+		return "custom"
+	default:
+		return defaultPHPMyAdminLoginMode
+	}
+}
+
 func normalizeAlias(alias string) string {
 	cleaned := strings.TrimSpace(alias)
 	if cleaned == "" {
@@ -161,6 +201,28 @@ func rawBoolDefault(raw json.RawMessage, fallback bool) bool {
 	return fallback
 }
 
+func rawIntDefault(raw json.RawMessage, fallback int) int {
+	if string(raw) == "null" {
+		return fallback
+	}
+	var value int
+	if err := json.Unmarshal(raw, &value); err == nil {
+		return value
+	}
+	var number float64
+	if err := json.Unmarshal(raw, &number); err == nil {
+		return int(number)
+	}
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
+		parsed, err := strconv.Atoi(strings.TrimSpace(text))
+		if err == nil {
+			return parsed
+		}
+	}
+	return fallback
+}
+
 func rawStringList(raw json.RawMessage) ([]string, error) {
 	if string(raw) == "null" {
 		return []string{}, nil
@@ -222,6 +284,12 @@ func applySubscriptionDefaults(settings *SubscriptionSettings) {
 	if settings.V2RaySettingsTemplate == "" {
 		settings.V2RaySettingsTemplate = defaultV2RaySettingsTemplate
 	}
+	if settings.HappSubscriptionTemplate == "" {
+		settings.HappSubscriptionTemplate = defaultHappSubscriptionTemplate
+	}
+	if settings.IncySubscriptionTemplate == "" {
+		settings.IncySubscriptionTemplate = defaultIncySubscriptionTemplate
+	}
 	if settings.SingBoxSubscriptionTemplate == "" {
 		settings.SingBoxSubscriptionTemplate = defaultSingBoxSubscriptionTemplate
 	}
@@ -267,9 +335,6 @@ func certificatePath(domain string) string {
 
 func appTemplateBasePath() string {
 	candidates := []string{}
-	if env := strings.TrimSpace(os.Getenv("REBECCA_APP_TEMPLATE_BASE")); env != "" {
-		candidates = append(candidates, env)
-	}
 	if cwd, err := os.Getwd(); err == nil {
 		candidates = append(candidates, filepath.Join(cwd, "templates"))
 		candidates = append(candidates, filepath.Join(filepath.Dir(cwd), "templates"))
@@ -319,7 +384,7 @@ func resolveCustomTemplatePath(templateName string, customDirectory *string, adm
 		baseDir = strings.TrimSpace(*customDirectory)
 	}
 	if baseDir == "" {
-		baseDir = persistentTemplateDirectory(adminID)
+		return "", fmt.Errorf("%w: %s", ErrTemplateNotFound, templateName)
 	}
 	path, err := safeJoin(baseDir, templateName)
 	if err != nil {
@@ -344,6 +409,21 @@ func resolveAppTemplatePath(templateName string) (string, error) {
 
 func resolveWritableTemplatePath(templateName string, customDirectory string) (string, error) {
 	return safeJoin(customDirectory, templateName)
+}
+
+func normalizeTemplateName(value string) (string, error) {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return "", nil
+	}
+	slashed := strings.ReplaceAll(trimmed, "\\", "/")
+	if strings.HasPrefix(slashed, "/") || filepath.IsAbs(trimmed) {
+		return "", fmt.Errorf("template path escapes the templates directory")
+	}
+	if _, err := safeJoin("templates", trimmed); err != nil {
+		return "", err
+	}
+	return filepath.ToSlash(filepath.Clean(trimmed)), nil
 }
 
 func displayTemplatePath(path string, templateName string, customDirectory *string) string {

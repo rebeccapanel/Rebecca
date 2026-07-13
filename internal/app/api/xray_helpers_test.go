@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
@@ -48,6 +49,24 @@ func TestXrayHelperRoutesGoNative(t *testing.T) {
 		t.Fatalf("invalid public key %q len=%d err=%v", keypair.PublicKey, len(decoded), err)
 	}
 
+	rec = adminJSONRequest(t, server, http.MethodGet, "/api/xray/wg-keypair", token, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("wireguard keypair status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var wgKeypair struct {
+		PrivateKey string `json:"privateKey"`
+		PublicKey  string `json:"publicKey"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &wgKeypair); err != nil {
+		t.Fatal(err)
+	}
+	if decoded, err := base64.StdEncoding.DecodeString(wgKeypair.PrivateKey); err != nil || len(decoded) != 32 {
+		t.Fatalf("invalid wireguard private key %q len=%d err=%v", wgKeypair.PrivateKey, len(decoded), err)
+	}
+	if decoded, err := base64.StdEncoding.DecodeString(wgKeypair.PublicKey); err != nil || len(decoded) != 32 {
+		t.Fatalf("invalid wireguard public key %q len=%d err=%v", wgKeypair.PublicKey, len(decoded), err)
+	}
+
 	rec = adminJSONRequest(t, server, http.MethodGet, "/api/xray/reality-shortid", token, "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("reality shortid status=%d body=%s", rec.Code, rec.Body.String())
@@ -60,6 +79,31 @@ func TestXrayHelperRoutesGoNative(t *testing.T) {
 	}
 	if len(shortID.ShortID) != 8 {
 		t.Fatalf("unexpected short id: %#v", shortID)
+	}
+
+	rec = adminJSONRequest(t, server, http.MethodGet, "/api/xray/ov-self-signed", token, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("ov self-signed status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var ovCert struct {
+		CA                string `json:"ca"`
+		ServerCertificate string `json:"serverCertificate"`
+		ServerKey         string `json:"serverKey"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &ovCert); err != nil {
+		t.Fatal(err)
+	}
+	for name, value := range map[string]string{
+		"ca":                ovCert.CA,
+		"serverCertificate": ovCert.ServerCertificate,
+		"serverKey":         ovCert.ServerKey,
+	} {
+		if strings.TrimSpace(value) == "" {
+			t.Fatalf("%s is empty", name)
+		}
+	}
+	if !strings.Contains(ovCert.CA, "BEGIN CERTIFICATE") || !strings.Contains(ovCert.ServerCertificate, "BEGIN CERTIFICATE") || !strings.Contains(ovCert.ServerKey, "BEGIN RSA PRIVATE KEY") {
+		t.Fatalf("unexpected ov cert payload: %#v", ovCert)
 	}
 
 	for _, path := range []string{"/api/xray/mldsa65", "/api/xray/ech?sni=example.com"} {

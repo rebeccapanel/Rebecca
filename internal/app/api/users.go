@@ -78,6 +78,14 @@ func (s *Server) handleUserPath(w http.ResponseWriter, r *http.Request) {
 			s.handleUserUsage(w, r, username)
 			return
 		}
+		if suffix == "ips" {
+			if r.Method != http.MethodGet {
+				writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+				return
+			}
+			s.handleUserIPs(w, r, username)
+			return
+		}
 		s.handleUserMutationAction(w, r, username, suffix)
 		return
 	}
@@ -195,6 +203,35 @@ func (s *Server) handleUserUsage(w http.ResponseWriter, r *http.Request, usernam
 	writeJSON(w, http.StatusOK, map[string]any{
 		"username": result.Username,
 		"usages":   rows,
+	})
+}
+
+func (s *Server) handleUserIPs(w http.ResponseWriter, r *http.Request, username string) {
+	principal, ok := r.Context().Value(adminContextKey).(adminPrincipal)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "missing admin context")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	result, err := s.userService.UserGet(ctx, userapp.UserGetRequest{
+		Username:      username,
+		RequestOrigin: requestOrigin(r),
+		Admin:         s.userAdminContext(principal, nil),
+	})
+	if err != nil {
+		writeUserReadError(w, err)
+		return
+	}
+	records, err := s.nodeController.UserOnlineIPs(ctx, result.ID)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"username": result.Username,
+		"ips":      records,
 	})
 }
 

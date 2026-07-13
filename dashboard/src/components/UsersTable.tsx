@@ -1,27 +1,33 @@
 import {
 	Box,
+	type BoxProps,
 	Button,
 	chakra,
 	Flex,
 	HStack,
 	IconButton,
+	Menu,
+	MenuButton,
 	MenuItem,
-	Progress,
+	MenuList,
+	Portal,
 	Stack,
-	type BoxProps,
 	Text,
 	Tooltip,
 	useBreakpointValue,
-	useColorModeValue,
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
 import {
 	ArrowPathIcon,
+	CalendarDaysIcon,
+	ChartBarIcon,
 	CheckIcon,
 	ChevronRightIcon,
+	CircleStackIcon,
 	ClipboardIcon,
 	ClockIcon,
+	GlobeAltIcon,
 	LinkIcon,
 	NoSymbolIcon,
 	PencilIcon,
@@ -29,18 +35,19 @@ import {
 	QrCodeIcon,
 	TrashIcon,
 } from "@heroicons/react/24/outline";
-import type { SortingState } from "@tanstack/react-table";
 import { LockClosedIcon } from "@heroicons/react/24/solid";
+import type { SortingState } from "@tanstack/react-table";
 import { ReactComponent as AddFileIcon } from "assets/add_file.svg";
-import { resetStrategy, statusColors } from "constants/UserSettings";
+import { resetStrategy } from "constants/UserSettings";
 import { useDashboard } from "contexts/DashboardContext";
 import useGetUser from "hooks/useGetUser";
-import React, {
+import {
 	type FC,
 	type ReactNode,
 	useCallback,
 	useEffect,
 	useMemo,
+	useRef,
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
@@ -54,24 +61,26 @@ import {
 } from "utils/adminTraffic";
 import { copyTextToClipboard } from "utils/clipboard";
 import { formatBytes } from "utils/formatByte";
-import { relativeExpiryDate } from "utils/dateFormatter";
 import { generateUserLinks } from "utils/userLinks";
-import {
-	DataTable,
-	ResourceListCard,
-	type DataTableColumn,
-	type DataTableRowAction,
-	type ResourceSummaryItem,
-} from "./ui";
-import { DeleteConfirmPopover } from "./DeleteConfirmPopover";
-import { OnlineBadge } from "./OnlineBadge";
+import { DeleteConfirmDialog } from "./dialogs/ConfirmDialog";
 import { OnlineStatus } from "./OnlineStatus";
 import { StatusBadge } from "./StatusBadge";
-
-type TranslateFn = (
-	key: string,
-	defaultValueOrOptions?: string | Record<string, unknown>,
-) => string;
+import {
+	DataTable,
+	type DataTableColumn,
+	type DataTableRowAction,
+	ResourceListCard,
+	type ResourceSummaryItem,
+	type RowActionItem,
+	RowActionsMenu,
+} from "./ui";
+import {
+	formatUsagePair,
+	UserAdminChip,
+	UserExpiryCountdown,
+	UserStatusDot,
+	UserUsageBar,
+} from "./users";
 
 const EmptySectionIcon = chakra(AddFileIcon);
 
@@ -114,41 +123,150 @@ const ResetIcon = chakra(ArrowPathIcon, iconProps);
 const RevokeIcon = chakra(NoSymbolIcon, iconProps);
 const TrafficIcon = chakra(PlusCircleIcon, iconProps);
 const ExtendIcon = chakra(ClockIcon, iconProps);
+const UsageHistoryIcon = chakra(ChartBarIcon, iconProps);
+const DataLimitIcon = chakra(CircleStackIcon, iconProps);
+const ExpiryIcon = chakra(CalendarDaysIcon, iconProps);
+const IPsIcon = chakra(GlobeAltIcon, iconProps);
 
-type UsageMeterProps = {
-	used: number;
-	total: number | null;
-	totalUsedTraffic: number;
-	dataLimitResetStrategy: string | null;
-	status: string;
+type UserIPRecord = {
+	node_id: number;
+	node_name?: string;
+	protocol: string;
+	inbound_tag?: string;
+	session_id?: string;
+	ip?: string;
+	assigned_ip?: string;
+	last_seen_at?: string;
+};
+
+type UserIPsResponse = {
+	username: string;
+	ips: UserIPRecord[];
+};
+
+const TRAFFIC_AMOUNTS = [1, 2, 3, 5, 10] as const;
+
+const TrafficSubmenu: FC<{
+	label: string;
 	isRTL: boolean;
-	t: TranslateFn;
-};
+	activeAction: string | null;
+	onClose: () => void;
+	onSelect: (gigabytes: number) => void;
+	getOptionLabel: (gigabytes: number) => string;
+}> = ({
+	label,
+	isRTL,
+	activeAction,
+	onClose,
+	onSelect,
+	getOptionLabel,
+}) => {
+	const [isOpen, setIsOpen] = useState(false);
+	const closeTimer = useRef<number | null>(null);
 
-type CreatedByTextProps = {
-	show: boolean;
-	adminUsername?: string | null;
-};
+	const cancelClose = () => {
+		if (closeTimer.current !== null) {
+			window.clearTimeout(closeTimer.current);
+			closeTimer.current = null;
+		}
+	};
+	const openMenu = () => {
+		cancelClose();
+		setIsOpen(true);
+	};
+	const closeMenu = () => {
+		cancelClose();
+		setIsOpen(false);
+	};
+	const scheduleClose = () => {
+		cancelClose();
+		closeTimer.current = window.setTimeout(() => setIsOpen(false), 120);
+	};
 
-const CreatedByText: FC<CreatedByTextProps> = ({ show, adminUsername }) => {
-	const { t } = useTranslation();
-	if (!show || !adminUsername) return null;
+	useEffect(
+		() => () => {
+			if (closeTimer.current !== null) {
+				window.clearTimeout(closeTimer.current);
+			}
+		},
+		[],
+	);
 
 	return (
-		<Text
-			fontSize="xs"
-			color="gray.500"
-			_dark={{ color: "gray.400" }}
-			dir="ltr"
-			sx={{ unicodeBidi: "isolate" }}
-			lineHeight="1.2"
-			textAlign="start"
+		<Menu
+			isOpen={isOpen}
+			onClose={closeMenu}
+			placement={isRTL ? "left-start" : "right-start"}
+			strategy="fixed"
+			autoSelect={false}
+			closeOnSelect={false}
+			gutter={4}
 		>
-			{t("usersTable.by", "by")}{" "}
-			<chakra.span color="primary.500" fontWeight="medium">
-				{adminUsername}
-			</chakra.span>
-		</Text>
+			<MenuButton
+				as={MenuItem}
+				icon={<TrafficIcon />}
+				isDisabled={activeAction?.startsWith("traffic-")}
+				closeOnSelect={false}
+				onMouseEnter={openMenu}
+				onMouseLeave={scheduleClose}
+				onClick={(event) => {
+					event.preventDefault();
+					event.stopPropagation();
+					openMenu();
+				}}
+				onKeyDown={(event) => {
+					if (event.key === (isRTL ? "ArrowLeft" : "ArrowRight")) {
+						event.preventDefault();
+						event.stopPropagation();
+						openMenu();
+					}
+				}}
+			>
+				<HStack w="full" justify="space-between" spacing={3}>
+					<Text as="span" noOfLines={1}>
+						{label}
+					</Text>
+					<ChevronRightIcon
+						width={14}
+						style={{
+							flexShrink: 0,
+							transform: isRTL ? "rotate(180deg)" : undefined,
+						}}
+					/>
+				</HStack>
+			</MenuButton>
+			<Portal>
+				<MenuList
+					data-rb-context-menu=""
+					minW="152px"
+					maxH="min(70vh, 320px)"
+					overflowY="auto"
+					overflowX="hidden"
+					overscrollBehavior="contain"
+					borderRadius="lg"
+					boxShadow="2xl"
+					zIndex={2600}
+					onMouseEnter={openMenu}
+					onMouseLeave={scheduleClose}
+					onClick={(event) => event.stopPropagation()}
+				>
+					{TRAFFIC_AMOUNTS.map((gigabytes) => (
+						<MenuItem
+							key={gigabytes}
+							isDisabled={activeAction === `traffic-${gigabytes}`}
+							onClick={(event) => {
+								event.stopPropagation();
+								closeMenu();
+								onClose();
+								onSelect(gigabytes);
+							}}
+						>
+							{getOptionLabel(gigabytes)}
+						</MenuItem>
+					))}
+				</MenuList>
+			</Portal>
+		</Menu>
 	);
 };
 
@@ -165,58 +283,6 @@ const formatUsernamePreview = (username: string, maxLength = 20) =>
 		? `${username.slice(0, Math.max(4, maxLength - 4))}...`
 		: username;
 
-const formatCompactUsagePair = (used: number, total: number | null) => {
-	const [usedValue, usedUnit] = formatBytes(used, 2, true);
-	if (total === 0 || total === null) return `${usedValue}${usedUnit}/∞`;
-
-	const [totalValue, totalUnit] = formatBytes(total, 2, true);
-	if (usedUnit === totalUnit) return `${usedValue}/${totalValue}${totalUnit}`;
-	return `${usedValue}${usedUnit}/${totalValue}${totalUnit}`;
-};
-
-const CompactUsageMeter: FC<Pick<UsageMeterProps, "used" | "total">> = ({
-	used,
-	total,
-}) => (
-	<Text
-		fontSize="sm"
-		fontWeight="semibold"
-		color="panel.text"
-		dir="ltr"
-		noOfLines={1}
-		sx={{ unicodeBidi: "isolate" }}
-	>
-		{formatCompactUsagePair(used, total)}
-	</Text>
-);
-
-const MobileExpiryDetail: FC<{
-	expire?: number | null;
-	t: TranslateFn;
-}> = ({ expire, t }) => {
-	const expiry = relativeExpiryDate(expire, { compact: true });
-	if (!expiry.time) {
-		return (
-			<Text fontSize="sm" color="panel.textMuted">
-				-
-			</Text>
-		);
-	}
-	return (
-		<Text
-			fontSize="sm"
-			fontWeight="semibold"
-			color="panel.text"
-			dir="auto"
-			noOfLines={1}
-		>
-			{t(expiry.status === "expires" ? "expires" : "expired", {
-				time: expiry.time,
-			})}
-		</Text>
-	);
-};
-
 const MobileLifetimeDetail: FC<{
 	totalUsedTraffic: number;
 }> = ({ totalUsedTraffic }) => (
@@ -232,94 +298,73 @@ const MobileLifetimeDetail: FC<{
 	</Text>
 );
 
-const UsageMeter: FC<UsageMeterProps> = ({
-	used,
-	total,
-	totalUsedTraffic,
-	dataLimitResetStrategy,
-	status,
-	isRTL,
-	t,
-}) => {
-	const isUnlimited = total === 0 || total === null;
-	const percentage = isUnlimited
-		? 0
-		: Math.min((used / (total || 1)) * 100, 100);
-	const resetLabel =
-		!isUnlimited &&
-		dataLimitResetStrategy &&
-		dataLimitResetStrategy !== "no_reset"
-			? t(`userDialog.resetStrategy${getResetStrategy(dataLimitResetStrategy)}`)
-			: undefined;
-	const colorScheme = statusColors[status]?.bandWidthColor ?? "primary";
-	const reached = !isUnlimited && percentage >= 100;
-	const usedLabel = formatBytes(used);
-	const totalLabel = isUnlimited ? "∞" : formatBytes(total ?? 0);
+// Plain text on purpose: the expanded card sits right under the collapsed
+// row, which already shows the usage bar and percentage.
+const MobileUsageDetail: FC<{
+	used: number;
+	total: number | null;
+}> = ({ used, total }) => (
+	<Text
+		fontSize="sm"
+		fontWeight="semibold"
+		color="panel.text"
+		dir="ltr"
+		noOfLines={1}
+		sx={{ unicodeBidi: "isolate" }}
+	>
+		{formatUsagePair(used, total)}
+	</Text>
+);
 
-	return (
-		<Stack
-			spacing={1}
-			h="42px"
-			minH="42px"
-			justify="center"
-			w="full"
-			maxW="full"
-			overflow="hidden"
-		>
-			<Progress
-				value={isUnlimited ? 0 : percentage}
-				isIndeterminate={isUnlimited}
-				size="sm"
-				colorScheme={reached ? "red" : colorScheme}
-				borderRadius="full"
-				bg="gray.100"
-				_dark={{ bg: "gray.700" }}
-				sx={isRTL ? { direction: "rtl" } : undefined}
-			/>
-			<HStack
-				justify="space-between"
-				spacing={3}
-				flexWrap="nowrap"
-				fontSize="xs"
-				color="gray.600"
-				_dark={{ color: "gray.400" }}
-				dir="ltr"
-				whiteSpace="nowrap"
-				overflow="hidden"
-				w="full"
-				minW={0}
-			>
-				<Text noOfLines={1} minW={0} flex="1 1 auto" textAlign="start">
-					<chakra.span className="rb-usage-pair">
-						<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-							{usedLabel}
-						</chakra.span>{" "}
-						/{" "}
-						<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-							{totalLabel}
-						</chakra.span>
-					</chakra.span>
-					{resetLabel ? ` · ${resetLabel}` : ""}
-				</Text>
-				<HStack spacing={1} flexShrink={0} justify="flex-end" textAlign="end">
-					<Text noOfLines={1}>{t("usersTable.lifetimeUsage")}:</Text>
-					<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-						{formatBytes(totalUsedTraffic)}
-					</chakra.span>
-				</HStack>
-			</HStack>
-		</Stack>
+// Adapts the table's row-action descriptors into the shape the shared
+// RowActionsMenu ("...") expects, binding each callback to the given row.
+// Lets the desktop inline actions reuse the exact mobile overflow menu.
+const toMenuItems = (
+	actions: DataTableRowAction<UserListItem>[],
+	row: UserListItem,
+): RowActionItem[] =>
+	actions.map((action) => ({
+		id: action.id,
+		label: action.label,
+		icon: action.icon,
+		color: action.color,
+		isDanger: action.isDanger,
+		isDisabled:
+			typeof action.isDisabled === "function"
+				? action.isDisabled(row)
+				: action.isDisabled,
+		onClick: action.onClick ? () => action.onClick?.(row) : undefined,
+		render: action.render
+			? (onClose: () => void) => action.render?.(row, onClose)
+			: undefined,
+	}));
+
+const getUsageResetLabel = (
+	user: UserListItem,
+	t: (key: string) => string,
+): string | undefined => {
+	const isUnlimited = user.data_limit === 0 || user.data_limit === null;
+	if (
+		isUnlimited ||
+		!user.data_limit_reset_strategy ||
+		user.data_limit_reset_strategy === "no_reset"
+	) {
+		return undefined;
+	}
+	return t(
+		`userDialog.resetStrategy${getResetStrategy(user.data_limit_reset_strategy)}`,
 	);
 };
 
 type UsersTableProps = BoxProps & {
 	toolbar?: ReactNode;
-	footerActions?: ReactNode;
+	/** Rendered in the header of the list summary card (e.g. refresh). */
+	headerActions?: ReactNode;
 };
 
 export const UsersTable: FC<UsersTableProps> = ({
 	toolbar,
-	footerActions,
+	headerActions,
 	...props
 }) => {
 	const {
@@ -342,9 +387,23 @@ export const UsersTable: FC<UsersTableProps> = ({
 	const isRTL = i18n.dir(i18n.language) === "rtl";
 	const locale = i18n.language || "en";
 	const toast = useToast();
-	const dialogBg = useColorModeValue("panel.surface", "panel.surface");
-	const dialogBorderColor = useColorModeValue("panel.border", "panel.border");
-
+	// One toast shape for every action in this section: top entrance, closable.
+	const notify = useCallback(
+		(
+			title: string,
+			status: "success" | "error",
+			options?: { description?: string; duration?: number },
+		) =>
+			toast({
+				title,
+				status,
+				description: options?.description,
+				duration: options?.duration ?? 2500,
+				isClosable: true,
+				position: "top",
+			}),
+		[toast],
+	);
 	const { userData } = useGetUser();
 	const hasPrivilegedRole =
 		userData.role === AdminRole.Sudo || userData.role === AdminRole.FullAccess;
@@ -385,11 +444,12 @@ export const UsersTable: FC<UsersTableProps> = ({
 
 	const rowsToRender = filters.limit || 10;
 	const isFiltered = usersResponse.users.length !== usersResponse.total;
-	const isDesktop = useBreakpointValue({ base: false, lg: true }) ?? false;
-	const isMobile = useBreakpointValue({ base: true, md: false }) ?? false;
-	const useCompactUsageCell =
-		useBreakpointValue({ base: true, lg: true, xl: false }) ?? true;
-	const hasSearchQuery = Boolean(filters.search?.trim());
+	// Matches DataTable's own mobile/desktop threshold (mobileBreakpoint
+	// defaults to "lg") so the two-row detailed usage layout applies at
+	// every genuine desktop width, while the mobile card's collapsed-row
+	// summary (which reuses this same cell) keeps its original compact form.
+	const isDesktopUsageLayout =
+		useBreakpointValue({ base: false, lg: true }) ?? false;
 	const hasUsageScopeFilter = Boolean(
 		filters.search?.trim() ||
 			filters.status ||
@@ -463,16 +523,10 @@ export const UsersTable: FC<UsersTableProps> = ({
 		setContextAction("reset");
 		try {
 			await resetDataUsage(user);
-			toast({
-				title: t("usersTable.resetUsage", "Usage reset"),
-				status: "success",
-			});
+			notify(t("usersTable.resetUsage", "Usage reset"), "success");
 			refetchUsers(true);
 		} catch (error: any) {
-			toast({
-				title: error?.data?.detail || error?.message || t("error"),
-				status: "error",
-			});
+			notify(error?.data?.detail || error?.message || t("error"), "error");
 		} finally {
 			setContextAction(null);
 			closeContextMenu();
@@ -483,15 +537,9 @@ export const UsersTable: FC<UsersTableProps> = ({
 		setContextAction("revoke");
 		try {
 			await revokeSubscription(user);
-			toast({
-				title: t("usersTable.revokeSub", "Subscription revoked"),
-				status: "success",
-			});
+			notify(t("usersTable.revokeSub", "Subscription revoked"), "success");
 		} catch (error: any) {
-			toast({
-				title: error?.data?.detail || error?.message || t("error"),
-				status: "error",
-			});
+			notify(error?.data?.detail || error?.message || t("error"), "error");
 		} finally {
 			setContextAction(null);
 			closeContextMenu();
@@ -511,16 +559,10 @@ export const UsersTable: FC<UsersTableProps> = ({
 				method: "PUT",
 				body: { data_limit: nextLimit },
 			});
-			toast({
-				title: t("usersTable.addTrafficSuccess", "Traffic updated"),
-				status: "success",
-			});
+			notify(t("usersTable.addTrafficSuccess", "Traffic updated"), "success");
 			refetchUsers(true);
 		} catch (error: any) {
-			toast({
-				title: error?.data?.detail || error?.message || t("error"),
-				status: "error",
-			});
+			notify(error?.data?.detail || error?.message || t("error"), "error");
 		} finally {
 			setContextAction(null);
 			closeContextMenu();
@@ -538,16 +580,13 @@ export const UsersTable: FC<UsersTableProps> = ({
 				method: "PUT",
 				body: { expire: nextExpire },
 			});
-			toast({
-				title: t("usersTable.extendExpireSuccess", "Expiration extended"),
-				status: "success",
-			});
+			notify(
+				t("usersTable.extendExpireSuccess", "Expiration extended"),
+				"success",
+			);
 			refetchUsers(true);
 		} catch (error: any) {
-			toast({
-				title: error?.data?.detail || error?.message || t("error"),
-				status: "error",
-			});
+			notify(error?.data?.detail || error?.message || t("error"), "error");
 		} finally {
 			setContextAction(null);
 			closeContextMenu();
@@ -562,16 +601,10 @@ export const UsersTable: FC<UsersTableProps> = ({
 				method: "PUT",
 				body: { status: "disabled" },
 			});
-			toast({
-				title: t("usersTable.disableUser", "Disable user"),
-				status: "success",
-			});
+			notify(t("usersTable.disableUser", "Disable user"), "success");
 			refetchUsers(true);
 		} catch (error: any) {
-			toast({
-				title: error?.data?.detail || error?.message || t("error"),
-				status: "error",
-			});
+			notify(error?.data?.detail || error?.message || t("error"), "error");
 		} finally {
 			setContextAction(null);
 			closeContextMenu();
@@ -586,15 +619,57 @@ export const UsersTable: FC<UsersTableProps> = ({
 				method: "PUT",
 				body: { status: "active" },
 			});
-			toast({
-				title: t("usersTable.enableUser", "Enable user"),
-				status: "success",
-			});
+			notify(t("usersTable.enableUser", "Enable user"), "success");
 			refetchUsers(true);
 		} catch (error: any) {
+			notify(error?.data?.detail || error?.message || t("error"), "error");
+		} finally {
+			setContextAction(null);
+			closeContextMenu();
+		}
+	};
+
+	const formatUserIPRecords = (records: UserIPRecord[]) => {
+		if (records.length === 0) {
+			return t("usersTable.noOnlineIps", "No online IPs found.");
+		}
+		return records
+			.map((record) => {
+				const node = record.node_name || `node-${record.node_id}`;
+				const ip = record.ip || record.assigned_ip || "-";
+				const assigned =
+					record.assigned_ip && record.assigned_ip !== ip
+						? ` assigned=${record.assigned_ip}`
+						: "";
+				const inbound = record.inbound_tag ? ` ${record.inbound_tag}` : "";
+				return `${record.protocol}${inbound} @ ${node}: ${ip}${assigned}`;
+			})
+			.join("\n");
+	};
+
+	const handleGetIPs = async (user: UserListItem) => {
+		setContextAction("ips");
+		try {
+			const response = await fetch<UserIPsResponse>(
+				`/user/${encodeURIComponent(user.username)}/ips`,
+			);
+			const text = formatUserIPRecords(response.ips || []);
+			await copyTextToClipboard(text).catch(() => undefined);
 			toast({
-				title: error?.data?.detail || error?.message || t("error"),
+				title: t("usersTable.getIps", "Get IPs"),
+				description: text,
+				status: response.ips?.length ? "success" : "info",
+				duration: 9000,
+				isClosable: true,
+			});
+		} catch (error: any) {
+			toast({
+				title:
+					error?.data?.detail ||
+					error?.message ||
+					t("usersTable.getIpsFailed", "Unable to get IPs"),
 				status: "error",
+				duration: 1800,
 			});
 		} finally {
 			setContextAction(null);
@@ -602,28 +677,26 @@ export const UsersTable: FC<UsersTableProps> = ({
 		}
 	};
 
-	const handleDeleteUser = async (user: UserListItem) => {
-		setContextAction("delete");
-		try {
-			await deleteUser(user);
-			toast({
-				title: t("deleteUser.deleteSuccess", { username: user.username }),
-				status: "success",
-				isClosable: true,
-				position: "top",
-				duration: 3000,
-			});
-			refetchUsers(true);
-		} catch (error: any) {
-			toast({
-				title: error?.data?.detail || error?.message || t("error"),
-				status: "error",
-			});
-		} finally {
-			setContextAction(null);
-			closeContextMenu();
-		}
-	};
+	const handleDeleteUser = useCallback(
+		async (user: UserListItem) => {
+			setContextAction("delete");
+			try {
+				await deleteUser(user);
+				notify(
+					t("deleteUser.deleteSuccess", { username: user.username }),
+					"success",
+					{ duration: 3000 },
+				);
+				refetchUsers(true);
+			} catch (error: any) {
+				notify(error?.data?.detail || error?.message || t("error"), "error");
+			} finally {
+				setContextAction(null);
+				closeContextMenu();
+			}
+		},
+		[closeContextMenu, deleteUser, notify, refetchUsers, t],
+	);
 
 	const runBulkUserAction = async (
 		action: string,
@@ -635,20 +708,19 @@ export const UsersTable: FC<UsersTableProps> = ({
 		setBulkAction(action);
 		try {
 			await Promise.all(users.map((user) => handler(user)));
-			toast({
-				title: successLabel,
-				description: t("usersTable.bulkActionCount", "{{count}} users updated", {
-					count: users.length,
-				}),
-				status: "success",
+			notify(successLabel, "success", {
+				description: t(
+					"usersTable.bulkActionCount",
+					"{{count}} users updated",
+					{
+						count: users.length,
+					},
+				),
 			});
 			clearSelectedUsers();
 			refetchUsers(true);
 		} catch (error: any) {
-			toast({
-				title: error?.data?.detail || error?.message || t("error"),
-				status: "error",
-			});
+			notify(error?.data?.detail || error?.message || t("error"), "error");
 		} finally {
 			setBulkAction(null);
 		}
@@ -733,7 +805,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 				mobileMetaLabel: t("username"),
 				cell: (user) => (
 					<HStack
-						spacing={1.5}
+						spacing={2.5}
 						align="center"
 						dir="ltr"
 						flexDirection="row"
@@ -742,17 +814,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 						maxW="full"
 						w="full"
 					>
-						<Box
-							className="rb-user-online-indicator"
-							flex="0 0 20px"
-							w="20px"
-							display="flex"
-							alignItems="center"
-							justifyContent="center"
-							overflow="visible"
-						>
-							<OnlineBadge lastOnline={user.online_at ?? null} />
-						</Box>
+						<UserStatusDot lastOnline={user.online_at ?? null} />
 						<Box
 							minW={0}
 							flex="1 1 auto"
@@ -769,15 +831,29 @@ export const UsersTable: FC<UsersTableProps> = ({
 								color="panel.text"
 								dir="ltr"
 								sx={{ unicodeBidi: "isolate" }}
-								_hover={canOpenUserDialog ? { color: "panel.accent" } : undefined}
+								_hover={
+									canOpenUserDialog ? { color: "panel.accent" } : undefined
+								}
 							>
 								{formatUsernamePreview(user.username)}
 							</Text>
-							<CreatedByText
-								show={hasPrivilegedRole}
-								adminUsername={user.admin_username}
-							/>
-							<OnlineStatus lastOnline={user.online_at ?? null} />
+							<HStack
+								className="rb-user-username-meta"
+								spacing={1.5}
+								minW={0}
+								maxW="full"
+								overflow="hidden"
+							>
+								<UserAdminChip
+									show={hasPrivilegedRole}
+									adminUsername={user.admin_username}
+								/>
+								<OnlineStatus
+									lastOnline={user.online_at ?? null}
+									withMargin={false}
+									compact
+								/>
+							</HStack>
 						</Box>
 					</HStack>
 				),
@@ -796,11 +872,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 				mobilePriority: 1,
 				mobileMetaLabel: t("usersTable.status"),
 				mobileDetailCell: (user) => (
-					<StatusBadge
-						expiryDate={null}
-						status={user.status}
-						compact
-					/>
+					<StatusBadge expiryDate={null} status={user.status} compact />
 				),
 				cell: (user) => (
 					<Flex align="center" justify="flex-start" dir="ltr" w="full">
@@ -820,9 +892,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 				mobileVisible: true,
 				mobilePriority: 2,
 				mobileMetaLabel: t("usersTable.expire"),
-				cell: (user) => (
-					<MobileExpiryDetail expire={user.expire} t={t} />
-				),
+				cell: (user) => <UserExpiryCountdown expire={user.expire} />,
 			},
 			{
 				id: "service",
@@ -869,27 +939,20 @@ export const UsersTable: FC<UsersTableProps> = ({
 				mobilePriority: 4,
 				mobileMetaLabel: t("usersTable.dataUsage"),
 				mobileDetailCell: (user) => (
-					<CompactUsageMeter
-						used={user.used_traffic}
-						total={user.data_limit}
-					/>
+					<MobileUsageDetail used={user.used_traffic} total={user.data_limit} />
 				),
 				cell: (user) =>
-					useCompactUsageCell ? (
-						<CompactUsageMeter
+					isDesktopUsageLayout ? (
+						<UserUsageBar
+							variant="detailed"
 							used={user.used_traffic}
 							total={user.data_limit}
+							lifetimeUsed={user.lifetime_used_traffic}
+							lifetimeLabel={t("usersTable.lifetimeUsage")}
+							resetLabel={getUsageResetLabel(user, t)}
 						/>
 					) : (
-						<UsageMeter
-							status={user.status}
-							totalUsedTraffic={user.lifetime_used_traffic}
-							dataLimitResetStrategy={user.data_limit_reset_strategy}
-							used={user.used_traffic}
-							total={user.data_limit}
-							isRTL={isRTL}
-							t={t}
-						/>
+						<UserUsageBar used={user.used_traffic} total={user.data_limit} />
 					),
 			});
 			columns.push({
@@ -905,14 +968,27 @@ export const UsersTable: FC<UsersTableProps> = ({
 			});
 		}
 
+		// The reseller tag is hidden in the collapsed mobile row (CSS) and
+		// surfaces here instead, inside the expanded details.
+		if (hasPrivilegedRole) {
+			columns.push({
+				id: "admin",
+				header: t("usersTable.admin", "Admin"),
+				desktopVisible: false,
+				mobileVisible: true,
+				mobilePriority: 6,
+				mobileMetaLabel: t("usersTable.admin", "Admin"),
+				cell: (user) => <UserAdminChip adminUsername={user.admin_username} />,
+			});
+		}
+
 		return columns;
 	}, [
 		canOpenUserDialog,
 		canViewTraffic,
 		hasPrivilegedRole,
-		isRTL,
+		isDesktopUsageLayout,
 		t,
-		useCompactUsageCell,
 	]);
 
 	const userSorting = useMemo<SortingState>(() => {
@@ -938,16 +1014,10 @@ export const UsersTable: FC<UsersTableProps> = ({
 		if (!text) return false;
 		try {
 			await copyTextToClipboard(text);
-			toast({
-				title: successLabel,
-				status: "success",
-				duration: 1200,
-			});
+			notify(successLabel, "success", { duration: 1200 });
 			return true;
 		} catch {
-			toast({
-				title: t("usersTable.copyFailed", "Copy failed"),
-				status: "error",
+			notify(t("usersTable.copyFailed", "Copy failed"), "error", {
 				duration: 1600,
 			});
 			return false;
@@ -967,10 +1037,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 				icon: <SubscriptionLinkIcon />,
 				isDisabled: !subscriptionLink,
 				onClick: () =>
-					copyUserText(
-						subscriptionLink,
-						t("usersTable.copied", "Copied"),
-					),
+					copyUserText(subscriptionLink, t("usersTable.copied", "Copied")),
 			},
 			{
 				id: "copy-configs",
@@ -978,10 +1045,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 				icon: <CopyIcon />,
 				isDisabled: configLinks.length === 0,
 				onClick: () =>
-					copyUserText(
-						configLinksText,
-						t("usersTable.copied", "Copied"),
-					),
+					copyUserText(configLinksText, t("usersTable.copied", "Copied")),
 			},
 			{
 				id: "qr",
@@ -992,6 +1056,13 @@ export const UsersTable: FC<UsersTableProps> = ({
 					setSubLink(subscriptionLink);
 				},
 			},
+			{
+				id: "get-ips",
+				label: t("usersTable.getIps", "Get IPs"),
+				icon: <IPsIcon />,
+				isDisabled: contextAction === "ips",
+				onClick: () => handleGetIPs(user),
+			},
 		];
 
 		if (canOpenUserDialog) {
@@ -1000,6 +1071,16 @@ export const UsersTable: FC<UsersTableProps> = ({
 				label: t("userDialog.editUser", "Edit user"),
 				icon: <EditIcon />,
 				onClick: () => onEditingUser(user),
+			});
+		}
+
+		// Reuses the edit dialog's existing Usage tab (chart + /user/{u}/usage).
+		if (canViewTraffic) {
+			actions.push({
+				id: "usage-history",
+				label: t("usersTable.usageHistory", "Usage history"),
+				icon: <UsageHistoryIcon />,
+				onClick: () => onEditingUser(user, 1),
 			});
 		}
 
@@ -1047,65 +1128,37 @@ export const UsersTable: FC<UsersTableProps> = ({
 			actions.push({
 				id: "add-traffic",
 				label: t("usersTable.addTraffic", "Add traffic"),
+				icon: <TrafficIcon />,
 				render: (_row, onClose) => (
-					<Box position="relative" role="group">
-						<MenuItem
-							icon={<TrafficIcon />}
-							isDisabled={contextAction?.startsWith("traffic-")}
-							closeOnSelect={false}
-							onClick={(event) => {
-								event.preventDefault();
-								event.stopPropagation();
-							}}
-						>
-							<HStack w="full" justify="space-between" spacing={3}>
-								<Text as="span" noOfLines={1}>
-									{t("usersTable.addTraffic", "Add traffic")}
-								</Text>
-								<ChevronRightIcon
-									width={14}
-									style={{
-										flexShrink: 0,
-										transform: isRTL ? "rotate(180deg)" : undefined,
-									}}
-								/>
-							</HStack>
-						</MenuItem>
-						<Stack
-							display="none"
-							_groupHover={{ display: "flex" }}
-							position="absolute"
-							top={0}
-							left={isRTL ? "auto" : "100%"}
-							right={isRTL ? "100%" : "auto"}
-							minW="140px"
-							spacing={1}
-							p={2}
-							bg={dialogBg}
-							borderWidth="1px"
-							borderColor={dialogBorderColor}
-							borderRadius="md"
-							boxShadow="lg"
-							zIndex={2501}
-						>
-							{[1, 2, 3, 5, 10].map((gigabytes) => (
-								<MenuItem
-									key={gigabytes}
-									isDisabled={contextAction === `traffic-${gigabytes}`}
-									onClick={(event) => {
-										event.stopPropagation();
-										onClose();
-										handleAdjustTraffic(user, gigabytes);
-									}}
-								>
-									{t("usersTable.addGb", "Add {{count}} GB", {
-										count: gigabytes,
-									})}
-								</MenuItem>
-							))}
-						</Stack>
-					</Box>
+					<TrafficSubmenu
+						label={t("usersTable.addTraffic", "Add traffic")}
+						isRTL={isRTL}
+						activeAction={contextAction}
+						onClose={onClose}
+						onSelect={(gigabytes) =>
+							handleAdjustTraffic(user, gigabytes)
+						}
+						getOptionLabel={(gigabytes) =>
+							t("usersTable.addGb", "Add {{count}} GB", {
+								count: gigabytes,
+							})
+						}
+					/>
 				),
+			});
+		}
+
+		// Absolute data-limit editor (PUT data_limit) — complements the
+		// relative "Add traffic" action above.
+		if (canMutateUsers) {
+			actions.push({
+				id: "set-data-limit",
+				label: t("usersTable.setDataLimit", "Set data limit"),
+				icon: <DataLimitIcon />,
+				onClick: () =>
+					useDashboard.setState({
+						quickEditUser: { user, field: "data_limit" },
+					}),
 			});
 		}
 
@@ -1124,6 +1177,19 @@ export const UsersTable: FC<UsersTableProps> = ({
 			});
 		}
 
+		// Absolute expiry editor (PUT expire) — complements "Add 30 days".
+		if (canMutateUsers) {
+			actions.push({
+				id: "set-expiry",
+				label: t("usersTable.setExpiry", "Set custom expiry"),
+				icon: <ExpiryIcon />,
+				onClick: () =>
+					useDashboard.setState({
+						quickEditUser: { user, field: "expire" },
+					}),
+			});
+		}
+
 		if (canDeleteUserActions && canDeleteUserByTrafficCap(userData, user)) {
 			actions.push({
 				id: "delete",
@@ -1131,8 +1197,8 @@ export const UsersTable: FC<UsersTableProps> = ({
 				icon: <DeleteIcon />,
 				isDanger: true,
 				render: (_row, onClose) => (
-					<DeleteConfirmPopover
-						message={t("deleteUser.prompt", { username: user.username })}
+					<DeleteConfirmDialog
+						description={t("deleteUser.prompt", { username: user.username })}
 						onConfirm={async () => {
 							onClose();
 							await handleDeleteUser(user);
@@ -1145,7 +1211,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 						>
 							{t("deleteUser.title", "Delete user")}
 						</MenuItem>
-					</DeleteConfirmPopover>
+					</DeleteConfirmDialog>
 				),
 			});
 		}
@@ -1219,10 +1285,11 @@ export const UsersTable: FC<UsersTableProps> = ({
 			pb={selectedUsers.length > 0 ? { base: 32, md: 24 } : 0}
 			{...props}
 		>
+			{/* One unified header card: stats on top, search + quick filters below. */}
 			<ResourceListCard
 				title={t("usersTable.listHeader", "User list")}
 				summaryItems={summaryItems}
-				footerActions={footerActions}
+				actions={headerActions}
 			>
 				{toolbar}
 			</ResourceListCard>
@@ -1259,6 +1326,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 							<ActionButtons
 								user={user}
 								isRTL={isRTL}
+								menuActions={toMenuItems(getUserRowActions(user), user)}
 								onEdit={
 									canOpenUserDialog ? () => onEditingUser(user) : undefined
 								}
@@ -1272,7 +1340,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 						)}
 						actionsDisplay="inline"
 						actionsPlacement="end"
-						actionsColumnWidth="174px"
+						actionsColumnWidth="210px"
 						actionsAlwaysVisible
 						onRowClick={
 							canOpenUserDialog ? (user) => onEditingUser(user) : undefined
@@ -1322,7 +1390,9 @@ export const UsersTable: FC<UsersTableProps> = ({
 										leftIcon={<ResetIcon />}
 										onClick={handleBulkReset}
 										isLoading={bulkAction === "reset"}
-										isDisabled={Boolean(bulkAction) || selectedUsers.length === 0}
+										isDisabled={
+											Boolean(bulkAction) || selectedUsers.length === 0
+										}
 									>
 										{t("usersTable.resetUsage", "Reset usage")}
 									</Button>
@@ -1334,16 +1404,18 @@ export const UsersTable: FC<UsersTableProps> = ({
 										leftIcon={<RevokeIcon />}
 										onClick={handleBulkRevoke}
 										isLoading={bulkAction === "revoke"}
-										isDisabled={Boolean(bulkAction) || selectedUsers.length === 0}
+										isDisabled={
+											Boolean(bulkAction) || selectedUsers.length === 0
+										}
 									>
 										{t("usersTable.revokeSub", "Revoke subscription")}
 									</Button>
 								)}
 								{canDeleteUserActions && (
-									<DeleteConfirmPopover
-										message={t(
+									<DeleteConfirmDialog
+										description={t(
 											"usersTable.bulkDeletePrompt",
-											"Delete selected users?",
+											"Delete selected users? This cannot be undone.",
 										)}
 										onConfirm={handleBulkDelete}
 									>
@@ -1354,13 +1426,12 @@ export const UsersTable: FC<UsersTableProps> = ({
 											leftIcon={<DeleteIcon />}
 											isLoading={bulkAction === "delete"}
 											isDisabled={
-												Boolean(bulkAction) ||
-												bulkDeleteTargets.length === 0
+												Boolean(bulkAction) || bulkDeleteTargets.length === 0
 											}
 										>
 											{t("delete", "Delete")}
 										</Button>
-									</DeleteConfirmPopover>
+									</DeleteConfirmDialog>
 								)}
 							</>
 						)}
@@ -1414,6 +1485,9 @@ type ActionButtonsProps = {
 	onDelete?: () => void | Promise<void>;
 	onEdit?: () => void;
 	isRTL?: boolean;
+	// Full overflow action set for the trailing "..." menu (desktop parity
+	// with the mobile card); omitted where there is nothing extra to show.
+	menuActions?: RowActionItem[];
 };
 
 const ActionButtons: FC<ActionButtonsProps> = ({
@@ -1421,6 +1495,7 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 	onDelete,
 	onEdit,
 	isRTL,
+	menuActions,
 }) => {
 	const { t } = useTranslation();
 	const { setQRCode, setSubLink, linkTemplates } = useDashboard();
@@ -1462,7 +1537,9 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 				e.stopPropagation();
 			}}
 		>
-			<Tooltip label={copied ? t("usersTable.copied") : t("usersTable.copyLink")}>
+			<Tooltip
+				label={copied ? t("usersTable.copied") : t("usersTable.copyLink")}
+			>
 				<span>
 					<IconButton
 						aria-label={t("usersTable.copyLink")}
@@ -1533,8 +1610,8 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 				</Tooltip>
 			)}
 			{onDelete && (
-				<DeleteConfirmPopover
-					message={t("deleteUser.prompt", { username: user.username })}
+				<DeleteConfirmDialog
+					description={t("deleteUser.prompt", { username: user.username })}
 					onConfirm={onDelete}
 				>
 					<IconButton
@@ -1547,7 +1624,10 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 						color="red.400"
 						_hover={{ color: "red.300", bg: "whiteAlpha.100" }}
 					/>
-				</DeleteConfirmPopover>
+				</DeleteConfirmDialog>
+			)}
+			{menuActions && menuActions.length > 0 && (
+				<RowActionsMenu actions={menuActions} label={t("actions", "Actions")} />
 			)}
 		</HStack>
 	);

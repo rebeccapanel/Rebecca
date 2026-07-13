@@ -13,6 +13,7 @@ import { IntegrationSettingsPage } from "./IntegrationSettingsPage";
 import { Login } from "./Login";
 import MyAccountPage from "./MyAccountPage";
 import { NodesPage } from "./NodesPage";
+import { PhpMyAdminPage } from "./PhpMyAdminPage";
 import ServicesPage from "./ServicesPage";
 import TutorialsPage from "./TutorialsPage";
 import UsagePage from "./UsagePage";
@@ -20,6 +21,7 @@ import { UsersPage } from "./UsersPage";
 import { XrayLogsPage } from "./XrayLogsPage";
 import {
 	isRouteErrorResponse,
+	Navigate,
 	redirect,
 	useNavigate,
 	useRouteError,
@@ -80,10 +82,12 @@ const routeSegments = new Set([
 	"hosts",
 	"node-settings",
 	"integrations",
+	"settings",
 	"xray-settings",
 	"xray-logs",
 	"access-insights",
 	"api-docs",
+	"phpmyadmin",
 ]);
 
 const trimTrailingSlash = (value: string) => {
@@ -194,8 +198,12 @@ export const router = createBrowserRouter(
 					element: <NodesPage />,
 				},
 				{
-					path: "integrations",
+					path: "settings",
 					element: <IntegrationSettingsPage />,
+				},
+				{
+					path: "integrations",
+					element: <Navigate to="/settings#panel" replace />,
 				},
 				{
 					path: "xray-settings",
@@ -212,6 +220,10 @@ export const router = createBrowserRouter(
 				{
 					path: "api-docs",
 					element: <ApiDocsPage />,
+				},
+				{
+					path: "phpmyadmin",
+					element: <PhpMyAdminPage />,
 				},
 			],
 		},

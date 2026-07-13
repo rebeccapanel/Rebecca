@@ -28,6 +28,21 @@ var proxyProtocols = map[string]struct{}{
 	"hysteria":    {},
 }
 
+var subscriptionDownloadProtocols = map[string]struct{}{
+	"openvpn":   {},
+	"wireguard": {},
+	"l2tp":      {},
+	"pptp":      {},
+}
+
+func isResolvableInboundProtocol(protocol string) bool {
+	if _, ok := proxyProtocols[protocol]; ok {
+		return true
+	}
+	_, ok := subscriptionDownloadProtocols[protocol]
+	return ok
+}
+
 type configHost struct {
 	host     Host
 	position int
@@ -119,11 +134,30 @@ func BuildConfigLinks(
 	// protocols (e.g. shadowsocks) to the top regardless of the service order.
 	for _, selected := range selectedHosts {
 		host := selected.host
-		binding, ok := bindings[host.InboundTag]
+		inbound, ok := inbounds[host.InboundTag]
 		if !ok {
 			continue
 		}
-		inbound, ok := inbounds[host.InboundTag]
+		if normalizeProxyProtocol(stringValue(inbound["protocol"])) == "wireguard" {
+			inboundVariables := cloneFormatVariables(formatVariables)
+			inboundVariables["PROTOCOL"] = "wireguard"
+			inboundVariables["protocol"] = "wireguard"
+			inboundVariables["TRANSPORT"] = configTransportName(inbound)
+			inboundVariables["transport"] = strings.ToLower(inboundVariables["TRANSPORT"])
+			remark, address, effective, ok := effectiveInboundForHost(username, inboundVariables, inbound, host)
+			if !ok {
+				continue
+			}
+			link, err := buildWGShareLink(item, remark, address, effective)
+			if err != nil {
+				return ConfigLinksResponse{}, err
+			}
+			if link != "" {
+				links = append(links, link)
+			}
+			continue
+		}
+		binding, ok := bindings[host.InboundTag]
 		if !ok {
 			continue
 		}
@@ -320,7 +354,7 @@ func effectiveInboundForHost(username string, variables map[string]string, inbou
 	path = applyFormat(path, variables)
 
 	effective := copyInbound(inbound)
-	if host.Port != nil {
+	if host.Port != nil && normalizeProxyProtocol(stringValue(inbound["protocol"])) != "openvpn" {
 		effective["port"] = *host.Port
 	}
 	if tls := normalizedHostSecurity(host.Security); tls != "" {
@@ -857,6 +891,9 @@ func vmessShareLink(remark string, address string, path string, inbound Resolved
 	if fs := stringValue(inbound["fragment_setting"]); fs != "" {
 		payload["fragment"] = fs
 	}
+	if ns := stringValue(inbound["noise_setting"]); ns != "" {
+		payload["noise"] = ns
+	}
 	tls := stringValue(inbound["tls"])
 	if tls == "tls" {
 		payload["sni"] = stringValue(inbound["sni"])
@@ -933,6 +970,7 @@ func vlessShareLink(remark string, address string, path string, inbound Resolved
 	}
 	params = appendNetworkParams(params, netValue, path, inbound)
 	params = appendTLSParams(params, tls, inbound)
+	params = appendMaskParams(params, inbound)
 	return "vless://" + stringValue(settings["id"]) + "@" + address + ":" + portString(inbound["port"]) + "?" + urlencodeOrdered(params) + "#" + percentEncode(remark, "/", false)
 }
 
@@ -950,6 +988,7 @@ func trojanShareLink(remark string, address string, path string, inbound Resolve
 	}
 	params = appendNetworkParams(params, netValue, path, inbound)
 	params = appendTLSParams(params, tls, inbound)
+	params = appendMaskParams(params, inbound)
 	return "trojan://" + percentEncode(stringValue(settings["password"]), ":", false) + "@" + address + ":" + portString(inbound["port"]) + "?" + urlencodeOrdered(params) + "#" + percentEncode(remark, "/", false)
 }
 
@@ -961,11 +1000,14 @@ func shadowsocksShareLink(remark string, address string, inbound ResolvedInbound
 	if tls != "" && tls != "none" {
 		params = append(params, queryParam{"security", tls})
 	}
-	if netValue != "" && netValue != "tcp" {
+	if netValue != "" {
 		params = append(params, queryParam{"type", netValue})
+	}
+	if netValue != "" && netValue != "tcp" {
 		params = appendNetworkParams(params, netValue, stringValue(inbound["path"]), inbound)
 	}
 	params = appendTLSParams(params, tls, inbound)
+	params = appendMaskParams(params, inbound)
 	query := ""
 	if len(params) > 0 {
 		query = "?" + urlencodeOrdered(params)
@@ -1085,8 +1127,14 @@ func appendTLSParams(params []queryParam, tls string, inbound ResolvedInbound) [
 		if alpn := stringValue(inbound["alpn"]); alpn != "" {
 			params = append(params, queryParam{"alpn", alpn})
 		}
-		if fs := stringValue(inbound["fragment_setting"]); fs != "" {
-			params = append(params, queryParam{"fragment", fs})
+		if ech := firstNonEmptyString(inbound["ech"], inbound["echConfigList"]); ech != "" {
+			params = append(params, queryParam{"ech", ech})
+		}
+		if vcn := firstNonEmptyString(inbound["vcn"], inbound["verifyPeerCertByName"]); vcn != "" {
+			params = append(params, queryParam{"vcn", vcn})
+		}
+		if pin := firstNonEmptyString(inbound["pinSHA256"], inbound["pinnedPeerCertSha256"]); pin != "" {
+			params = append(params, queryParam{"pcs", pin})
 		}
 		if truthy(inbound["ais"]) {
 			params = append(params, queryParam{"allowInsecure", 1})
@@ -1101,6 +1149,16 @@ func appendTLSParams(params []queryParam, tls string, inbound ResolvedInbound) [
 		if spx := stringValue(inbound["spx"]); spx != "" {
 			params = append(params, queryParam{"spx", spx})
 		}
+	}
+	return params
+}
+
+func appendMaskParams(params []queryParam, inbound ResolvedInbound) []queryParam {
+	if fs := stringValue(inbound["fragment_setting"]); fs != "" {
+		params = append(params, queryParam{"fragment", fs})
+	}
+	if ns := stringValue(inbound["noise_setting"]); ns != "" {
+		params = append(params, queryParam{"noise", ns})
 	}
 	return params
 }
@@ -1125,6 +1183,18 @@ func resolveInbound(inbound map[string]any) (ResolvedInbound, error) {
 		if encryption := firstNonEmptyString(settings["encryption"], settings["decryption"]); encryption != "" {
 			resolved["encryption"] = encryption
 		}
+	}
+	if protocol == "openvpn" {
+		applyOVResolvedSettings(resolved, inbound)
+		return resolved, nil
+	}
+	if protocol == "wireguard" {
+		resolved["settings"] = settings
+		return resolved, nil
+	}
+	if protocol == "l2tp" || protocol == "pptp" {
+		resolved["settings"] = settings
+		return resolved, nil
 	}
 
 	stream := mapValue(inbound["streamSettings"])
@@ -1284,10 +1354,6 @@ func resolveInbound(inbound map[string]any) (ResolvedInbound, error) {
 	return resolved, nil
 }
 
-func excludedInboundTags() map[string]struct{} {
-	return map[string]struct{}{}
-}
-
 func normalizeProxyProtocol(value string) string {
 	cleaned := strings.ToLower(strings.TrimSpace(value))
 	switch cleaned {
@@ -1295,6 +1361,12 @@ func normalizeProxyProtocol(value string) string {
 		return "shadowsocks"
 	case "vmess", "vless", "trojan":
 		return cleaned
+	case "l2tp", "l2tp-ipsec", "l2tp/ipsec":
+		return "l2tp"
+	case "openvpn", "ov":
+		return "openvpn"
+	case "wireguard", "wg":
+		return "wireguard"
 	default:
 		return cleaned
 	}

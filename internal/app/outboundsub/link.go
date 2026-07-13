@@ -478,6 +478,9 @@ func parseWireguard(link string) (*ParseResult, error) {
 	}
 	secret, _ := url.QueryUnescape(u.User.Username())
 	params := u.Query()
+	if secret == "" {
+		secret = firstParam(params, "privatekey", "private_key", "secretkey", "secret_key", "pk")
+	}
 	host := u.Hostname()
 	portStr := u.Port()
 	endpoint := host

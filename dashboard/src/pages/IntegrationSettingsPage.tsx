@@ -32,6 +32,7 @@ import {
 	Switch,
 	Text,
 	Textarea,
+	useColorMode,
 	useColorModeValue,
 	useToast,
 	VStack,
@@ -59,16 +60,23 @@ import {
 import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "react-query";
+import { Link as RouterLink } from "react-router-dom";
 import { fetch as apiFetch } from "service/http";
 import {
 	type AdminSubscriptionSettings,
+	disablePHPMyAdmin,
+	enablePHPMyAdmin,
 	getPanelSettings,
+	getPHPMyAdminEmbedHTML,
+	getPHPMyAdminStatus,
+	getRuntimeSettings,
 	getSubscriptionSettings,
 	getSubscriptionTemplateContent,
 	getTelegramSettings,
 	issueSubscriptionCertificate,
 	type PanelSettingsResponse,
 	renewSubscriptionCertificate,
+	type RuntimeSettingsResponse,
 	sendTelegramBackup,
 	testTelegramSettings,
 	type SubscriptionSettingsBundle,
@@ -79,6 +87,7 @@ import {
 	type TelegramSettingsUpdatePayload,
 	updateAdminSubscriptionSettings,
 	updatePanelSettings,
+	updateRuntimeSettings,
 	updateSubscriptionSettings,
 	updateSubscriptionTemplateContent,
 	updateTelegramSettings,
@@ -87,18 +96,17 @@ import {
 	generateErrorMessage,
 	generateSuccessMessage,
 } from "utils/toastHandler";
-import { ConfirmActionDialog } from "../components/ConfirmActionDialog";
+import { ConfirmDialog } from "../components/dialogs/ConfirmDialog";
 import { JsonEditor } from "../components/JsonEditor";
 import { RebeccaBackupPanel } from "../components/RebeccaBackupPanel";
 import { SubscriptionTemplateCreator } from "../components/SubscriptionTemplateCreator";
-import { ThreeXUiDatabaseImportPanel } from "../components/ThreeXUiDatabaseImportPanel";
 import {
 	XrayModalBody,
 	XrayModalContent,
 	XrayModalFooter,
 	XrayModalHeader,
 } from "../components/xray/XrayDialog";
-import { PageHeader, ResourceListCard, TabSystem } from "../components/ui";
+import { PageHeader, TabSystem } from "../components/ui";
 
 type EventToggleItem = {
 	key: string;
@@ -156,6 +164,8 @@ type TemplateKey =
 	| "home_page_template"
 	| "v2ray_subscription_template"
 	| "v2ray_settings_template"
+	| "happ_subscription_template"
+	| "incy_subscription_template"
 	| "singbox_subscription_template"
 	| "singbox_settings_template"
 	| "mux_template";
@@ -224,6 +234,21 @@ type MaintenanceActionResponse = {
 	status?: string;
 	message?: string;
 	operation?: MaintenanceOperation;
+};
+
+const defaultRuntimeSettings: RuntimeSettingsResponse = {
+	dashboard_path: "/dashboard/",
+	record_node_usage: true,
+	record_node_user_usages: true,
+	subscription_read_only: false,
+	api_docs_enabled: false,
+	phpmyadmin_enabled: false,
+	phpmyadmin_port: 8080,
+	phpmyadmin_path: "/phpmyadmin/",
+	phpmyadmin_public_url: "",
+	phpmyadmin_login_mode: "rebecca",
+	phpmyadmin_username: "",
+	phpmyadmin_password: "",
 };
 
 const flattenEventToggleValues = (
@@ -613,6 +638,8 @@ const buildSubscriptionDefaults = (
 	home_page_template: settings?.home_page_template ?? "",
 	v2ray_subscription_template: settings?.v2ray_subscription_template ?? "",
 	v2ray_settings_template: settings?.v2ray_settings_template ?? "",
+	happ_subscription_template: settings?.happ_subscription_template ?? "",
+	incy_subscription_template: settings?.incy_subscription_template ?? "",
 	singbox_subscription_template: settings?.singbox_subscription_template ?? "",
 	singbox_settings_template: settings?.singbox_settings_template ?? "",
 	mux_template: settings?.mux_template ?? "",
@@ -622,6 +649,7 @@ const buildSubscriptionDefaults = (
 	use_custom_json_for_streisand:
 		settings?.use_custom_json_for_streisand ?? false,
 	use_custom_json_for_happ: settings?.use_custom_json_for_happ ?? false,
+	use_custom_json_for_incy: settings?.use_custom_json_for_incy ?? false,
 	subscription_path: settings?.subscription_path ?? "sub",
 	subscription_aliases: settings?.subscription_aliases ?? [],
 	subscription_ports: settings?.subscription_ports ?? [],
@@ -707,8 +735,21 @@ const parseAdminChatIds = (value: string): number[] =>
 		.map((token) => Number(token))
 		.filter((token) => Number.isFinite(token));
 
+const ansiEscapePattern =
+	/[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g;
+
+const cleanTerminalOutput = (logs?: string[]) => {
+	const output = (logs || []).join("\n");
+	return output
+		.replace(ansiEscapePattern, "")
+		.replace(/\r(?!\n)/g, "\n")
+		.replace(/\u0008/g, "")
+		.trimEnd();
+};
+
 export const IntegrationSettingsPage = () => {
 	const { t } = useTranslation();
+	const { colorMode } = useColorMode();
 	const toast = useToast();
 	const cardBg = useColorModeValue("white", "whiteAlpha.50");
 	const subCardBg = useColorModeValue("gray.50", "whiteAlpha.100");
@@ -745,6 +786,28 @@ export const IntegrationSettingsPage = () => {
 		isLoading: isPanelLoading,
 		refetch: refetchPanelSettings,
 	} = useQuery<PanelSettingsResponse>("panel-settings", getPanelSettings, {
+		refetchOnWindowFocus: false,
+		enabled: canManageIntegrations,
+	});
+
+	const {
+		data: runtimeSettings,
+		isLoading: isRuntimeSettingsLoading,
+		refetch: refetchRuntimeSettings,
+	} = useQuery<RuntimeSettingsResponse>(
+		"runtime-settings",
+		getRuntimeSettings,
+		{
+			refetchOnWindowFocus: false,
+			enabled: canManageIntegrations,
+		},
+	);
+
+	const {
+		data: phpMyAdminStatus,
+		isLoading: isPHPMyAdminStatusLoading,
+		refetch: refetchPHPMyAdminStatus,
+	} = useQuery("phpmyadmin-status", getPHPMyAdminStatus, {
 		refetchOnWindowFocus: false,
 		enabled: canManageIntegrations,
 	});
@@ -806,12 +869,22 @@ export const IntegrationSettingsPage = () => {
 	const [panelDefaultSubType, setPanelDefaultSubType] = useState<
 		"username-key" | "key" | "token"
 	>(panelData?.default_subscription_type ?? "key");
+	const [runtimeSettingsForm, setRuntimeSettingsForm] =
+		useState<RuntimeSettingsResponse>(defaultRuntimeSettings);
 
 	useEffect(() => {
 		if (panelData) {
 			setPanelDefaultSubType(panelData.default_subscription_type ?? "key");
 		}
 	}, [panelData]);
+
+	useEffect(() => {
+		if (runtimeSettings) {
+			setRuntimeSettingsForm(runtimeSettings);
+		}
+	}, [runtimeSettings]);
+
+	const phpMyAdminSupported = phpMyAdminStatus?.supported ?? false;
 
 	const [adminOverrides, setAdminOverrides] = useState<
 		Record<number, AdminSubscriptionSettings>
@@ -830,6 +903,8 @@ export const IntegrationSettingsPage = () => {
 	const [templateIsJson, setTemplateIsJson] = useState<boolean>(true);
 	const [templateLoading, setTemplateLoading] = useState<boolean>(false);
 	const [isDevUpdateConfirmOpen, setDevUpdateConfirmOpen] = useState(false);
+	const [isOpeningPHPMyAdminExternal, setOpeningPHPMyAdminExternal] =
+		useState(false);
 	const [certificateForm, setCertificateForm] = useState<{
 		email: string;
 		domains: string;
@@ -1139,34 +1214,28 @@ export const IntegrationSettingsPage = () => {
 	const integrationTabKeys = useMemo(
 		() => [
 			"panel",
+			"backup",
 			"telegram",
 			"subscriptions",
-			"database",
 			"template-creator",
 		],
 		[],
 	);
-	const splitHash = useCallback(() => {
-		const hash = window.location.hash || "";
-		const idx = hash.indexOf("#", 1);
+	const readSettingsHash = useCallback(() => {
+		const hash = (window.location.hash || "").replace(/^#/, "");
+		const [tabWithQuery = ""] = hash.split("#").filter(Boolean);
+		const [tab = "", query = ""] = tabWithQuery.split("?");
 		return {
-			base: idx >= 0 ? hash.slice(0, idx) : hash,
-			tab: idx >= 0 ? hash.slice(idx + 1) : "",
+			tab,
+			focus: query ? new URLSearchParams(query).get("focus") || "" : "",
 		};
 	}, []);
 	const getFocusFromHash = useCallback(() => {
-		const { base, tab } = splitHash();
-		const queryStart = base.indexOf("?");
-		const params =
-			queryStart >= 0 ? new URLSearchParams(base.slice(queryStart + 1)) : null;
-		return {
-			tab,
-			focus: params?.get("focus") || "",
-		};
-	}, [splitHash]);
+		return readSettingsHash();
+	}, [readSettingsHash]);
 	useEffect(() => {
 		const syncTabFromHash = () => {
-			const { tab } = splitHash();
+			const { tab } = readSettingsHash();
 			const idx = integrationTabKeys.findIndex(
 				(key) => key.toLowerCase() === tab.toLowerCase(),
 			);
@@ -1175,20 +1244,23 @@ export const IntegrationSettingsPage = () => {
 			} else {
 				// default tab if none present in hash
 				setActiveIntegrationTab(0);
-				const { base } = splitHash();
 				const defaultKey = integrationTabKeys[0];
-				window.location.hash = `${base || "#"}#${defaultKey}`;
+				window.history.replaceState(
+					null,
+					"",
+					`${window.location.pathname}${window.location.search}#${defaultKey}`,
+				);
 			}
 		};
 		syncTabFromHash();
 		window.addEventListener("hashchange", syncTabFromHash);
 		return () => window.removeEventListener("hashchange", syncTabFromHash);
-	}, [integrationTabKeys, splitHash]);
+	}, [integrationTabKeys, readSettingsHash]);
 
 	useEffect(() => {
 		const { focus, tab } = getFocusFromHash();
 		if (
-			activeIntegrationTab !== 1 ||
+			activeIntegrationTab !== 2 ||
 			tab.toLowerCase() !== "telegram" ||
 			focus !== "periodic-backup" ||
 			(isLoading && !data)
@@ -1275,6 +1347,81 @@ export const IntegrationSettingsPage = () => {
 			});
 		},
 	});
+
+	const runtimeSettingsMutation = useMutation(updateRuntimeSettings, {
+		onSuccess: (updated) => {
+			setRuntimeSettingsForm(updated);
+			queryClient.setQueryData("runtime-settings", updated);
+			toast({
+				title: t("settings.runtime.saved", "Settings saved."),
+				status: "success",
+				duration: 3000,
+			});
+		},
+		onError: (error) => {
+			generateErrorMessage(error, toast);
+		},
+	});
+
+	const phpMyAdminEnableMutation = useMutation(
+		() =>
+			enablePHPMyAdmin({
+				port: 8080,
+				path: runtimeSettingsForm.phpmyadmin_path || "/phpmyadmin/",
+			}),
+		{
+			onSuccess: (result) => {
+				setRuntimeSettingsForm((prev) => ({
+					...prev,
+					phpmyadmin_enabled: result.status.enabled,
+					phpmyadmin_port: result.status.port,
+					phpmyadmin_path: result.status.path,
+					phpmyadmin_public_url: result.status.public_url,
+				}));
+				void refetchRuntimeSettings();
+				void refetchPHPMyAdminStatus();
+				generateSuccessMessage(
+					t("phpmyadmin.enabled", "phpMyAdmin enabled."),
+					toast,
+				);
+			},
+			onError: (error) => {
+				generateErrorMessage(error, toast);
+			},
+		},
+	);
+
+	const phpMyAdminDisableMutation = useMutation(disablePHPMyAdmin, {
+		onSuccess: (result) => {
+			setRuntimeSettingsForm((prev) => ({
+				...prev,
+				phpmyadmin_enabled: result.status.enabled,
+			}));
+			void refetchRuntimeSettings();
+			void refetchPHPMyAdminStatus();
+			generateSuccessMessage(
+				t("phpmyadmin.disabled", "phpMyAdmin disabled."),
+				toast,
+			);
+		},
+		onError: (error) => {
+			generateErrorMessage(error, toast);
+		},
+	});
+
+	const openPHPMyAdminExternal = async () => {
+		try {
+			setOpeningPHPMyAdminExternal(true);
+			await getPHPMyAdminEmbedHTML(
+				colorMode === "dark" ? "blueberry" : undefined,
+			);
+			window.open("/api/settings/phpmyadmin/embed/index.php", "_blank", "noopener");
+		} catch (error) {
+			generateErrorMessage(error, toast);
+		} finally {
+			setOpeningPHPMyAdminExternal(false);
+		}
+	};
 
 	const subscriptionSettingsMutation = useMutation(updateSubscriptionSettings, {
 		onSuccess: (updated) => {
@@ -1489,6 +1636,8 @@ export const IntegrationSettingsPage = () => {
 			home_page_template: values.home_page_template.trim(),
 			v2ray_subscription_template: values.v2ray_subscription_template.trim(),
 			v2ray_settings_template: values.v2ray_settings_template.trim(),
+			happ_subscription_template: values.happ_subscription_template.trim(),
+			incy_subscription_template: values.incy_subscription_template.trim(),
 			singbox_subscription_template:
 				values.singbox_subscription_template.trim(),
 			singbox_settings_template: values.singbox_settings_template.trim(),
@@ -1498,6 +1647,7 @@ export const IntegrationSettingsPage = () => {
 			use_custom_json_for_v2rayng: values.use_custom_json_for_v2rayng,
 			use_custom_json_for_streisand: values.use_custom_json_for_streisand,
 			use_custom_json_for_happ: values.use_custom_json_for_happ,
+			use_custom_json_for_incy: values.use_custom_json_for_incy,
 			subscription_path: values.subscription_path?.trim() || "sub",
 			subscription_aliases: aliases,
 			subscription_ports: ports,
@@ -1606,8 +1756,11 @@ export const IntegrationSettingsPage = () => {
 	const handleIntegrationTabChange = (index: number) => {
 		setActiveIntegrationTab(index);
 		const key = integrationTabKeys[index] || "";
-		const { base } = splitHash();
-		window.location.hash = `${base || "#"}${key ? `#${key}` : ""}`;
+		window.history.replaceState(
+			null,
+			"",
+			`${window.location.pathname}${window.location.search}${key ? `#${key}` : ""}`,
+		);
 	};
 
 	const adminOptions = Object.values(adminOverrides);
@@ -1784,18 +1937,7 @@ export const IntegrationSettingsPage = () => {
 				},
 			}}
 		>
-			<ResourceListCard
-				title={
-					<PageHeader
-						title={t("settings.integrations")}
-						description={t(
-							"settings.integrationsDescription",
-							"Configure panel runtime, Telegram, subscriptions, database imports, and templates.",
-						)}
-					/>
-				}
-				mb={4}
-			/>
+			<PageHeader title={t("settings.integrations", "Settings")} mb={4} />
 			<TabSystem
 				className="master-settings-tabs"
 				overflowX="auto"
@@ -1815,22 +1957,22 @@ export const IntegrationSettingsPage = () => {
 						label: t("settings.panel.tabTitle"),
 					},
 					{
-						value: "telegram",
+						value: "backup",
 						isActive: activeIntegrationTab === 1,
 						onClick: () => handleIntegrationTabChange(1),
+						label: t("settings.backup.tabTitle", "Backup"),
+					},
+					{
+						value: "telegram",
+						isActive: activeIntegrationTab === 2,
+						onClick: () => handleIntegrationTabChange(2),
 						label: t("settings.telegram"),
 					},
 					{
 						value: "subscriptions",
-						isActive: activeIntegrationTab === 2,
-						onClick: () => handleIntegrationTabChange(2),
-						label: t("settings.subscriptions.tabTitle"),
-					},
-					{
-						value: "database",
 						isActive: activeIntegrationTab === 3,
 						onClick: () => handleIntegrationTabChange(3),
-						label: t("settings.database.tabTitle", "DATABASE"),
+						label: t("settings.subscriptions.tabTitle"),
 					},
 					{
 						value: "template-creator",
@@ -1894,6 +2036,380 @@ export const IntegrationSettingsPage = () => {
 												</option>
 											</Select>
 										</FormControl>
+									</Flex>
+								</Box>
+								<Box className="master-settings-card">
+									<Flex
+										justify="space-between"
+										align={{ base: "flex-start", md: "center" }}
+										gap={4}
+										flexDirection={{ base: "column", md: "row" }}
+										mb={4}
+									>
+										<Box>
+											<Heading size="sm" mb={1}>
+												{t("settings.runtime.title", "Runtime settings")}
+											</Heading>
+											<Text fontSize="sm" color="gray.500">
+												{t(
+													"settings.runtime.description",
+													"Control dashboard, API docs, subscription read mode, and usage recording from the database.",
+												)}
+											</Text>
+										</Box>
+										<Button
+											variant="outline"
+											size="sm"
+											leftIcon={<ArrowPathIcon width={16} height={16} />}
+											onClick={() => refetchRuntimeSettings()}
+											isLoading={isRuntimeSettingsLoading}
+										>
+											{t("actions.refresh")}
+										</Button>
+									</Flex>
+									<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+										<FormControl>
+											<FormLabel fontSize="sm">
+												{t("settings.runtime.dashboardPath", "Dashboard path")}
+											</FormLabel>
+											<Input
+												value={runtimeSettingsForm.dashboard_path}
+												placeholder="/dashboard/"
+												onChange={(event) =>
+													setRuntimeSettingsForm((prev) => ({
+														...prev,
+														dashboard_path: event.target.value,
+													}))
+												}
+												isDisabled={runtimeSettingsMutation.isLoading}
+											/>
+											<FormHelperText>
+												{t(
+													"settings.runtime.dashboardPathHint",
+													"Path served by the Rebecca binary, for example /dashboard/.",
+												)}
+											</FormHelperText>
+										</FormControl>
+										<FormControl>
+											<FormLabel fontSize="sm">
+												{t(
+													"settings.runtime.subscriptionReadOnly",
+													"Subscription read-only mode",
+												)}
+											</FormLabel>
+											<TelegramSwitchRow
+												title={t(
+													"settings.runtime.subscriptionReadOnlyTitle",
+													"Do not update subscription last-used metadata",
+												)}
+												description={t(
+													"settings.runtime.subscriptionReadOnlyHint",
+													"Useful when subscriptions are fetched by external caches or probes.",
+												)}
+												control={
+													<Switch
+														isChecked={runtimeSettingsForm.subscription_read_only}
+														onChange={(event) =>
+															setRuntimeSettingsForm((prev) => ({
+																...prev,
+																subscription_read_only: event.target.checked,
+															}))
+														}
+														isDisabled={runtimeSettingsMutation.isLoading}
+													/>
+												}
+											/>
+										</FormControl>
+										<TelegramSwitchRow
+											title={t(
+												"settings.runtime.recordNodeUsage",
+												"Record node usage",
+											)}
+											description={t(
+												"settings.runtime.recordNodeUsageHint",
+												"Save node traffic history for the Usage page.",
+											)}
+											control={
+												<Switch
+													isChecked={runtimeSettingsForm.record_node_usage}
+													onChange={(event) =>
+														setRuntimeSettingsForm((prev) => ({
+															...prev,
+															record_node_usage: event.target.checked,
+														}))
+													}
+													isDisabled={runtimeSettingsMutation.isLoading}
+												/>
+											}
+										/>
+										<TelegramSwitchRow
+											title={t(
+												"settings.runtime.recordNodeUserUsages",
+												"Record user usage samples",
+											)}
+											description={t(
+												"settings.runtime.recordNodeUserUsagesHint",
+												"Save per-user, admin, and service usage samples.",
+											)}
+											control={
+												<Switch
+													isChecked={runtimeSettingsForm.record_node_user_usages}
+													onChange={(event) =>
+														setRuntimeSettingsForm((prev) => ({
+															...prev,
+															record_node_user_usages: event.target.checked,
+														}))
+													}
+													isDisabled={runtimeSettingsMutation.isLoading}
+												/>
+											}
+										/>
+										<TelegramSwitchRow
+											title={t("settings.runtime.apiDocs", "Enable API docs")}
+											description={t(
+												"settings.runtime.apiDocsHint",
+												"Serve the embedded OpenAPI/Swagger UI from /docs.",
+											)}
+											control={
+												<Switch
+													isChecked={runtimeSettingsForm.api_docs_enabled}
+													onChange={(event) =>
+														setRuntimeSettingsForm((prev) => ({
+															...prev,
+															api_docs_enabled: event.target.checked,
+														}))
+													}
+													isDisabled={runtimeSettingsMutation.isLoading}
+												/>
+											}
+										/>
+										<Box
+											borderWidth="1px"
+											borderColor="whiteAlpha.200"
+											borderRadius="md"
+											p={4}
+											gridColumn={{ base: "auto", md: "1 / -1" }}
+										>
+											<Flex
+												align={{ base: "flex-start", md: "center" }}
+												justify="space-between"
+												gap={4}
+												flexDirection={{ base: "column", md: "row" }}
+												mb={4}
+											>
+												<Box>
+													<Heading size="xs" mb={1}>
+														{t("phpmyadmin.title", "phpMyAdmin")}
+													</Heading>
+													<Text fontSize="sm" color="gray.500">
+														{t(
+															"phpmyadmin.settingsHint",
+															"Install phpMyAdmin on the host and open it from the dedicated panel page.",
+														)}
+													</Text>
+												</Box>
+												<HStack spacing={2} flexWrap="wrap">
+													<Button
+														as={RouterLink}
+														to="/phpmyadmin"
+														size="sm"
+														variant="outline"
+														isDisabled={
+															!runtimeSettingsForm.phpmyadmin_enabled ||
+															!phpMyAdminSupported
+														}
+													>
+														{t(
+															"phpmyadmin.openPanel",
+															"Open phpMyAdmin page",
+														)}
+													</Button>
+													<Button
+														size="sm"
+														variant="outline"
+														onClick={openPHPMyAdminExternal}
+														isLoading={isOpeningPHPMyAdminExternal}
+														isDisabled={
+															!runtimeSettingsForm.phpmyadmin_enabled ||
+															!phpMyAdminSupported
+														}
+													>
+														{t("phpmyadmin.openExternal", "Open external link")}
+													</Button>
+													<Button
+														size="sm"
+														colorScheme={
+															runtimeSettingsForm.phpmyadmin_enabled
+																? "red"
+																: "primary"
+														}
+														onClick={() =>
+															runtimeSettingsForm.phpmyadmin_enabled
+																? phpMyAdminDisableMutation.mutate()
+																: phpMyAdminEnableMutation.mutate()
+														}
+														isLoading={
+															phpMyAdminEnableMutation.isLoading ||
+															phpMyAdminDisableMutation.isLoading
+														}
+														isDisabled={
+															isPHPMyAdminStatusLoading ||
+															(!runtimeSettingsForm.phpmyadmin_enabled &&
+																!phpMyAdminSupported)
+														}
+													>
+														{runtimeSettingsForm.phpmyadmin_enabled
+															? t("phpmyadmin.disableAction", "Disable")
+															: t(
+																	"phpmyadmin.enableAction",
+																	"Install and enable",
+																)}
+													</Button>
+												</HStack>
+											</Flex>
+											{!phpMyAdminSupported ? (
+												<Alert status="warning" borderRadius="md" mb={4}>
+													<AlertIcon />
+													{t(
+														"phpmyadmin.sqliteDisabled",
+														"phpMyAdmin is available only for MySQL or MariaDB installations.",
+													)}
+												</Alert>
+											) : null}
+											<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+												<FormControl>
+													<FormLabel fontSize="sm">
+														{t("phpmyadmin.path", "Path")}
+													</FormLabel>
+													<Input
+														value={runtimeSettingsForm.phpmyadmin_path}
+														placeholder="/phpmyadmin/"
+														onChange={(event) =>
+															setRuntimeSettingsForm((prev) => ({
+																...prev,
+																phpmyadmin_path: event.target.value,
+															}))
+														}
+														isDisabled={
+															phpMyAdminEnableMutation.isLoading ||
+															phpMyAdminDisableMutation.isLoading
+														}
+													/>
+													<FormHelperText>
+														{t(
+															"phpmyadmin.panelOnlyHint",
+															"phpMyAdmin opens inside its own panel page and uses the panel database credentials.",
+														)}
+													</FormHelperText>
+												</FormControl>
+												<FormControl>
+													<FormLabel fontSize="sm">
+														{t(
+															"phpmyadmin.loginMode",
+															"Login credentials",
+														)}
+													</FormLabel>
+													<Select
+														value={runtimeSettingsForm.phpmyadmin_login_mode}
+														onChange={(event) =>
+															setRuntimeSettingsForm((prev) => ({
+																...prev,
+																phpmyadmin_login_mode: event.target.value as
+																	| "rebecca"
+																	| "custom",
+															}))
+														}
+														isDisabled={
+															phpMyAdminEnableMutation.isLoading ||
+															phpMyAdminDisableMutation.isLoading
+														}
+													>
+														<option value="rebecca">
+															{t(
+																"phpmyadmin.loginModeRebecca",
+																"Login with Rebecca database account",
+															)}
+														</option>
+														<option value="custom">
+															{t(
+																"phpmyadmin.loginModeCustom",
+																"Login with custom username password",
+															)}
+														</option>
+													</Select>
+													<FormHelperText>
+														{t(
+															"phpmyadmin.loginModeHint",
+															"Custom credentials are used only for embedded phpMyAdmin login.",
+														)}
+													</FormHelperText>
+												</FormControl>
+												<FormControl
+													isDisabled={
+														runtimeSettingsForm.phpmyadmin_login_mode !==
+															"custom" ||
+														phpMyAdminEnableMutation.isLoading ||
+														phpMyAdminDisableMutation.isLoading
+													}
+												>
+													<FormLabel fontSize="sm">
+														{t("phpmyadmin.username", "Username")}
+													</FormLabel>
+													<Input
+														value={runtimeSettingsForm.phpmyadmin_username}
+														placeholder="root"
+														onChange={(event) =>
+															setRuntimeSettingsForm((prev) => ({
+																...prev,
+																phpmyadmin_username: event.target.value,
+															}))
+														}
+													/>
+												</FormControl>
+												<FormControl
+													isDisabled={
+														runtimeSettingsForm.phpmyadmin_login_mode !==
+															"custom" ||
+														phpMyAdminEnableMutation.isLoading ||
+														phpMyAdminDisableMutation.isLoading
+													}
+												>
+													<FormLabel fontSize="sm">
+														{t("phpmyadmin.password", "Password")}
+													</FormLabel>
+													<Input
+														type="password"
+														value={runtimeSettingsForm.phpmyadmin_password}
+														placeholder={t(
+															"phpmyadmin.passwordPlaceholder",
+															"Database password",
+														)}
+														onChange={(event) =>
+															setRuntimeSettingsForm((prev) => ({
+																...prev,
+																phpmyadmin_password: event.target.value,
+															}))
+														}
+													/>
+												</FormControl>
+											</SimpleGrid>
+										</Box>
+									</SimpleGrid>
+									<Flex className="master-settings-action-row" mt={4}>
+										<Button
+											colorScheme="primary"
+											leftIcon={<SaveIcon />}
+											onClick={() =>
+												runtimeSettingsMutation.mutate(runtimeSettingsForm)
+											}
+											isLoading={runtimeSettingsMutation.isLoading}
+											isDisabled={
+												runtimeSettingsMutation.isLoading ||
+												isRuntimeSettingsLoading
+											}
+										>
+											{t("settings.save")}
+										</Button>
 									</Flex>
 								</Box>
 								<Box className="master-settings-card">
@@ -2152,7 +2668,7 @@ export const IntegrationSettingsPage = () => {
 			<Box
 				px={{ base: 0, md: 2 }}
 				mt={3}
-				display={activeIntegrationTab === 1 ? "block" : "none"}
+				display={activeIntegrationTab === 2 ? "block" : "none"}
 			>
 						{isLoading && !data ? (
 							<Flex align="center" justify="center" py={12}>
@@ -2647,7 +3163,7 @@ export const IntegrationSettingsPage = () => {
 			<Box
 				px={{ base: 0, md: 2 }}
 				mt={3}
-				display={activeIntegrationTab === 2 ? "block" : "none"}
+				display={activeIntegrationTab === 3 ? "block" : "none"}
 			>
 						{isSubscriptionLoading && !subscriptionBundle ? (
 							<Flex align="center" justify="center" py={12}>
@@ -2912,6 +3428,56 @@ export const IntegrationSettingsPage = () => {
 											</FormControl>
 											<FormControl>
 												<FormLabel>
+													{t("settings.subscriptions.happTemplate")}
+												</FormLabel>
+												<HStack spacing={2} align="stretch">
+													<Input
+														flex="1"
+														{...subscriptionRegister(
+															"happ_subscription_template",
+														)}
+													/>
+													<Button
+														size="sm"
+														variant="outline"
+														onClick={() =>
+															openTemplateEditor(
+																"happ_subscription_template",
+																null,
+															)
+														}
+													>
+														{t("settings.subscriptions.editTemplate")}
+													</Button>
+												</HStack>
+											</FormControl>
+											<FormControl>
+												<FormLabel>
+													{t("settings.subscriptions.incyTemplate")}
+												</FormLabel>
+												<HStack spacing={2} align="stretch">
+													<Input
+														flex="1"
+														{...subscriptionRegister(
+															"incy_subscription_template",
+														)}
+													/>
+													<Button
+														size="sm"
+														variant="outline"
+														onClick={() =>
+															openTemplateEditor(
+																"incy_subscription_template",
+																null,
+															)
+														}
+													>
+														{t("settings.subscriptions.editTemplate")}
+													</Button>
+												</HStack>
+											</FormControl>
+											<FormControl>
+												<FormLabel>
 													{t("settings.subscriptions.singboxTemplate")}
 												</FormLabel>
 												<HStack spacing={2} align="stretch">
@@ -3161,6 +3727,28 @@ export const IntegrationSettingsPage = () => {
 															</Text>
 															<Text fontSize="sm" color="gray.500">
 																{t("settings.subscriptions.customJsonHappHint")}
+															</Text>
+														</Box>
+														<Switch
+															isChecked={field.value}
+															onChange={(event) =>
+																field.onChange(event.target.checked)
+															}
+														/>
+													</FormControl>
+												)}
+											/>
+											<Controller
+												control={subscriptionControl}
+												name="use_custom_json_for_incy"
+												render={({ field }) => (
+													<FormControl display="flex" alignItems="center">
+														<Box flex="1">
+															<Text fontWeight="medium">
+																{t("settings.subscriptions.customJsonIncy")}
+															</Text>
+															<Text fontSize="sm" color="gray.500">
+																{t("settings.subscriptions.customJsonIncyHint")}
 															</Text>
 														</Box>
 														<Switch
@@ -3753,6 +4341,88 @@ export const IntegrationSettingsPage = () => {
 																		<FormControl>
 																			<FormLabel>
 																				{t(
+																					"settings.subscriptions.happTemplate",
+																				)}
+																			</FormLabel>
+																			<HStack spacing={2} align="stretch">
+																				<Input
+																					flex="1"
+																					placeholder={
+																						subscriptionBundle?.settings
+																							.happ_subscription_template || ""
+																					}
+																					value={
+																						settings.happ_subscription_template ??
+																						""
+																					}
+																					onChange={(event) =>
+																						handleAdminTemplateChange(
+																							admin.id,
+																							"happ_subscription_template",
+																							event.target.value,
+																						)
+																					}
+																				/>
+																				<Button
+																					size="sm"
+																					variant="outline"
+																					onClick={() =>
+																						openTemplateEditor(
+																							"happ_subscription_template",
+																							admin.id,
+																						)
+																					}
+																				>
+																					{t(
+																						"settings.subscriptions.editTemplate",
+																					)}
+																				</Button>
+																			</HStack>
+																		</FormControl>
+																		<FormControl>
+																			<FormLabel>
+																				{t(
+																					"settings.subscriptions.incyTemplate",
+																				)}
+																			</FormLabel>
+																			<HStack spacing={2} align="stretch">
+																				<Input
+																					flex="1"
+																					placeholder={
+																						subscriptionBundle?.settings
+																							.incy_subscription_template || ""
+																					}
+																					value={
+																						settings.incy_subscription_template ??
+																						""
+																					}
+																					onChange={(event) =>
+																						handleAdminTemplateChange(
+																							admin.id,
+																							"incy_subscription_template",
+																							event.target.value,
+																						)
+																					}
+																				/>
+																				<Button
+																					size="sm"
+																					variant="outline"
+																					onClick={() =>
+																						openTemplateEditor(
+																							"incy_subscription_template",
+																							admin.id,
+																						)
+																					}
+																				>
+																					{t(
+																						"settings.subscriptions.editTemplate",
+																					)}
+																				</Button>
+																			</HStack>
+																		</FormControl>
+																		<FormControl>
+																			<FormLabel>
+																				{t(
 																					"settings.subscriptions.singboxTemplate",
 																				)}
 																			</FormLabel>
@@ -4039,6 +4709,38 @@ export const IntegrationSettingsPage = () => {
 																				}
 																			/>
 																		</FormControl>
+																		<FormControl
+																			display="flex"
+																			alignItems="center"
+																		>
+																			<Box flex="1">
+																				<Text fontWeight="medium">
+																					{t(
+																						"settings.subscriptions.customJsonIncy",
+																					)}
+																				</Text>
+																				<Text fontSize="sm" color="gray.500">
+																					{t(
+																						"settings.subscriptions.customJsonIncyHint",
+																					)}
+																				</Text>
+																			</Box>
+																			<Switch
+																				isChecked={
+																					settings.use_custom_json_for_incy ??
+																					subscriptionBundle?.settings
+																						.use_custom_json_for_incy ??
+																					false
+																				}
+																				onChange={(event) =>
+																					handleAdminTemplateChange(
+																						admin.id,
+																						"use_custom_json_for_incy",
+																						event.target.checked,
+																					)
+																				}
+																			/>
+																		</FormControl>
 																	</SimpleGrid>
 
 																	<Flex className="master-settings-action-row" mt={4}>
@@ -4240,15 +4942,13 @@ export const IntegrationSettingsPage = () => {
 			<Box
 				px={{ base: 0, md: 2 }}
 				mt={3}
-				display={activeIntegrationTab === 3 ? "block" : "none"}
+				display={activeIntegrationTab === 1 ? "block" : "none"}
 			>
 						<VStack align="stretch" spacing={6}>
 							<RebeccaBackupPanel
 								isBinaryRuntime={hostActionsAvailable}
 								runtimeLoading={maintenanceInfoQuery.isLoading}
 							/>
-							<Divider />
-							<ThreeXUiDatabaseImportPanel />
 						</VStack>
 			</Box>
 			<Box
@@ -4275,7 +4975,7 @@ export const IntegrationSettingsPage = () => {
 							/>
 						</VStack>
 			</Box>
-			<ConfirmActionDialog
+			<ConfirmDialog
 				isOpen={isDevUpdateConfirmOpen}
 				onClose={() => setDevUpdateConfirmOpen(false)}
 				onConfirm={confirmDevPanelUpdate}
@@ -4283,12 +4983,11 @@ export const IntegrationSettingsPage = () => {
 					"settings.panel.devChannelConfirmTitle",
 					"Update to dev build?",
 				)}
-				message={t(
+				description={t(
 					"settings.panel.devChannelConfirm",
 					"You are switching/updating this panel to the dev channel. Dev builds are not stable and can include unfinished changes, breaking migrations, or temporary bugs. Continue?",
 				)}
 				confirmLabel={t("settings.panel.updatePanel", "Update panel")}
-				cancelLabel={t("cancel", "Cancel")}
 				colorScheme="yellow"
 				isLoading={updateMutation.isLoading}
 			/>
@@ -4399,7 +5098,7 @@ export const IntegrationSettingsPage = () => {
 									fontSize="xs"
 									whiteSpace="pre-wrap"
 								>
-									{(maintenanceOperation?.logs || []).join("\n") ||
+									{cleanTerminalOutput(maintenanceOperation?.logs) ||
 										t(
 											"settings.panel.waitingForOutput",
 											"Waiting for command output...",

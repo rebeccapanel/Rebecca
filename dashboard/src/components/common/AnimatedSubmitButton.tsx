@@ -6,10 +6,11 @@ import {
 	Text,
 	type BoxProps,
 	type ButtonProps,
+	usePrefersReducedMotion,
 } from "@chakra-ui/react";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { AnimatePresence, motion } from "framer-motion";
-import { type FC, type ReactNode } from "react";
+import type { FC, ReactNode } from "react";
 
 export type AnimatedSubmitStatus = "idle" | "loading" | "success" | "error";
 
@@ -53,6 +54,7 @@ export const AnimatedSubmitButton: FC<AnimatedSubmitButtonProps> = ({
 	successWidth = 154,
 	...buttonProps
 }) => {
+	const reduceMotion = usePrefersReducedMotion();
 	const isFeedbackState = status !== "idle";
 	const isCompact = status === "loading" || status === "error";
 	const targetWidth = status === "success" ? successWidth : isCompact ? compactWidth : "100%";
@@ -110,14 +112,8 @@ export const AnimatedSubmitButton: FC<AnimatedSubmitButtonProps> = ({
 			{...containerProps}
 		>
 			<motion.div
-				animate={{ width: targetWidth }}
 				initial={false}
-				style={{ display: "flex", justifyContent: "center" }}
-				transition={{
-					type: "spring",
-					stiffness: 280,
-					damping: 24,
-				}}
+				style={{ display: "flex", justifyContent: "center", width: targetWidth }}
 			>
 				<Button
 					aria-disabled={Boolean(isDisabled || isFeedbackState)}
@@ -135,7 +131,7 @@ export const AnimatedSubmitButton: FC<AnimatedSubmitButtonProps> = ({
 					w="full"
 					_hover={{ bg: buttonHoverBg }}
 					_active={{
-						transform: status === "idle" ? "translateY(1px)" : "none",
+						transform: status === "idle" ? "scale(0.97)" : "none",
 					}}
 					_disabled={{
 						opacity: isDisabled && status === "idle" ? 0.65 : 1,
@@ -146,16 +142,31 @@ export const AnimatedSubmitButton: FC<AnimatedSubmitButtonProps> = ({
 				>
 					<AnimatePresence initial={false} mode="wait">
 						<motion.span
-							animate={{ opacity: 1, scale: 1 }}
-							exit={{ opacity: 0, scale: 0.88 }}
-							initial={{ opacity: 0, scale: 0.88 }}
+							animate={{
+								filter: "blur(0px)",
+								opacity: 1,
+								transform: "scale(1)",
+							}}
+							exit={{
+								filter: reduceMotion ? "blur(0px)" : "blur(1.5px)",
+								opacity: 0,
+								transform: reduceMotion ? "scale(1)" : "scale(0.97)",
+							}}
+							initial={{
+								filter: reduceMotion ? "blur(0px)" : "blur(1.5px)",
+								opacity: 0,
+								transform: reduceMotion ? "scale(1)" : "scale(0.97)",
+							}}
 							key={status}
 							style={{
 								alignItems: "center",
 								display: "inline-flex",
 								justifyContent: "center",
 							}}
-							transition={{ duration: 0.18 }}
+							transition={{
+								duration: reduceMotion ? 0.1 : 0.16,
+								ease: [0.23, 1, 0.32, 1],
+							}}
 						>
 							{content}
 						</motion.span>

@@ -32,15 +32,10 @@ import {
 	TabPanels,
 	Tabs,
 	Tag,
-	TagCloseButton,
-	TagLabel,
 	Text,
 	Tooltip,
-	useColorModeValue,
 	useToast,
 	VStack,
-	Wrap,
-	WrapItem,
 } from "@chakra-ui/react";
 import {
 	ArrowPathIcon,
@@ -61,7 +56,6 @@ import { type HostsSchema, useHosts } from "contexts/HostsContext";
 import { type NodeType, useNodesQuery } from "contexts/NodesContext";
 import {
 	type FC,
-	type ReactNode,
 	useCallback,
 	useEffect,
 	useMemo,
@@ -76,7 +70,7 @@ import {
 } from "./common/MultiValueAutocomplete";
 import { SearchableTagSelect } from "./common/SearchableTagSelect";
 import { DeleteIcon } from "./common/DeleteIcon";
-import { DeleteConfirmPopover } from "./DeleteConfirmPopover";
+import { DeleteConfirmDialog } from "./dialogs/ConfirmDialog";
 import { JsonEditor } from "./JsonEditor";
 import {
 	DataTable,
@@ -1055,6 +1049,9 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 				: undefined,
 		[inboundOptions, host],
 	);
+	const isVirtualTunnelInbound =
+		selectedInbound?.protocol === "openvpn" ||
+		selectedInbound?.protocol === "l2tp";
 	useEffect(() => {
 		if (!hostPayload) {
 			setJsonText("");
@@ -1197,24 +1194,26 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 															rightElement={<DynamicTokensPopover />}
 														/>
 													</FormControl>
-													<FormControl>
-														<FormLabel>{t("hostsDialog.port")}</FormLabel>
-														<NumericInput
-															value={host.data.port ?? ""}
-															allowMouseWheel
-															fieldProps={{
-																placeholder:
-																	inboundPortPlaceholder(selectedInbound),
-															}}
-															onChange={(_, num) =>
-																onChange(
-																	host.uid,
-																	"port",
-																	Number.isNaN(num) ? null : num,
-																)
-															}
-														/>
-													</FormControl>
+													{!isVirtualTunnelInbound && (
+														<FormControl>
+															<FormLabel>{t("hostsDialog.port")}</FormLabel>
+															<NumericInput
+																value={host.data.port ?? ""}
+																allowMouseWheel
+																fieldProps={{
+																	placeholder:
+																		inboundPortPlaceholder(selectedInbound),
+																}}
+																onChange={(_, num) =>
+																	onChange(
+																		host.uid,
+																		"port",
+																		Number.isNaN(num) ? null : num,
+																	)
+																}
+															/>
+														</FormControl>
+													)}
 												</SimpleGrid>
 												{hasMultipleRotationValues(host.data.address) && (
 													<RotationControls
@@ -1232,20 +1231,23 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 														}
 													/>
 												)}
-												<FormControl>
-													<FormLabel>{t("hostsDialog.path")}</FormLabel>
-													<Input
-														value={host.data.path}
-														onChange={(event) =>
-															onChange(host.uid, "path", event.target.value)
-														}
-														placeholder="/"
-													/>
-												</FormControl>
+												{!isVirtualTunnelInbound && (
+													<FormControl>
+														<FormLabel>{t("hostsDialog.path")}</FormLabel>
+														<Input
+															value={host.data.path}
+															onChange={(event) =>
+																onChange(host.uid, "path", event.target.value)
+															}
+															placeholder="/"
+														/>
+													</FormControl>
+												)}
 											</VStack>
 										</CardBody>
 									</Card>
 
+									{!isVirtualTunnelInbound && (
 									<Card className="xray-dialog-section" variant="outline">
 										<CardHeader pb={2}>
 											<Text fontWeight="semibold">
@@ -1369,7 +1371,9 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 											</VStack>
 										</CardBody>
 									</Card>
+									)}
 
+									{!isVirtualTunnelInbound && (
 									<Card className="xray-dialog-section" variant="outline">
 										<CardHeader pb={2}>
 											<Text fontWeight="semibold">
@@ -1446,6 +1450,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 											</VStack>
 										</CardBody>
 									</Card>
+									)}
 								</VStack>
 							</TabPanel>
 							<TabPanel px={0}>
@@ -1470,8 +1475,8 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 							{t("hostsPage.cancel")}
 						</Button>
 					) : (
-						<DeleteConfirmPopover
-							message={t("hostsPage.deleteConfirmation")}
+						<DeleteConfirmDialog
+							description={t("hostsPage.deleteConfirmation")}
 							isLoading={deleting}
 							onConfirm={() => onDelete(host.uid)}
 						>
@@ -1483,7 +1488,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 							>
 								{t("hostsPage.delete")}
 							</Button>
-						</DeleteConfirmPopover>
+						</DeleteConfirmDialog>
 					)}
 					<HStack spacing={3}>
 						{!isCloneMode && onClone && (
@@ -1566,6 +1571,9 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 			inboundOptions.find((option) => option.value === formState.inboundTag),
 		[inboundOptions, formState.inboundTag],
 	);
+	const isVirtualTunnelInbound =
+		selectedInbound?.protocol === "openvpn" ||
+		selectedInbound?.protocol === "l2tp";
 
 	useEffect(() => {
 		if (isOpen) {
@@ -1690,69 +1698,75 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 								}
 							/>
 						)}
-						<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+						{!isVirtualTunnelInbound && (
+							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+								<FormControl>
+									<FormLabel>{t("hostsDialog.port")}</FormLabel>
+									<NumericInput
+										value={formState.port ?? ""}
+										fieldProps={{
+											placeholder: inboundPortPlaceholder(selectedInbound),
+										}}
+										onChange={(_, num) =>
+											setFormState((prev) => ({
+												...prev,
+												port: Number.isNaN(num) ? null : num,
+											}))
+										}
+									/>
+								</FormControl>
+								<FormControl>
+									<FormLabel>{t("hostsDialog.sni")}</FormLabel>
+									<MultiValueAutocomplete
+										value={formState.sni}
+										placeholder={t(
+											"hostsDialog.sniPlaceholder",
+											"Type SNI values",
+										)}
+										onChange={(value) =>
+											setFormState((prev) => ({
+												...prev,
+												sni: value,
+											}))
+										}
+									/>
+								</FormControl>
+							</SimpleGrid>
+						)}
+						{!isVirtualTunnelInbound && (
 							<FormControl>
-								<FormLabel>{t("hostsDialog.port")}</FormLabel>
-								<NumericInput
-									value={formState.port ?? ""}
-									fieldProps={{
-										placeholder: inboundPortPlaceholder(selectedInbound),
-									}}
-									onChange={(_, num) =>
+								<FormLabel>{t("hostsDialog.path")}</FormLabel>
+								<Input
+									value={formState.path}
+									onChange={(event) =>
 										setFormState((prev) => ({
 											...prev,
-											port: Number.isNaN(num) ? null : num,
+											path: event.target.value,
 										}))
 									}
 								/>
 							</FormControl>
+						)}
+						{!isVirtualTunnelInbound && (
 							<FormControl>
-								<FormLabel>{t("hostsDialog.sni")}</FormLabel>
+								<FormLabel>{t("hostsDialog.host")}</FormLabel>
 								<MultiValueAutocomplete
-									value={formState.sni}
+									value={formState.host}
 									placeholder={t(
-										"hostsDialog.sniPlaceholder",
-										"Type SNI values",
+										"hostsDialog.hostPlaceholder",
+										"Type request host values",
 									)}
 									onChange={(value) =>
 										setFormState((prev) => ({
 											...prev,
-											sni: value,
+											host: value,
 										}))
 									}
+									rightElement={<DynamicTokensPopover />}
 								/>
 							</FormControl>
-						</SimpleGrid>
-						<FormControl>
-							<FormLabel>{t("hostsDialog.path")}</FormLabel>
-							<Input
-								value={formState.path}
-								onChange={(event) =>
-									setFormState((prev) => ({
-										...prev,
-										path: event.target.value,
-									}))
-								}
-							/>
-						</FormControl>
-						<FormControl>
-							<FormLabel>{t("hostsDialog.host")}</FormLabel>
-							<MultiValueAutocomplete
-								value={formState.host}
-								placeholder={t(
-									"hostsDialog.hostPlaceholder",
-									"Type request host values",
-								)}
-								onChange={(value) =>
-									setFormState((prev) => ({
-										...prev,
-										host: value,
-									}))
-								}
-								rightElement={<DynamicTokensPopover />}
-							/>
-						</FormControl>
-						{(hasMultipleRotationValues(formState.sni) ||
+						)}
+						{!isVirtualTunnelInbound && (hasMultipleRotationValues(formState.sni) ||
 							hasMultipleRotationValues(formState.host)) && (
 							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 								{hasMultipleRotationValues(formState.sni) && (
@@ -2622,8 +2636,9 @@ export const HostsManager: FC = () => {
 		[inboundOptions, renderRotationValues, t],
 	);
 
-	const hostRowActions = useCallback(
-		(host: HostState): DataTableRowAction<HostState>[] => {
+	const hostRowActions = (
+		host: HostState,
+	): DataTableRowAction<HostState>[] => {
 			const isActive = !host.data.is_disabled;
 			return [
 				{
@@ -2651,8 +2666,8 @@ export const HostsManager: FC = () => {
 					icon: <TrashIcon width={16} />,
 					isDanger: true,
 					render: (_row, onMenuClose) => (
-						<DeleteConfirmPopover
-							message={t("hostsPage.deleteConfirmation")}
+						<DeleteConfirmDialog
+							description={t("hostsPage.deleteConfirmation")}
 							isLoading={deletingUid === host.uid && isPostLoading}
 							onConfirm={async () => {
 								await handleDeleteHost(host.uid);
@@ -2667,13 +2682,11 @@ export const HostsManager: FC = () => {
 							>
 								{t("hostsPage.delete", "Delete")}
 							</MenuItem>
-						</DeleteConfirmPopover>
+						</DeleteConfirmDialog>
 					),
 				},
 			];
-		},
-		[deletingUid, isPostLoading, t],
-	);
+	};
 
 	return (
 		<VStack align="stretch" spacing={4}>
@@ -2790,8 +2803,8 @@ export const HostsManager: FC = () => {
 							>
 								{t("hostsPage.disable", "Disable")}
 							</Button>
-							<DeleteConfirmPopover
-								message={t(
+							<DeleteConfirmDialog
+								description={t(
 									"hostsPage.confirmBulkDelete",
 									"Delete {{count}} selected host(s)?",
 									{ count: selectedRows.length },
@@ -2814,7 +2827,7 @@ export const HostsManager: FC = () => {
 								>
 									{t("hostsPage.delete", "Delete")}
 								</Button>
-							</DeleteConfirmPopover>
+							</DeleteConfirmDialog>
 						</>
 					);
 				}}

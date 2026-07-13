@@ -487,11 +487,49 @@ detect_os() {
     fi
 }
 
+remove_broken_xanmod_apt_sources() {
+    local matches
+    matches=$(grep -RIlE 'deb\.xanmod\.org|xanmod\.org' /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null || true)
+    if [ -z "$matches" ]; then
+        return 1
+    fi
+    colorized_echo yellow "Removing broken XanMod apt source entries"
+    while IFS= read -r file; do
+        [ -n "$file" ] || continue
+        case "$file" in
+            /etc/apt/sources.list)
+                sed -i.bak '/deb\.xanmod\.org/d;/xanmod\.org/d' "$file"
+            ;;
+            /etc/apt/sources.list.d/*)
+                rm -f "$file"
+            ;;
+        esac
+    done <<< "$matches"
+    return 0
+}
+
+apt_update_with_repo_repair() {
+    local log_file
+    log_file=$(mktemp)
+    if DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a "$PKG_MANAGER" "$@" update -qq >"$log_file" 2>&1; then
+        rm -f "$log_file"
+        return 0
+    fi
+    cat "$log_file" >&2
+    if grep -qiE 'deb\.xanmod\.org|xanmod.*release file|does not have a release file' "$log_file" && remove_broken_xanmod_apt_sources; then
+        rm -f "$log_file"
+        DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a "$PKG_MANAGER" "$@" update -qq
+        return
+    fi
+    rm -f "$log_file"
+    return 1
+}
+
 
 detect_and_update_package_manager() {
     if [[ "$OS" == "Ubuntu"* ]] || [[ "$OS" == "Debian"* ]]; then
         PKG_MANAGER="apt-get"
-        ui_spinner_run "Updating package index" bash -c "DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a $PKG_MANAGER update -qq"
+        ui_spinner_run "Updating package index" apt_update_with_repo_repair -o Acquire::AllowReleaseInfoChange=true -o Acquire::AllowReleaseInfoChange::Label=true
     elif [[ "$OS" == "CentOS"* ]] || [[ "$OS" == "AlmaLinux"* ]]; then
         PKG_MANAGER="yum"
         ui_spinner_run "Updating package index" "$PKG_MANAGER" update -y -q
@@ -1307,19 +1345,14 @@ select_database_type_interactive() {
 
 prompt_dashboard_bind_settings() {
     local port
-    local path
     if [ ! -t 0 ]; then
         upsert_env_assignment "UVICORN_PORT" "8000"
-        upsert_env_assignment "DASHBOARD_PATH" "/dashboard/"
         return
     fi
     ui_section "Dashboard"
     port=$(prompt_tcp_port "Dashboard port" "8000")
     echo
-    path=$(prompt_url_path "Dashboard path" "dashboard")
-    echo
     upsert_env_assignment "UVICORN_PORT" "$port"
-    upsert_env_assignment "DASHBOARD_PATH" "$path"
 }
 
 mysql_password_is_strong() {
@@ -1404,8 +1437,6 @@ create_initial_admin_if_requested() {
 }
 
 prompt_phpmyadmin_settings() {
-    PHPMYADMIN_PORT=$(prompt_tcp_port "phpMyAdmin HTTP port" "8080")
-    echo
     PHPMYADMIN_PATH=$(prompt_url_path "phpMyAdmin path" "phpmyadmin")
     echo
 }
@@ -1416,18 +1447,56 @@ find_php_fpm_sock() {
     [ -n "$sock" ] && printf "%s" "$sock"
 }
 
-escape_nginx_regex_path() {
-    printf '%s' "$1" | sed -e 's/[.[\*^$()+?{}|]/\\&/g'
+install_phpmyadmin_blueberry_theme() {
+    local theme_dir="/usr/share/phpmyadmin/themes"
+    local theme_url="https://files.phpmyadmin.net/themes/blueberry/1.1.0/blueberry-1.1.0.zip"
+    local temp_zip
+
+    if [ ! -d "$theme_dir" ]; then
+        return 0
+    fi
+    if [ -d "$theme_dir/blueberry" ]; then
+        return 0
+    fi
+    install_package unzip
+    temp_zip=$(mktemp)
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$theme_url" -o "$temp_zip" || {
+            rm -f "$temp_zip"
+            colorized_echo yellow "Could not download phpMyAdmin blueberry theme."
+            return 0
+        }
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q "$theme_url" -O "$temp_zip" || {
+            rm -f "$temp_zip"
+            colorized_echo yellow "Could not download phpMyAdmin blueberry theme."
+            return 0
+        }
+    else
+        rm -f "$temp_zip"
+        colorized_echo yellow "curl or wget is required to download phpMyAdmin blueberry theme."
+        return 0
+    fi
+    unzip -qo "$temp_zip" -d "$theme_dir" >/dev/null 2>&1 || colorized_echo yellow "Could not extract phpMyAdmin blueberry theme."
+    rm -f "$temp_zip"
 }
 
-open_host_firewall_port() {
-    local port="$1"
-    if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi "Status: active"; then
-        ufw allow "${port}/tcp" >/dev/null 2>&1 || true
-    fi
-    if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
-        firewall-cmd --add-port="${port}/tcp" --permanent >/dev/null 2>&1 || true
-        firewall-cmd --reload >/dev/null 2>&1 || true
+configure_phpmyadmin_upload_limits() {
+    local ini_content
+    ini_content="upload_max_filesize=4096M
+post_max_size=4096M
+memory_limit=4096M
+max_execution_time=0
+max_input_time=0"
+    local wrote=0
+    local dir
+    for dir in /etc/php/*/fpm/conf.d /etc/php/*/cli/conf.d; do
+        [ -d "$dir" ] || continue
+        printf "%s\n" "$ini_content" > "$dir/99-rebecca-phpmyadmin-upload.ini" || true
+        wrote=1
+    done
+    if [ "$wrote" = "1" ]; then
+        systemctl reload php*-fpm >/dev/null 2>&1 || systemctl restart php*-fpm >/dev/null 2>&1 || true
     fi
 }
 
@@ -1437,12 +1506,9 @@ phpmyadmin_nginx_config_path() {
 
 enable_host_phpmyadmin() {
     local database_type
-    local port="${1:-}"
-    local path="${2:-}"
+    local path="${1:-}"
     local normalized_path
     local fpm_sock
-    local nginx_config
-    local escaped_path
 
     database_type=$(get_configured_database_type)
     if [ "$database_type" = "sqlite" ]; then
@@ -1451,15 +1517,14 @@ enable_host_phpmyadmin() {
     fi
 
     detect_os
-    for package in nginx php-fpm php-mysql phpmyadmin; do
+    for package in php-fpm php-mysql phpmyadmin; do
         install_package "$package"
     done
-    systemctl enable --now nginx >/dev/null 2>&1 || true
+    install_phpmyadmin_blueberry_theme
+    configure_phpmyadmin_upload_limits
     systemctl enable --now php*-fpm >/dev/null 2>&1 || true
 
-    port="${port:-${PHPMYADMIN_PORT:-$(get_env_value "PHPMYADMIN_PORT")}}"
-    path="${path:-${PHPMYADMIN_PATH:-$(get_env_value "PHPMYADMIN_PATH")}}"
-    port="${port:-8080}"
+    path="${path:-${PHPMYADMIN_PATH:-phpmyadmin}}"
     normalized_path=$(normalize_url_path "$path" "phpmyadmin") || {
         colorized_echo red "Invalid phpMyAdmin path."
         return 1
@@ -1471,52 +1536,12 @@ enable_host_phpmyadmin() {
         colorized_echo red "Could not find php-fpm socket under /run/php."
         return 1
     fi
-    escaped_path=$(escape_nginx_regex_path "$path")
 
-    nginx_config=$(phpmyadmin_nginx_config_path)
-    cat > "$nginx_config" <<EOF
-server {
-    listen ${port};
-    server_name _;
-
-    location = ${path} {
-        return 301 ${path}/;
-    }
-
-    location ${path}/ {
-        alias /usr/share/phpmyadmin/;
-        index index.php index.html;
-        try_files \$uri \$uri/ ${path}/index.php?\$query_string;
-    }
-
-    location ~ ^${escaped_path}/(.+\.php)$ {
-        alias /usr/share/phpmyadmin/\$1;
-        include fastcgi_params;
-        fastcgi_index index.php;
-        fastcgi_param SCRIPT_FILENAME /usr/share/phpmyadmin/\$1;
-        fastcgi_param SCRIPT_NAME ${path}/\$1;
-        fastcgi_param DOCUMENT_ROOT /usr/share/phpmyadmin;
-        fastcgi_param HTTPS off;
-        fastcgi_param PATH_INFO \$fastcgi_path_info;
-        fastcgi_pass unix:${fpm_sock};
-    }
-
-    location ~ ^${escaped_path}/(.+\.(?:css|js|gif|png|jpg|jpeg|ico|svg|woff|woff2|ttf|eot|html|txt|xml))$ {
-        alias /usr/share/phpmyadmin/\$1;
-        access_log off;
-        expires 7d;
-    }
-}
-EOF
-    ln -sf "$nginx_config" "/etc/nginx/sites-enabled/${APP_NAME}-phpmyadmin"
-    nginx -t >/dev/null
-    systemctl reload nginx >/dev/null 2>&1 || systemctl restart nginx >/dev/null 2>&1
-    open_host_firewall_port "$port"
-
-    upsert_env_assignment "PHPMYADMIN_ENABLED" "true"
-    upsert_env_assignment "PHPMYADMIN_PORT" "$port"
-    upsert_env_assignment "PHPMYADMIN_PATH" "${path}/"
-    colorized_echo green "phpMyAdmin is available at http://$(hostname -I 2>/dev/null | awk '{print $1}'):${port}${path}/"
+    rm -f "/etc/nginx/sites-enabled/${APP_NAME}-phpmyadmin" "$(phpmyadmin_nginx_config_path)"
+    if command -v nginx >/dev/null 2>&1; then
+        nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 || true
+    fi
+    colorized_echo green "phpMyAdmin is installed and will be served through Rebecca using local php-fpm."
 }
 
 disable_host_phpmyadmin() {
@@ -1524,7 +1549,6 @@ disable_host_phpmyadmin() {
     if command -v nginx >/dev/null 2>&1; then
         nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 || true
     fi
-    upsert_env_assignment "PHPMYADMIN_ENABLED" "false"
     colorized_echo green "phpMyAdmin has been disabled."
 }
 
@@ -1570,6 +1594,25 @@ EOF
 
 enable_phpmyadmin() {
     check_running_as_root
+    local cli_path=""
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --port)
+                shift 2
+                ;;
+            --path)
+                cli_path="${2:-}"
+                shift 2
+                ;;
+            --yes|-y)
+                shift
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
 
     if ! is_rebecca_installed; then
         colorized_echo red "Rebecca is not installed. Please install Rebecca first."
@@ -1586,8 +1629,12 @@ enable_phpmyadmin() {
         return 0
     fi
 
-    prompt_phpmyadmin_settings
-    enable_host_phpmyadmin "$PHPMYADMIN_PORT" "$PHPMYADMIN_PATH"
+    if [ -n "$cli_path" ]; then
+        PHPMYADMIN_PATH="$cli_path"
+    else
+        prompt_phpmyadmin_settings
+    fi
+    enable_host_phpmyadmin "$PHPMYADMIN_PATH"
 }
 
 disable_phpmyadmin() {
@@ -3795,7 +3842,7 @@ install_command() {
                 if [ "$install_phpmyadmin" = "true" ]; then
                     ui_section "phpMyAdmin"
                     prompt_phpmyadmin_settings
-                    enable_host_phpmyadmin "$PHPMYADMIN_PORT" "$PHPMYADMIN_PATH"
+                    enable_host_phpmyadmin "$PHPMYADMIN_PATH"
                 fi
             else
                 install_rebecca "$rebecca_version" "$database_type"
@@ -4643,7 +4690,7 @@ menu_description_for() {
         script-uninstall) echo "Uninstall Rebecca script" ;;
         core-update) echo "Deprecated; Xray is managed by nodes" ;;
         enable-phpmyadmin) echo "Enable phpMyAdmin on local MySQL/MariaDB" ;;
-        disable-phpmyadmin) echo "Disable phpMyAdmin Nginx endpoint" ;;
+        disable-phpmyadmin) echo "Disable phpMyAdmin panel bridge" ;;
         edit) echo "Edit docker-compose.yml" ;;
         edit-env) echo "Edit environment file" ;;
         ssl) echo "Issue or renew SSL certificates" ;;

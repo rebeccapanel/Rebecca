@@ -95,6 +95,14 @@
 curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca-binary.sh | sudo bash -s -- install
 ```
 
+نصاب‌ها را با `sudo bash -c "$(curl ...)"` اجرا نکنید؛ متن اسکریپت ممکن است از محدودیت single argument لینوکس بزرگ‌تر شود و خطای `Argument list too long` بدهد. همیشه دانلود را مثل نمونه بالا به `sudo bash -s --` pipe کنید.
+
+برای نصب کانال dev:
+
+```bash
+curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca-binary.sh | sudo bash -s -- install --dev
+```
+
 برای نصب باینری Rebecca-node روی هر سرور نود:
 
 ```bash
@@ -277,15 +285,8 @@ server {
 | شامل کردن کاربران limited در حذف خودکار | USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS |
 | زمان انقضای JWT access token بر حسب دقیقه | JWT_ACCESS_TOKEN_EXPIRE_MINUTES |
 | timeout لیست بزرگ کاربران؛ مقدار `0` یعنی غیرفعال | USERS_LIST_TIMEOUT_SECONDS |
-| خواندن subscription بدون آپدیت metadata آخرین استفاده | SUBSCRIPTION_READ_ONLY |
-| پیشوند لینک subscription برای helperهای CLI | XRAY_SUBSCRIPTION_URL_PREFIX |
-| تگ inboundای که شامل fallback است | XRAY_FALLBACKS_INBOUND_TAG |
-| تگ inboundهایی که از ساخت لینک و config حذف می‌شوند | XRAY_EXCLUDE_INBOUND_TAGS |
-| مسیر پایه templateهای داخلی | REBECCA_APP_TEMPLATE_BASE |
 | مسیر پایه certificateهای مدیریت‌شده | REBECCA_CERT_BASE |
 | ریشه configهایی که در full backup قرار می‌گیرند | REBECCA_CONFIG_DIR |
-| آدرس اختیاری index برای Geo templates | GEO_TEMPLATES_INDEX_URL |
-| override برای Cloudflare WARP API base URL | REBECCA_WARP_API_BASE |
 
 
 # ربات تلگرام

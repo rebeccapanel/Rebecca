@@ -13,6 +13,8 @@ import { useServicesStore } from "contexts/ServicesContext";
 import useGetUser from "hooks/useGetUser";
 import { type FC, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "react-query";
+import { getRuntimeSettings } from "service/settings";
 
 export const UsagePage: FC = () => {
 	const { t } = useTranslation();
@@ -20,6 +22,14 @@ export const UsagePage: FC = () => {
 	const canViewUsage = Boolean(
 		getUserIsSuccess && userData.permissions?.sections.usage,
 	);
+	const { data: runtimeSettings, isLoading: isRuntimeSettingsLoading } =
+		useQuery("runtime-settings", getRuntimeSettings, {
+			refetchOnWindowFocus: false,
+			enabled: canViewUsage,
+		});
+	const recordNodeUsage = runtimeSettings?.record_node_usage ?? true;
+	const recordNodeUserUsages =
+		runtimeSettings?.record_node_user_usages ?? true;
 
 	const services = useServicesStore((state) => state.services);
 	const fetchServices = useServicesStore((state) => state.fetchServices);
@@ -50,6 +60,25 @@ export const UsagePage: FC = () => {
 		window.addEventListener("hashchange", syncFromHash);
 		return () => window.removeEventListener("hashchange", syncFromHash);
 	}, [splitHash, tabKeys]);
+
+	useEffect(() => {
+		if (!runtimeSettings) {
+			return;
+		}
+		const tabEnabled = (index: number) =>
+			index === 2 ? recordNodeUsage : recordNodeUserUsages;
+		if (tabEnabled(activeTab)) {
+			return;
+		}
+		const nextIndex = tabKeys.findIndex((_, index) => tabEnabled(index));
+		setActiveTab(nextIndex >= 0 ? nextIndex : 0);
+	}, [
+		activeTab,
+		recordNodeUsage,
+		recordNodeUserUsages,
+		runtimeSettings,
+		tabKeys,
+	]);
 
 	const handleTabChange = (index: number) => {
 		setActiveTab(index);
@@ -88,6 +117,30 @@ export const UsagePage: FC = () => {
 		);
 	}
 
+	if (isRuntimeSettingsLoading) {
+		return (
+			<Flex justify="center" align="center" py={10}>
+				<Spinner />
+			</Flex>
+		);
+	}
+
+	if (!recordNodeUsage && !recordNodeUserUsages) {
+		return (
+			<VStack spacing={4} align="stretch">
+				<Text as="h1" fontWeight="semibold" fontSize="2xl">
+					{t("usage.title", "Usage Analytics")}
+				</Text>
+				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+					{t(
+						"usage.recordingDisabled",
+						"Usage recording is disabled from Settings.",
+					)}
+				</Text>
+			</VStack>
+		);
+	}
+
 	return (
 		<VStack spacing={4} align="stretch">
 			<ResourceListCard
@@ -113,24 +166,32 @@ export const UsagePage: FC = () => {
 					button: { flexShrink: 0 },
 				}}
 				tabs={[
-					{
-						value: "services",
-						isActive: activeTab === 0,
-						onClick: () => handleTabChange(0),
-						label: t("usage.tabs.services", "Services"),
-					},
-					{
-						value: "admins",
-						isActive: activeTab === 1,
-						onClick: () => handleTabChange(1),
-						label: t("usage.tabs.admins", "Admins"),
-					},
-					{
-						value: "nodes",
-						isActive: activeTab === 2,
-						onClick: () => handleTabChange(2),
-						label: t("usage.tabs.nodes", "Nodes"),
-					},
+					...(recordNodeUserUsages
+						? [
+								{
+									value: "services",
+									isActive: activeTab === 0,
+									onClick: () => handleTabChange(0),
+									label: t("usage.tabs.services", "Services"),
+								},
+								{
+									value: "admins",
+									isActive: activeTab === 1,
+									onClick: () => handleTabChange(1),
+									label: t("usage.tabs.admins", "Admins"),
+								},
+							]
+						: []),
+					...(recordNodeUsage
+						? [
+								{
+									value: "nodes",
+									isActive: activeTab === 2,
+									onClick: () => handleTabChange(2),
+									label: t("usage.tabs.nodes", "Nodes"),
+								},
+							]
+						: []),
 				]}
 			/>
 			<Box mt={3} display={activeTab === 0 ? "block" : "none"}>

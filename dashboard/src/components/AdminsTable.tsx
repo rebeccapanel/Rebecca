@@ -1,20 +1,12 @@
 import {
 	Box,
 	Button,
-	Card,
-	CardBody,
-	CardHeader,
 	Collapse,
 	chakra,
 	HStack,
-	IconButton,
 	Input,
 	InputGroup,
 	InputRightElement,
-	Menu,
-	MenuButton,
-	MenuItem,
-	MenuList,
 	Modal,
 	ModalBody,
 	ModalCloseButton,
@@ -22,32 +14,20 @@ import {
 	ModalFooter,
 	ModalHeader,
 	ModalOverlay,
-	Portal,
 	SimpleGrid,
-	Skeleton,
 	Stack,
-	Table,
 	type TableProps,
-	Tbody,
-	Td,
 	Text,
 	Textarea,
-	Th,
-	Thead,
-	Tr,
-	useBreakpointValue,
 	useColorModeValue,
 	useDisclosure,
 	useToast,
-	VStack,
 } from "@chakra-ui/react";
 import {
 	AdjustmentsHorizontalIcon,
 	ArrowPathIcon,
 	CheckCircleIcon,
-	ChevronDownIcon,
 	ChevronRightIcon,
-	EllipsisVerticalIcon,
 	KeyIcon,
 	PencilIcon,
 	PlayIcon,
@@ -61,7 +41,6 @@ import classNames from "classnames";
 import { useAdminsStore } from "contexts/AdminsContext";
 import useGetUser from "hooks/useGetUser";
 import {
-	cloneElement,
 	type FC,
 	type ReactNode,
 	useCallback,
@@ -86,7 +65,7 @@ import {
 } from "utils/toastHandler";
 import { copyTextToClipboard } from "utils/clipboard";
 import AdminPermissionsModal from "./AdminPermissionsModal";
-import { ConfirmActionDialog } from "./ConfirmActionDialog";
+import { ConfirmDialog } from "./dialogs/ConfirmDialog";
 import {
 	DataTable,
 	ResourceListCard,
@@ -120,20 +99,6 @@ const EnableIcon = chakra(PlayIcon, iconProps);
 const DeleteIcon = chakra(TrashIcon, iconProps);
 const QuickPassIcon = chakra(KeyIcon, iconProps);
 const AddDataIcon = chakra(PlusCircleIcon, iconProps);
-const MoreIcon = chakra(EllipsisVerticalIcon, {
-	baseStyle: {
-		strokeWidth: "2px",
-		w: 4,
-		h: 4,
-	},
-});
-
-const createStableKey = () => {
-	if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-		return crypto.randomUUID();
-	}
-	return Math.random().toString(36).slice(2);
-};
 
 const AdminStatusBadge: FC<{ status: AdminStatus }> = ({ status }) => {
 	const { t } = useTranslation();
@@ -228,103 +193,19 @@ const AdminRoleBadge: FC<{ role: AdminRole }> = ({ role }) => {
 	);
 };
 
-type AdminUsageSliderProps = {
-	used: number;
-	createdTraffic?: number | null;
-	total: number | null;
-	lifetimeUsage: number | null;
-	trafficLimitMode?: AdminTrafficLimitMode;
-	isRTL?: boolean;
-};
 
-const AdminUsageSlider: FC<AdminUsageSliderProps> = ({
-	used,
-	createdTraffic,
-	total,
-	lifetimeUsage,
-	trafficLimitMode,
-	isRTL = false,
-}) => {
-	const { t } = useTranslation();
-	const effectiveUsage =
-		trafficLimitMode === AdminTrafficLimitMode.CreatedTraffic
-			? (createdTraffic ?? 0)
-			: used;
-	const isUnlimited = total === 0 || total === null;
-	const percentage = isUnlimited
-		? 0
-		: Math.min((effectiveUsage / (total || 1)) * 100, 100);
-	const reached = !isUnlimited && percentage >= 100;
 
-	return (
-		<Stack spacing={1} width="100%">
-			<Box
-				as="div"
-				height="6px"
-				borderRadius="full"
-				bg="gray.100"
-				_dark={{ bg: "gray.700" }}
-				overflow="hidden"
-				position="relative"
-			>
-				<Box
-					position="absolute"
-					insetY={0}
-					{...(isRTL ? { right: 0 } : { left: 0 })}
-					width={isUnlimited ? "100%" : `${percentage}%`}
-					bg={reached ? "red.400" : "primary.500"}
-					transition="width 0.2s ease"
-				/>
-			</Box>
-			<HStack
-				justify="space-between"
-				align="center"
-				fontSize="xs"
-				fontWeight="medium"
-				color="gray.600"
-				_dark={{ color: "gray.400" }}
-				flexWrap="wrap"
-				gap={3}
-				dir={isRTL ? "rtl" : "ltr"}
-				textAlign={isRTL ? "end" : "start"}
-				w="full"
-			>
-				<Text className="rb-usage-pair">
-					<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-						{formatBytes(effectiveUsage, 2)}
-					</chakra.span>{" "}
-					/{" "}
-					<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-						{isUnlimited ? "∞" : formatBytes(total ?? 0, 2)}
-					</chakra.span>
-				</Text>
-				{lifetimeUsage !== null && lifetimeUsage !== undefined && (
-					<Text color="blue.500" _dark={{ color: "blue.300" }}>
-						{t("admins.details.lifetime", "Lifetime usage")}:{" "}
-						<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-							{formatBytes(lifetimeUsage, 2)}
-						</chakra.span>
-					</Text>
-				)}
-				{createdTraffic !== null && createdTraffic !== undefined && (
-					<Text color="orange.500" _dark={{ color: "orange.300" }}>
-						{t("admins.details.createdTraffic", "Created traffic")}:{" "}
-						<chakra.span dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-							{formatBytes(createdTraffic, 2)}
-						</chakra.span>
-						{" · "}
-						{trafficLimitMode === AdminTrafficLimitMode.CreatedTraffic
-							? t("admins.createdTrafficMode", "Created traffic")
-							: t("admins.usedTrafficMode", "Used traffic")}
-					</Text>
-				)}
-			</HStack>
-		</Stack>
-	);
-};
 
 const formatCount = (value: number | null | undefined, locale: string) =>
 	new Intl.NumberFormat(locale || "en").format(value ?? 0);
+
+const formatByteLimit = (value?: number | null) =>
+	value && value > 0 ? formatBytes(value, 2) : "∞";
+
+const getEnabledUserPermissionsCount = (admin: Admin) =>
+	Object.values(UserPermissionToggle).filter(
+		(permission) => admin.permissions?.users?.[permission],
+	).length;
 
 const getAdminEffectiveUsage = (admin: Admin) =>
 	admin.traffic_limit_mode === AdminTrafficLimitMode.CreatedTraffic
@@ -357,8 +238,6 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 	const locale = i18n.language || "en";
 	const toast = useToast();
 	const { userData } = useGetUser();
-	const rowHoverBg = useColorModeValue("gray.50", "whiteAlpha.100");
-	const rowSelectedBg = useColorModeValue("primary.50", "primary.900");
 	const dialogBg = useColorModeValue("surface.light", "surface.dark");
 	const dialogBorderColor = useColorModeValue("light-border", "gray.700");
 	const inlineMenuBg = useColorModeValue("blackAlpha.50", "whiteAlpha.50");
@@ -379,7 +258,6 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		updateAdmin,
 		openAdminDialog,
 		openAdminDetails,
-		adminInDetails,
 	} = useAdminsStore();
 	const {
 		isOpen: isDisableDialogOpen,
@@ -399,7 +277,6 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 	const [adminToDisable, setAdminToDisable] = useState<Admin | null>(null);
 	const [adminToDelete, setAdminToDelete] = useState<Admin | null>(null);
 	const [disableReason, setDisableReason] = useState("");
-	const [expandedMobile, setExpandedMobile] = useState<string | null>(null);
 	const [actionState, setActionState] = useState<{
 		type:
 			| "reset"
@@ -477,23 +354,6 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			current.filter((username) => visibleAdminUsernameSet.has(username)),
 		);
 	}, [visibleAdminUsernameSet]);
-
-	const handleSort = (
-		column: "username" | "users_count" | "data" | "data_usage" | "data_limit",
-	) => {
-		if (column === "data_usage" || column === "data_limit") {
-			const newSort = filters.sort === column ? `-${column}` : column;
-			onFilterChange({ sort: newSort, offset: 0 });
-		} else {
-			const newSort =
-				filters.sort === column
-					? `-${column}`
-					: filters.sort === `-${column}`
-						? undefined
-						: column;
-			onFilterChange({ sort: newSort, offset: 0 });
-		}
-	};
 
 	const handleDeleteAdmin = async (admin: Admin) => {
 		try {
@@ -595,16 +455,6 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 	useEffect(() => {
 		fetchAdminOptions(undefined, { force: false });
 	}, [fetchAdminOptions]);
-
-	const handleContextReset = async (admin: Admin) => {
-		setContextAction("reset");
-		try {
-			await runResetUsage(admin);
-		} finally {
-			setContextAction(null);
-			closeContextMenu();
-		}
-	};
 
 	const handleAddDataLimit = async (
 		admin: Admin,
@@ -722,38 +572,6 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			setActionState(null);
 		}
 	};
-	const SortIndicator = ({ column }: { column: string }) => {
-		let isActive = false;
-		let isDescending = false;
-		if (column === "data") {
-			isActive =
-				filters.sort?.includes("data_usage") ||
-				filters.sort?.includes("data_limit");
-			isDescending = isActive && filters.sort?.startsWith("-");
-		} else {
-			isActive = filters.sort?.includes(column);
-			isDescending = isActive && filters.sort?.startsWith("-");
-		}
-		return (
-			<ChevronDownIcon
-				style={{
-					width: "1rem",
-					height: "1rem",
-					opacity: isActive ? 1 : 0.35,
-					transform:
-						isActive && !isDescending ? "rotate(180deg)" : "rotate(0deg)",
-					transition: "transform 0.2s",
-				}}
-			/>
-		);
-	};
-
-	const formatByteLimit = (value?: number | null) =>
-		value && value > 0 ? formatBytes(value, 2) : "∞";
-	const getEnabledUserPermissionsCount = (admin: Admin) =>
-		Object.values(UserPermissionToggle).filter(
-			(permission) => admin.permissions?.users?.[permission],
-		).length;
 	const getAdminRowMeta = (admin: Admin) => {
 		const canManage = canManageAdminAccount(admin);
 		const canChangeStatus =
@@ -874,33 +692,6 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			</Box>
 		);
 	};
-	const baseColumns: Array<
-		| "username"
-		| "role"
-		| "status"
-		| "expire"
-		| "active"
-		| "online"
-		| "services"
-		| "permissions"
-		| "usage"
-		| "data_limit"
-		| "traffic_mode"
-	> = [
-		"username",
-		"role",
-		"status",
-		"expire",
-		"active",
-		"online",
-		"services",
-		"permissions",
-		"usage",
-		"data_limit",
-		"traffic_mode",
-	];
-	const columnsToRender = isRTL ? baseColumns.slice().reverse() : baseColumns;
-	const cellAlign = isRTL ? "right" : "left";
 	const renderRelativeText = useCallback(
 		(key: "expires" | "expired", time: string) => {
 			const raw = t(key);
@@ -998,7 +789,6 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		className: tableClassName,
 		sx: { ...baseTableSx, ...(normalizedSx || {}) },
 	};
-	const isDesktop = useBreakpointValue({ base: false, lg: true }) ?? false;
 
 	const summaryData = useMemo(() => {
 		const hasCompleteSummary = adminOptions.length > 0 || total <= admins.length;
@@ -1102,11 +892,6 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 	];
 
 	const skeletonCount = filters.limit || 5;
-	const skeletonKeys = useMemo(
-		() => Array.from({ length: skeletonCount }, () => createStableKey()),
-		[skeletonCount],
-	);
-
 	const adminSorting = useMemo<SortingState>(() => {
 		const currentSort = filters.sort || "";
 		const desc = currentSort.startsWith("-");
@@ -1290,15 +1075,15 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			},
 			{
 				id: "data_usage",
-				header: t("admins.details.used", "Used"),
+				header: t("admins.trafficUsedLimit", "Used / Limit"),
 				sortable: true,
 				priority: "medium",
-				width: "132px",
-				maxWidth: "150px",
+				width: "152px",
+				maxWidth: "174px",
 				headerAlign: "center",
 				mobilePriority: 8,
 				mobileSummary: true,
-				mobileMetaLabel: t("admins.details.used", "Used"),
+				mobileMetaLabel: t("admins.trafficUsedLimit", "Used / Limit"),
 				cell: (admin) => (
 					<Text
 						fontSize="sm"
@@ -1306,28 +1091,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 						sx={{ unicodeBidi: "isolate" }}
 						whiteSpace="nowrap"
 					>
-						{formatBytes(getAdminEffectiveUsage(admin), 2)}
-					</Text>
-				),
-			},
-			{
-				id: "data_limit",
-				header: t("admins.details.limit", "Limit"),
-				sortable: true,
-				priority: "low",
-				hideBelow: "xl",
-				width: "120px",
-				maxWidth: "136px",
-				headerAlign: "center",
-				mobilePriority: 9,
-				mobileMetaLabel: t("admins.details.limit", "Limit"),
-				cell: (admin) => (
-					<Text
-						fontSize="sm"
-						dir="ltr"
-						sx={{ unicodeBidi: "isolate" }}
-						whiteSpace="nowrap"
-					>
+						{formatBytes(getAdminEffectiveUsage(admin), 2)} /{" "}
 						{formatByteLimit(admin.data_limit)}
 					</Text>
 				),
@@ -1350,7 +1114,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 				),
 			},
 		],
-		[isRTL, locale, renderAdminExpire, t],
+		[locale, renderAdminExpire, t],
 	);
 
 	const adminRowActions = (admin: Admin): DataTableRowAction<Admin>[] => {
@@ -1500,24 +1264,23 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 				/>
 			</Stack>
 
-			<ConfirmActionDialog
+			<ConfirmDialog
 				isOpen={isDeleteDialogOpen}
 				onClose={closeDeleteDialogAndReset}
 				onConfirm={confirmDeleteAdmin}
 				title={t("delete", "Delete")}
-				message={t(
+				description={t(
 					"admins.confirmDeleteMessage",
 					"Are you sure you want to delete {{username}}?",
 					{ username: adminToDelete?.username ?? "" },
 				)}
 				confirmLabel={t("delete", "Delete")}
-				cancelLabel={t("cancel", "Cancel")}
 				colorScheme="red"
 				isLoading={actionState?.type === "deleteAdmin"}
 				isConfirmDisabled={!adminToDelete}
 			/>
 
-			<ConfirmActionDialog
+			<ConfirmDialog
 				isOpen={isQuickPassConfirmOpen}
 				onClose={() => {
 					if (contextAction === "quickPassword") return;
@@ -1529,13 +1292,12 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 					"admins.quickPasswordConfirmTitle",
 					"Generate new credentials",
 				)}
-				message={t(
+				description={t(
 					"admins.quickPasswordConfirm",
 					"Generate a new password for {{username}}? The old password will stop working immediately.",
 					{ username: quickPassAdmin?.username ?? "" },
 				)}
 				confirmLabel={t("admins.quickPasswordAction", "Generate")}
-				cancelLabel={t("cancel", "Cancel")}
 				colorScheme="primary"
 				isLoading={contextAction === "quickPassword"}
 			/>
@@ -1631,12 +1393,12 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 					</ModalFooter>
 				</ModalContent>
 			</Modal>
-			<ConfirmActionDialog
+			<ConfirmDialog
 				isOpen={isDisableDialogOpen}
 				onClose={closeDisableDialogAndReset}
 				onConfirm={confirmDisableAdmin}
 				title={t("admins.disableAdminTitle", "Disable admin")}
-				message={
+				description={
 					<Stack spacing={3}>
 						<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.300" }}>
 							{t(
@@ -1658,7 +1420,6 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 					</Stack>
 				}
 				confirmLabel={t("admins.disableAdminConfirm", "Disable admin")}
-				cancelLabel={t("cancel")}
 				colorScheme="red"
 				isConfirmDisabled={disableReason.trim().length < 3}
 				isLoading={
