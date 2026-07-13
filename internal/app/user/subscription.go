@@ -1218,14 +1218,6 @@ func v2rayStreamSettings(query url.Values) map[string]any {
 		} else {
 			stream["tcpSettings"] = map[string]any{"header": map[string]any{"type": "none"}}
 		}
-	case "httpupgrade":
-		settings := map[string]any{
-			"path": firstNonEmptyString(query.Get("path"), "/"),
-		}
-		if host := query.Get("host"); host != "" {
-			settings["host"] = host
-		}
-		stream["httpupgradeSettings"] = settings
 	case "kcp":
 		settings := map[string]any{"header": map[string]any{"type": firstNonEmptyString(query.Get("headerType"), "none")}}
 		if seed := query.Get("seed"); seed != "" {
