@@ -1786,12 +1786,41 @@ table thead {
   }
 }
 
-img.apple-emoji {
-  display: inline-block;
+.apple-emoji-glyph {
+  display: inline-grid;
+  grid-template: "emoji" 1.2em / 1.2em;
   width: 1.2em;
   height: 1.2em;
   margin: 0 0.1em;
   vertical-align: -0.1em;
+  line-height: 1;
+}
+
+.apple-emoji-glyph > * {
+  grid-area: emoji;
+}
+
+.apple-emoji-native {
+  display: grid;
+  place-items: center;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+}
+
+img.apple-emoji {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  visibility: hidden;
+}
+
+.apple-emoji-glyph[data-loaded="true"] {
+  .apple-emoji-native {
+    visibility: hidden;
+  }
+
+  img.apple-emoji {
+    visibility: visible;
+  }
 }
 
 @keyframes green-pulse-animation {

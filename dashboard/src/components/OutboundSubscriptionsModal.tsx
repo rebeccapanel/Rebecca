@@ -46,6 +46,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { fetch as apiFetch } from "service/http";
+import { AppleEmojiText } from "./common/AppleEmojiText";
 import {
 	XrayModalBody,
 	XrayModalContent,
@@ -495,7 +496,9 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 												</Td>
 												<Td maxW="260px">
 													<Text fontWeight="semibold" noOfLines={1}>
-														{item.remark || item.url}
+														<AppleEmojiText>
+															{item.remark || item.url || ""}
+														</AppleEmojiText>
 													</Text>
 													<Text color="gray.500" fontSize="xs" noOfLines={1}>
 														{item.tagPrefix || "sub-"} · {item.url}

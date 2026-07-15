@@ -63,13 +63,14 @@ import {
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { NumericInput } from "./common/NumericInput";
+import { AppleEmojiText } from "./common/AppleEmojiText";
+import { DeleteIcon } from "./common/DeleteIcon";
 import {
 	MultiValueAutocomplete,
 	type MultiValueAutocompleteOption,
 } from "./common/MultiValueAutocomplete";
+import { NumericInput } from "./common/NumericInput";
 import { SearchableTagSelect } from "./common/SearchableTagSelect";
-import { DeleteIcon } from "./common/DeleteIcon";
 import { DeleteConfirmDialog } from "./dialogs/ConfirmDialog";
 import { JsonEditor } from "./JsonEditor";
 import {
@@ -694,7 +695,7 @@ const DynamicTokensPopover: FC = () => {
 							{DYNAMIC_TOKENS.map(({ token, labelKey }) => (
 								<Text key={token} mt={1}>
 									<Badge mr={2}>{token}</Badge>
-									{t(labelKey)}
+									<AppleEmojiText>{t(labelKey)}</AppleEmojiText>
 								</Text>
 							))}
 						</Box>
@@ -1150,9 +1151,11 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 				<XrayModalHeader
 					subtitle={isCloneMode ? t("hostsPage.clone.description") : undefined}
 				>
-					{isCloneMode
-						? t("hostsPage.clone.title")
-						: host.data.remark || t("hostsPage.untitledHost")}
+					<AppleEmojiText>
+						{isCloneMode
+							? t("hostsPage.clone.title")
+							: host.data.remark || t("hostsPage.untitledHost")}
+					</AppleEmojiText>
 				</XrayModalHeader>
 				<XrayModalBody>
 					<Tabs className="xray-dialog-auto-sections" variant="unstyled">
@@ -2618,9 +2621,12 @@ export const HostsManager: FC = () => {
 					const hostName = host.data.remark || t("hostsPage.untitledHost");
 					return (
 						<Stack spacing={0.5} minW={0}>
-							<Tooltip label={hostName} isDisabled={hostName.length <= 24}>
+							<Tooltip
+								label={<AppleEmojiText>{hostName}</AppleEmojiText>}
+								isDisabled={hostName.length <= 24}
+							>
 								<Text fontWeight="semibold" noOfLines={1}>
-									{hostName}
+									<AppleEmojiText>{hostName}</AppleEmojiText>
 								</Text>
 							</Tooltip>
 							<HStack spacing={1} flexWrap="wrap">

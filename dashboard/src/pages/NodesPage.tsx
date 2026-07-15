@@ -37,7 +37,6 @@ import {
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
-import { PanelSelect as Select } from "components/common/PanelSelect";
 import {
 	PlusIcon as AddIcon,
 	ArrowDownTrayIcon,
@@ -56,6 +55,8 @@ import {
 	WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import type { SortingState } from "@tanstack/react-table";
+import { AppleEmojiText } from "components/common/AppleEmojiText";
+import { PanelSelect as Select } from "components/common/PanelSelect";
 import { fetchInbounds, useDashboard } from "contexts/DashboardContext";
 import {
 	FetchNodesQueryKey,
@@ -1972,9 +1973,11 @@ export const NodesPage: FC = () => {
 						maxW="full"
 						dir="auto"
 					>
-						{formatNodeNamePreview(
-							node.name || t("nodes.unnamedNode", "Unnamed node"),
-						)}
+						<AppleEmojiText>
+							{formatNodeNamePreview(
+								node.name || t("nodes.unnamedNode", "Unnamed node"),
+							)}
+						</AppleEmojiText>
 					</Text>
 				),
 			},

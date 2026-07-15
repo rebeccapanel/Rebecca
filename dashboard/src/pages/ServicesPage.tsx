@@ -27,7 +27,6 @@ import {
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
-import { PanelSelect as Select } from "components/common/PanelSelect";
 import {
 	ArrowDownIcon,
 	ArrowPathIcon,
@@ -37,6 +36,8 @@ import {
 	PlusIcon,
 	TrashIcon,
 } from "@heroicons/react/24/outline";
+import { AppleEmojiText } from "components/common/AppleEmojiText";
+import { PanelSelect as Select } from "components/common/PanelSelect";
 import { Input } from "components/Input";
 import { AppDialog } from "components/dialogs/AppDialog";
 import { ConfirmDialog } from "components/dialogs/ConfirmDialog";
@@ -667,7 +668,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 													onClick={() => handleHostToggle(host.id)}
 												>
 													<Text fontWeight="medium" noOfLines={1}>
-														{host.label}
+														<AppleEmojiText>{host.label}</AppleEmojiText>
 													</Text>
 													<Text fontSize="xs" color={labelColor}>
 														{host.protocol.toUpperCase()} - {host.inboundTag}
@@ -724,7 +725,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 													<Box minW={0}>
 														<HStack spacing={2} align="center">
 															<Text fontWeight="medium" noOfLines={1}>
-																{host.label}
+																<AppleEmojiText>{host.label}</AppleEmojiText>
 															</Text>
 															{host.isDisabled && (
 																<Badge colorScheme="red" borderRadius="md">
@@ -1685,7 +1686,7 @@ const ServicesPage: FC = () => {
 				mobileMetaLabel: t("hosts.remark", "Name"),
 				cell: (host) => (
 					<Text fontWeight="semibold" noOfLines={1}>
-						{host.remark}
+						<AppleEmojiText>{host.remark}</AppleEmojiText>
 					</Text>
 				),
 			},
