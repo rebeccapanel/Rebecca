@@ -622,6 +622,34 @@ func TestPPTPNATDoesNotReserveL2TPTunnelPort(t *testing.T) {
 	}
 }
 
+func TestRemoteAccessInboundValidation(t *testing.T) {
+	for _, test := range []struct {
+		protocol string
+		port     int
+		pool     string
+	}{{IKEv2Protocol, 500, "10.70.0.0/24"}, {AnyConnectProtocol, 443, "10.71.0.0/24"}} {
+		err := validateVirtualTunnelInbound(test.protocol, map[string]any{
+			"tag": test.protocol, "port": test.port, "protocol": test.protocol,
+			"settings": map[string]any{"auth_mode": "password", "ipv4_pool_cidr": test.pool, "tproxy_enabled": false, "ca_certificate": "ca", "server_certificate": "cert", "server_key": "key", "server_identity": "vpn.example.com"},
+		})
+		if err != nil {
+			t.Fatalf("%s validation failed: %v", test.protocol, err)
+		}
+	}
+}
+
+func TestRemoteAccessInboundRejectsUnsafeSettings(t *testing.T) {
+	tests := []map[string]any{
+		{"tag": "ikev2", "port": 500, "protocol": IKEv2Protocol, "settings": map[string]any{"auth_mode": "password", "ipv4_pool_cidr": "10.70.0.0/24", "tproxy_enabled": false, "ca_certificate": "ca", "server_certificate": "cert", "server_key": "key", "server_identity": "vpn.example.com\nauto=start"}},
+		{"tag": "anyconnect", "port": 443, "protocol": AnyConnectProtocol, "settings": map[string]any{"auth_mode": "password", "ipv4_pool_cidr": "10.71.0.0/24", "tproxy_enabled": false, "server_certificate": "cert", "server_key": "key", "routes": []any{"not-a-cidr"}}},
+	}
+	for _, inbound := range tests {
+		if err := validateVirtualTunnelInbound(stringValue(inbound["tag"]), inbound); err == nil {
+			t.Fatalf("expected invalid settings to be rejected: %#v", inbound)
+		}
+	}
+}
+
 func TestPPTPRejectsPoolLargerThan24(t *testing.T) {
 	err := validateVirtualTunnelInbound("pptp", map[string]any{
 		"tag":      "pptp",

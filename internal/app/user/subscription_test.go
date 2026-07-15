@@ -205,6 +205,8 @@ func TestBundledSubscriptionPageTemplateRendersPanelStyleContext(t *testing.T) {
 				Body:        "[Interface]\nPrivateKey = key\n",
 			}},
 		},
+		"ikev2":      []RemoteAccessInfo{{HostName: "IKE Edge", Server: "ike.example.com", Port: 500, Username: "alice", Password: "ike-password"}},
+		"anyconnect": []RemoteAccessInfo{{HostName: "Cisco Edge", Server: "cisco.example.com", Port: 443, Username: "alice", Password: "cisco-password"}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -228,10 +230,29 @@ func TestBundledSubscriptionPageTemplateRendersPanelStyleContext(t *testing.T) {
 		`id="wg-config-wg-edge"`,
 		`href="/sub/token/wg/wg-edge.conf"`,
 		`data-copy-target="wg-config-wg-edge"`,
+		`id="remoteAccessProtocolPanel"`,
+		`ike.example.com:500`,
+		`cisco.example.com:443`,
+		`ike-password`,
+		`cisco-password`,
 	} {
 		if !strings.Contains(html, expected) {
 			t.Fatalf("expected %q in rendered bundled template:\n%s", expected, html)
 		}
+	}
+}
+
+func TestSubscriptionPageTemplateExposesRemoteAccessPlaceholders(t *testing.T) {
+	template := `{% for item in ikev2 %}{{ item.Server }}:{{ item.Port }} {{ item.Username }} {{ item.Password }}{% endfor %}|{% for item in anyconnect %}{{ item.Server }}:{{ item.Port }} {{ item.Username }} {{ item.Password }}{% endfor %}`
+	html, err := renderSubscriptionPageTemplate(template, UserDetail{Username: "alice", Status: "active"}, nil, "", "", "token", map[string]any{
+		"ikev2":      []RemoteAccessInfo{{Server: "ike.example.com", Port: 500, Username: "alice", Password: "ike-secret"}},
+		"anyconnect": []RemoteAccessInfo{{Server: "cisco.example.com", Port: 443, Username: "alice", Password: "cisco-secret"}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if html != "ike.example.com:500 alice ike-secret|cisco.example.com:443 alice cisco-secret" {
+		t.Fatalf("unexpected rendered placeholders: %q", html)
 	}
 }
 

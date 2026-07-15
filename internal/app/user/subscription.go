@@ -217,6 +217,14 @@ func (s Service) subscriptionVPNInfo(ctx context.Context, user UserDetail, subsc
 	if err != nil {
 		return nil, err
 	}
+	ikev2Items, err := s.IKEv2Infos(ctx, user, subscriptionURL)
+	if err != nil {
+		return nil, err
+	}
+	anyConnectItems, err := s.AnyConnectInfos(ctx, user, subscriptionURL)
+	if err != nil {
+		return nil, err
+	}
 	return map[string]any{
 		"openvpn": map[string]any{
 			"downloads": ovLinks,
@@ -227,8 +235,10 @@ func (s Service) subscriptionVPNInfo(ctx context.Context, user UserDetail, subsc
 			"links":     wgLinks,
 			"profiles":  wgProfiles,
 		},
-		"l2tp": l2tpItems,
-		"pptp": pptpItems,
+		"l2tp":       l2tpItems,
+		"pptp":       pptpItems,
+		"ikev2":      ikev2Items,
+		"anyconnect": anyConnectItems,
 	}, nil
 }
 
@@ -1661,7 +1671,7 @@ func subscriptionTemplateContext(user UserDetail, links []string, usageURL strin
 		"current_timestamp": time.Now().UTC().Unix(),
 		"remaining_days":    subscriptionRemainingDaysInt(user.Expire),
 	}
-	for _, key := range []string{"openvpn", "wireguard", "l2tp", "pptp"} {
+	for _, key := range []string{"openvpn", "wireguard", "l2tp", "pptp", "ikev2", "anyconnect"} {
 		if value, ok := vpn[key]; ok {
 			context[key] = value
 		}

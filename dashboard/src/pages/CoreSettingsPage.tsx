@@ -2220,7 +2220,7 @@ export const CoreSettingsPage: FC = () => {
 								.toLowerCase()
 								.trim();
 							if (
-								!["openvpn", "wireguard", "l2tp", "pptp"].includes(protocol)
+								!["openvpn", "wireguard", "l2tp", "pptp", "ikev2", "anyconnect"].includes(protocol)
 							) {
 								return true;
 							}

@@ -1076,7 +1076,9 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 	);
 	const isVirtualTunnelInbound =
 		selectedInbound?.protocol === "openvpn" ||
-		selectedInbound?.protocol === "l2tp";
+		selectedInbound?.protocol === "l2tp" ||
+		selectedInbound?.protocol === "ikev2" ||
+		selectedInbound?.protocol === "anyconnect";
 	useEffect(() => {
 		if (!hostPayload) {
 			setJsonText("");
@@ -1637,7 +1639,9 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 	);
 	const isVirtualTunnelInbound =
 		selectedInbound?.protocol === "openvpn" ||
-		selectedInbound?.protocol === "l2tp";
+		selectedInbound?.protocol === "l2tp" ||
+		selectedInbound?.protocol === "ikev2" ||
+		selectedInbound?.protocol === "anyconnect";
 	const isWireGuardInbound = selectedInbound?.protocol === "wireguard";
 
 	useEffect(() => {

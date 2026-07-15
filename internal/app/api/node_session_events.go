@@ -61,7 +61,7 @@ func (s *Server) validateNodeSessionEvent(ctx context.Context, payload nodeSessi
 		return statusError{status: http.StatusBadRequest, detail: "node_id, user_id and session_id are required"}
 	}
 	switch strings.ToLower(strings.TrimSpace(payload.Protocol)) {
-	case "ov", "openvpn", "l2tp", "wg", "wireguard":
+	case "ov", "openvpn", "l2tp", "pptp", "wg", "wireguard", "ikev2", "anyconnect":
 	default:
 		return statusError{status: http.StatusBadRequest, detail: "unsupported protocol"}
 	}

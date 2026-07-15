@@ -453,6 +453,22 @@ func PPTPPasswordFromCredentialKey(credentialKey string) (string, error) {
 	return keyToPassword(key, "pptp"), nil
 }
 
+func IKEv2PasswordFromCredentialKey(credentialKey string) (string, error) {
+	key, err := normalizeCredentialKey(credentialKey)
+	if err != nil {
+		return "", err
+	}
+	return keyToPassword(key, "ikev2"), nil
+}
+
+func AnyConnectPasswordFromCredentialKey(credentialKey string) (string, error) {
+	key, err := normalizeCredentialKey(credentialKey)
+	if err != nil {
+		return "", err
+	}
+	return keyToPassword(key, "anyconnect"), nil
+}
+
 type WGKeyPair struct {
 	PrivateKey string
 	PublicKey  string

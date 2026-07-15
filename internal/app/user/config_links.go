@@ -29,10 +29,12 @@ var proxyProtocols = map[string]struct{}{
 }
 
 var subscriptionDownloadProtocols = map[string]struct{}{
-	"openvpn":   {},
-	"wireguard": {},
-	"l2tp":      {},
-	"pptp":      {},
+	"openvpn":    {},
+	"wireguard":  {},
+	"l2tp":       {},
+	"pptp":       {},
+	"ikev2":      {},
+	"anyconnect": {},
 }
 
 func isResolvableInboundProtocol(protocol string) bool {
@@ -354,7 +356,7 @@ func effectiveInboundForHost(username string, variables map[string]string, inbou
 	path = applyFormat(path, variables)
 
 	effective := copyInbound(inbound)
-	if host.Port != nil && normalizeProxyProtocol(stringValue(inbound["protocol"])) != "openvpn" {
+	if host.Port != nil && normalizeProxyProtocol(stringValue(inbound["protocol"])) != "openvpn" && normalizeProxyProtocol(stringValue(inbound["protocol"])) != "ikev2" {
 		effective["port"] = *host.Port
 	}
 	if tls := normalizedHostSecurity(host.Security); tls != "" {
@@ -1192,7 +1194,7 @@ func resolveInbound(inbound map[string]any) (ResolvedInbound, error) {
 		resolved["settings"] = settings
 		return resolved, nil
 	}
-	if protocol == "l2tp" || protocol == "pptp" {
+	if protocol == "l2tp" || protocol == "pptp" || protocol == "ikev2" || protocol == "anyconnect" {
 		resolved["settings"] = settings
 		return resolved, nil
 	}
@@ -1367,6 +1369,10 @@ func normalizeProxyProtocol(value string) string {
 		return "openvpn"
 	case "wireguard", "wg":
 		return "wireguard"
+	case "ikev2", "ike-v2":
+		return "ikev2"
+	case "anyconnect", "cisco", "ocserv", "openconnect":
+		return "anyconnect"
 	default:
 		return cleaned
 	}

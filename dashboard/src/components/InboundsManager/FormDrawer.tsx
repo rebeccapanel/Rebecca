@@ -1,4 +1,8 @@
-import type { FormLabelProps, InputProps, TextareaProps } from "@chakra-ui/react";
+import type {
+	FormLabelProps,
+	InputProps,
+	TextareaProps,
+} from "@chakra-ui/react";
 import {
 	Alert,
 	AlertDescription,
@@ -479,6 +483,10 @@ export const InboundFormModal: FC<Props> = ({
 		useWatch({ control, name: "l2tpTproxyEnabled" }) ??
 		watch("l2tpTproxyEnabled") ??
 		true;
+	const raTproxyEnabled =
+		useWatch({ control, name: "raTproxyEnabled" }) ??
+		watch("raTproxyEnabled") ??
+		true;
 	const autoOVTunnelPortRef = useRef("");
 	const autoWGTunnelPortRef = useRef("");
 	const autoL2TPTunnelPortRef = useRef("");
@@ -488,7 +496,9 @@ export const InboundFormModal: FC<Props> = ({
 		currentProtocol !== "openvpn" &&
 		currentProtocol !== "wireguard" &&
 		currentProtocol !== "l2tp" &&
-		currentProtocol !== "pptp";
+		currentProtocol !== "pptp" &&
+		currentProtocol !== "ikev2" &&
+		currentProtocol !== "anyconnect";
 	const warningBg = useColorModeValue("yellow.50", "yellow.900");
 	const warningBorder = useColorModeValue("yellow.400", "yellow.500");
 	const defaultVlessAuthLabels = useMemo(
@@ -568,6 +578,11 @@ export const InboundFormModal: FC<Props> = ({
 				String(inbound.protocol || "").toLowerCase() === "l2tp" &&
 				String(inbound.tag || "") !== String(initialValue?.tag || ""),
 		);
+		const ikev2Exists = existingInbounds.some(
+			(inbound) =>
+				String(inbound.protocol || "").toLowerCase() === "ikev2" &&
+				String(inbound.tag || "") !== String(initialValue?.tag || ""),
+		);
 		if (isEditMode) {
 			return protocolOptions;
 		}
@@ -575,7 +590,8 @@ export const InboundFormModal: FC<Props> = ({
 			(option) =>
 				option !== "http" &&
 				option !== "socks" &&
-				!(option === "l2tp" && l2tpExists),
+				!(option === "l2tp" && l2tpExists) &&
+				!(option === "ikev2" && ikev2Exists),
 		);
 	}, [existingInbounds, initialValue?.tag, isEditMode]);
 	const availableTargets = useMemo<CoreConfigTarget[]>(
@@ -810,11 +826,18 @@ export const InboundFormModal: FC<Props> = ({
 	);
 
 	const generateRandomPort = useCallback(() => {
-		if (currentProtocol === "l2tp") {
+		if (currentProtocol === "l2tp" || currentProtocol === "ikev2") {
 			form.setValue("port", "1701", {
 				shouldDirty: true,
 				shouldValidate: true,
 			});
+			if (currentProtocol === "ikev2") {
+				form.setValue("port", "500", {
+					shouldDirty: true,
+					shouldValidate: true,
+				});
+				return "500";
+			}
 			return "1701";
 		}
 		let candidate = 0;
@@ -1469,7 +1492,10 @@ export const InboundFormModal: FC<Props> = ({
 													placeholder="443"
 													{...register("port", { required: true })}
 													value={portValue}
-													isDisabled={currentProtocol === "l2tp"}
+													isDisabled={
+														currentProtocol === "l2tp" ||
+														currentProtocol === "ikev2"
+													}
 													onChange={(event) => {
 														register("port").onChange(event);
 														form.setValue("port", event.target.value, {
@@ -1489,7 +1515,10 @@ export const InboundFormModal: FC<Props> = ({
 														variant="ghost"
 														leftIcon={<SparklesIcon width={16} height={16} />}
 														onClick={() => generateRandomPort()}
-														isDisabled={currentProtocol === "l2tp"}
+														isDisabled={
+															currentProtocol === "l2tp" ||
+															currentProtocol === "ikev2"
+														}
 													>
 														{t("inbounds.randomPort", "Random")}
 													</Button>
@@ -1518,8 +1547,9 @@ export const InboundFormModal: FC<Props> = ({
 													}))}
 													placeholder={t("inbounds.protocol", "Protocol")}
 													onChange={(value) => {
-														const nextProtocol =
-															String(value) as InboundFormValues["protocol"];
+														const nextProtocol = String(
+															value,
+														) as InboundFormValues["protocol"];
 														form.setValue("protocol", nextProtocol, {
 															shouldDirty: true,
 															shouldValidate: true,
@@ -1546,9 +1576,13 @@ export const InboundFormModal: FC<Props> = ({
 																	shouldDirty: true,
 																},
 															);
-															form.setValue("hysteriaQuicParams.enabled", false, {
+															form.setValue(
+																"hysteriaQuicParams.enabled",
+																false,
+																{
 																shouldDirty: true,
-															});
+																},
+															);
 															form.setValue("tlsAlpn", ["h3"], {
 																shouldDirty: true,
 															});
@@ -1560,7 +1594,9 @@ export const InboundFormModal: FC<Props> = ({
 															nextProtocol === "openvpn" ||
 															nextProtocol === "wireguard" ||
 															nextProtocol === "l2tp" ||
-															nextProtocol === "pptp"
+															nextProtocol === "pptp" ||
+															nextProtocol === "ikev2" ||
+															nextProtocol === "anyconnect"
 														) {
 															if (nextProtocol === "l2tp") {
 																form.setValue("port", "1701", {
@@ -1591,6 +1627,32 @@ export const InboundFormModal: FC<Props> = ({
 																	shouldDirty: true,
 																	shouldValidate: true,
 																});
+															}
+															if (nextProtocol === "ikev2") {
+																form.setValue("port", "500", {
+																	shouldDirty: true,
+																	shouldValidate: true,
+																});
+																form.setValue("raIPv4Pool", "10.70.0.0/16", {
+																	shouldDirty: true,
+																});
+																if (!form.getValues("raTunnelPort"))
+																	form.setValue("raTunnelPort", "41943", {
+																		shouldDirty: true,
+																	});
+															}
+															if (nextProtocol === "anyconnect") {
+																form.setValue("port", "443", {
+																	shouldDirty: true,
+																	shouldValidate: true,
+																});
+																form.setValue("raIPv4Pool", "10.71.0.0/16", {
+																	shouldDirty: true,
+																});
+																if (!form.getValues("raTunnelPort"))
+																	form.setValue("raTunnelPort", "41944", {
+																		shouldDirty: true,
+																	});
 															}
 															if (nextProtocol === "wireguard") {
 																if (!form.getValues("wgIPv4Pool")) {
@@ -2222,9 +2284,7 @@ export const InboundFormModal: FC<Props> = ({
 														/>
 														{fieldValidationErrors.ovServerCertificate && (
 															<Text fontSize="xs" color="red.500" mt={1}>
-																{
-																	fieldValidationErrors.ovServerCertificate
-																}
+																{fieldValidationErrors.ovServerCertificate}
 															</Text>
 														)}
 													</FormControl>
@@ -2319,7 +2379,9 @@ export const InboundFormModal: FC<Props> = ({
 													</FormControl>
 													<FormControl
 														isRequired
-														isInvalid={Boolean(fieldValidationErrors.wgIPv4Pool)}
+														isInvalid={Boolean(
+															fieldValidationErrors.wgIPv4Pool,
+														)}
 													>
 														{ovLabel(
 															"inbounds.wireguard.ipv4Pool",
@@ -2436,7 +2498,9 @@ export const InboundFormModal: FC<Props> = ({
 												</Box>
 												<FormControl
 													isRequired
-													isInvalid={Boolean(fieldValidationErrors.wgPrivateKey)}
+													isInvalid={Boolean(
+														fieldValidationErrors.wgPrivateKey,
+													)}
 												>
 													{ovLabel(
 														"inbounds.wireguard.privateKey",
@@ -2462,7 +2526,581 @@ export const InboundFormModal: FC<Props> = ({
 												</FormControl>
 											</Stack>
 										)}
-										{(currentProtocol === "l2tp" || currentProtocol === "pptp") && (
+										{(currentProtocol === "ikev2" ||
+											currentProtocol === "anyconnect") && (
+											<Stack spacing={3}>
+												<Alert status="info" borderRadius="md">
+													<AlertIcon />
+													<AlertDescription fontSize="sm">
+														{currentProtocol === "ikev2"
+															? t(
+																	"inbounds.ikev2.ports",
+																	"IKEv2 uses the node-wide UDP 500 and UDP 4500 ports.",
+																)
+															: t(
+																	"inbounds.anyconnect.ports",
+																	"AnyConnect uses the selected TCP port and the same UDP port for DTLS when enabled.",
+																)}
+													</AlertDescription>
+												</Alert>
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+													<FormControl isRequired>
+														{ovLabel(
+															"inbounds.remoteAccess.authMode",
+															"Authentication",
+															"inbounds.remoteAccess.help.authMode",
+															"Authenticate users with a password, a client certificate, or both.",
+														)}
+														<Controller
+															control={control}
+															name="raAuthMode"
+															render={({ field }) => (
+																<SearchableTagSelect
+																	value={field.value}
+																	onChange={field.onChange}
+																	placeholder={t(
+																		"inbounds.remoteAccess.authMode",
+																		"Authentication",
+																	)}
+																	options={[
+																		{
+																			value: "password",
+																			label: t(
+																				"inbounds.remoteAccess.password",
+																				"Username / password",
+																			),
+																		},
+																		{
+																			value: "certificate",
+																			label: t(
+																				"inbounds.remoteAccess.certificate",
+																				"Client certificate",
+																			),
+																		},
+																		{
+																			value: "password+certificate",
+																			label: t(
+																				"inbounds.remoteAccess.passwordCertificate",
+																				"Password + certificate",
+																			),
+																		},
+																	]}
+																/>
+															)}
+														/>
+													</FormControl>
+													<FormControl
+														isRequired
+														isInvalid={Boolean(
+															fieldValidationErrors.raIPv4Pool,
+														)}
+													>
+														{ovLabel(
+															"inbounds.remoteAccess.ipv4Pool",
+															"IPv4 pool CIDR",
+															"inbounds.remoteAccess.help.ipv4Pool",
+															"Private addresses assigned to connected users.",
+														)}
+														<Input
+															{...register("raIPv4Pool")}
+															placeholder={
+																currentProtocol === "ikev2"
+																	? "10.70.0.0/16"
+																	: "10.71.0.0/16"
+															}
+														/>
+														{fieldValidationErrors.raIPv4Pool && (
+															<Text fontSize="xs" color="red.500">
+																{fieldValidationErrors.raIPv4Pool}
+															</Text>
+														)}
+													</FormControl>
+													<FormControl
+														isRequired={raTproxyEnabled}
+														isInvalid={Boolean(
+															fieldValidationErrors.raTunnelPort,
+														)}
+													>
+														{ovLabel(
+															"inbounds.remoteAccess.tunnelPort",
+															"Xray tunnel port",
+															"inbounds.remoteAccess.help.tunnelPort",
+															"Local TProxy port used only when Route through Xray is enabled.",
+														)}
+														<Input
+															{...register("raTunnelPort")}
+															isDisabled={!raTproxyEnabled}
+															placeholder="41943"
+														/>
+														{fieldValidationErrors.raTunnelPort && (
+															<Text fontSize="xs" color="red.500">
+																{fieldValidationErrors.raTunnelPort}
+															</Text>
+														)}
+													</FormControl>
+													{currentProtocol === "anyconnect" && (
+														<FormControl>
+															{ovLabel(
+																"inbounds.remoteAccess.mtu",
+																"MTU",
+																"inbounds.remoteAccess.help.mtu",
+																"Tunnel MTU. 1400 is a compatible default for Internet paths.",
+															)}
+															<Input
+																{...register("raMTU")}
+																placeholder="1400"
+															/>
+														</FormControl>
+													)}
+												</SimpleGrid>
+												<FormControl>
+													{ovLabel(
+														"inbounds.remoteAccess.dns",
+														"DNS servers",
+														"inbounds.remoteAccess.help.dns",
+														"DNS resolvers pushed to clients, one address per line.",
+													)}
+													<Textarea
+														rows={2}
+														{...register("raDNSServers")}
+														placeholder={"1.1.1.1\n8.8.8.8"}
+													/>
+												</FormControl>
+												<SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.remoteAccess.tproxy",
+															"Route through Xray",
+															"inbounds.remoteAccess.help.tproxy",
+															"Apply Xray routing and outbounds to this inbound.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("raTproxyEnabled")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.remoteAccess.accounting",
+															"Enable accounting",
+															"inbounds.remoteAccess.help.accounting",
+															"Report live usage to Rebecca quota accounting.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("raAccountingEnabled")} />
+													</FormControl>
+													<FormControl display="flex" alignItems="center">
+														{ovLabel(
+															"inbounds.remoteAccess.redirectGateway",
+															"Redirect gateway",
+															"inbounds.remoteAccess.help.redirectGateway",
+															"Route all client traffic through the tunnel.",
+															{ mb: 0 },
+														)}
+														<Switch {...register("raRedirectGateway")} />
+													</FormControl>
+												</SimpleGrid>
+												<FormControl
+													isRequired={
+														currentProtocol === "ikev2" ||
+														watch("raAuthMode") !== "password"
+													}
+													isInvalid={Boolean(fieldValidationErrors.raCA)}
+												>
+													{ovLabel(
+														"inbounds.remoteAccess.ca",
+														"CA certificate",
+														"inbounds.remoteAccess.help.ca",
+														"CA certificate used to verify client certificates and establish trust.",
+													)}
+													<Textarea rows={4} {...register("raCA")} />
+													{fieldValidationErrors.raCA && (
+														<Text fontSize="xs" color="red.500">
+															{fieldValidationErrors.raCA}
+														</Text>
+													)}
+												</FormControl>
+												<FormControl
+													isRequired
+													isInvalid={Boolean(
+														fieldValidationErrors.raServerCertificate,
+													)}
+												>
+													{ovLabel(
+														"inbounds.remoteAccess.serverCertificate",
+														"Server certificate",
+														"inbounds.remoteAccess.help.serverCertificate",
+														"PEM certificate presented by the server. Its SAN must match the host address.",
+													)}
+													<Textarea
+														rows={4}
+														{...register("raServerCertificate")}
+													/>
+													{fieldValidationErrors.raServerCertificate && (
+														<Text fontSize="xs" color="red.500">
+															{fieldValidationErrors.raServerCertificate}
+														</Text>
+													)}
+												</FormControl>
+												<FormControl
+													isRequired
+													isInvalid={Boolean(fieldValidationErrors.raServerKey)}
+												>
+													{ovLabel(
+														"inbounds.remoteAccess.serverKey",
+														"Server key",
+														"inbounds.remoteAccess.help.serverKey",
+														"Unencrypted PEM private key matching the server certificate.",
+													)}
+													<Textarea rows={4} {...register("raServerKey")} />
+													{fieldValidationErrors.raServerKey && (
+														<Text fontSize="xs" color="red.500">
+															{fieldValidationErrors.raServerKey}
+														</Text>
+													)}
+												</FormControl>
+												{currentProtocol === "ikev2" ? (
+													<Stack spacing={3}>
+														<FormControl
+															isRequired
+															isInvalid={Boolean(
+																fieldValidationErrors.raServerIdentity,
+															)}
+														>
+															{ovLabel(
+																"inbounds.ikev2.serverIdentity",
+																"Server identity",
+																"inbounds.ikev2.help.serverIdentity",
+																"IKE identity and certificate SAN clients validate, usually vpn.example.com.",
+															)}
+															<Input
+																{...register("raServerIdentity")}
+																placeholder="vpn.example.com"
+															/>
+															{fieldValidationErrors.raServerIdentity && (
+																<Text fontSize="xs" color="red.500">
+																	{fieldValidationErrors.raServerIdentity}
+																</Text>
+															)}
+														</FormControl>
+														<FormControl>
+															{ovLabel(
+																"inbounds.ikev2.ikeProposals",
+																"IKE proposals",
+																"inbounds.ikev2.help.ikeProposals",
+																"Comma-separated strongSwan IKE proposals.",
+															)}
+															<Input {...register("ikeProposals")} />
+														</FormControl>
+														<FormControl>
+															{ovLabel(
+																"inbounds.ikev2.espProposals",
+																"ESP proposals",
+																"inbounds.ikev2.help.espProposals",
+																"Comma-separated CHILD_SA encryption/integrity proposals.",
+															)}
+															<Input {...register("ikeEspProposals")} />
+														</FormControl>
+														<FormControl
+															isRequired={!watch("raRedirectGateway")}
+															isInvalid={Boolean(
+																fieldValidationErrors.ikeRoutes,
+															)}
+														>
+															{ovLabel(
+																"inbounds.ikev2.routes",
+																"Split-tunnel routes",
+																"inbounds.ikev2.help.routes",
+																"CIDRs routed through IKEv2 when Redirect gateway is disabled, one per line.",
+															)}
+															<Textarea rows={2} {...register("ikeRoutes")} />
+															{fieldValidationErrors.ikeRoutes && (
+																<Text fontSize="xs" color="red.500">
+																	{fieldValidationErrors.ikeRoutes}
+																</Text>
+															)}
+														</FormControl>
+														<SimpleGrid
+															columns={{ base: 1, md: 4 }}
+															spacing={3}
+														>
+															<FormControl>
+																{ovLabel(
+																	"inbounds.ikev2.ikeLifetime",
+																	"IKE lifetime",
+																	"inbounds.ikev2.help.ikeLifetime",
+																	"IKE SA lifetime in seconds.",
+																)}
+																<Input {...register("ikeLifetime")} />
+															</FormControl>
+															<FormControl>
+																{ovLabel(
+																	"inbounds.ikev2.childLifetime",
+																	"Child lifetime",
+																	"inbounds.ikev2.help.childLifetime",
+																	"CHILD SA lifetime in seconds.",
+																)}
+																<Input {...register("ikeChildLifetime")} />
+															</FormControl>
+															<FormControl>
+																{ovLabel(
+																	"inbounds.ikev2.rekeyTime",
+																	"Rekey time",
+																	"inbounds.ikev2.help.rekeyTime",
+																	"Seconds before CHILD SA rekey.",
+																)}
+																<Input {...register("ikeRekeyTime")} />
+															</FormControl>
+															<FormControl>
+																{ovLabel(
+																	"inbounds.ikev2.dpdDelay",
+																	"DPD delay",
+																	"inbounds.ikev2.help.dpdDelay",
+																	"Idle seconds before a liveness probe.",
+																)}
+																<Input {...register("ikeDpdDelay")} />
+															</FormControl>
+														</SimpleGrid>
+														<SimpleGrid
+															columns={{ base: 1, md: 3 }}
+															spacing={3}
+														>
+															<FormControl display="flex" alignItems="center">
+																{ovLabel(
+																	"inbounds.ikev2.mobike",
+																	"MOBIKE",
+																	"inbounds.ikev2.help.mobike",
+																	"Allow clients to change networks without reconnecting.",
+																	{ mb: 0 },
+																)}
+																<Switch {...register("ikeMobike")} />
+															</FormControl>
+															<FormControl display="flex" alignItems="center">
+																{ovLabel(
+																	"inbounds.ikev2.reauth",
+																	"Reauthenticate",
+																	"inbounds.ikev2.help.reauth",
+																	"Require full authentication when the IKE SA lifetime expires.",
+																	{ mb: 0 },
+																)}
+																<Switch {...register("ikeReauth")} />
+															</FormControl>
+															<FormControl display="flex" alignItems="center">
+																{ovLabel(
+																	"inbounds.ikev2.sendCert",
+																	"Send certificate",
+																	"inbounds.ikev2.help.sendCert",
+																	"Send the server certificate during authentication.",
+																	{ mb: 0 },
+																)}
+																<Switch {...register("ikeSendCert")} />
+															</FormControl>
+														</SimpleGrid>
+														<FormControl>
+															{ovLabel(
+																"inbounds.ikev2.fragmentation",
+																"Fragmentation",
+																"inbounds.ikev2.help.fragmentation",
+																"Enable IKE fragmentation, accept peer fragments only, or disable it.",
+															)}
+															<Controller
+																control={control}
+																name="ikeFragmentation"
+																render={({ field }) => (
+																	<SearchableTagSelect
+																		value={field.value}
+																		onChange={field.onChange}
+																		placeholder={t(
+																			"inbounds.ikev2.fragmentation",
+																			"Fragmentation",
+																		)}
+																		options={[
+																			{
+																				value: "yes",
+																				label: t("common.enabled", "Enabled"),
+																			},
+																			{
+																				value: "accept",
+																				label: t(
+																					"inbounds.ikev2.acceptFragments",
+																					"Accept only",
+																				),
+																			},
+																			{
+																				value: "no",
+																				label: t("common.disabled", "Disabled"),
+																			},
+																		]}
+																	/>
+																)}
+															/>
+														</FormControl>
+													</Stack>
+												) : (
+													<Stack spacing={3}>
+														<SimpleGrid
+															columns={{ base: 1, md: 3 }}
+															spacing={3}
+														>
+															{(
+																[
+																	[
+																		"acMaxClients",
+																		"Max clients",
+																		"Maximum simultaneous clients for this inbound.",
+																	],
+																	[
+																		"acMaxSameClients",
+																		"Max same user",
+																		"Maximum simultaneous sessions using one username; zero defers to the user device limit.",
+																	],
+																	[
+																		"acCookieTimeout",
+																		"Cookie timeout",
+																		"Seconds an authentication cookie remains valid.",
+																	],
+																	[
+																		"acIdleTimeout",
+																		"Idle timeout",
+																		"Seconds before an inactive desktop session is disconnected.",
+																	],
+																	[
+																		"acMobileIdleTimeout",
+																		"Mobile idle timeout",
+																		"Seconds before an inactive mobile session is disconnected.",
+																	],
+																	[
+																		"acSessionTimeout",
+																		"Session timeout",
+																		"Maximum session duration in seconds; zero means unlimited.",
+																	],
+																	[
+																		"acKeepalive",
+																		"Keepalive",
+																		"Seconds between server keepalive messages.",
+																	],
+																	[
+																		"acDPD",
+																		"DPD",
+																		"Seconds before checking an unresponsive desktop client.",
+																	],
+																	[
+																		"acMobileDPD",
+																		"Mobile DPD",
+																		"Seconds before checking an unresponsive mobile client.",
+																	],
+																] as const
+															).map(([name, label, help]) => (
+																<FormControl key={name}>
+																	{ovLabel(
+																		`inbounds.anyconnect.${name}`,
+																		label,
+																		`inbounds.anyconnect.help.${name}`,
+																		help,
+																	)}
+																	<Input {...register(name)} />
+																</FormControl>
+															))}
+														</SimpleGrid>
+														<FormControl>
+															{ovLabel(
+																"inbounds.anyconnect.routes",
+																"Routes",
+																"inbounds.anyconnect.help.routes",
+																"Routes pushed to clients, one CIDR per line. Empty with Redirect gateway enabled means full tunnel.",
+															)}
+															<Textarea rows={2} {...register("acRoutes")} />
+														</FormControl>
+														<FormControl>
+															{ovLabel(
+																"inbounds.anyconnect.noRoutes",
+																"Excluded routes",
+																"inbounds.anyconnect.help.noRoutes",
+																"CIDRs excluded from the VPN, one per line.",
+															)}
+															<Textarea rows={2} {...register("acNoRoutes")} />
+														</FormControl>
+														<SimpleGrid
+															columns={{ base: 1, md: 2 }}
+															spacing={3}
+														>
+															<FormControl>
+																{ovLabel(
+																	"inbounds.anyconnect.banner",
+																	"Banner",
+																	"inbounds.anyconnect.help.banner",
+																	"Optional login banner shown by compatible clients.",
+																)}
+																<Input {...register("acBanner")} />
+															</FormControl>
+															<FormControl>
+																{ovLabel(
+																	"inbounds.anyconnect.defaultDomain",
+																	"Default domain",
+																	"inbounds.anyconnect.help.defaultDomain",
+																	"DNS search domain pushed to clients.",
+																)}
+																<Input {...register("acDefaultDomain")} />
+															</FormControl>
+														</SimpleGrid>
+														<SimpleGrid
+															columns={{ base: 1, md: 3 }}
+															spacing={3}
+														>
+															{(
+																[
+																	[
+																		"acUDPEnabled",
+																		"Enable DTLS/UDP",
+																		"Use UDP/DTLS beside TLS for better throughput.",
+																	],
+																	[
+																		"acCompression",
+																		"Compression",
+																		"Allow negotiated compression; leave disabled unless a client requires it.",
+																	],
+																	[
+																		"acCiscoCompat",
+																		"Cisco compatibility",
+																		"Enable compatibility behavior for Cisco AnyConnect clients.",
+																	],
+																	[
+																		"acDenyRoaming",
+																		"Deny roaming",
+																		"Disconnect a session when its public client address changes.",
+																	],
+																	[
+																		"acTunnelAllDNS",
+																		"Tunnel all DNS",
+																		"Force client DNS requests through the tunnel.",
+																	],
+																	[
+																		"acRestrictToRoutes",
+																		"Restrict to routes",
+																		"Prevent users from reaching addresses outside configured routes.",
+																	],
+																] as const
+															).map(([name, label, help]) => (
+																<FormControl
+																	key={name}
+																	display="flex"
+																	alignItems="center"
+																>
+																	{ovLabel(
+																		`inbounds.anyconnect.${name}`,
+																		label,
+																		`inbounds.anyconnect.help.${name}`,
+																		help,
+																		{ mb: 0 },
+																	)}
+																	<Switch {...register(name)} />
+																</FormControl>
+															))}
+														</SimpleGrid>
+													</Stack>
+												)}
+											</Stack>
+										)}
+										{(currentProtocol === "l2tp" ||
+											currentProtocol === "pptp") && (
 											<Stack spacing={3}>
 												{currentProtocol === "l2tp" && (
 													<Alert status="info" borderRadius="md">
@@ -2498,8 +3136,12 @@ export const InboundFormModal: FC<Props> = ({
 														)}
 														<Input
 															{...register("l2tpTunnelPort")}
-															placeholder={currentProtocol === "l2tp" ? "1702" : "51200"}
-															isDisabled={!l2tpTproxyEnabled || currentProtocol === "l2tp"}
+															placeholder={
+																currentProtocol === "l2tp" ? "1702" : "51200"
+															}
+															isDisabled={
+																!l2tpTproxyEnabled || currentProtocol === "l2tp"
+															}
 														/>
 														{fieldValidationErrors.l2tpTunnelPort && (
 															<Text fontSize="xs" color="red.500" mt={1}>
@@ -2533,7 +3175,9 @@ export const InboundFormModal: FC<Props> = ({
 												{currentProtocol === "l2tp" && (
 													<FormControl
 														isRequired
-														isInvalid={Boolean(fieldValidationErrors.l2tpIPSecPSK)}
+														isInvalid={Boolean(
+															fieldValidationErrors.l2tpIPSecPSK,
+														)}
 													>
 														{ovLabel(
 															"inbounds.l2tp.ipsecPsk",
@@ -2575,7 +3219,10 @@ export const InboundFormModal: FC<Props> = ({
 															"inbounds.l2tp.help.mtu",
 															"PPP MTU for L2TP clients. 1410 is a conservative default for IPsec/NAT paths.",
 														)}
-														<Input {...register("l2tpMTU")} placeholder="1410" />
+														<Input
+															{...register("l2tpMTU")}
+															placeholder="1410"
+														/>
 														{fieldValidationErrors.l2tpMTU && (
 															<Text fontSize="xs" color="red.500" mt={1}>
 																{fieldValidationErrors.l2tpMTU}
@@ -2591,7 +3238,10 @@ export const InboundFormModal: FC<Props> = ({
 															"inbounds.l2tp.help.mru",
 															"PPP MRU for L2TP clients. Keep it close to MTU unless you have a path-specific reason.",
 														)}
-														<Input {...register("l2tpMRU")} placeholder="1410" />
+														<Input
+															{...register("l2tpMRU")}
+															placeholder="1410"
+														/>
 														{fieldValidationErrors.l2tpMRU && (
 															<Text fontSize="xs" color="red.500" mt={1}>
 																{fieldValidationErrors.l2tpMRU}
@@ -2615,9 +3265,7 @@ export const InboundFormModal: FC<Props> = ({
 														/>
 														{fieldValidationErrors.l2tpLcpEchoInterval && (
 															<Text fontSize="xs" color="red.500" mt={1}>
-																{
-																	fieldValidationErrors.l2tpLcpEchoInterval
-																}
+																{fieldValidationErrors.l2tpLcpEchoInterval}
 															</Text>
 														)}
 													</FormControl>
@@ -2744,7 +3392,10 @@ export const InboundFormModal: FC<Props> = ({
 																						: false,
 																		}),
 																	)}
-																	placeholder={t("inbounds.security", "Security")}
+																	placeholder={t(
+																		"inbounds.security",
+																		"Security",
+																	)}
 																	onChange={(value) =>
 																		field.onChange(String(value))
 																	}
@@ -3226,7 +3877,10 @@ export const InboundFormModal: FC<Props> = ({
 													<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 														<FormControl>
 															<FormLabel>
-																{t("inbounds.hysteria.version", "Hysteria version")}
+																{t(
+																	"inbounds.hysteria.version",
+																	"Hysteria version",
+																)}
 															</FormLabel>
 															<Input
 																{...register("hysteriaVersion")}
@@ -3251,9 +3905,7 @@ export const InboundFormModal: FC<Props> = ({
 															/>
 															{fieldValidationErrors.hysteriaUdpIdleTimeout && (
 																<Text fontSize="xs" color="red.500" mt={1}>
-																	{
-																		fieldValidationErrors.hysteriaUdpIdleTimeout
-																	}
+																	{fieldValidationErrors.hysteriaUdpIdleTimeout}
 																</Text>
 															)}
 														</FormControl>
@@ -3266,7 +3918,9 @@ export const InboundFormModal: FC<Props> = ({
 																"Enable masquerade",
 															)}
 														</FormLabel>
-														<Switch {...register("hysteriaMasqueradeEnabled")} />
+														<Switch
+															{...register("hysteriaMasqueradeEnabled")}
+														/>
 													</FormControl>
 													<Collapse
 														in={Boolean(hysteriaMasqueradeEnabled)}
@@ -3372,7 +4026,11 @@ export const InboundFormModal: FC<Props> = ({
 																			placeholder="https://example.com"
 																		/>
 																		{fieldValidationErrors.hysteriaMasqueradeUrl && (
-																			<Text fontSize="xs" color="red.500" mt={1}>
+																			<Text
+																				fontSize="xs"
+																				color="red.500"
+																				mt={1}
+																			>
 																				{
 																					fieldValidationErrors.hysteriaMasqueradeUrl
 																				}
@@ -3526,7 +4184,11 @@ export const InboundFormModal: FC<Props> = ({
 													</Collapse>
 
 													<Stack spacing={3} className="xray-dialog-section">
-														<Flex justify="space-between" align="center" gap={3}>
+														<Flex
+															justify="space-between"
+															align="center"
+															gap={3}
+														>
 															<Box>
 																<Text fontSize="sm" fontWeight="semibold">
 																	{t("inbounds.hysteria.udpMasks", "UDP Masks")}
@@ -3540,7 +4202,9 @@ export const InboundFormModal: FC<Props> = ({
 															</Box>
 															<Button
 																size="xs"
-																leftIcon={<SparklesIcon width={14} height={14} />}
+																leftIcon={
+																	<SparklesIcon width={14} height={14} />
+																}
 																onClick={() =>
 																	appendHysteriaUdpMask(
 																		createDefaultHysteriaUdpMask(),
@@ -3588,7 +4252,9 @@ export const InboundFormModal: FC<Props> = ({
 																			size="xs"
 																			variant="ghost"
 																			colorScheme="red"
-																			onClick={() => removeHysteriaUdpMask(index)}
+																			onClick={() =>
+																				removeHysteriaUdpMask(index)
+																			}
 																		>
 																			{t("hostsPage.delete", "Delete")}
 																		</Button>
@@ -3599,7 +4265,10 @@ export const InboundFormModal: FC<Props> = ({
 																	>
 																		<FormControl>
 																			<FormLabel>
-																				{t("inbounds.hysteria.maskType", "Type")}
+																				{t(
+																					"inbounds.hysteria.maskType",
+																					"Type",
+																				)}
 																			</FormLabel>
 																			<SearchableTagSelect
 																				value="salamander"
@@ -3616,14 +4285,21 @@ export const InboundFormModal: FC<Props> = ({
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t("inbounds.hysteria.maskMode", "Mode")}
+																				{t(
+																					"inbounds.hysteria.maskMode",
+																					"Mode",
+																				)}
 																			</FormLabel>
 																			<Controller
 																				control={control}
-																				name={`hysteriaUdpMasks.${index}.mode` as const}
+																				name={
+																					`hysteriaUdpMasks.${index}.mode` as const
+																				}
 																				render={({ field: modeField }) => (
 																					<SearchableTagSelect
-																						value={modeField.value || "salamander"}
+																						value={
+																							modeField.value || "salamander"
+																						}
 																						options={[
 																							{
 																								value: "salamander",
@@ -3644,7 +4320,11 @@ export const InboundFormModal: FC<Props> = ({
 																					/>
 																				)}
 																			/>
-																			<Text fontSize="xs" color="gray.500" mt={1}>
+																			<Text
+																				fontSize="xs"
+																				color="gray.500"
+																				mt={1}
+																			>
 																				{maskMode === "gecko"
 																					? t(
 																							"inbounds.hysteria.geckoHint",
@@ -3675,7 +4355,12 @@ export const InboundFormModal: FC<Props> = ({
 																						"inbounds.hysteria.generatePassword",
 																						"Generate password",
 																					)}
-																					icon={<ArrowPathIcon width={16} height={16} />}
+																					icon={
+																						<ArrowPathIcon
+																							width={16}
+																							height={16}
+																						/>
+																					}
 																					size="sm"
 																					variant="outline"
 																					onClick={() =>
@@ -3705,7 +4390,11 @@ export const InboundFormModal: FC<Props> = ({
 																					)}
 																					placeholder="512-1200"
 																				/>
-																				<Text fontSize="xs" color="gray.500" mt={1}>
+																				<Text
+																					fontSize="xs"
+																					color="gray.500"
+																					mt={1}
+																				>
 																					{t(
 																						"inbounds.hysteria.packetSizeHint",
 																						"Serialized as a string range, for example 512-1200.",
@@ -3732,7 +4421,9 @@ export const InboundFormModal: FC<Props> = ({
 															/>
 														</FormControl>
 														<Collapse
-															in={Boolean(formValues.hysteriaQuicParams?.enabled)}
+															in={Boolean(
+																formValues.hysteriaQuicParams?.enabled,
+															)}
 															animateOpacity
 														>
 															<Stack spacing={3} mt={2}>
@@ -3788,10 +4479,7 @@ export const InboundFormModal: FC<Props> = ({
 																						options={[
 																							{
 																								value: "",
-																								label: t(
-																									"common.auto",
-																									"Auto",
-																								),
+																								label: t("common.auto", "Auto"),
 																							},
 																							"conservative",
 																							"standard",
@@ -3808,7 +4496,8 @@ export const InboundFormModal: FC<Props> = ({
 																	)}
 																</SimpleGrid>
 																{["brutal", "force-brutal"].includes(
-																	formValues.hysteriaQuicParams?.congestion || "",
+																	formValues.hysteriaQuicParams?.congestion ||
+																		"",
 																) && (
 																	<SimpleGrid
 																		columns={{ base: 1, md: 2 }}
@@ -3844,9 +4533,7 @@ export const InboundFormModal: FC<Props> = ({
 																			{t("common.debug", "Debug")}
 																		</FormLabel>
 																		<Switch
-																			{...register(
-																				"hysteriaQuicParams.debug",
-																			)}
+																			{...register("hysteriaQuicParams.debug")}
 																		/>
 																	</FormControl>
 																	<FormControl
@@ -3855,10 +4542,7 @@ export const InboundFormModal: FC<Props> = ({
 																		w="auto"
 																	>
 																		<FormLabel mb={0}>
-																			{t(
-																				"inbounds.hysteria.udpHop",
-																				"UDP Hop",
-																			)}
+																			{t("inbounds.hysteria.udpHop", "UDP Hop")}
 																		</FormLabel>
 																		<Switch
 																			{...register(
@@ -3867,7 +4551,8 @@ export const InboundFormModal: FC<Props> = ({
 																		/>
 																	</FormControl>
 																</HStack>
-																{formValues.hysteriaQuicParams?.udpHopEnabled && (
+																{formValues.hysteriaQuicParams
+																	?.udpHopEnabled && (
 																	<SimpleGrid
 																		columns={{ base: 1, md: 2 }}
 																		spacing={3}
@@ -4987,7 +5672,12 @@ export const InboundFormModal: FC<Props> = ({
 										</Stack>
 									)}
 
-									{currentProtocol !== "openvpn" && currentProtocol !== "wireguard" && currentProtocol !== "l2tp" && currentProtocol !== "pptp" && (
+									{currentProtocol !== "openvpn" &&
+										currentProtocol !== "wireguard" &&
+										currentProtocol !== "l2tp" &&
+										currentProtocol !== "pptp" &&
+										currentProtocol !== "ikev2" &&
+										currentProtocol !== "anyconnect" && (
 									<Stack className="xray-dialog-section" spacing={3}>
 										<Flex align="center" justify="space-between">
 											<HStack spacing={2}>

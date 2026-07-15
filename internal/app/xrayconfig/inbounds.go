@@ -841,17 +841,56 @@ func (r Repository) findManageableInboundTx(ctx context.Context, tx *sql.Tx, tag
 }
 
 func (r Repository) ensureSingleL2TPInboundTx(ctx context.Context, tx *sql.Tx, inbound map[string]any, allowedTag string) error {
-	if normalizeProxyProtocol(stringValue(inbound["protocol"])) != L2TPProtocol {
+	protocol := normalizeProxyProtocol(stringValue(inbound["protocol"]))
+	if protocol != L2TPProtocol && protocol != IKEv2Protocol {
 		return nil
 	}
-	tag, err := r.findL2TPInboundTagTx(ctx, tx, allowedTag)
+	tag, err := r.findSingleIPSecInboundTagTx(ctx, tx, allowedTag, protocol)
 	if err != nil {
 		return err
 	}
 	if tag != "" {
+		if protocol == IKEv2Protocol {
+			return fmt.Errorf("%w: only one IKEv2 inbound is supported; existing inbound %q already uses UDP 500/4500", ErrInvalidInbound, tag)
+		}
 		return fmt.Errorf("%w: only one L2TP/IPsec inbound is supported; existing inbound %q already uses UDP 500/4500/1701", ErrInvalidInbound, tag)
 	}
 	return nil
+}
+
+func (r Repository) findSingleIPSecInboundTagTx(ctx context.Context, tx *sql.Tx, allowedTag, protocol string) (string, error) {
+	master, err := r.masterRawConfigTx(ctx, tx)
+	if err != nil {
+		return "", err
+	}
+	if tag := r.findProtocolInboundTagInConfig(master, allowedTag, protocol); tag != "" {
+		return tag, nil
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT xray_config FROM nodes WHERE COALESCE(xray_config_mode, ?) = ? AND xray_config IS NOT NULL`, ConfigModeDefault, ConfigModeCustom)
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var raw []byte
+		if err := rows.Scan(&raw); err != nil {
+			return "", err
+		}
+		if tag := r.findProtocolInboundTagInConfig(NormalizePayload(jsonMap(raw)), allowedTag, protocol); tag != "" {
+			return tag, nil
+		}
+	}
+	return "", rows.Err()
+}
+
+func (r Repository) findProtocolInboundTagInConfig(config map[string]any, allowedTag, protocol string) string {
+	for _, candidate := range listOfMaps(config["inbounds"]) {
+		tag := stringValue(candidate["tag"])
+		if tag != "" && tag != allowedTag && r.isManageableInbound(candidate) && normalizeProxyProtocol(stringValue(candidate["protocol"])) == protocol {
+			return tag
+		}
+	}
+	return ""
 }
 
 func (r Repository) findL2TPInboundTagTx(ctx context.Context, tx *sql.Tx, allowedTag string) (string, error) {

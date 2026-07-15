@@ -8,19 +8,23 @@ import (
 )
 
 const (
-	OVProtocol          = "openvpn"
-	WGProtocol          = "wireguard"
-	L2TPProtocol        = "l2tp"
-	PPTPProtocol        = "pptp"
-	defaultOVPoolCIDR   = "10.66.0.0/16"
-	defaultWGPoolCIDR   = "10.69.0.0/16"
-	defaultL2TPPoolCIDR = "10.67.0.0/16"
-	defaultPPTPPoolCIDR = "10.68.0.0/24"
-	L2TPIPSecIKEPort    = 500
-	L2TPIPSecNATPort    = 4500
-	L2TPPort            = 1701
-	L2TPTunnelPort      = 1702
-	OVDCODataCiphers    = "AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305"
+	OVProtocol                = "openvpn"
+	WGProtocol                = "wireguard"
+	L2TPProtocol              = "l2tp"
+	PPTPProtocol              = "pptp"
+	IKEv2Protocol             = "ikev2"
+	AnyConnectProtocol        = "anyconnect"
+	defaultOVPoolCIDR         = "10.66.0.0/16"
+	defaultWGPoolCIDR         = "10.69.0.0/16"
+	defaultL2TPPoolCIDR       = "10.67.0.0/16"
+	defaultPPTPPoolCIDR       = "10.68.0.0/24"
+	defaultIKEv2PoolCIDR      = "10.70.0.0/16"
+	defaultAnyConnectPoolCIDR = "10.71.0.0/16"
+	L2TPIPSecIKEPort          = 500
+	L2TPIPSecNATPort          = 4500
+	L2TPPort                  = 1701
+	L2TPTunnelPort            = 1702
+	OVDCODataCiphers          = "AES-256-GCM:AES-128-GCM:CHACHA20-POLY1305"
 )
 
 func isManageableInboundProtocol(protocol string) bool {
@@ -43,7 +47,7 @@ func normalizeVirtualTunnelInbound(inbound map[string]any) map[string]any {
 	normalized := deepCopyMap(inbound)
 	protocol := normalizeProxyProtocol(stringValue(normalized["protocol"]))
 	normalized["protocol"] = protocol
-	if protocol != OVProtocol && protocol != WGProtocol && protocol != L2TPProtocol && protocol != PPTPProtocol {
+	if protocol != OVProtocol && protocol != WGProtocol && protocol != L2TPProtocol && protocol != PPTPProtocol && protocol != IKEv2Protocol && protocol != AnyConnectProtocol {
 		return normalized
 	}
 	settings := normalizeVirtualTunnelSettings(protocol, mapValue(normalized["settings"]))
@@ -61,9 +65,128 @@ func normalizeVirtualTunnelSettings(protocol string, settings map[string]any) ma
 		return normalizeL2TPSettings(settings)
 	case PPTPProtocol:
 		return normalizePPTPSettings(settings)
+	case IKEv2Protocol:
+		return normalizeIKEv2Settings(settings)
+	case AnyConnectProtocol:
+		return normalizeAnyConnectSettings(settings)
 	default:
 		return normalizeOVSettings(settings)
 	}
+}
+
+func normalizeIKEv2Settings(settings map[string]any) map[string]any {
+	out := normalizeRemoteAccessSettings(settings, defaultIKEv2PoolCIDR)
+	out["ike_port"] = 500
+	out["nat_port"] = 4500
+	authMode := strings.ToLower(strings.TrimSpace(stringValue(out["auth_mode"])))
+	if authMode != "certificate" && authMode != "password+certificate" {
+		authMode = "password"
+	}
+	out["auth_mode"] = authMode
+	for key, fallback := range map[string]string{
+		"server_identity": "",
+		"ike_proposals":   "aes256-sha256-modp2048,aes256-sha384-modp3072,aes256gcm16-prfsha384-ecp384",
+		"esp_proposals":   "aes256-sha256,aes256gcm16-ecp384",
+		"fragmentation":   "yes",
+	} {
+		value := strings.TrimSpace(stringValue(out[key]))
+		if value == "" {
+			value = fallback
+		}
+		out[key] = value
+	}
+	for key, fallback := range map[string]bool{"mobike": true, "reauth": false, "send_cert": true} {
+		if _, ok := out[key]; !ok {
+			out[key] = fallback
+		} else {
+			out[key] = boolValue(out[key])
+		}
+	}
+	for key, fallback := range map[string]int{"ike_lifetime": 10800, "child_lifetime": 3600, "rekey_time": 3000, "dpd_delay": 30} {
+		if value, ok := normalizedOptionalInt(out[key], 0, 86400*30); ok {
+			out[key] = value
+		} else {
+			out[key] = fallback
+		}
+	}
+	for _, key := range []string{"ca_certificate", "server_certificate", "server_key"} {
+		if value := strings.TrimSpace(stringValue(out[key])); value != "" {
+			out[key] = value
+		} else {
+			delete(out, key)
+		}
+	}
+	out["routes"] = normalizeStringAnyList(out["routes"])
+	return out
+}
+
+func normalizeAnyConnectSettings(settings map[string]any) map[string]any {
+	out := normalizeRemoteAccessSettings(settings, defaultAnyConnectPoolCIDR)
+	authMode := strings.ToLower(strings.TrimSpace(stringValue(out["auth_mode"])))
+	if authMode != "certificate" && authMode != "password+certificate" {
+		authMode = "password"
+	}
+	out["auth_mode"] = authMode
+	for key, fallback := range map[string]bool{
+		"udp_enabled": true, "compression": false, "cisco_client_compat": true,
+		"deny_roaming": false, "tunnel_all_dns": true, "restrict_user_to_routes": false,
+	} {
+		if _, ok := out[key]; !ok {
+			out[key] = fallback
+		} else {
+			out[key] = boolValue(out[key])
+		}
+	}
+	for key, fallback := range map[string]int{
+		"max_clients": 1024, "max_same_clients": 0, "cookie_timeout": 300,
+		"idle_timeout": 1200, "mobile_idle_timeout": 2400, "session_timeout": 0,
+		"keepalive": 300, "dpd": 60, "mobile_dpd": 300, "mtu": 1400,
+	} {
+		if value, ok := normalizedOptionalInt(out[key], 0, 86400*30); ok {
+			out[key] = value
+		} else {
+			out[key] = fallback
+		}
+	}
+	for _, key := range []string{"ca_certificate", "server_certificate", "server_key", "banner", "default_domain"} {
+		if value := strings.TrimSpace(stringValue(out[key])); value != "" {
+			out[key] = value
+		} else {
+			delete(out, key)
+		}
+	}
+	out["routes"] = normalizeStringAnyList(out["routes"])
+	out["no_routes"] = normalizeStringAnyList(out["no_routes"])
+	return out
+}
+
+func normalizeRemoteAccessSettings(settings map[string]any, defaultPool string) map[string]any {
+	out := make(map[string]any, len(settings)+12)
+	for key, value := range settings {
+		out[key] = value
+	}
+	pool := strings.TrimSpace(firstNonEmptyString(out["ipv4_pool_cidr"], out["ipv4PoolCidr"]))
+	if pool == "" {
+		pool = defaultPool
+	}
+	out["ipv4_pool_cidr"] = pool
+	delete(out, "ipv4PoolCidr")
+	out["dns_servers"] = normalizeStringAnyList(firstNonEmptyAny(out["dns_servers"], out["dnsServers"]))
+	delete(out, "dnsServers")
+	for key, fallback := range map[string]bool{"tproxy_enabled": true, "accounting_enabled": true, "redirect_gateway": true} {
+		if _, ok := out[key]; !ok {
+			out[key] = fallback
+		} else {
+			out[key] = boolValue(out[key])
+		}
+	}
+	if port, ok := normalizedOptionalPort(out["tunnel_port"]); ok {
+		out["tunnel_port"] = port
+	} else {
+		delete(out, "tunnel_port")
+	}
+	delete(out, "clients")
+	return out
 }
 
 func normalizeWGSettings(settings map[string]any) map[string]any {
@@ -300,7 +423,7 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 		return fmt.Errorf("invalid inbound %q: port must be between 1 and 65535", tag)
 	}
 	protocol := normalizeProxyProtocol(stringValue(inbound["protocol"]))
-	if protocol != OVProtocol && protocol != WGProtocol && protocol != L2TPProtocol && protocol != PPTPProtocol {
+	if protocol != OVProtocol && protocol != WGProtocol && protocol != L2TPProtocol && protocol != PPTPProtocol && protocol != IKEv2Protocol && protocol != AnyConnectProtocol {
 		return fmt.Errorf("invalid inbound %q: unsupported virtual tunnel protocol %q", tag, protocol)
 	}
 	rawSettings := mapValue(inbound["settings"])
@@ -322,7 +445,7 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 		}
 	}
 	poolPrefix, err := netip.ParsePrefix(stringValue(settings["ipv4_pool_cidr"]))
-	if err != nil {
+	if err != nil || !poolPrefix.Addr().Is4() {
 		return fmt.Errorf("invalid inbound %q: %s IPv4 pool CIDR is invalid", tag, strings.ToUpper(protocol))
 	}
 	if protocol == PPTPProtocol && poolPrefix.Bits() < 24 {
@@ -417,6 +540,70 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 			return fmt.Errorf("invalid inbound %q: L2TP ipsec_psk is required", tag)
 		}
 	}
+	if protocol == IKEv2Protocol {
+		if port != 500 {
+			return fmt.Errorf("invalid inbound %q: IKEv2 port must be 500", tag)
+		}
+		authMode := stringValue(settings["auth_mode"])
+		if authMode != "password" && authMode != "certificate" && authMode != "password+certificate" {
+			return fmt.Errorf("invalid inbound %q: IKEv2 auth_mode is invalid", tag)
+		}
+		for _, key := range []string{"ca_certificate", "server_certificate", "server_key"} {
+			if strings.TrimSpace(stringValue(settings[key])) == "" {
+				return fmt.Errorf("invalid inbound %q: IKEv2 %s is required", tag, key)
+			}
+		}
+		identity := strings.TrimSpace(stringValue(settings["server_identity"]))
+		if identity == "" || strings.ContainsAny(identity, " \t\r\n") {
+			return fmt.Errorf("invalid inbound %q: IKEv2 server_identity is invalid", tag)
+		}
+		for _, key := range []string{"ike_proposals", "esp_proposals"} {
+			if !validIPSecProposal(stringValue(settings[key])) {
+				return fmt.Errorf("invalid inbound %q: IKEv2 %s contains unsupported characters", tag, key)
+			}
+		}
+		if fragmentation := stringValue(settings["fragmentation"]); fragmentation != "yes" && fragmentation != "accept" && fragmentation != "no" {
+			return fmt.Errorf("invalid inbound %q: IKEv2 fragmentation must be yes, accept, or no", tag)
+		}
+		for _, route := range normalizeStringAnyList(settings["routes"]) {
+			if _, err := netip.ParsePrefix(stringValue(route)); err != nil {
+				return fmt.Errorf("invalid inbound %q: IKEv2 routes must contain CIDRs", tag)
+			}
+		}
+		if !boolValue(settings["redirect_gateway"]) && len(normalizeStringAnyList(settings["routes"])) == 0 {
+			return fmt.Errorf("invalid inbound %q: IKEv2 routes are required when redirect_gateway is disabled", tag)
+		}
+		if err := validateRemoteAccessNumbers(tag, protocol, rawSettings, []remoteAccessNumberRule{{"ike_lifetime", 60, 2592000}, {"child_lifetime", 60, 2592000}, {"rekey_time", 0, 2592000}, {"dpd_delay", 0, 86400}}); err != nil {
+			return err
+		}
+	}
+	if protocol == AnyConnectProtocol {
+		authMode := stringValue(settings["auth_mode"])
+		if authMode != "password" && authMode != "certificate" && authMode != "password+certificate" {
+			return fmt.Errorf("invalid inbound %q: AnyConnect auth_mode is invalid", tag)
+		}
+		for _, key := range []string{"server_certificate", "server_key"} {
+			if strings.TrimSpace(stringValue(settings[key])) == "" {
+				return fmt.Errorf("invalid inbound %q: AnyConnect %s is required", tag, key)
+			}
+		}
+		if authMode != "password" && strings.TrimSpace(stringValue(settings["ca_certificate"])) == "" {
+			return fmt.Errorf("invalid inbound %q: AnyConnect ca_certificate is required for certificate authentication", tag)
+		}
+		for _, key := range []string{"routes", "no_routes"} {
+			for _, route := range normalizeStringAnyList(settings[key]) {
+				if _, err := netip.ParsePrefix(stringValue(route)); err != nil {
+					return fmt.Errorf("invalid inbound %q: AnyConnect %s must contain CIDRs", tag, key)
+				}
+			}
+		}
+		if domain := stringValue(settings["default_domain"]); strings.ContainsAny(domain, " \t\r\n") {
+			return fmt.Errorf("invalid inbound %q: AnyConnect default_domain is invalid", tag)
+		}
+		if err := validateRemoteAccessNumbers(tag, protocol, rawSettings, []remoteAccessNumberRule{{"mtu", 576, 1500}, {"max_clients", 1, 1000000}, {"max_same_clients", 0, 1000000}, {"cookie_timeout", 0, 2592000}, {"idle_timeout", 0, 2592000}, {"mobile_idle_timeout", 0, 2592000}, {"session_timeout", 0, 2592000}, {"keepalive", 0, 2592000}, {"dpd", 0, 2592000}, {"mobile_dpd", 0, 2592000}}); err != nil {
+			return err
+		}
+	}
 	if protocol == PPTPProtocol && port != 1723 {
 		return fmt.Errorf("invalid inbound %q: PPTP port must be 1723", tag)
 	}
@@ -442,6 +629,35 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 		}
 	}
 	return nil
+}
+
+type remoteAccessNumberRule struct {
+	key      string
+	min, max int
+}
+
+func validateRemoteAccessNumbers(tag, protocol string, settings map[string]any, rules []remoteAccessNumberRule) error {
+	for _, rule := range rules {
+		raw, exists := settings[rule.key]
+		if !exists || strings.TrimSpace(stringValue(raw)) == "" {
+			continue
+		}
+		value, ok := normalizedOptionalInt(raw, rule.min, rule.max)
+		if !ok || value < rule.min || value > rule.max {
+			return fmt.Errorf("invalid inbound %q: %s %s must be between %d and %d", tag, strings.ToUpper(protocol), rule.key, rule.min, rule.max)
+		}
+	}
+	return nil
+}
+
+func validIPSecProposal(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	return strings.IndexFunc(value, func(r rune) bool {
+		return !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || strings.ContainsRune("_+-!,", r))
+	}) < 0
 }
 
 func applyVirtualTunnelResolvedSettings(resolved ResolvedInbound, inbound map[string]any) {
@@ -484,6 +700,18 @@ func applyVirtualTunnelResolvedSettings(resolved ResolvedInbound, inbound map[st
 		if port, ok := virtualTunnelPort(settings); ok {
 			resolved["tunnel_port"] = port
 		}
+	case IKEv2Protocol, AnyConnectProtocol:
+		resolved["network"] = "udp"
+		if protocol == AnyConnectProtocol {
+			resolved["network"] = "tcp,udp"
+		}
+		resolved["tls"] = "none"
+		resolved["settings"] = settings
+		resolved["ipv4_pool_cidr"] = stringValue(settings["ipv4_pool_cidr"])
+		resolved["tunnel_tag"] = RuntimeTunnelTagForProtocol(protocol, stringValue(inbound["tag"]))
+		if port, ok := virtualTunnelPort(settings); ok {
+			resolved["tunnel_port"] = port
+		}
 	}
 }
 
@@ -500,6 +728,10 @@ func RuntimeTunnelTagForProtocol(protocol string, tag string) string {
 		prefix = "__rebecca_l2tp_tunnel"
 	} else if normalizeProxyProtocol(protocol) == PPTPProtocol {
 		prefix = "__rebecca_pptp_tunnel"
+	} else if normalizeProxyProtocol(protocol) == IKEv2Protocol {
+		prefix = "__rebecca_ikev2_tunnel"
+	} else if normalizeProxyProtocol(protocol) == AnyConnectProtocol {
+		prefix = "__rebecca_anyconnect_tunnel"
 	}
 	if tag == "" {
 		return prefix

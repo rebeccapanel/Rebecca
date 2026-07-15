@@ -1804,6 +1804,47 @@
                             </div>
                             <p class="rb-empty" id="l2tpEmptyState" hidden data-i18n="noConfigs">No configurations available.</p>
                         </div>
+
+                        <div class="rb-protocol-panel" id="remoteAccessProtocolPanel" hidden>
+                            <div class="rb-vpn-block">
+                                {% if ikev2 %}
+                                <div class="rb-vpn-group">
+                                    <h4 class="rb-vpn-title" data-i18n="ikev2Title">IKEv2</h4>
+                                    <div class="rb-credential-list">
+                                        {% for item in ikev2 %}
+                                        <div class="rb-credential-card" data-remote-access-card>
+                                            <p class="rb-credential-name">{% if item.HostName %}{{ item.HostName }}{% else %}{{ item.Server }}{% endif %}</p>
+                                            <div class="rb-credential-grid">
+                                                <div class="rb-credential-row"><span class="rb-credential-copy" dir="ltr">{{ item.Server }}:{{ item.Port }}</span><button class="rb-icon-button" type="button" data-copy-text="{{ item.Server }}" data-copy-title="server"><span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></button></div>
+                                                {% if item.Username %}<div class="rb-credential-row"><span class="rb-credential-copy" dir="ltr">{{ item.Username }}</span><button class="rb-icon-button" type="button" data-copy-text="{{ item.Username }}" data-copy-title="username"><span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></button></div>{% endif %}
+                                                {% if item.Password %}<div class="rb-credential-row"><span class="rb-credential-copy" dir="ltr">{{ item.Password }}</span><button class="rb-icon-button" type="button" data-copy-text="{{ item.Password }}" data-copy-title="password"><span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></button></div>{% endif %}
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% endif %}
+
+                                {% if anyconnect %}
+                                <div class="rb-vpn-group">
+                                    <h4 class="rb-vpn-title" data-i18n="anyconnectTitle">Cisco AnyConnect</h4>
+                                    <div class="rb-credential-list">
+                                        {% for item in anyconnect %}
+                                        <div class="rb-credential-card" data-remote-access-card>
+                                            <p class="rb-credential-name">{% if item.HostName %}{{ item.HostName }}{% else %}{{ item.Server }}{% endif %}</p>
+                                            <div class="rb-credential-grid">
+                                                <div class="rb-credential-row"><span class="rb-credential-copy" dir="ltr">{{ item.Server }}:{{ item.Port }}</span><button class="rb-icon-button" type="button" data-copy-text="{{ item.Server }}" data-copy-title="server"><span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></button></div>
+                                                {% if item.Username %}<div class="rb-credential-row"><span class="rb-credential-copy" dir="ltr">{{ item.Username }}</span><button class="rb-icon-button" type="button" data-copy-text="{{ item.Username }}" data-copy-title="username"><span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></button></div>{% endif %}
+                                                {% if item.Password %}<div class="rb-credential-row"><span class="rb-credential-copy" dir="ltr">{{ item.Password }}</span><button class="rb-icon-button" type="button" data-copy-text="{{ item.Password }}" data-copy-title="password"><span aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2.4" fill="currentColor"></rect><path d="M6 15H5.5C4.67 15 4 14.33 4 13.5V5.5C4 4.67 4.67 4 5.5 4H13.5C14.33 4 15 4.67 15 5.5V6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span></button></div>{% endif %}
+                                            </div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
+                            <p class="rb-empty" id="remoteAccessEmptyState" hidden data-i18n="noConfigs">No configurations available.</p>
+                        </div>
                     </div>
                 </section>
 
@@ -2147,6 +2188,7 @@
                     protocolTabOVPN: 'ovpn',
                     protocolTabWireGuard: 'wireguard',
                     protocolTabL2TP: 'l2tp/ipsec',
+                    protocolTabRemoteAccess: 'ikev2 / anyconnect',
                     openvpnCount: '[[count]] profile ready',
                     wireguardCount: '[[count]] config ready',
                     credentialCount: '[[count]] credential card ready',
@@ -2165,6 +2207,9 @@
                     openvpnTitle: 'OpenVPN downloads',
                     l2tpTitle: 'L2TP / IPSec',
                     pptpTitle: 'PPTP',
+                    ikev2Title: 'IKEv2',
+                    anyconnectTitle: 'Cisco AnyConnect',
+                    remoteAccessTitle: 'IKEv2 / Cisco AnyConnect',
                     downloadButton: 'Download',
                     appDownloadsTitle: 'Download apps',
                     appDownloadsCopy: 'Pick your platform, download a client, then add this subscription directly.',
@@ -2248,6 +2293,7 @@
                     protocolTabOVPN: 'ovpn',
                     protocolTabWireGuard: 'wireguard',
                     protocolTabL2TP: 'l2tp/ipsec',
+                    protocolTabRemoteAccess: 'ikev2 / anyconnect',
                     openvpnCount: '[[count]] پروفایل آماده است',
                     wireguardCount: '[[count]] کانفیگ آماده است',
                     credentialCount: '[[count]] کارت اطلاعاتی آماده است',
@@ -2266,6 +2312,9 @@
                     openvpnTitle: 'دانلود OpenVPN',
                     l2tpTitle: 'L2TP / IPSec',
                     pptpTitle: 'PPTP',
+                    ikev2Title: 'IKEv2',
+                    anyconnectTitle: 'Cisco AnyConnect',
+                    remoteAccessTitle: 'IKEv2 / Cisco AnyConnect',
                     downloadButton: 'دانلود',
                     appDownloadsTitle: 'دانلود برنامه',
                     appDownloadsCopy: 'پلتفرم را انتخاب کنید، برنامه را دانلود کنید و اشتراک را مستقیم اضافه کنید.',
@@ -2349,6 +2398,7 @@
                     protocolTabOVPN: 'ovpn',
                     protocolTabWireGuard: 'wireguard',
                     protocolTabL2TP: 'l2tp/ipsec',
+                    protocolTabRemoteAccess: 'ikev2 / anyconnect',
                     openvpnCount: 'Готово профилей: [[count]]',
                     wireguardCount: 'Готово конфигов: [[count]]',
                     credentialCount: 'Готово карточек доступа: [[count]]',
@@ -2367,6 +2417,9 @@
                     openvpnTitle: 'OpenVPN загрузки',
                     l2tpTitle: 'L2TP / IPSec',
                     pptpTitle: 'PPTP',
+                    ikev2Title: 'IKEv2',
+                    anyconnectTitle: 'Cisco AnyConnect',
+                    remoteAccessTitle: 'IKEv2 / Cisco AnyConnect',
                     downloadButton: 'Скачать',
                     appDownloadsTitle: 'Скачать приложения',
                     appDownloadsCopy: 'Выберите платформу, скачайте клиент и добавьте эту подписку напрямую.',
@@ -2450,6 +2503,7 @@
                     protocolTabOVPN: 'ovpn',
                     protocolTabWireGuard: 'wireguard',
                     protocolTabL2TP: 'l2tp/ipsec',
+                    protocolTabRemoteAccess: 'ikev2 / anyconnect',
                     openvpnCount: '已准备 [[count]] 个配置文件',
                     wireguardCount: '已准备 [[count]] 个配置',
                     credentialCount: '已准备 [[count]] 张凭据卡',
@@ -2468,6 +2522,9 @@
                     openvpnTitle: 'OpenVPN 下载',
                     l2tpTitle: 'L2TP / IPSec',
                     pptpTitle: 'PPTP',
+                    ikev2Title: 'IKEv2',
+                    anyconnectTitle: 'Cisco AnyConnect',
+                    remoteAccessTitle: 'IKEv2 / Cisco AnyConnect',
                     downloadButton: '下载',
                     appDownloadsTitle: '下载应用',
                     appDownloadsCopy: '选择平台、下载客户端，然后直接添加此订阅。',
@@ -3241,6 +3298,10 @@
                 return document.querySelectorAll('[data-l2tp-card], [data-pptp-card]').length;
             }
 
+            function countRemoteAccessCards() {
+                return document.querySelectorAll('[data-remote-access-card]').length;
+            }
+
             function buildAvailableTabs() {
                 var tabs = [];
                 if (v2ConfigLinks.length > 0) {
@@ -3254,6 +3315,9 @@
                 }
                 if (countCredentialCards() > 0) {
                     tabs.push({ key: 'l2tp', count: countCredentialCards() });
+                }
+                if (countRemoteAccessCards() > 0) {
+                    tabs.push({ key: 'remote-access', count: countRemoteAccessCards() });
                 }
                 availableTabs = tabs;
             }
@@ -3276,6 +3340,7 @@
                 if (view === 'ovpn') return t('protocolTabOVPN');
                 if (view === 'wireguard') return t('protocolTabWireGuard');
                 if (view === 'l2tp') return t('protocolTabL2TP');
+                if (view === 'remote-access') return t('protocolTabRemoteAccess');
                 return t('protocolTabV2');
             }
 
@@ -3283,6 +3348,7 @@
                 if (state.activeView === 'ovpn') return t('openvpnTitle');
                 if (state.activeView === 'wireguard') return t('wireguardTitle');
                 if (state.activeView === 'l2tp') return t('l2tpTitle');
+                if (state.activeView === 'remote-access') return t('remoteAccessTitle');
                 return t('v2Title');
             }
 
@@ -3356,12 +3422,15 @@
                 var ovpnPanel = document.getElementById('ovpnProtocolPanel');
                 var wgPanel = document.getElementById('wgProtocolPanel');
                 var l2tpPanel = document.getElementById('l2tpProtocolPanel');
+                var remoteAccessPanel = document.getElementById('remoteAccessProtocolPanel');
                 var ovpnEmpty = document.getElementById('ovpnEmptyState');
                 var wgEmpty = document.getElementById('wgEmptyState');
                 var l2tpEmpty = document.getElementById('l2tpEmptyState');
+                var remoteAccessEmpty = document.getElementById('remoteAccessEmptyState');
                 var ovpnCount = countOpenvpnProfiles();
                 var wgCount = countWireguardProfiles();
                 var credentialCount = countCredentialCards();
+                var remoteAccessCount = countRemoteAccessCards();
                 var isLinkView = state.activeView === 'v2';
 
                 if (title) {
@@ -3394,6 +3463,9 @@
                 if (l2tpPanel) {
                     l2tpPanel.hidden = state.activeView !== 'l2tp';
                 }
+                if (remoteAccessPanel) {
+                    remoteAccessPanel.hidden = state.activeView !== 'remote-access';
+                }
                 if (ovpnEmpty) {
                     ovpnEmpty.hidden = ovpnCount > 0;
                 }
@@ -3402,6 +3474,9 @@
                 }
                 if (l2tpEmpty) {
                     l2tpEmpty.hidden = credentialCount > 0;
+                }
+                if (remoteAccessEmpty) {
+                    remoteAccessEmpty.hidden = remoteAccessCount > 0;
                 }
 
                 if (state.activeView === 'ovpn') {
@@ -3427,6 +3502,16 @@
                 if (state.activeView === 'l2tp') {
                     count.textContent = interpolate(t('credentialCount'), {
                         count: formatNumber(credentialCount)
+                    });
+                    if (copyAllButton) {
+                        copyAllButton.disabled = true;
+                    }
+                    return;
+                }
+
+                if (state.activeView === 'remote-access') {
+                    count.textContent = interpolate(t('credentialCount'), {
+                        count: formatNumber(remoteAccessCount)
                     });
                     if (copyAllButton) {
                         copyAllButton.disabled = true;

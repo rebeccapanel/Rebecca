@@ -236,7 +236,7 @@ func parseUserUsageSampleUID(raw string) (int64, bool, bool) {
 
 func isUserUsageProtocolPrefix(value string) bool {
 	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "openvpn", "l2tp", "l2tp-ipsec", "pptp", "wg", "wireguard":
+	case "openvpn", "l2tp", "l2tp-ipsec", "pptp", "wg", "wireguard", "ikev2", "anyconnect":
 		return true
 	default:
 		return false

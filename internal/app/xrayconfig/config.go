@@ -24,10 +24,12 @@ var proxyProtocols = map[string]struct{}{
 }
 
 var virtualTunnelProtocols = map[string]struct{}{
-	OVProtocol:   {},
-	WGProtocol:   {},
-	L2TPProtocol: {},
-	PPTPProtocol: {},
+	OVProtocol:         {},
+	WGProtocol:         {},
+	L2TPProtocol:       {},
+	PPTPProtocol:       {},
+	IKEv2Protocol:      {},
+	AnyConnectProtocol: {},
 }
 
 var (
