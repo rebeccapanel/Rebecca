@@ -218,6 +218,26 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 			? null
 			: Math.round(value * BYTES_IN_GB);
 
+	const buildMutationPayload = (data: NodeType) => ({
+		...(isAddMode ? {} : { id: node?.id ?? data.id }),
+		name: data.name,
+		note: data.note ?? "",
+		address: data.address,
+		port: Number(data.port),
+		api_port: Number(data.api_port),
+		usage_coefficient: Number(data.usage_coefficient),
+		data_limit: convertLimitToBytes(data.data_limit ?? null),
+		proxy_enabled: Boolean(data.proxy_enabled),
+		proxy_type: data.proxy_enabled ? data.proxy_type : null,
+		proxy_host: data.proxy_enabled ? data.proxy_host : null,
+		proxy_port:
+			data.proxy_enabled && data.proxy_port !== null && data.proxy_port !== undefined
+				? Number(data.proxy_port)
+				: null,
+		proxy_username: data.proxy_enabled ? data.proxy_username : null,
+		proxy_password: data.proxy_enabled ? data.proxy_password : null,
+	});
+
 	const baseDefaults = isAddMode
 		? getNodeDefaultValues()
 		: {
@@ -354,10 +374,7 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 		if (submitStatus !== "idle" || isLoading) return;
 		clearSubmitTimers();
 		setSubmitStatus("loading");
-		const payload = {
-			...data,
-			data_limit: convertLimitToBytes(data.data_limit ?? null),
-		};
+		const payload = buildMutationPayload(data);
 		mutate(payload, {
 			onError: () => {
 				showSubmitError();

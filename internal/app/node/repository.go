@@ -220,25 +220,37 @@ func (r Repository) UpdateNode(ctx context.Context, nodeID int64, payload NodeMo
 			markConnectionChanged()
 		}
 	}
+	finalStatus := current.Status
 	statusReconnectRequested := false
 	if payload.Status != nil {
 		status := strings.TrimSpace(*payload.Status)
 		switch status {
 		case StatusDisabled:
-			add("status", StatusDisabled)
-			add("xray_version", nil)
-			add("message", nil)
+			if status != current.Status {
+				add("status", StatusDisabled)
+				add("xray_version", nil)
+				add("message", nil)
+				add("last_status_change", dbTimestamp(r.now().UTC()))
+				finalStatus = StatusDisabled
+			}
 		case StatusLimited:
-			add("status", StatusLimited)
-			add("message", "Data limit reached")
+			if status != current.Status {
+				add("status", StatusLimited)
+				add("message", "Data limit reached")
+				add("last_status_change", dbTimestamp(r.now().UTC()))
+				finalStatus = StatusLimited
+			}
 		case StatusConnected, StatusConnecting, StatusError:
-			add("status", StatusConnecting)
-			add("message", nil)
-			statusReconnectRequested = true
+			if status != current.Status {
+				add("status", StatusConnecting)
+				add("message", nil)
+				add("last_status_change", dbTimestamp(r.now().UTC()))
+				finalStatus = StatusConnecting
+				statusReconnectRequested = true
+			}
 		default:
 			return NodeResponse{}, wrapInvalid("invalid node status")
 		}
-		add("last_status_change", dbTimestamp(r.now().UTC()))
 	}
 	if payload.UsageCoefficient != nil {
 		if *payload.UsageCoefficient <= 0 {
@@ -313,10 +325,11 @@ func (r Repository) UpdateNode(ctx context.Context, nodeID int64, payload NodeMo
 			markConnectionChanged()
 		}
 	}
-	if payload.Status == nil && connectionChanged && current.Status != StatusDisabled && current.Status != StatusLimited {
+	if connectionChanged && !statusReconnectRequested && current.Status != StatusDisabled && current.Status != StatusLimited && finalStatus != StatusDisabled && finalStatus != StatusLimited {
 		add("status", StatusConnecting)
 		add("message", nil)
 		add("last_status_change", dbTimestamp(r.now().UTC()))
+		finalStatus = StatusConnecting
 	}
 	if len(updates) > 0 {
 		args = append(args, nodeID)
@@ -327,11 +340,7 @@ func (r Repository) UpdateNode(ctx context.Context, nodeID int64, payload NodeMo
 			return NodeResponse{}, err
 		}
 	}
-	updatedStatus := current.Status
-	if payload.Status != nil {
-		updatedStatus = strings.TrimSpace(*payload.Status)
-	}
-	if (connectionChanged || statusReconnectRequested) && updatedStatus != StatusDisabled && updatedStatus != StatusLimited {
+	if (connectionChanged || statusReconnectRequested) && finalStatus != StatusDisabled && finalStatus != StatusLimited {
 		if err := r.enqueueNodeOperationTx(ctx, tx, NodeOperationSyncConfig, &nodeID, nil, map[string]any{"node_id": nodeID}, r.now().UTC()); err != nil {
 			return NodeResponse{}, err
 		}

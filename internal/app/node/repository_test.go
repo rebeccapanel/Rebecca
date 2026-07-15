@@ -142,6 +142,25 @@ func TestNodeRepositoryDoesNotSyncForNonConnectionEdits(t *testing.T) {
 	}
 	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 1)
 
+	if _, err := db.Exec(`UPDATE nodes SET status = ? WHERE id = ?`, StatusConnected, created.ID); err != nil {
+		t.Fatalf("mark node connected: %v", err)
+	}
+	name = "quiet-node-live-rename"
+	status := StatusConnected
+	limit = int64(4096)
+	updated, err = repo.UpdateNode(ctx, created.ID, NodeModify{
+		Name:      &name,
+		Status:    &status,
+		DataLimit: &limit,
+	})
+	if err != nil {
+		t.Fatalf("UpdateNode same-status edit error: %v", err)
+	}
+	if updated.Status != StatusConnected || updated.Name != name || updated.DataLimit == nil || *updated.DataLimit != limit {
+		t.Fatalf("unexpected same-status update: %#v", updated)
+	}
+	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 1)
+
 	address := "198.51.100.10"
 	if _, err := repo.UpdateNode(ctx, created.ID, NodeModify{Address: &address}); err != nil {
 		t.Fatalf("UpdateNode connection field error: %v", err)
