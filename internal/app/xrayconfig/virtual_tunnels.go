@@ -78,6 +78,8 @@ func normalizeWGSettings(settings map[string]any) map[string]any {
 	out["address_pool"] = pool
 	out["ipv4_pool_cidr"] = pool
 	delete(out, "ipv4PoolCidr")
+	delete(out, "dns_servers")
+	delete(out, "dnsServers")
 	if _, ok := out["tproxy_enabled"]; !ok {
 		out["tproxy_enabled"] = true
 	} else {

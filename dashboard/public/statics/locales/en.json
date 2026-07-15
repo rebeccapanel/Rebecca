@@ -400,6 +400,8 @@
 	"hostsDialog.currentServerv6": "IPv6 of current server",
 	"hostsDialog.dataLimit": "The usage limit of the user",
 	"hostsDialog.dataUsage": "The current usage of the user",
+	"hostsDialog.dnsPrimary": "Primary DNS",
+	"hostsDialog.dnsSecondary": "Secondary DNS",
 	"hostsDialog.desc": "Use these variables to make it dynamic",
 	"hostsDialog.expireDate": "Expiry date of the user",
 	"hostsDialog.fingerprint": "Fingerprint",

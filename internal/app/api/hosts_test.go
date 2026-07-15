@@ -209,6 +209,45 @@ func TestHostsBulkModifySubscriptionChangeEnqueuesRuntimeSync(t *testing.T) {
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 1)
 }
 
+func TestWireGuardHostDNSPersists(t *testing.T) {
+	server, db := testAdminServer(t)
+	insertMasterAPIAdmin(t, db, 1, "pouria", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
+	insertRawMasterXrayConfig(t, db, inboundConfig(inboundEntry("wg-main", "wireguard", 51820)))
+	token := adminBearerToken(t, server, "pouria", "pass123")
+
+	rec := adminJSONRequest(t, server, http.MethodGet, "/hosts", token, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("hosts list status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var initial map[string][]hostResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &initial); err != nil {
+		t.Fatal(err)
+	}
+	if initial["wg-main"][0].DNSPrimary != "1.1.1.1" || initial["wg-main"][0].DNSSecondary != "8.8.8.8" {
+		t.Fatalf("unexpected default WireGuard host DNS: %#v", initial["wg-main"][0])
+	}
+	hostID := initial["wg-main"][0].ID
+	payload := `{"wg-main":[{"id":` + itoa(hostID) + `,"remark":"wg-edge","address":"wg.example.com","dns_primary":"9.9.9.9","dns_secondary":"149.112.112.112"}]}`
+	rec = adminJSONRequest(t, server, http.MethodPut, "/api/hosts", token, payload)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("hosts update status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var updated map[string][]hostResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &updated); err != nil {
+		t.Fatal(err)
+	}
+	host := updated["wg-main"][0]
+	if host.DNSPrimary != "9.9.9.9" || host.DNSSecondary != "149.112.112.112" {
+		t.Fatalf("unexpected WireGuard host DNS: %#v", host)
+	}
+
+	rec = adminJSONRequest(t, server, http.MethodPut, "/api/hosts", token,
+		`{"wg-main":[{"id":`+itoa(hostID)+`,"remark":"wg-edge","address":"wg.example.com","dns_primary":"not-an-ip","dns_secondary":"8.8.8.8"}]}`)
+	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "primary DNS") {
+		t.Fatalf("invalid DNS status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestHostsBulkModifyDeletingDuplicateInboundHostEnqueuesRuntimeSync(t *testing.T) {
 	server, db := testAdminServer(t)
 	insertMasterAPIAdmin(t, db, 1, "pouria", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)

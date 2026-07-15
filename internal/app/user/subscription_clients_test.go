@@ -360,6 +360,8 @@ func newSubscriptionClientTestService(t *testing.T) (Service, string) {
 			inbound_tag TEXT,
 			remark TEXT,
 			address TEXT,
+			dns_primary TEXT NOT NULL DEFAULT '1.1.1.1',
+			dns_secondary TEXT NOT NULL DEFAULT '8.8.8.8',
 			address_options TEXT NULL,
 			address_selection_mode TEXT NULL,
 			address_ttl_seconds BIGINT NULL,

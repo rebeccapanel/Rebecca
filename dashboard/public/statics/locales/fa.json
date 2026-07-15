@@ -389,6 +389,8 @@
 	"hostsDialog.currentServerv6": "IPv6 کنونی سرور",
 	"hostsDialog.dataLimit": "حد مصرف کاربر",
 	"hostsDialog.dataUsage": "مصرف کنونی کاربر",
+	"hostsDialog.dnsPrimary": "DNS اصلی",
+	"hostsDialog.dnsSecondary": "DNS ثانویه",
 	"hostsDialog.desc": "برای ساخت نوشته پویا، از این متغیرها استفاده کنید",
 	"hostsDialog.expireDate": "تاریخ انقضای کاربر به میلادی",
 	"hostsDialog.fingerprint": "اثرانگشت",

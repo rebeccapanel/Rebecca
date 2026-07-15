@@ -148,7 +148,7 @@ func BuildConfigLinks(
 			if !ok {
 				continue
 			}
-			link, err := buildWGShareLink(item, remark, address, effective)
+			link, err := buildWGShareLink(item, remark, address, effective, host)
 			if err != nil {
 				return ConfigLinksResponse{}, err
 			}

@@ -252,6 +252,8 @@ type Host struct {
 	InboundTag      string   `json:"inbound_tag"`
 	Remark          string   `json:"remark"`
 	Address         string   `json:"address"`
+	DNSPrimary      string   `json:"dns_primary"`
+	DNSSecondary    string   `json:"dns_secondary"`
 	AddressOptions  []string `json:"address_options,omitempty"`
 	AddressMode     string   `json:"address_selection_mode,omitempty"`
 	AddressTTL      *int64   `json:"address_ttl_seconds,omitempty"`

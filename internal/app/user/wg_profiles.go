@@ -100,7 +100,7 @@ func (s Service) WGProfiles(ctx context.Context, userID int64, hostTag string, i
 		if hostTag != "" && !WGHostTagMatches(host, remark, address, tag, hostTag) {
 			continue
 		}
-		material, err := buildWGProfileMaterial(item, remark, address, effective, includeBody)
+		material, err := buildWGProfileMaterial(item, remark, address, effective, host, includeBody)
 		if err != nil {
 			return nil, err
 		}
@@ -178,20 +178,21 @@ func (s Service) WGDownloadLinks(ctx context.Context, user UserDetail, subscript
 	return links, nil
 }
 
-func buildWGShareLink(item ConfigLinkUser, remark string, address string, inbound ResolvedInbound) (string, error) {
-	material, err := buildWGProfileMaterial(item, remark, address, inbound, false)
+func buildWGShareLink(item ConfigLinkUser, remark string, address string, inbound ResolvedInbound, host Host) (string, error) {
+	material, err := buildWGProfileMaterial(item, remark, address, inbound, host, false)
 	if err != nil {
 		return "", err
 	}
 	return material.Link, nil
 }
 
-func buildWGProfileMaterial(item ConfigLinkUser, remark string, address string, inbound ResolvedInbound, includeBody bool) (wgProfileMaterial, error) {
+func buildWGProfileMaterial(item ConfigLinkUser, remark string, address string, inbound ResolvedInbound, host Host, includeBody bool) (wgProfileMaterial, error) {
 	pair, err := WGKeyPairFromCredentialKey(item.CredentialKey)
 	if err != nil {
 		return wgProfileMaterial{}, err
 	}
 	settings := normalizeWGProfileSettings(mapValue(inbound["settings"]))
+	settings["dns_servers"] = wgHostDNSServers(host)
 	port := intValue(inbound["port"])
 	if port < 1 || port > 65535 {
 		return wgProfileMaterial{}, fmt.Errorf("WireGuard port is required")
@@ -223,6 +224,21 @@ func buildWGProfileMaterial(item ConfigLinkUser, remark string, address string, 
 	return material, nil
 }
 
+func wgHostDNSServers(host Host) []string {
+	primary := strings.TrimSpace(host.DNSPrimary)
+	if primary == "" {
+		primary = "1.1.1.1"
+	}
+	secondary := strings.TrimSpace(host.DNSSecondary)
+	if secondary == "" {
+		secondary = "8.8.8.8"
+	}
+	if primary == secondary {
+		return []string{primary}
+	}
+	return []string{primary, secondary}
+}
+
 func normalizeWGProfileSettings(settings map[string]any) map[string]any {
 	out := make(map[string]any, len(settings)+8)
 	for key, value := range settings {
@@ -234,7 +250,8 @@ func normalizeWGProfileSettings(settings map[string]any) map[string]any {
 	}
 	out["address_pool"] = pool
 	out["ipv4_pool_cidr"] = pool
-	out["dns_servers"] = stringList(firstNonEmptyAny(out["dns_servers"], out["dnsServers"]))
+	delete(out, "dns_servers")
+	delete(out, "dnsServers")
 	out["allowed_ips"] = stringList(firstNonEmptyAny(out["allowed_ips"], out["allowedIPs"]))
 	if len(stringList(out["allowed_ips"])) == 0 {
 		out["allowed_ips"] = []string{"0.0.0.0/0"}

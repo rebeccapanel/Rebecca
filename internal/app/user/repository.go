@@ -375,6 +375,7 @@ func (r Repository) inbounds(ctx context.Context) ([]Inbound, error) {
 
 func (r Repository) hosts(ctx context.Context) ([]Host, error) {
 	rows, err := r.db.QueryContext(ctx, `SELECT id, inbound_tag, remark, address,
+		COALESCE(dns_primary, ''), COALESCE(dns_secondary, ''),
 		address_options, COALESCE(address_selection_mode, ''), address_ttl_seconds,
 		port, path, sni, sni_options, COALESCE(sni_selection_mode, ''), sni_ttl_seconds,
 		host, host_options, COALESCE(host_selection_mode, ''), host_ttl_seconds,
@@ -400,6 +401,8 @@ func (r Repository) hosts(ctx context.Context) ([]Host, error) {
 			&item.InboundTag,
 			&item.Remark,
 			&item.Address,
+			&item.DNSPrimary,
+			&item.DNSSecondary,
 			&addressOptions,
 			&item.AddressMode,
 			&addressTTL,

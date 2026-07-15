@@ -183,6 +183,8 @@ CREATE TABLE services (
 CREATE TABLE hosts (
 	id INTEGER PRIMARY KEY,
 	inbound_tag TEXT,
+	dns_primary TEXT NOT NULL DEFAULT '1.1.1.1',
+	dns_secondary TEXT NOT NULL DEFAULT '8.8.8.8',
 	is_disabled INTEGER DEFAULT 0
 );
 CREATE TABLE service_hosts (

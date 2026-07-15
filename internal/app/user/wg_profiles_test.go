@@ -184,6 +184,7 @@ func TestBuildWGProfileMaterialBuildsConfAndURI(t *testing.T) {
 				"mtu":          1420,
 			},
 		},
+		Host{DNSPrimary: "9.9.9.9", DNSSecondary: "149.112.112.112"},
 		true,
 	)
 	if err != nil {
@@ -193,7 +194,7 @@ func TestBuildWGProfileMaterialBuildsConfAndURI(t *testing.T) {
 		"[Interface]\n",
 		"PrivateKey = ",
 		"Address = ",
-		"DNS = 1.1.1.1\n",
+		"DNS = 9.9.9.9, 149.112.112.112\n",
 		"MTU = 1420\n",
 		"[Peer]\n",
 		"Endpoint = vpn.example.com:51820\n",
@@ -220,6 +221,9 @@ func TestBuildWGProfileMaterialBuildsConfAndURI(t *testing.T) {
 	}
 	if reserved := query.Get("reserved"); reserved != "0,0,0" {
 		t.Fatalf("reserved fallback should be set, got %q", reserved)
+	}
+	if dns := query.Get("dns"); dns != "9.9.9.9,149.112.112.112" {
+		t.Fatalf("DNS must come from host settings, got %q", dns)
 	}
 }
 
@@ -249,11 +253,13 @@ func TestBuildConfigLinksEmitsWireGuardURI(t *testing.T) {
 		},
 		[]string{"wg-main"},
 		[]Host{{
-			ID:         1,
-			InboundTag: "wg-main",
-			Remark:     "WG Edge",
-			Address:    "vpn.example.com",
-			ServiceIDs: []int64{1},
+			ID:           1,
+			InboundTag:   "wg-main",
+			Remark:       "WG Edge",
+			Address:      "vpn.example.com",
+			DNSPrimary:   "1.1.1.1",
+			DNSSecondary: "8.8.8.8",
+			ServiceIDs:   []int64{1},
 		}},
 		map[string][]byte{},
 		false,
@@ -267,7 +273,7 @@ func TestBuildConfigLinksEmitsWireGuardURI(t *testing.T) {
 	if !strings.HasPrefix(links.Links[0], "wireguard://") || !strings.Contains(links.Links[0], "@vpn.example.com:51820?") {
 		t.Fatalf("unexpected WireGuard link: %s", links.Links[0])
 	}
-	for _, want := range []string{"address=", "publickey=", "reserved=0%2C0%2C0"} {
+	for _, want := range []string{"address=", "publickey=", "reserved=0%2C0%2C0", "dns=1.1.1.1%2C8.8.8.8"} {
 		if !strings.Contains(links.Links[0], want) {
 			t.Fatalf("WireGuard link missing %q: %s", want, links.Links[0])
 		}

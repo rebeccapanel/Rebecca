@@ -7,6 +7,8 @@ export type HostsSchema = Record<
 		id?: number | null;
 		remark: string;
 		address: string;
+		dns_primary: string;
+		dns_secondary: string;
 		address_options?: string[];
 		address_selection_mode?: string;
 		address_ttl_seconds?: number | null;

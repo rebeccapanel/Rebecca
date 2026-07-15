@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"regexp"
 	"sort"
@@ -48,6 +49,8 @@ type hostPayload struct {
 	NoiseSetting    *string  `json:"noise_setting"`
 	RandomUserAgent *bool    `json:"random_user_agent"`
 	UseSNIAsHost    *bool    `json:"use_sni_as_host"`
+	DNSPrimary      string   `json:"dns_primary"`
+	DNSSecondary    string   `json:"dns_secondary"`
 }
 
 type hostResponse struct {
@@ -77,6 +80,8 @@ type hostResponse struct {
 	NoiseSetting    *string  `json:"noise_setting"`
 	RandomUserAgent *bool    `json:"random_user_agent"`
 	UseSNIAsHost    *bool    `json:"use_sni_as_host"`
+	DNSPrimary      string   `json:"dns_primary"`
+	DNSSecondary    string   `json:"dns_secondary"`
 }
 
 func (s *Server) handleHostsRoot(w http.ResponseWriter, r *http.Request) {
@@ -379,6 +384,17 @@ func (s *Server) hostInboundProtocol(ctx context.Context, tag string) string {
 }
 
 func sanitizeHostPayloadForInboundProtocol(payload hostPayload, protocol string) hostPayload {
+	if protocol == "wireguard" {
+		if payload.DNSPrimary = strings.TrimSpace(payload.DNSPrimary); payload.DNSPrimary == "" {
+			payload.DNSPrimary = "1.1.1.1"
+		}
+		if payload.DNSSecondary = strings.TrimSpace(payload.DNSSecondary); payload.DNSSecondary == "" {
+			payload.DNSSecondary = "8.8.8.8"
+		}
+	} else {
+		payload.DNSPrimary = ""
+		payload.DNSSecondary = ""
+	}
 	if protocol != "openvpn" {
 		return payload
 	}
@@ -544,6 +560,7 @@ type queryer interface {
 
 func hostSelectSQL() string {
 	return `SELECT id, COALESCE(remark, ''), COALESCE(address, ''),
+		COALESCE(dns_primary, ''), COALESCE(dns_secondary, ''),
 		address_options, COALESCE(address_selection_mode, 'random'), address_ttl_seconds,
 		port, path, sni, sni_options, COALESCE(sni_selection_mode, 'random'), sni_ttl_seconds,
 		host, host_options, COALESCE(host_selection_mode, 'random'), host_ttl_seconds,
@@ -556,6 +573,7 @@ func hostSelectSQL() string {
 
 func hostSelectSQLWithInbound() string {
 	return `SELECT inbound_tag, id, COALESCE(remark, ''), COALESCE(address, ''),
+		COALESCE(dns_primary, ''), COALESCE(dns_secondary, ''),
 		address_options, COALESCE(address_selection_mode, 'random'), address_ttl_seconds,
 		port, path, sni, sni_options, COALESCE(sni_selection_mode, 'random'), sni_ttl_seconds,
 		host, host_options, COALESCE(host_selection_mode, 'random'), host_ttl_seconds,
@@ -597,6 +615,8 @@ func scanHostResponseWithInbound(scanner hostScanner, inboundTag *string) (hostR
 		&item.ID,
 		&item.Remark,
 		&item.Address,
+		&item.DNSPrimary,
+		&item.DNSSecondary,
 		&addressOptions,
 		&item.AddressMode,
 		&addressTTL,
@@ -637,6 +657,8 @@ func scanHostResponse(scanner hostScanner) (hostResponse, error) {
 		&item.ID,
 		&item.Remark,
 		&item.Address,
+		&item.DNSPrimary,
+		&item.DNSSecondary,
 		&addressOptions,
 		&item.AddressMode,
 		&addressTTL,
@@ -722,6 +744,17 @@ func validateHostPayload(host hostPayload) error {
 	if host.Port != nil && (*host.Port < 1 || *host.Port > 65535) {
 		return statusError{status: http.StatusBadRequest, detail: "Host port must be between 1 and 65535"}
 	}
+	for _, dns := range []struct {
+		name  string
+		value string
+	}{
+		{name: "primary", value: host.DNSPrimary},
+		{name: "secondary", value: host.DNSSecondary},
+	} {
+		if dns.value != "" && net.ParseIP(dns.value) == nil {
+			return statusError{status: http.StatusBadRequest, detail: fmt.Sprintf("Host %s DNS must be a valid IP address", dns.name)}
+		}
+	}
 	if host.Path != nil {
 		path := strings.TrimSpace(*host.Path)
 		if path != "" && !strings.HasPrefix(path, "/") {
@@ -774,6 +807,8 @@ func normalizeHostPayload(payload hostPayload) hostPayload {
 		payload.Address = payload.AddressOptions[0]
 	}
 	payload.Address = strings.TrimSpace(payload.Address)
+	payload.DNSPrimary = strings.TrimSpace(payload.DNSPrimary)
+	payload.DNSSecondary = strings.TrimSpace(payload.DNSSecondary)
 	return payload
 }
 
@@ -883,14 +918,16 @@ func insertHostTx(ctx context.Context, tx *sql.Tx, inboundTag string, payload ho
 	res, err := tx.ExecContext(
 		ctx,
 		`INSERT INTO hosts (
-			remark, address, address_options, address_selection_mode, address_ttl_seconds,
+			remark, address, dns_primary, dns_secondary, address_options, address_selection_mode, address_ttl_seconds,
 			port, path, sni, sni_options, sni_selection_mode, sni_ttl_seconds,
 			host, host_options, host_selection_mode, host_ttl_seconds, security, alpn, fingerprint,
 			inbound_tag, allowinsecure, is_disabled, mux_enable, fragment_setting, noise_setting,
 			random_user_agent, use_sni_as_host
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		payload.Remark,
 		payload.Address,
+		payload.DNSPrimary,
+		payload.DNSSecondary,
 		hostOptionsValue(payload.AddressOptions),
 		normalizeHostRotationMode(payload.AddressMode),
 		nullableInt64Value(payload.AddressTTL),
@@ -926,7 +963,7 @@ func updateHostTx(ctx context.Context, tx *sql.Tx, inboundTag string, payload ho
 	_, err := tx.ExecContext(
 		ctx,
 		`UPDATE hosts SET
-			remark = ?, address = ?, address_options = ?, address_selection_mode = ?, address_ttl_seconds = ?,
+			remark = ?, address = ?, dns_primary = ?, dns_secondary = ?, address_options = ?, address_selection_mode = ?, address_ttl_seconds = ?,
 			port = ?, path = ?, sni = ?, sni_options = ?, sni_selection_mode = ?, sni_ttl_seconds = ?,
 			host = ?, host_options = ?, host_selection_mode = ?, host_ttl_seconds = ?,
 			security = ?, alpn = ?, fingerprint = ?, inbound_tag = ?, allowinsecure = ?,
@@ -935,6 +972,8 @@ func updateHostTx(ctx context.Context, tx *sql.Tx, inboundTag string, payload ho
 		WHERE id = ?`,
 		payload.Remark,
 		payload.Address,
+		payload.DNSPrimary,
+		payload.DNSSecondary,
 		hostOptionsValue(payload.AddressOptions),
 		normalizeHostRotationMode(payload.AddressMode),
 		nullableInt64Value(payload.AddressTTL),

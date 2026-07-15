@@ -91,6 +91,8 @@ type HostData = {
 	id: number | null;
 	remark: string;
 	address: string;
+	dns_primary: string;
+	dns_secondary: string;
 	address_options: string;
 	address_selection_mode: string;
 	address_ttl_seconds: number | null;
@@ -179,6 +181,8 @@ const EMPTY_HOST_DATA: HostData = {
 	id: null,
 	remark: "",
 	address: "",
+	dns_primary: "1.1.1.1",
+	dns_secondary: "8.8.8.8",
 	address_options: "",
 	address_selection_mode: "random",
 	address_ttl_seconds: null,
@@ -224,6 +228,8 @@ type CreateHostValues = {
 	inboundTag: string;
 	remark: string;
 	address: string;
+	dns_primary: string;
+	dns_secondary: string;
 	address_options: string;
 	address_selection_mode: string;
 	address_ttl_seconds: number | null;
@@ -738,6 +744,8 @@ const normalizeHostData = (host: HostsSchema[string][number]): HostData => ({
 	id: host.id ?? null,
 	remark: host.remark ?? "",
 	address: mergeRotationValue(host.address, host.address_options),
+	dns_primary: normalizeString(host.dns_primary) || "1.1.1.1",
+	dns_secondary: normalizeString(host.dns_secondary) || "8.8.8.8",
 	address_options: "",
 	address_selection_mode: normalizeRotationMode(host.address_selection_mode),
 	address_ttl_seconds: host.address_ttl_seconds ?? null,
@@ -767,6 +775,8 @@ const cloneHostData = (data: HostData): HostData => ({
 	id: data.id ?? null,
 	remark: data.remark,
 	address: data.address,
+	dns_primary: data.dns_primary,
+	dns_secondary: data.dns_secondary,
 	address_options: data.address_options,
 	address_selection_mode: data.address_selection_mode,
 	address_ttl_seconds: data.address_ttl_seconds ?? null,
@@ -851,6 +861,14 @@ const validateHostState = (
 			}
 		}
 	}
+	for (const [label, value] of [
+		["Primary DNS", data.dns_primary],
+		["Secondary DNS", data.dns_secondary],
+	] as const) {
+		if (!value.trim()) {
+			errors.push(`${label} is required.`);
+		}
+	}
 	return errors;
 };
 
@@ -868,6 +886,8 @@ const formatHostForApi = (data: HostData): HostsSchema[string][number] => {
 		id: data.id ?? null,
 		remark: data.remark.trim(),
 		address: rotationTextToOptions(data.address).join(", "),
+		dns_primary: data.dns_primary.trim(),
+		dns_secondary: data.dns_secondary.trim(),
 		address_options: [],
 		address_selection_mode: normalizeRotationMode(data.address_selection_mode),
 		address_ttl_seconds: data.address_ttl_seconds ?? null,
@@ -1017,12 +1037,23 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 	};
 	const isCloneMode = mode === "clone";
 	const dirty = host ? isHostDirty(host) : false;
+	const selectedInbound = useMemo(
+		() =>
+			host
+				? inboundOptions.find((option) => option.value === host.inboundTag)
+				: undefined,
+		[inboundOptions, host],
+	);
+	const isWireGuardInbound = selectedInbound?.protocol === "wireguard";
 	const canSubmit = host
 		? Boolean(
 				host.inboundTag &&
 					host.data.remark.trim() &&
 					(host.data.address.trim() ||
-						rotationTextToOptions(host.data.address_options).length > 0),
+						rotationTextToOptions(host.data.address_options).length > 0) &&
+					(!isWireGuardInbound ||
+						(host.data.dns_primary.trim() &&
+							host.data.dns_secondary.trim())),
 			)
 		: false;
 	const primaryDisabled = isCloneMode ? !canSubmit : !dirty;
@@ -1041,13 +1072,6 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 	const nodeAddressOptions = useMemo(
 		() => getNodeAddressOptions(nodes),
 		[nodes],
-	);
-	const selectedInbound = useMemo(
-		() =>
-			host
-				? inboundOptions.find((option) => option.value === host.inboundTag)
-				: undefined,
-		[inboundOptions, host],
 	);
 	const isVirtualTunnelInbound =
 		selectedInbound?.protocol === "openvpn" ||
@@ -1230,6 +1254,41 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 															onChange(host.uid, "address_ttl_seconds", value)
 														}
 													/>
+												)}
+												{isWireGuardInbound && (
+													<SimpleGrid
+														columns={{ base: 1, md: 2 }}
+														spacing={4}
+													>
+														<FormControl isRequired>
+															<FormLabel>{t("hostsDialog.dnsPrimary")}</FormLabel>
+															<Input
+																value={host.data.dns_primary}
+																placeholder="1.1.1.1"
+																onChange={(event) =>
+																	onChange(
+																		host.uid,
+																		"dns_primary",
+																		event.target.value,
+																	)
+																}
+															/>
+														</FormControl>
+														<FormControl isRequired>
+															<FormLabel>{t("hostsDialog.dnsSecondary")}</FormLabel>
+															<Input
+																value={host.data.dns_secondary}
+																placeholder="8.8.8.8"
+																onChange={(event) =>
+																	onChange(
+																		host.uid,
+																		"dns_secondary",
+																		event.target.value,
+																	)
+																}
+															/>
+														</FormControl>
+													</SimpleGrid>
 												)}
 												{!isVirtualTunnelInbound && (
 													<FormControl>
@@ -1548,6 +1607,8 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 		inboundTag: inboundOptions[0]?.value ?? "",
 		remark: "",
 		address: "",
+		dns_primary: "1.1.1.1",
+		dns_secondary: "8.8.8.8",
 		address_options: "",
 		address_selection_mode: "random",
 		address_ttl_seconds: null,
@@ -1574,6 +1635,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 	const isVirtualTunnelInbound =
 		selectedInbound?.protocol === "openvpn" ||
 		selectedInbound?.protocol === "l2tp";
+	const isWireGuardInbound = selectedInbound?.protocol === "wireguard";
 
 	useEffect(() => {
 		if (isOpen) {
@@ -1581,6 +1643,8 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 				inboundTag: inboundOptions[0]?.value ?? "",
 				remark: "",
 				address: "",
+				dns_primary: "1.1.1.1",
+				dns_secondary: "8.8.8.8",
 				address_options: "",
 				address_selection_mode: "random",
 				address_ttl_seconds: null,
@@ -1604,7 +1668,9 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 			!formState.inboundTag ||
 			!formState.remark.trim() ||
 			(!formState.address.trim() &&
-				rotationTextToOptions(formState.address_options).length === 0)
+				rotationTextToOptions(formState.address_options).length === 0) ||
+			(isWireGuardInbound &&
+				(!formState.dns_primary.trim() || !formState.dns_secondary.trim()))
 		) {
 			return;
 		}
@@ -1697,6 +1763,36 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 									}))
 								}
 							/>
+						)}
+						{isWireGuardInbound && (
+							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+								<FormControl isRequired>
+									<FormLabel>{t("hostsDialog.dnsPrimary")}</FormLabel>
+									<Input
+										value={formState.dns_primary}
+										placeholder="1.1.1.1"
+										onChange={(event) =>
+											setFormState((prev) => ({
+												...prev,
+												dns_primary: event.target.value,
+											}))
+										}
+									/>
+								</FormControl>
+								<FormControl isRequired>
+									<FormLabel>{t("hostsDialog.dnsSecondary")}</FormLabel>
+									<Input
+										value={formState.dns_secondary}
+										placeholder="8.8.8.8"
+										onChange={(event) =>
+											setFormState((prev) => ({
+												...prev,
+												dns_secondary: event.target.value,
+											}))
+										}
+									/>
+								</FormControl>
+							</SimpleGrid>
 						)}
 						{!isVirtualTunnelInbound && (
 							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
@@ -1820,7 +1916,10 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 						isDisabled={
 							!formState.inboundTag ||
 							!formState.remark.trim() ||
-							!rotationTextToOptions(formState.address).length
+							!rotationTextToOptions(formState.address).length ||
+							(isWireGuardInbound &&
+								(!formState.dns_primary.trim() ||
+									!formState.dns_secondary.trim()))
 						}
 					>
 						{t("hostsPage.create.submit")}
@@ -2350,6 +2449,8 @@ export const HostsManager: FC = () => {
 					id: null,
 					remark: values.remark,
 					address: values.address,
+					dns_primary: values.dns_primary,
+					dns_secondary: values.dns_secondary,
 					address_options: values.address_options,
 					address_selection_mode: values.address_selection_mode,
 					address_ttl_seconds: values.address_ttl_seconds,
@@ -2378,6 +2479,8 @@ export const HostsManager: FC = () => {
 					id: null,
 					remark: values.remark,
 					address: values.address,
+					dns_primary: values.dns_primary,
+					dns_secondary: values.dns_secondary,
 					address_options: values.address_options,
 					address_selection_mode: values.address_selection_mode,
 					address_ttl_seconds: values.address_ttl_seconds,
