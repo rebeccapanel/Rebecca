@@ -147,11 +147,13 @@ func TestNodeRepositoryDoesNotSyncForNonConnectionEdits(t *testing.T) {
 	}
 	name = "quiet-node-live-rename"
 	status := StatusConnected
+	mode := XrayConfigModeDefault
 	limit = int64(4096)
 	updated, err = repo.UpdateNode(ctx, created.ID, NodeModify{
-		Name:      &name,
-		Status:    &status,
-		DataLimit: &limit,
+		Name:           &name,
+		Status:         &status,
+		XrayConfigMode: &mode,
+		DataLimit:      &limit,
 	})
 	if err != nil {
 		t.Fatalf("UpdateNode same-status edit error: %v", err)
@@ -160,6 +162,8 @@ func TestNodeRepositoryDoesNotSyncForNonConnectionEdits(t *testing.T) {
 		t.Fatalf("unexpected same-status update: %#v", updated)
 	}
 	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 1)
+	assertNodeRepositoryString(t, db, `SELECT xray_config_mode FROM nodes WHERE id = 1`, XrayConfigModeCustom)
+	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM nodes WHERE id = 1 AND xray_config IS NOT NULL`, 1)
 
 	address := "198.51.100.10"
 	if _, err := repo.UpdateNode(ctx, created.ID, NodeModify{Address: &address}); err != nil {
@@ -292,5 +296,16 @@ func assertNodeTestCount(t *testing.T, db *sql.DB, query string, want int64, arg
 	}
 	if got != want {
 		t.Fatalf("count query %q got %d want %d", query, got, want)
+	}
+}
+
+func assertNodeRepositoryString(t *testing.T, db *sql.DB, query string, want string, args ...any) {
+	t.Helper()
+	var got string
+	if err := db.QueryRow(query, args...).Scan(&got); err != nil {
+		t.Fatalf("string query %q: %v", query, err)
+	}
+	if got != want {
+		t.Fatalf("string query %q got %q want %q", query, got, want)
 	}
 }

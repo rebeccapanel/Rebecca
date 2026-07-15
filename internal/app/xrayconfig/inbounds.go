@@ -984,18 +984,28 @@ func (r Repository) enqueueSyncForTargetsTx(ctx context.Context, tx *sql.Tx, tar
 func (r Repository) ensureInboundRecordTx(ctx context.Context, tx *sql.Tx, tag string) error {
 	var id int64
 	err := tx.QueryRowContext(ctx, `SELECT id FROM inbounds WHERE tag = ?`, tag).Scan(&id)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if errors.Is(err, sql.ErrNoRows) {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO inbounds (tag) VALUES (?)`, tag); err != nil {
+			return err
+		}
+	}
+	return r.ensureDefaultHostForInboundTx(ctx, tx, tag)
+}
+
+func (r Repository) ensureDefaultHostForInboundTx(ctx context.Context, tx *sql.Tx, tag string) error {
+	if autoServiceTagRegexp.MatchString(tag) {
+		return nil
+	}
+	var hostID int64
+	err := tx.QueryRowContext(ctx, `SELECT id FROM hosts WHERE inbound_tag = ? LIMIT 1`, tag).Scan(&hostID)
 	if err == nil {
 		return nil
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return err
-	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO inbounds (tag) VALUES (?)`, tag)
-	if err != nil {
-		return err
-	}
-	if autoServiceTagRegexp.MatchString(tag) {
-		return nil
 	}
 	_, err = tx.ExecContext(
 		ctx,

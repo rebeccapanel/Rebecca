@@ -261,18 +261,31 @@ func (r Repository) UpdateNode(ctx context.Context, nodeID int64, payload NodeMo
 	if payload.GeoMode != nil {
 		add("geo_mode", defaultString(*payload.GeoMode, GeoModeDefault))
 	}
-	if payload.XrayConfigMode != nil {
-		mode := defaultString(*payload.XrayConfigMode, XrayConfigModeDefault)
-		add("xray_config_mode", mode)
-		if mode == XrayConfigModeDefault {
-			add("xray_config", nil)
-		}
-		markConnectionChanged()
-	}
 	if len(payload.XrayConfig) > 0 {
 		add("xray_config", string(payload.XrayConfig))
 		add("xray_config_mode", XrayConfigModeCustom)
 		markConnectionChanged()
+	} else if payload.XrayConfigMode != nil {
+		currentHasStoredConfig, err := r.nodeStoredXrayConfigExistsTx(ctx, tx, nodeID)
+		if err != nil {
+			return NodeResponse{}, err
+		}
+		mode := defaultString(*payload.XrayConfigMode, XrayConfigModeDefault)
+		switch mode {
+		case XrayConfigModeCustom:
+			if current.XrayConfigMode != XrayConfigModeCustom {
+				add("xray_config_mode", XrayConfigModeCustom)
+				markConnectionChanged()
+			}
+		case XrayConfigModeDefault:
+			if current.XrayConfigMode != XrayConfigModeCustom || !currentHasStoredConfig {
+				add("xray_config_mode", XrayConfigModeDefault)
+				add("xray_config", nil)
+				markConnectionChanged()
+			}
+		default:
+			return NodeResponse{}, wrapInvalid("invalid xray_config_mode")
+		}
 	}
 	if payload.DataLimit != nil {
 		add("data_limit", nullableInt64Ptr(payload.DataLimit))
@@ -536,6 +549,17 @@ func (r Repository) consumePendingCertificateTx(ctx context.Context, tx *sql.Tx,
 	return row, nil
 }
 
+func (r Repository) nodeStoredXrayConfigExistsTx(ctx context.Context, tx *sql.Tx, nodeID int64) (bool, error) {
+	var raw sql.NullString
+	err := tx.QueryRowContext(ctx, `SELECT xray_config FROM nodes WHERE id = ? LIMIT 1`, nodeID).Scan(&raw)
+	if err == nil {
+		return raw.Valid && strings.TrimSpace(raw.String) != "", nil
+	}
+	if isMissingColumnError(err) {
+		return false, nil
+	}
+	return false, err
+}
 func (r Repository) getNode(ctx context.Context, q queryer, nodeID int64, defaultCert string) (NodeResponse, error) {
 	var row NodeResponse
 	var dataLimit, proxyPort sql.NullInt64
@@ -812,6 +836,13 @@ func int64PtrFromNull(value sql.NullInt64) *int64 {
 	return &value.Int64
 }
 
+func isMissingColumnError(err error) bool {
+	if err == nil {
+		return false
+	}
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "no such column") || strings.Contains(lower, "unknown column")
+}
 func isUniqueConstraint(err error) bool {
 	if err == nil {
 		return false

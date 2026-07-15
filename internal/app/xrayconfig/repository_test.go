@@ -40,6 +40,8 @@ func testRepository(t *testing.T) (Repository, *sql.DB) {
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
 		)`,
+		`CREATE TABLE inbounds (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL UNIQUE)`,
+		`CREATE TABLE hosts (id INTEGER PRIMARY KEY AUTOINCREMENT, remark TEXT NULL, address TEXT NULL, inbound_tag TEXT NULL)`,
 		`INSERT INTO nodes (id, name, status, xray_config_mode) VALUES (7, 'de-1', 'connected', 'default')`,
 		`INSERT INTO nodes (id, name, status, xray_config_mode, xray_config) VALUES (8, 'custom-1', 'error', 'custom', '{"inbounds":[{"tag":"custom-ss","protocol":"shadowsocks","port":8080,"settings":{"clients":[],"network":"tcp,udp"}}],"outbounds":[{"tag":"DIRECT","protocol":"freedom"}]}')`,
 	}
@@ -217,6 +219,37 @@ func TestRepositoryCustomModeCopiesMasterWhenEmpty(t *testing.T) {
 		t.Fatalf("copied config tag = %q", got)
 	}
 	assertRepoCount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config' AND node_id = 7`, 1)
+}
+
+func TestCreateInboundRepairsOrphanRecordHost(t *testing.T) {
+	repo, db := testRepository(t)
+	ctx := context.Background()
+	if _, err := db.Exec(`INSERT INTO inbounds (tag) VALUES ('orphan-vless')`); err != nil {
+		t.Fatal(err)
+	}
+
+	created, err := repo.CreateInbound(ctx, map[string]any{
+		"tag":      "orphan-vless",
+		"protocol": "vless",
+		"port":     9443,
+		"settings": map[string]any{"decryption": "none"},
+		"targets":  []any{NodeTargetID(8)},
+	})
+	if err != nil {
+		t.Fatalf("CreateInbound orphan repair error = %v", err)
+	}
+	if created.Inbound == nil || stringValue(created.Inbound["tag"]) != "orphan-vless" {
+		t.Fatalf("unexpected repaired inbound: %#v", created.Inbound)
+	}
+	assertRepoCount(t, db, `SELECT COUNT(*) FROM hosts WHERE inbound_tag = 'orphan-vless'`, 1)
+
+	raw, err := repo.GetTargetRawConfig(ctx, NodeTargetID(8))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !configHasInbound(raw, "orphan-vless") {
+		t.Fatalf("node config was not repaired: %#v", raw)
+	}
 }
 
 func firstInboundTag(raw map[string]any) string {
