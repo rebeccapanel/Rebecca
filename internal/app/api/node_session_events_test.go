@@ -52,6 +52,13 @@ CREATE TABLE vpn_user_sessions (
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM vpn_user_sessions WHERE user_id = 42 AND ended_at IS NULL`, 3)
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE user_id = 42 AND operation_type IN ('disable_user', 'enable_user')`, 0)
 
+	otherToken := nodecontroller.NodeSessionEventToken("admin-secret", 8, "other-cert")
+	rec := requestNodeSessionEvent(t, server, otherToken, `{"node_id":8,"user_id":42,"protocol":"wg","inbound_tag":"wg-other","session_id":"wg:other","assigned_ip":"10.70.0.4","client_ip":"198.51.100.11","event":"start"}`)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("cross-node session status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM vpn_user_sessions WHERE user_id = 42 AND ended_at IS NULL`, 3)
+
 	postNodeSessionEvent(t, server, token, `{"node_id":7,"user_id":42,"protocol":"wg","session_id":"wg:one","event":"stop"}`)
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM vpn_user_sessions WHERE user_id = 42 AND ended_at IS NULL`, 2)
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE user_id = 42 AND operation_type IN ('disable_user', 'enable_user')`, 0)
@@ -67,13 +74,19 @@ CREATE TABLE vpn_user_sessions (
 
 func postNodeSessionEvent(t *testing.T, server *Server, token string, body string) *httptest.ResponseRecorder {
 	t.Helper()
+	rec := requestNodeSessionEvent(t, server, token, body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("session event status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	return rec
+}
+
+func requestNodeSessionEvent(t *testing.T, server *Server, token string, body string) *httptest.ResponseRecorder {
+	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/internal/node/session-event", strings.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	server.Handler().ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("session event status = %d body=%s", rec.Code, rec.Body.String())
-	}
 	return rec
 }

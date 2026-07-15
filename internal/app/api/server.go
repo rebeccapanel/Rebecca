@@ -59,6 +59,7 @@ type Server struct {
 	userOpsKickMu      sync.Mutex
 	userOpsKicking     bool
 	userOpsKickUserIDs map[int64]struct{}
+	sessionAdmissionMu sync.Mutex
 }
 
 func New(cfg Config) (*Server, error) {

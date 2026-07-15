@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,11 +44,17 @@ func (s *Server) handleNodeSessionEvent(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	if err := s.applyNodeSessionEvent(r.Context(), payload); err != nil {
+		if errors.Is(err, errDeviceLimitReached) {
+			writeError(w, http.StatusConflict, "device limit reached")
+			return
+		}
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
+
+var errDeviceLimitReached = errors.New("device limit reached")
 
 func (s *Server) validateNodeSessionEvent(ctx context.Context, payload nodeSessionEventPayload) error {
 	if payload.NodeID <= 0 || payload.UserID <= 0 || strings.TrimSpace(payload.SessionID) == "" {
@@ -101,6 +108,9 @@ func (s *Server) nodeSessionCallbackSecret(ctx context.Context) (string, error) 
 }
 
 func (s *Server) applyNodeSessionEvent(ctx context.Context, payload nodeSessionEventPayload) error {
+	s.sessionAdmissionMu.Lock()
+	defer s.sessionAdmissionMu.Unlock()
+
 	now := time.Now().UTC()
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -110,6 +120,13 @@ func (s *Server) applyNodeSessionEvent(ctx context.Context, payload nodeSessionE
 
 	switch strings.ToLower(strings.TrimSpace(payload.Event)) {
 	case "start", "seen":
+		allowed, err := sessionAdmissionAllowed(ctx, tx, payload)
+		if err != nil {
+			return err
+		}
+		if !allowed {
+			return errDeviceLimitReached
+		}
 		if err := upsertVPNSession(ctx, tx, payload, now); err != nil {
 			return err
 		}
@@ -119,6 +136,56 @@ func (s *Server) applyNodeSessionEvent(ctx context.Context, payload nodeSessionE
 		}
 	}
 	return tx.Commit()
+}
+
+func sessionAdmissionAllowed(ctx context.Context, tx *sql.Tx, payload nodeSessionEventPayload) (bool, error) {
+	var limit int64
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(ip_limit, 0) FROM users WHERE id = ?`, payload.UserID).Scan(&limit); err != nil {
+		return false, err
+	}
+	if limit <= 0 {
+		return true, nil
+	}
+
+	rows, err := tx.QueryContext(ctx, `
+SELECT node_id, session_id, COALESCE(assigned_ip, ''), COALESCE(client_ip, '')
+FROM vpn_user_sessions
+WHERE user_id = ? AND ended_at IS NULL`, payload.UserID)
+	if err != nil {
+		return false, err
+	}
+	defer rows.Close()
+
+	incoming := globalSessionDeviceKey(payload.NodeID, payload.SessionID, payload.AssignedIP, payload.ClientIP)
+	devices := map[string]struct{}{}
+	for rows.Next() {
+		var nodeID int64
+		var sessionID, assignedIP, clientIP string
+		if err := rows.Scan(&nodeID, &sessionID, &assignedIP, &clientIP); err != nil {
+			return false, err
+		}
+		if nodeID == payload.NodeID && strings.TrimSpace(sessionID) == strings.TrimSpace(payload.SessionID) {
+			continue
+		}
+		devices[globalSessionDeviceKey(nodeID, sessionID, assignedIP, clientIP)] = struct{}{}
+	}
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+	if _, exists := devices[incoming]; exists {
+		return true, nil
+	}
+	return int64(len(devices)) < limit, nil
+}
+
+func globalSessionDeviceKey(nodeID int64, sessionID, assignedIP, clientIP string) string {
+	if value := strings.TrimSpace(clientIP); value != "" {
+		return "client:" + value
+	}
+	if value := strings.TrimSpace(assignedIP); value != "" {
+		return "assigned:" + value
+	}
+	return "session:" + strings.TrimSpace(sessionID) + "@" + strconv.FormatInt(nodeID, 10)
 }
 
 func upsertVPNSession(ctx context.Context, tx *sql.Tx, payload nodeSessionEventPayload, now time.Time) error {
