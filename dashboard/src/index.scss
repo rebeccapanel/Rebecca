@@ -160,6 +160,7 @@ body {
 .rb-data-table {
   border-collapse: separate !important;
   border-spacing: 0 6px !important;
+  direction: inherit;
   table-layout: auto;
   width: 100%;
 }
@@ -170,7 +171,8 @@ body {
 
 .rb-data-table-wrap {
   width: 100%;
-  overflow-x: hidden;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -224,15 +226,15 @@ body {
 }
 
 .rb-data-table-row > td:first-child {
-  border-left: 1px solid var(--rb-panel-border) !important;
-  border-top-left-radius: 6px;
-  border-bottom-left-radius: 6px;
+  border-inline-start: 1px solid var(--rb-panel-border) !important;
+  border-start-start-radius: 6px;
+  border-end-start-radius: 6px;
 }
 
 .rb-data-table-row > td:last-child {
-  border-right: 1px solid var(--rb-panel-border) !important;
-  border-top-right-radius: 6px;
-  border-bottom-right-radius: 6px;
+  border-inline-end: 1px solid var(--rb-panel-border) !important;
+  border-start-end-radius: 6px;
+  border-end-end-radius: 6px;
 }
 
 .rb-data-table-row:hover > td {
@@ -247,12 +249,12 @@ body {
 }
 
 .rb-data-table-row[data-selected="true"] > td:first-child {
-  border-left-color: var(--rb-panel-accent) !important;
+  border-inline-start-color: var(--rb-panel-accent) !important;
   box-shadow: inset 2px 0 0 var(--rb-panel-accent);
 }
 
 .rb-data-table-row[data-selected="true"] > td:last-child {
-  border-right-color: var(--rb-panel-accent) !important;
+  border-inline-end-color: var(--rb-panel-accent) !important;
 }
 
 .rb-select-cell {
@@ -262,6 +264,9 @@ body {
   padding-left: 4px !important;
   padding-right: 4px !important;
   text-align: center !important;
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 3;
 }
 
 .rb-select-cell .chakra-checkbox {
@@ -270,7 +275,7 @@ body {
 
 .rb-select-cell + .rb-primary-cell,
 .rb-select-cell + td {
-  padding-left: clamp(8px, 0.65vw, 12px) !important;
+  padding-inline-start: clamp(8px, 0.65vw, 12px) !important;
 }
 
 .rb-primary-cell {
@@ -294,12 +299,19 @@ body {
   max-width: var(--rb-actions-column-width, 64px) !important;
   padding-left: 4px !important;
   padding-right: 4px !important;
-  text-align: right !important;
-  direction: ltr;
+  text-align: end !important;
+  direction: inherit;
   white-space: nowrap;
   overflow: visible;
-  position: relative;
-  z-index: 1;
+  position: sticky;
+  inset-inline-end: 0;
+  z-index: 3;
+}
+
+.rb-data-table th.rb-select-cell,
+.rb-data-table th.rb-actions-cell {
+  background: var(--rb-panel-main) !important;
+  z-index: 4;
 }
 
 .rb-actions-header-icon {
@@ -310,13 +322,13 @@ body {
 
 .rb-cell-content {
   display: flex;
-  direction: ltr;
+  direction: inherit;
   min-width: 0;
   width: 100%;
   max-width: 100%;
   align-items: center;
   justify-content: flex-start;
-  text-align: left;
+  text-align: start;
   gap: 0.3rem;
   overflow: hidden;
 }
@@ -346,7 +358,7 @@ body {
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
-  text-align: left;
+  text-align: start;
 }
 
 .rb-cell-value > * {
@@ -393,7 +405,7 @@ body {
 
 .rb-data-table-row:hover > td.rb-actions-cell,
 .rb-data-table-row[data-selected="true"] > td.rb-actions-cell {
-  z-index: 2;
+  z-index: 4;
 }
 
 .rb-actions-cell > button,
@@ -1005,71 +1017,32 @@ body {
   }
 }
 
-/* Full RTL Support for Persian/Farsi Language */
-/* When dir="rtl" is set, the entire layout becomes right-to-left */
+/* Let native logical layout handle RTL; isolate only explicitly mixed text. */
 [dir="rtl"] {
   direction: rtl;
-  text-align: right;
+  text-align: start;
 }
 
-/* Fix Bidirectional Text Rendering Issue for Persian/English mixed content */
-[dir="rtl"] * {
-  unicode-bidi: embed;
+[dir="auto"] {
+  unicode-bidi: plaintext;
 }
 
-/* RTL Table Text Alignment - Only align text right, keep column order */
-/* Force table to remain LTR to preserve column order unless it opts out with .rb-rtl-table */
-[dir="rtl"] table:not(.rb-rtl-table) {
-  direction: ltr !important;
-}
-
-[dir="rtl"] table:not(.rb-rtl-table) th,
-[dir="rtl"] table:not(.rb-rtl-table) td {
-  text-align: right !important;
-}
-
-/* Actions column should remain on the right side in RTL */
-[dir="rtl"] table:not(.rb-rtl-table) th[data-actions="true"],
-[dir="rtl"] table:not(.rb-rtl-table) td[data-actions="true"] {
-  text-align: right !important;
-}
-
-/* Center-aligned columns should remain centered */
-[dir="rtl"] table:not(.rb-rtl-table) th[data-center="true"],
-[dir="rtl"] table:not(.rb-rtl-table) td[data-center="true"] {
+[dir="rtl"] th[data-center="true"],
+[dir="rtl"] td[data-center="true"] {
   text-align: center !important;
 }
 
-/* Keep username column left-aligned (next to ID) in RTL */
-[dir="rtl"] table:not(.rb-rtl-table) th[data-col="username"],
-[dir="rtl"] table:not(.rb-rtl-table) td[data-col="username"] {
-  text-align: left !important;
+[dir="rtl"] .rb-data-table-row[data-selected="true"] > td:first-child,
+[dir="rtl"] .rb-resource-card[data-selected="true"] {
+  box-shadow: inset -2px 0 0 var(--rb-panel-accent);
 }
 
-/* Opt-in RTL text alignment without flipping column order */
-[dir="rtl"] table.rb-rtl-table {
-  direction: ltr !important;
-}
-
-[dir="rtl"] table.rb-rtl-table th,
-[dir="rtl"] table.rb-rtl-table td {
-  text-align: right !important;
-}
-
-[dir="rtl"] table.rb-rtl-table th[data-actions="true"],
-[dir="rtl"] table.rb-rtl-table td[data-actions="true"] {
-  text-align: right !important;
-}
-
-[dir="rtl"] table.rb-rtl-table th[data-center="true"],
-[dir="rtl"] table.rb-rtl-table td[data-center="true"] {
-  text-align: center !important;
-}
-
-[dir="rtl"] table:not(.rb-rtl-table) th,
-[dir="rtl"] table:not(.rb-rtl-table) td {
-  border-left: 0 !important;
-  border-right: 0 !important;
+[dir="rtl"] .chakra-menu__menu-list,
+[dir="rtl"] .chakra-popover__content,
+[dir="rtl"] .chakra-modal__content,
+[dir="rtl"] .chakra-drawer__content {
+  direction: rtl;
+  text-align: start;
 }
 
 /* Mirror close buttons and form icons when switching direction */
@@ -1081,16 +1054,14 @@ body {
   left: var(--chakra-space-3) !important;
 }
 
-[dir="rtl"] .chakra-input__left-element,
-[dir="rtl"] .chakra-input__left-addon {
+[dir="rtl"] .chakra-input__left-element {
   left: auto;
-  right: var(--chakra-space-3);
+  right: 0;
 }
 
-[dir="rtl"] .chakra-input__right-element,
-[dir="rtl"] .chakra-input__right-addon {
+[dir="rtl"] .chakra-input__right-element {
   right: auto;
-  left: var(--chakra-space-3);
+  left: 0;
 }
 
 [dir="rtl"] .chakra-input__field,
@@ -2079,13 +2050,13 @@ img.apple-emoji {
 
 /* softer corners on desktop rows */
 .rb-users-section .rb-data-table-row > td:first-child {
-  border-top-left-radius: 10px;
-  border-bottom-left-radius: 10px;
+  border-start-start-radius: 10px;
+  border-end-start-radius: 10px;
 }
 
 .rb-users-section .rb-data-table-row > td:last-child {
-  border-top-right-radius: 10px;
-  border-bottom-right-radius: 10px;
+  border-start-end-radius: 10px;
+  border-end-end-radius: 10px;
 }
 
 /* mobile cards: rounder, and glowing accent while expanded */

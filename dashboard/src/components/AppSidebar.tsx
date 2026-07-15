@@ -484,7 +484,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 												<Tooltip
 													key={itemUrl}
 													label={collapsed ? item.title : ""}
-													placement="right"
+													placement={isRTL ? "left" : "right"}
 													hasArrow
 												>
 													<HStack
@@ -516,7 +516,8 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 																<Box
 																	position="absolute"
 																	top="-6px"
-																	right="-7px"
+																	left={isRTL ? "-7px" : undefined}
+																	right={isRTL ? undefined : "-7px"}
 																	w="4"
 																	h="4"
 																	borderRadius="full"
@@ -548,7 +549,8 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 																</Text>
 																{showTutorialBadge ? (
 																	<Box
-																		ml="auto"
+																		ml={isRTL ? undefined : "auto"}
+																		mr={isRTL ? "auto" : undefined}
 																		w="5"
 																		h="5"
 																		borderRadius="full"

@@ -97,7 +97,9 @@ export const Pagination: FC<PaginationProps> = ({ for: target = "users" }) => {
 		total: adminsTotal,
 	} = useAdminsStore();
 
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const direction = i18n.dir(i18n.language);
+	const isRTL = direction === "rtl";
 
 	const { filters, total, onFilterChange } = useMemo(() => {
 		if (target === "admins") {
@@ -170,7 +172,12 @@ export const Pagination: FC<PaginationProps> = ({ for: target = "users" }) => {
 		>
 			<Box order={{ base: 2, md: 1 }} w={{ base: "full", md: "auto" }}>
 				<HStack justify={{ base: "center", md: "flex-start" }} minW={0}>
-					<Menu placement="top-start" strategy="fixed" gutter={8} isLazy>
+					<Menu
+						placement={isRTL ? "top-end" : "top-start"}
+						strategy="fixed"
+						gutter={8}
+						isLazy
+					>
 						<MenuButton
 							as={Button}
 							size="sm"
@@ -185,6 +192,7 @@ export const Pagination: FC<PaginationProps> = ({ for: target = "users" }) => {
 						</MenuButton>
 						<Portal>
 							<MenuList
+								dir={direction}
 								zIndex={1800}
 								minW={{ base: "104px", md: "112px" }}
 								maxW={{ base: "104px", md: "120px" }}
@@ -235,7 +243,7 @@ export const Pagination: FC<PaginationProps> = ({ for: target = "users" }) => {
 					maxW="full"
 				>
 					<Button
-						leftIcon={<PrevIcon />}
+						leftIcon={isRTL ? <NextIcon /> : <PrevIcon />}
 						onClick={() => changePage(page - 1)}
 						isDisabled={!canPrev}
 						flex={{ base: "1 1 0", md: "0 0 auto" }}
@@ -269,7 +277,7 @@ export const Pagination: FC<PaginationProps> = ({ for: target = "users" }) => {
 					)}
 
 					<Button
-						rightIcon={<NextIcon />}
+						rightIcon={isRTL ? <PrevIcon /> : <NextIcon />}
 						onClick={() => changePage(page + 1)}
 						isDisabled={!canNext}
 						flex={{ base: "1 1 0", md: "0 0 auto" }}

@@ -7,6 +7,7 @@ import {
 	type BoxProps,
 } from "@chakra-ui/react";
 import type { FC, PropsWithChildren, ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 
 type BulkActionBarProps = PropsWithChildren<
 	BoxProps & {
@@ -23,7 +24,13 @@ export const BulkActionBar: FC<BulkActionBarProps> = ({
 	children,
 	...props
 }) => {
+	const { t, i18n } = useTranslation();
+	const isRTL = i18n.dir(i18n.language) === "rtl";
 	const isVisible = selectedCount > 0;
+	const sidebarInset = {
+		base: "12px",
+		md: "calc(var(--rb-sidebar-offset, 0px) + 16px)",
+	};
 
 	return (
 		<Box
@@ -31,11 +38,8 @@ export const BulkActionBar: FC<BulkActionBarProps> = ({
 			data-visible={isVisible ? "true" : undefined}
 			aria-hidden={!isVisible}
 			position="fixed"
-			left={{
-				base: "12px",
-				md: "calc(var(--rb-sidebar-offset, 0px) + 16px)",
-			}}
-			right="16px"
+			left={isRTL ? "16px" : sidebarInset}
+			right={isRTL ? sidebarInset : "16px"}
 			bottom={{ base: "84px", md: "16px" }}
 			zIndex={1200}
 			bg="panel.surface"
@@ -54,11 +58,19 @@ export const BulkActionBar: FC<BulkActionBarProps> = ({
 			<Flex align="center" justify="space-between" gap={4} flexWrap="wrap">
 				<HStack spacing={4}>
 					<Text fontWeight="800" letterSpacing="0" textTransform="uppercase">
-						{selectedLabel ?? `${selectedCount} SELECTED`}
+						{selectedLabel ??
+								t("usersTable.selectedCount", "{{count}} selected", {
+									count: selectedCount,
+								})}
 					</Text>
 					{onClear && (
-						<Button size="xs" variant="link" color="panel.textMuted" onClick={onClear}>
-							Clear
+						<Button
+							size="xs"
+							variant="link"
+							color="panel.textMuted"
+							onClick={onClear}
+						>
+							{t("clear", "Clear")}
 						</Button>
 					)}
 				</HStack>

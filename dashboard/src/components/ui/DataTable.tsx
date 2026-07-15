@@ -50,6 +50,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { copyTextToClipboard } from "utils/clipboard";
 import { BulkActionBar } from "./BulkActionBar";
 import {
@@ -490,12 +491,16 @@ export function DataTable<TData>({
 	onSortingChange,
 	manualSorting = false,
 	pagination,
-	dir = "ltr",
+	dir,
 	tableProps,
 	containerProps,
 	mobileBreakpoint = "lg",
 	ariaLabel,
 }: DataTableProps<TData>) {
+	const { t } = useTranslation();
+	const actionsLabel = t("actions", "Actions");
+	const selectAllLabel = t("selectAll", "Select all rows");
+	const selectRowLabel = t("selectRow", "Select row");
 	const rootRef = useRef<HTMLDivElement | null>(null);
 	const [contextMenu, setContextMenu] = useState<{
 		row: TData | null;
@@ -599,9 +604,19 @@ export function DataTable<TData>({
 				return <InlineRowActions actions={getResolvedRowActions(row)} />;
 			}
 
-			return <RowActionsMenu actions={getResolvedRowActions(row)} />;
+			return (
+				<RowActionsMenu
+					actions={getResolvedRowActions(row)}
+					label={actionsLabel}
+				/>
+			);
 		},
-		[getResolvedRowActions, renderRowActions, resolvedActionsDisplay],
+		[
+			actionsLabel,
+			getResolvedRowActions,
+			renderRowActions,
+			resolvedActionsDisplay,
+		],
 	);
 	const [internalSelection, setInternalSelection] = useState<RowSelectionState>(() =>
 		makeSelectionState(defaultSelectedRowIds),
@@ -653,7 +668,7 @@ export function DataTable<TData>({
 						isChecked={table.getIsAllRowsSelected()}
 						isIndeterminate={table.getIsSomeRowsSelected()}
 						onChange={table.getToggleAllRowsSelectedHandler()}
-						aria-label="Select all rows"
+						aria-label={selectAllLabel}
 					/>
 				),
 				cell: ({ row }) => (
@@ -663,7 +678,7 @@ export function DataTable<TData>({
 						isDisabled={!row.getCanSelect()}
 						onChange={row.getToggleSelectedHandler()}
 						onClick={(event) => event.stopPropagation()}
-						aria-label="Select row"
+						aria-label={selectRowLabel}
 					/>
 				),
 				enableSorting: false,
@@ -671,7 +686,14 @@ export function DataTable<TData>({
 		}
 
 		return dataColumns;
-	}, [enableSelection, hasActions, renderConfiguredActions, visibleDesktopColumns]);
+	}, [
+		enableSelection,
+		hasActions,
+		renderConfiguredActions,
+		selectAllLabel,
+		selectRowLabel,
+		visibleDesktopColumns,
+	]);
 
 	const table = useReactTable({
 		data,
@@ -861,7 +883,7 @@ export function DataTable<TData>({
 		if (!showLoadingState && rows.length === 0) {
 			return (
 				<Box className="rb-resource-state">
-					{emptyState ?? "Nothing to show yet."}
+					{emptyState ?? t("noData", "Nothing to show yet.")}
 				</Box>
 			);
 		}
@@ -925,7 +947,7 @@ export function DataTable<TData>({
 										isChecked={table.getIsAllRowsSelected()}
 										isIndeterminate={table.getIsSomeRowsSelected()}
 										onChange={table.getToggleAllRowsSelectedHandler()}
-										aria-label="Select all rows"
+										aria-label={selectAllLabel}
 									/>
 								</Box>
 							)}
@@ -1009,6 +1031,7 @@ export function DataTable<TData>({
 														isDisabled={!row.getCanSelect()}
 														onChange={row.getToggleSelectedHandler()}
 														onClick={(event) => event.stopPropagation()}
+														aria-label={selectRowLabel}
 													/>
 												</Box>
 											)}
@@ -1027,7 +1050,10 @@ export function DataTable<TData>({
 													{hasActions && (
 														<Box flexShrink={0} className="rb-mobile-actions">
 															{resolvedRowActions.length > 0 ? (
-																<RowActionsMenu actions={resolvedRowActions} />
+																<RowActionsMenu
+																	actions={resolvedRowActions}
+																	label={actionsLabel}
+																/>
 															) : null}
 														</Box>
 													)}
@@ -1062,7 +1088,7 @@ export function DataTable<TData>({
 													<Flex
 														className="rb-resource-expanded-actions"
 														align="center"
-														justify={dir === "rtl" ? "flex-start" : "flex-end"}
+														justify="flex-end"
 														gap={2}
 													>
 														<Box minW={0}>
@@ -1151,7 +1177,7 @@ export function DataTable<TData>({
 												}
 												textAlign={
 													isActionsColumn
-														? "right"
+														? "end"
 														: isSelectColumn
 															? "center"
 															: alignToTextAlign(headerAlign)
@@ -1268,7 +1294,7 @@ export function DataTable<TData>({
 														].filter(Boolean).join(" ")}
 														textAlign={
 															isActionsColumn
-																? "right"
+																? "end"
 																: isSelectColumn
 																	? "center"
 																	: alignToTextAlign(cellAlign)

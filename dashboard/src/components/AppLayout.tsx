@@ -1125,7 +1125,7 @@ export function AppLayout() {
 									position="relative"
 									align="center"
 									spacing={1}
-									dir="ltr"
+									dir={isRTL ? "rtl" : "ltr"}
 									onPointerDown={handleNavPointerDown}
 									onPointerMove={handleNavPointerMove}
 									onPointerUp={handleNavPointerUp}

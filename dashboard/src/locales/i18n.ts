@@ -48,35 +48,20 @@ i18n
 	},
 );
 
+const applyDocumentLanguage = (language = "en") => {
+	if (typeof document === "undefined") return;
+	const direction = i18n.dir(language);
+	document.documentElement.setAttribute("lang", language);
+	document.documentElement.setAttribute("dir", direction);
+	document.body?.setAttribute("dir", direction);
+};
+
 i18n.on("languageChanged", (lng) => {
 	dayjs.locale(lng);
-
-	// Set HTML lang and dir attributes for RTL support
-	if (typeof document !== "undefined") {
-		const htmlElement = document.documentElement;
-		htmlElement.setAttribute("lang", lng);
-
-		// Set direction for RTL languages
-		if (lng === "fa") {
-			htmlElement.setAttribute("dir", "rtl");
-		} else {
-			htmlElement.setAttribute("dir", "ltr");
-		}
-	}
+	applyDocumentLanguage(lng);
 });
 
-// Set initial lang and dir attributes
-if (typeof window !== "undefined") {
-	const currentLang = i18n.language || "en";
-	const htmlElement = document.documentElement;
-	htmlElement.setAttribute("lang", currentLang);
-
-	if (currentLang === "fa") {
-		htmlElement.setAttribute("dir", "rtl");
-	} else {
-		htmlElement.setAttribute("dir", "ltr");
-	}
-}
+applyDocumentLanguage(i18n.language || "en");
 
 // DataPicker
 registerLocale("zh-cn", zh);
