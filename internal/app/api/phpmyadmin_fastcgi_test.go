@@ -1,10 +1,13 @@
 package api
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestRewritePHPMyAdminBodyRemovesFrameProtection(t *testing.T) {
@@ -42,5 +45,24 @@ func TestPHPMyAdminEnvValueReadsRebeccaEnvFile(t *testing.T) {
 
 	if got := phpMyAdminEnvValue("MYSQL_ROOT_PASSWORD"); got != "root-pass" {
 		t.Fatalf("expected root password from env file, got %q", got)
+	}
+}
+
+func TestPHPMyAdminRecoverySessionCarriesProxyState(t *testing.T) {
+	now := time.Unix(1_750_000_000, 0)
+	want := phpMyAdminResponse{Path: "/db-tools/", Port: 9090}
+	token := signPHPMyAdminEmbedSession("admin", want, now.Add(time.Hour))
+	req := httptest.NewRequest(http.MethodGet, phpMyAdminEmbedPath+"index.php", nil)
+	req.AddCookie(&http.Cookie{Name: phpMyAdminEmbedCookie, Value: token})
+
+	got, ok := phpMyAdminProxySession(req, now)
+	if !ok {
+		t.Fatal("expected recovery session to be accepted without database access")
+	}
+	if got.Path != want.Path || got.Port != want.Port || !got.Enabled {
+		t.Fatalf("unexpected proxy state: %+v", got)
+	}
+	if _, ok := phpMyAdminProxySession(req, now.Add(2*time.Hour)); ok {
+		t.Fatal("expected expired recovery session to be rejected")
 	}
 }

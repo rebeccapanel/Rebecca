@@ -15,15 +15,19 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 const phpMyAdminSQLiteDetail = "phpMyAdmin is available only for MySQL or MariaDB installations."
 const phpMyAdminEmbedPath = "/api/settings/phpmyadmin/embed/"
 const phpMyAdminEmbedCookie = "rebecca_pma_embed"
-const phpMyAdminEmbedTTL = 15 * time.Minute
+const phpMyAdminEmbedTTL = 6 * time.Hour
 
-var phpMyAdminEmbedSecret = newPHPMyAdminEmbedSecret()
+var phpMyAdminEmbedSigner = struct {
+	sync.RWMutex
+	secret []byte
+}{secret: newPHPMyAdminEmbedSecret()}
 
 type phpMyAdminEnableRequest struct {
 	Port int    `json:"port"`
@@ -55,6 +59,13 @@ type phpMyAdminCredentials struct {
 	Port            string
 	Database        string
 	LimitToDatabase bool
+}
+
+type phpMyAdminEmbedSession struct {
+	Username string `json:"u"`
+	Expires  int64  `json:"e"`
+	Path     string `json:"p"`
+	Port     int    `json:"o"`
 }
 
 type jsonRaw = json.RawMessage
@@ -160,6 +171,7 @@ func (s *Server) handlePHPMyAdminDisable(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	rotatePHPMyAdminEmbedSecret()
 	writeJSON(w, http.StatusOK, phpMyAdminActionResponse{OK: true, Status: s.phpMyAdminStatus(r), Output: strings.TrimSpace(output)})
 }
 
@@ -187,7 +199,7 @@ func (s *Server) handlePHPMyAdminEmbedHTML(w http.ResponseWriter, r *http.Reques
 	expires := time.Now().Add(phpMyAdminEmbedTTL)
 	http.SetCookie(w, &http.Cookie{
 		Name:     phpMyAdminEmbedCookie,
-		Value:    signPHPMyAdminEmbedSession(principal.Username, expires),
+		Value:    signPHPMyAdminEmbedSession(principal.Username, status, expires),
 		Path:     phpMyAdminEmbedPath,
 		Expires:  expires,
 		MaxAge:   int(phpMyAdminEmbedTTL.Seconds()),
@@ -202,13 +214,9 @@ func (s *Server) handlePHPMyAdminEmbedHTML(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Server) handlePHPMyAdminProxy(w http.ResponseWriter, r *http.Request) {
-	if !s.phpMyAdminProxyAuthorized(r) {
+	status, ok := phpMyAdminProxySession(r, time.Now())
+	if !ok {
 		writeAuthError(w, fmt.Errorf("missing bearer token"))
-		return
-	}
-	status := s.phpMyAdminStatus(r)
-	if !status.Enabled {
-		writeError(w, http.StatusConflict, "phpMyAdmin is disabled")
 		return
 	}
 	if err := s.servePHPMyAdminLocal(w, r, status); err != nil {
@@ -216,15 +224,21 @@ func (s *Server) handlePHPMyAdminProxy(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) phpMyAdminProxyAuthorized(r *http.Request) bool {
-	if principal, err := s.authenticate(r.Context(), r); err == nil && principal.Role == "full_access" {
-		return true
-	}
+func phpMyAdminProxySession(r *http.Request, now time.Time) (phpMyAdminResponse, bool) {
 	cookie, err := r.Cookie(phpMyAdminEmbedCookie)
 	if err != nil {
-		return false
+		return phpMyAdminResponse{}, false
 	}
-	return verifyPHPMyAdminEmbedSession(cookie.Value, time.Now())
+	session, ok := verifyPHPMyAdminEmbedSession(cookie.Value, now)
+	if !ok {
+		return phpMyAdminResponse{}, false
+	}
+	return phpMyAdminResponse{
+		Enabled:   true,
+		Supported: true,
+		Path:      normalizePHPMyAdminPath(session.Path),
+		Port:      normalizePHPMyAdminPort(session.Port),
+	}, true
 }
 
 func (s *Server) phpMyAdminStatus(r *http.Request) phpMyAdminResponse {
@@ -521,41 +535,55 @@ func newPHPMyAdminEmbedSecret() []byte {
 	return []byte(fmt.Sprintf("rebecca-pma-%d", time.Now().UnixNano()))
 }
 
-func signPHPMyAdminEmbedSession(username string, expires time.Time) string {
-	payload := fmt.Sprintf("%s|%d", username, expires.Unix())
-	mac := hmac.New(sha256.New, phpMyAdminEmbedSecret)
-	_, _ = mac.Write([]byte(payload))
-	return base64.RawURLEncoding.EncodeToString([]byte(payload)) + "." +
+func signPHPMyAdminEmbedSession(username string, status phpMyAdminResponse, expires time.Time) string {
+	payload, _ := json.Marshal(phpMyAdminEmbedSession{
+		Username: username,
+		Expires:  expires.Unix(),
+		Path:     normalizePHPMyAdminPath(status.Path),
+		Port:     normalizePHPMyAdminPort(status.Port),
+	})
+	phpMyAdminEmbedSigner.RLock()
+	defer phpMyAdminEmbedSigner.RUnlock()
+	mac := hmac.New(sha256.New, phpMyAdminEmbedSigner.secret)
+	_, _ = mac.Write(payload)
+	return base64.RawURLEncoding.EncodeToString(payload) + "." +
 		base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
 }
 
-func verifyPHPMyAdminEmbedSession(value string, now time.Time) bool {
+func verifyPHPMyAdminEmbedSession(value string, now time.Time) (phpMyAdminEmbedSession, bool) {
 	payloadEncoded, sigEncoded, ok := strings.Cut(value, ".")
 	if !ok {
-		return false
+		return phpMyAdminEmbedSession{}, false
 	}
 	payloadBytes, err := base64.RawURLEncoding.DecodeString(payloadEncoded)
 	if err != nil {
-		return false
+		return phpMyAdminEmbedSession{}, false
 	}
 	signature, err := base64.RawURLEncoding.DecodeString(sigEncoded)
 	if err != nil {
-		return false
+		return phpMyAdminEmbedSession{}, false
 	}
-	mac := hmac.New(sha256.New, phpMyAdminEmbedSecret)
+	phpMyAdminEmbedSigner.RLock()
+	defer phpMyAdminEmbedSigner.RUnlock()
+	mac := hmac.New(sha256.New, phpMyAdminEmbedSigner.secret)
 	_, _ = mac.Write(payloadBytes)
 	if !hmac.Equal(signature, mac.Sum(nil)) {
-		return false
+		return phpMyAdminEmbedSession{}, false
 	}
-	_, expiresRaw, ok := strings.Cut(string(payloadBytes), "|")
-	if !ok {
-		return false
+	var session phpMyAdminEmbedSession
+	if err := json.Unmarshal(payloadBytes, &session); err != nil {
+		return phpMyAdminEmbedSession{}, false
 	}
-	expiresUnix, err := strconv.ParseInt(expiresRaw, 10, 64)
-	if err != nil {
-		return false
+	if session.Username == "" || now.Unix() > session.Expires {
+		return phpMyAdminEmbedSession{}, false
 	}
-	return now.Unix() <= expiresUnix
+	return session, true
+}
+
+func rotatePHPMyAdminEmbedSecret() {
+	phpMyAdminEmbedSigner.Lock()
+	phpMyAdminEmbedSigner.secret = newPHPMyAdminEmbedSecret()
+	phpMyAdminEmbedSigner.Unlock()
 }
 
 func rewritePHPMyAdminURL(value string, status phpMyAdminResponse, proxyBase string) string {

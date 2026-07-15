@@ -81,17 +81,6 @@ func servePHPMyAdminStatic(w http.ResponseWriter, r *http.Request, fullPath stri
 }
 
 func (s *Server) servePHPMyAdminPHP(w http.ResponseWriter, r *http.Request, status phpMyAdminResponse, scriptRel string, scriptPath string) error {
-	credentials, err := s.phpMyAdminCredentials(r.Context())
-	if err != nil {
-		return err
-	}
-	theme := ""
-	if cookie, err := r.Cookie("pma_theme"); err == nil {
-		theme = cookie.Value
-	}
-	if err := ensurePHPMyAdminRuntimeConfig(credentials, theme); err != nil {
-		return err
-	}
 	network, address, err := findPHPFPMSocket()
 	if err != nil {
 		return err
