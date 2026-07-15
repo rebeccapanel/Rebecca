@@ -8,7 +8,7 @@ import (
 )
 
 func TestParseSubscriptionBodyVLESS(t *testing.T) {
-	body := []byte("vless://11111111-1111-4111-8111-111111111111@example.com:443?type=ws&security=tls&host=edge.example.com&path=%2Fws&sni=sni.example.com&fp=chrome#Edge")
+	body := []byte("vless://11111111-1111-4111-8111-111111111111@example.com:443?type=ws&security=tls&host=edge.example.com&path=%2Fws&sni=sni.example.com&fp=chrome&pcs=sha256-pin&vcn=cert.example.com#Edge")
 	outbounds, identities, err := ParseSubscriptionBody(body)
 	if err != nil {
 		t.Fatalf("ParseSubscriptionBody() error = %v", err)
@@ -33,6 +33,9 @@ func TestParseSubscriptionBodyVLESS(t *testing.T) {
 	tls := stream["tlsSettings"].(map[string]any)
 	if tls["serverName"] != "sni.example.com" || tls["fingerprint"] != "chrome" {
 		t.Fatalf("unexpected tls settings: %#v", tls)
+	}
+	if tls["pinnedPeerCertSha256"] != "sha256-pin" || tls["verifyPeerCertByName"] != "cert.example.com" {
+		t.Fatalf("new TLS verification settings were not parsed: %#v", tls)
 	}
 }
 

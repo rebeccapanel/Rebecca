@@ -19,7 +19,7 @@ const orderKeys = (object: JsonObject, preferred: string[]) => {
 	const keys = Object.keys(object);
 	const preferredSet = new Set(preferred);
 	return [
-		...preferred.filter((key) => Object.prototype.hasOwnProperty.call(object, key)),
+		...preferred.filter((key) => Object.hasOwn(object, key)),
 		...keys.filter((key) => !preferredSet.has(key)),
 	];
 };
@@ -32,13 +32,9 @@ const orderKeysWithTail = (
 	const keys = Object.keys(object);
 	const fixedSet = new Set([...preferredHead, ...preferredTail]);
 	return [
-		...preferredHead.filter((key) =>
-			Object.prototype.hasOwnProperty.call(object, key),
-		),
+		...preferredHead.filter((key) => Object.hasOwn(object, key)),
 		...keys.filter((key) => !fixedSet.has(key)),
-		...preferredTail.filter((key) =>
-			Object.prototype.hasOwnProperty.call(object, key),
-		),
+		...preferredTail.filter((key) => Object.hasOwn(object, key)),
 	];
 };
 
@@ -76,7 +72,6 @@ const keyOrderForObject = (
 			"api",
 			"policy",
 			"stats",
-			"reverse",
 			"transport",
 			"observatory",
 			"burstObservatory",

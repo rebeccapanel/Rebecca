@@ -449,8 +449,8 @@ func parseHysteria2(link string) (*ParseResult, error) {
 			"alpn":                 splitCommaOrDefault(params.Get("alpn"), []string{"h3"}),
 			"fingerprint":          params.Get("fp"),
 			"echConfigList":        params.Get("ech"),
-			"verifyPeerCertByName": "",
-			"pinnedPeerCertSha256": params.Get("pinSHA256"),
+			"verifyPeerCertByName": firstNonEmpty(params.Get("vcn"), params.Get("verifyPeerCertByName")),
+			"pinnedPeerCertSha256": firstNonEmpty(params.Get("pcs"), params.Get("pinSHA256")),
 		},
 	}
 	applyFinalMask(stream, params)
@@ -656,7 +656,8 @@ func applySecurity(stream map[string]any, p url.Values) {
 			tls["alpn"] = splitComma(alpn)
 		}
 		tls["echConfigList"] = p.Get("ech")
-		tls["pinnedPeerCertSha256"] = p.Get("pcs")
+		tls["pinnedPeerCertSha256"] = firstNonEmpty(p.Get("pcs"), p.Get("pinSHA256"))
+		tls["verifyPeerCertByName"] = firstNonEmpty(p.Get("vcn"), p.Get("verifyPeerCertByName"))
 	case "reality":
 		re := stream["realitySettings"].(map[string]any)
 		re["serverName"] = p.Get("sni")

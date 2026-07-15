@@ -1,12 +1,34 @@
 package nodecontroller
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 )
+
+func TestIncludeDBUsersPreservesReverseClient(t *testing.T) {
+	raw := map[string]any{
+		"inbounds": []any{map[string]any{
+			"tag":      "vless-in",
+			"protocol": "vless",
+			"settings": map[string]any{"clients": []any{
+				map[string]any{"id": "regular"},
+				map[string]any{"id": "reverse", "reverse": map[string]any{"tag": "reverse-out"}},
+			}},
+		}},
+	}
+
+	if err := (Controller{}).includeDBUsers(context.Background(), raw, &runtimeConfigData{}); err != nil {
+		t.Fatal(err)
+	}
+	clients := interfaceSlice(mapValue(listOfMaps(raw["inbounds"])[0]["settings"])["clients"])
+	if len(clients) != 1 || stringValue(mapValue(clients[0])["id"]) != "reverse" {
+		t.Fatalf("unexpected runtime clients: %#v", clients)
+	}
+}
 
 func TestApplyRuntimeAPIEnablesOnlineUserStats(t *testing.T) {
 	raw := map[string]any{

@@ -176,7 +176,6 @@ export type InboundFormValues = {
 	tlsCertificates: TlsCertificateForm[];
 	tlsAlpn: string[];
 	tlsEchServerKeys: string;
-	tlsEchForceQuery: string;
 	tlsAllowInsecure: boolean;
 	tlsFingerprint: string;
 	tlsEchConfigList: string;
@@ -358,7 +357,6 @@ export const tlsCipherOptions = [
 	"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
 ];
 export const tlsUsageOptions = ["encipherment", "verify", "issue"];
-export const tlsEchForceOptions = ["none", "half", "full"];
 
 export const protocolOptions: Protocol[] = [
 	"vmess",
@@ -1101,7 +1099,6 @@ export const createDefaultInboundForm = (
 			? [ALPN_OPTION.H3]
 			: [ALPN_OPTION.H2, ALPN_OPTION.HTTP1],
 	tlsEchServerKeys: "",
-	tlsEchForceQuery: "none",
 	tlsAllowInsecure: false,
 	tlsFingerprint:
 		protocol === "hysteria" ? "" : UTLS_FINGERPRINT.UTLS_CHROME,
@@ -1461,7 +1458,7 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 		sniffingMetadataOnly: Boolean(
 			sniffing.metadataOnly ?? base.sniffingMetadataOnly,
 		),
-		streamNetwork: stream.network ?? base.streamNetwork,
+		streamNetwork: stream.method ?? stream.network ?? base.streamNetwork,
 		streamSecurity: stream.security ?? base.streamSecurity,
 		tcpAcceptProxyProtocol: Boolean(
 			stream?.tcpSettings?.acceptProxyProtocol ?? base.tcpAcceptProxyProtocol,
@@ -1500,7 +1497,6 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 		tlsCertificates: tlsCertificates,
 		tlsAlpn: tlsAlpn.length ? tlsAlpn : base.tlsAlpn,
 		tlsEchServerKeys: tlsSettings.echServerKeys ?? base.tlsEchServerKeys,
-		tlsEchForceQuery: tlsSettings.echForceQuery ?? base.tlsEchForceQuery,
 		tlsAllowInsecure: Boolean(
 			tlsSettingsMeta.allowInsecure ??
 				tlsSettings.allowInsecure ??
@@ -2439,7 +2435,6 @@ const buildStreamSettings = (
 		);
 		tlsPayload.alpn = values.tlsAlpn?.length ? values.tlsAlpn : undefined;
 		tlsPayload.echServerKeys = values.tlsEchServerKeys || undefined;
-		tlsPayload.echForceQuery = values.tlsEchForceQuery || undefined;
 		const settingsPayload =
 			tlsPayload.settings && typeof tlsPayload.settings === "object"
 				? { ...tlsPayload.settings }

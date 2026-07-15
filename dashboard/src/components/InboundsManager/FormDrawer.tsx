@@ -84,7 +84,6 @@ import {
 	streamSecurityOptions,
 	tlsAlpnOptions,
 	tlsCipherOptions,
-	tlsEchForceOptions,
 	tlsFingerprintOptions,
 	tlsUsageOptions,
 	tlsVersionOptions,
@@ -4536,25 +4535,6 @@ export const InboundFormModal: FC<Props> = ({
 														{t("inbounds.tls.echConfig", "ECH config")}
 													</FormLabel>
 													<Input {...register("tlsEchConfigList")} />
-												</FormControl>
-												<FormControl>
-													<FormLabel>
-														{t("inbounds.tls.echForceQuery", "ECH force query")}
-													</FormLabel>
-													<SearchableTagSelect
-														value={formValues.tlsEchForceQuery || ""}
-														options={tlsEchForceOptions}
-														placeholder={t(
-															"inbounds.tls.echForceQuery",
-															"ECH force query",
-														)}
-														onChange={(value) =>
-															form.setValue("tlsEchForceQuery", String(value), {
-																shouldDirty: true,
-																shouldValidate: true,
-															})
-														}
-													/>
 												</FormControl>
 												<HStack spacing={3}>
 													<Button size="xs" onClick={handleGenerateEchCert}>

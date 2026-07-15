@@ -257,7 +257,215 @@ type ReverseRow = {
 	index: number;
 	type: ReverseType;
 	tag: string;
-	domain: string;
+	connectionTag: string;
+	credentialId: string;
+	flow: string;
+	targetTag: string;
+	inboundTags: string[];
+};
+
+type VlessOutboundAccount = {
+	address: unknown;
+	port: number;
+	id: string;
+	flow: string;
+	encryption: string;
+	level?: number;
+	email?: string;
+	seed?: string;
+	testpre?: number;
+	testseed?: number[];
+};
+
+const stringArray = (value: unknown): string[] =>
+	Array.isArray(value)
+		? value.filter((item): item is string => typeof item === "string")
+		: typeof value === "string" && value
+			? [value]
+			: [];
+
+const readVlessOutboundAccount = (outbound: any): VlessOutboundAccount => {
+	const settings = outbound?.settings ?? {};
+	if (
+		Object.hasOwn(settings, "address") ||
+		settings?.reverse
+	) {
+		return {
+			address: settings.address ?? "",
+			port: Number(settings.port) || 0,
+			id: String(settings.id ?? ""),
+			flow: String(settings.flow ?? ""),
+			encryption: String(settings.encryption ?? "none"),
+			level: settings.level,
+			email: settings.email,
+			seed: settings.seed,
+			testpre: settings.testpre,
+			testseed: settings.testseed,
+		};
+	}
+	const server = Array.isArray(settings.vnext) ? settings.vnext[0] : undefined;
+	const user = Array.isArray(server?.users) ? server.users[0] : undefined;
+	return {
+		address: server?.address ?? "",
+		port: Number(server?.port) || 0,
+		id: String(user?.id ?? ""),
+		flow: String(user?.flow ?? ""),
+		encryption: String(user?.encryption ?? "none"),
+		level: user?.level,
+		email: user?.email,
+		seed: user?.seed,
+		testpre: user?.testpre,
+		testseed: user?.testseed,
+	};
+};
+
+const isPrivateXrayAddress = (value: unknown) => {
+	const host = String(value ?? "")
+		.trim()
+		.toLowerCase()
+		.replace(/^\[|\]$/g, "")
+		.replace(/\.$/, "");
+	const octets = host.split(".").map(Number);
+	if (
+		octets.length === 4 &&
+		octets.every((octet) => Number.isInteger(octet) && octet >= 0 && octet <= 255)
+	) {
+		const [a, b, c] = octets;
+		return (
+			a === 0 ||
+			a === 10 ||
+			a === 127 ||
+			(a === 100 && b >= 64 && b <= 127) ||
+			(a === 169 && b === 254) ||
+			(a === 172 && b >= 16 && b <= 31) ||
+			(a === 192 && b === 0 && (c === 0 || c === 2)) ||
+			(a === 192 && b === 88 && c === 99) ||
+			(a === 192 && b === 168) ||
+			(a === 198 && (b === 18 || b === 19)) ||
+			(a === 198 && b === 51 && c === 100) ||
+			(a === 203 && b === 0 && c === 113) ||
+			a >= 224
+		);
+	}
+	if (host.includes(":")) {
+		const first = Number.parseInt(host.split(":")[0] || "0", 16);
+		return (
+			host === "::" ||
+			host === "::1" ||
+			(first >= 0xfc00 && first <= 0xfdff) ||
+			(first >= 0xfe80 && first <= 0xfebf) ||
+			(first >= 0xff00 && first <= 0xffff)
+		);
+	}
+	if (!host.includes(".")) {
+		return /^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(host);
+	}
+	return [
+		"lan",
+		"localdomain",
+		"example",
+		"invalid",
+		"localhost",
+		"test",
+		"local",
+		"home.arpa",
+		"internal",
+	].some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
+};
+
+const isSecureVlessConnection = (
+	outbound: any,
+	account = readVlessOutboundAccount(outbound),
+) => {
+	const security = String(outbound?.streamSettings?.security ?? "none").toLowerCase();
+	return (
+		(security !== "" && security !== "none") ||
+		(account.encryption !== "" && account.encryption !== "none") ||
+		isPrivateXrayAddress(account.address)
+	);
+};
+
+const buildReverseRows = (config: any): ReverseRow[] => {
+	const rows: Omit<ReverseRow, "index">[] = [];
+	const rules: RoutingRule[] = Array.isArray(config?.routing?.rules)
+		? config.routing.rules
+		: [];
+
+	for (const outbound of config?.outbounds ?? []) {
+		if (String(outbound?.protocol).toLowerCase() !== "vless") continue;
+		const tag = String(outbound?.settings?.reverse?.tag ?? "").trim();
+		if (!tag) continue;
+		const account = readVlessOutboundAccount(outbound);
+		const targetRule = rules.find((rule) => {
+			const tags = stringArray(rule.inboundTag);
+			return tags.length === 1 && tags[0] === tag;
+		});
+		rows.push({
+			key: `internal-${outbound?.tag ?? "vless"}-${tag}`,
+			type: "internal",
+			tag,
+			connectionTag: String(outbound?.tag ?? ""),
+			credentialId: account.id,
+			flow: account.flow,
+			targetTag: String(targetRule?.outboundTag ?? ""),
+			inboundTags: [],
+		});
+	}
+
+	for (const inbound of config?.inbounds ?? []) {
+		if (String(inbound?.protocol).toLowerCase() !== "vless") continue;
+		for (const client of inbound?.settings?.clients ?? []) {
+			const tag = String(client?.reverse?.tag ?? "").trim();
+			if (!tag) continue;
+			rows.push({
+				key: `public-${inbound?.tag ?? "vless"}-${tag}-${client?.id ?? ""}`,
+				type: "public",
+				tag,
+				connectionTag: String(inbound?.tag ?? ""),
+				credentialId: String(client?.id ?? ""),
+				flow: String(client?.flow ?? ""),
+				targetTag: "",
+				inboundTags: Array.from(
+					new Set(
+						rules
+							.filter((rule) => rule.outboundTag === tag)
+							.flatMap((rule) => stringArray(rule.inboundTag)),
+					),
+				),
+			});
+		}
+	}
+
+	return rows.map((row, index) => ({ ...row, index }));
+};
+
+const removeReverseFromConfig = (config: any, reverse: ReverseRow) => {
+	if (reverse.type === "internal") {
+		const outbound = (config.outbounds ?? []).find(
+			(item: any) => item?.tag === reverse.connectionTag,
+		);
+		if (outbound?.settings) delete outbound.settings.reverse;
+	} else {
+		const inbound = (config.inbounds ?? []).find(
+			(item: any) => item?.tag === reverse.connectionTag,
+		);
+		if (inbound?.settings && Array.isArray(inbound.settings.clients)) {
+			inbound.settings.clients = inbound.settings.clients.filter(
+				(client: any) =>
+					client?.reverse?.tag !== reverse.tag ||
+					String(client?.id ?? "") !== reverse.credentialId,
+			);
+		}
+	}
+
+	if (Array.isArray(config?.routing?.rules)) {
+		config.routing.rules = config.routing.rules.filter((rule: RoutingRule) => {
+			if (reverse.type === "public") return rule.outboundTag !== reverse.tag;
+			const tags = stringArray(rule.inboundTag);
+			return !(tags.length === 1 && tags[0] === reverse.tag);
+		});
+	}
+	delete config.reverse;
 };
 
 // UX credit: the compact Xray settings panels and row action flow are
@@ -669,119 +877,6 @@ export const CoreSettingsPage: FC = () => {
 		}
 		return [];
 	}, [form]);
-
-	const buildReverseRows = useCallback((reverse: any): ReverseRow[] => {
-		const rows: ReverseRow[] = [];
-		if (reverse?.bridges && Array.isArray(reverse.bridges)) {
-			reverse.bridges.forEach((entry: any, index: number) => {
-				rows.push({
-					key: `bridge-${index}-${entry?.tag ?? "reverse"}`,
-					index,
-					type: "bridge",
-					tag: entry?.tag ?? "",
-					domain: entry?.domain ?? "",
-				});
-			});
-		}
-		if (reverse?.portals && Array.isArray(reverse.portals)) {
-			reverse.portals.forEach((entry: any, index: number) => {
-				rows.push({
-					key: `portal-${index}-${entry?.tag ?? "reverse"}`,
-					index,
-					type: "portal",
-					tag: entry?.tag ?? "",
-					domain: entry?.domain ?? "",
-				});
-			});
-		}
-		return rows;
-	}, []);
-
-	const getReverseRuleIndices = useCallback(
-		(rules: RoutingRule[], reverse: ReverseRow) =>
-			rules.reduce<number[]>((indices, rule, index) => {
-				if (
-					reverse.type === "bridge" &&
-					Array.isArray(rule.inboundTag) &&
-					rule.inboundTag[0] === reverse.tag
-				) {
-					indices.push(index);
-				}
-				if (reverse.type === "portal" && rule.outboundTag === reverse.tag) {
-					indices.push(index);
-				}
-				return indices;
-			}, []),
-		[],
-	);
-
-	const getReverseRules = useCallback(
-		(rules: RoutingRule[], reverse: ReverseRow) =>
-			getReverseRuleIndices(rules, reverse).map((index) => rules[index]),
-		[getReverseRuleIndices],
-	);
-
-	const buildReverseRules = useCallback(
-		(reverse: ReverseFormValues): RoutingRule[] => {
-			const domain = reverse.domain.trim().replace(/^full:/, "");
-			const domainRule: RoutingRule = {
-				type: "field",
-				domain: [`full:${domain}`],
-			};
-			const routeRule: RoutingRule = { type: "field" };
-
-			if (reverse.type === "bridge") {
-				domainRule.inboundTag = [reverse.tag];
-				routeRule.inboundTag = [reverse.tag];
-				domainRule.outboundTag = reverse.interconnectionOutboundTag;
-				routeRule.outboundTag = reverse.outboundTag;
-			} else {
-				domainRule.outboundTag = reverse.tag;
-				routeRule.outboundTag = reverse.tag;
-				domainRule.inboundTag = reverse.interconnectionInboundTags;
-				routeRule.inboundTag = reverse.inboundTags;
-			}
-
-			return [domainRule, routeRule];
-		},
-		[],
-	);
-
-	const removeReverseRules = useCallback(
-		(rules: RoutingRule[], reverse: ReverseRow) => {
-			if (reverse.type === "bridge") {
-				return rules.filter(
-					(rule) =>
-						!(
-							Array.isArray(rule.inboundTag) &&
-							rule.inboundTag.length === 1 &&
-							rule.inboundTag[0] === reverse.tag
-						),
-				);
-			}
-			return rules.filter((rule) => rule.outboundTag !== reverse.tag);
-		},
-		[],
-	);
-
-	const cleanupReverseConfig = useCallback((cfg: any) => {
-		if (!cfg.reverse) return;
-		if (
-			Array.isArray(cfg.reverse.bridges) &&
-			cfg.reverse.bridges.length === 0
-		) {
-			delete cfg.reverse.bridges;
-		}
-		if (
-			Array.isArray(cfg.reverse.portals) &&
-			cfg.reverse.portals.length === 0
-		) {
-			delete cfg.reverse.portals;
-		}
-		if (Object.keys(cfg.reverse).length === 0) {
-			delete cfg.reverse;
-		}
-	}, []);
 
 	useEffect(() => {
 		const handleFullscreenChange = () => {
@@ -1525,49 +1620,133 @@ export const CoreSettingsPage: FC = () => {
 		const cfg = JSON.parse(JSON.stringify(form.getValues("config") || {}));
 		if (!cfg.routing) cfg.routing = {};
 		if (!Array.isArray(cfg.routing.rules)) cfg.routing.rules = [];
-		if (!cfg.reverse) cfg.reverse = {};
 
 		const oldReverse =
 			editingReverseIndex !== null ? reverseData[editingReverseIndex] : null;
-		const oldRuleIndices = oldReverse
-			? getReverseRuleIndices(cfg.routing.rules, oldReverse)
-			: [];
+		let previousPublicClient: any;
+		let previousReverseSettings: Record<string, unknown> = {};
+		if (oldReverse?.type === "internal") {
+			const oldOutbound = (cfg.outbounds ?? []).find(
+				(item: any) => item?.tag === oldReverse.connectionTag,
+			);
+			previousReverseSettings = oldOutbound?.settings?.reverse ?? {};
+		} else if (oldReverse?.type === "public") {
+			const oldInbound = (cfg.inbounds ?? []).find(
+				(item: any) => item?.tag === oldReverse.connectionTag,
+			);
+			previousPublicClient = (oldInbound?.settings?.clients ?? []).find(
+				(client: any) =>
+					client?.reverse?.tag === oldReverse.tag &&
+					String(client?.id ?? "") === oldReverse.credentialId,
+			);
+			previousReverseSettings = previousPublicClient?.reverse ?? {};
+		}
+		const oldRuleIndex = oldReverse
+			? cfg.routing.rules.findIndex((rule: RoutingRule) => {
+					if (oldReverse.type === "public") {
+						return rule.outboundTag === oldReverse.tag;
+					}
+					const tags = stringArray(rule.inboundTag);
+					return tags.length === 1 && tags[0] === oldReverse.tag;
+				})
+			: -1;
+		if (oldReverse) removeReverseFromConfig(cfg, oldReverse);
 
-		if (oldReverse) {
-			const oldKey = `${oldReverse.type}s`;
-			const oldList = Array.isArray(cfg.reverse[oldKey])
-				? cfg.reverse[oldKey]
-				: [];
-			cfg.reverse[oldKey] = oldList.filter(
-				(entry: any) =>
-					!(
-						entry?.tag === oldReverse.tag && entry?.domain === oldReverse.domain
+		let nextRule: RoutingRule;
+		if (reverse.type === "internal") {
+			const outbound = (cfg.outbounds ?? []).find(
+				(item: any) =>
+					item?.tag === reverse.interconnectionOutboundTag &&
+					String(item?.protocol).toLowerCase() === "vless",
+			);
+			const account = readVlessOutboundAccount(outbound);
+			if (!outbound || !account.address || !account.port || !account.id) {
+				toast({
+					title: t(
+						"pages.xray.reverse.vlessOutboundInvalid",
+						"The VLESS connection is incomplete",
 					),
-			);
-		}
-
-		const newKey = `${reverse.type}s`;
-		if (!Array.isArray(cfg.reverse[newKey])) {
-			cfg.reverse[newKey] = [];
-		}
-		cfg.reverse[newKey].push({
-			tag: reverse.tag,
-			domain: reverse.domain,
-		});
-
-		const nextRules = buildReverseRules(reverse);
-		if (oldRuleIndices.length > 0) {
-			const rules = cfg.routing.rules.filter(
-				(_rule: RoutingRule, index: number) => !oldRuleIndices.includes(index),
-			);
-			const insertAt = Math.min(...oldRuleIndices);
-			rules.splice(insertAt, 0, ...nextRules);
-			cfg.routing.rules = rules;
+					status: "error",
+					isClosable: true,
+					position: "top",
+					duration: 4000,
+				});
+				return;
+			}
+			if (!isSecureVlessConnection(outbound, account)) {
+				toast({
+					title: t(
+						"pages.xray.reverse.transportSecurityRequired",
+						"Public VLESS connections require TLS or VLESS Encryption",
+					),
+					status: "error",
+					isClosable: true,
+					position: "top",
+					duration: 5000,
+				});
+				return;
+			}
+			outbound.settings = {
+				address: account.address,
+				port: account.port,
+				id: account.id,
+				encryption: account.encryption || "none",
+				flow: account.flow || undefined,
+				level: account.level || undefined,
+				email: account.email || undefined,
+				seed: account.seed || undefined,
+				testpre: account.testpre || undefined,
+				testseed: account.testseed?.length ? account.testseed : undefined,
+				reverse: { ...previousReverseSettings, tag: reverse.tag },
+			};
+			nextRule = {
+				type: "field",
+				inboundTag: [reverse.tag],
+				outboundTag: reverse.outboundTag,
+			};
 		} else {
-			cfg.routing.rules.push(...nextRules);
+			const inbound = (cfg.inbounds ?? []).find(
+				(item: any) =>
+					item?.tag === reverse.interconnectionInboundTag &&
+					String(item?.protocol).toLowerCase() === "vless",
+			);
+			if (!inbound) {
+				toast({
+					title: t(
+						"pages.xray.reverse.vlessInboundInvalid",
+						"The VLESS connection is unavailable",
+					),
+					status: "error",
+					isClosable: true,
+					position: "top",
+					duration: 4000,
+				});
+				return;
+			}
+			if (!inbound.settings) inbound.settings = {};
+			if (!Array.isArray(inbound.settings.clients)) {
+				inbound.settings.clients = [];
+			}
+			inbound.settings.clients.push({
+				...previousPublicClient,
+				id: reverse.credentialId,
+				email: previousPublicClient?.email || `reverse.${reverse.tag}`,
+				flow: reverse.flow || undefined,
+				reverse: { ...previousReverseSettings, tag: reverse.tag },
+			});
+			nextRule = {
+				type: "field",
+				inboundTag: reverse.inboundTags,
+				outboundTag: reverse.tag,
+			};
 		}
 
-		cleanupReverseConfig(cfg);
+		const insertAt =
+			oldRuleIndex >= 0
+				? Math.min(oldRuleIndex, cfg.routing.rules.length)
+				: cfg.routing.rules.length;
+		cfg.routing.rules.splice(insertAt, 0, nextRule);
+		delete cfg.reverse;
 		form.setValue("config", cfg, { shouldDirty: true });
 		syncRoutingRuleDisplay(cfg.routing.rules);
 		setJsonKey((prev) => prev + 1);
@@ -1578,19 +1757,9 @@ export const CoreSettingsPage: FC = () => {
 		const reverse = reverseData[index];
 		if (!reverse) return;
 		const cfg = JSON.parse(JSON.stringify(form.getValues("config") || {}));
-		if (!cfg.reverse) return;
-		const key = `${reverse.type}s`;
-		const list = Array.isArray(cfg.reverse[key]) ? cfg.reverse[key] : [];
-		cfg.reverse[key] = list.filter(
-			(entry: any) =>
-				!(entry?.tag === reverse.tag && entry?.domain === reverse.domain),
-		);
 		if (!cfg.routing) cfg.routing = {};
-		cfg.routing.rules = removeReverseRules(
-			Array.isArray(cfg.routing.rules) ? cfg.routing.rules : [],
-			reverse,
-		);
-		cleanupReverseConfig(cfg);
+		if (!Array.isArray(cfg.routing.rules)) cfg.routing.rules = [];
+		removeReverseFromConfig(cfg, reverse);
 		form.setValue("config", cfg, { shouldDirty: true });
 		syncRoutingRuleDisplay(cfg.routing.rules);
 		setJsonKey((prev) => prev + 1);
@@ -1656,9 +1825,22 @@ export const CoreSettingsPage: FC = () => {
 	};
 
 	const findOutboundAddress = (outbound: any) => {
-		switch (outbound.protocol) {
+			switch (outbound.protocol) {
 			case "vmess":
+				return (
+					outbound.settings.vnext?.map(
+						(obj: any) => formatOutboundEndpoint(obj.address, obj.port),
+					) || []
+				).filter(Boolean);
 			case "vless":
+				if (outbound.settings?.address) {
+					return [
+						formatOutboundEndpoint(
+							outbound.settings.address,
+							outbound.settings.port,
+						),
+					].filter(Boolean);
+				}
 				return (
 					outbound.settings.vnext?.map(
 						(obj: any) => formatOutboundEndpoint(obj.address, obj.port),
@@ -2100,8 +2282,8 @@ export const CoreSettingsPage: FC = () => {
 	);
 
 	const reverseData = useMemo<ReverseRow[]>(
-		() => buildReverseRows(watchedConfig?.reverse),
-		[buildReverseRows, watchedConfig],
+		() => buildReverseRows(watchedConfig),
+		[watchedConfig],
 	);
 
 	const editingReverseRow =
@@ -2109,37 +2291,74 @@ export const CoreSettingsPage: FC = () => {
 
 	const editingReverseInitial = useMemo<ReverseFormValues | null>(() => {
 		if (!editingReverseRow) return null;
-		const rules = getReverseRules(canonicalRoutingRules, editingReverseRow);
-		const domainRules = rules.filter((rule) => rule.domain != null);
-		const routeRules = rules.filter((rule) => rule.domain == null);
-		const domainRule = domainRules[0];
-		const routeRule = routeRules[0];
-
-		const initial: ReverseFormValues = {
+		return {
 			type: editingReverseRow.type,
 			tag: editingReverseRow.tag,
-			domain: editingReverseRow.domain,
-			interconnectionOutboundTag: domainRule?.outboundTag ?? "",
-			outboundTag: routeRule?.outboundTag ?? "",
-			interconnectionInboundTags: domainRules.flatMap(
-				(rule) => rule.inboundTag ?? [],
-			),
-			inboundTags: routeRules.flatMap((rule) => rule.inboundTag ?? []),
+			credentialId: editingReverseRow.credentialId,
+			flow: editingReverseRow.flow,
+			interconnectionOutboundTag:
+				editingReverseRow.type === "internal"
+					? editingReverseRow.connectionTag
+					: "",
+			outboundTag: editingReverseRow.targetTag,
+			interconnectionInboundTag:
+				editingReverseRow.type === "public"
+					? editingReverseRow.connectionTag
+					: "",
+			inboundTags: editingReverseRow.inboundTags,
 		};
-		return initial;
-	}, [canonicalRoutingRules, editingReverseRow, getReverseRules]);
+	}, [editingReverseRow]);
+
+	const vlessInboundTags = useMemo(
+		() =>
+			(watchedConfig?.inbounds ?? [])
+				.filter(
+					(inbound: any) =>
+						String(inbound?.protocol).toLowerCase() === "vless" && inbound?.tag,
+				)
+				.map((inbound: any) => String(inbound.tag)),
+		[watchedConfig],
+	);
+
+	const vlessOutboundTags = useMemo(
+		() =>
+			canonicalOutbounds
+				.filter((outbound: any) => {
+					if (String(outbound?.protocol).toLowerCase() !== "vless") return false;
+					const account = readVlessOutboundAccount(outbound);
+					const reverseTag = String(outbound?.settings?.reverse?.tag ?? "");
+					return (
+						Boolean(outbound?.tag && account.address && account.port && account.id) &&
+						isSecureVlessConnection(outbound, account) &&
+						(!reverseTag || outbound?.tag === editingReverseRow?.connectionTag)
+					);
+				})
+				.map((outbound: any) => String(outbound.tag)),
+		[canonicalOutbounds, editingReverseRow?.connectionTag],
+	);
 
 	const existingReverseTags = useMemo(
 		() =>
-			reverseData
-				.map((reverse) => reverse.tag)
+			Array.from(
+				new Set([
+					...availableInboundTags,
+					...availableOutboundTags,
+					...reverseData.map((reverse) => reverse.tag),
+				]),
+			)
 				.filter(
 					(tag) =>
 						tag &&
 						tag !==
 							(editingReverseIndex !== null ? editingReverseRow?.tag : ""),
 				),
-		[editingReverseIndex, editingReverseRow?.tag, reverseData],
+		[
+			availableInboundTags,
+			availableOutboundTags,
+			editingReverseIndex,
+			editingReverseRow?.tag,
+			reverseData,
+		],
 	);
 
 	const freedomOutboundIndex = useMemo(() => {
@@ -2419,7 +2638,7 @@ export const CoreSettingsPage: FC = () => {
 					cfg.routing.rules = canonicalizeRebeccaJson(parsed, "routingRules");
 					syncRoutingRuleDisplay(cfg.routing.rules as RoutingRule[]);
 					break;
-				default:
+				default: {
 					// replace whole config
 					const canonicalConfig = canonicalizeRebeccaJson(
 						parsed,
@@ -2441,6 +2660,7 @@ export const CoreSettingsPage: FC = () => {
 					setDnsServers(canonicalConfig?.dns?.servers || []);
 					setFakeDns(canonicalConfig?.fakedns || []);
 					return;
+				}
 			}
 			form.setValue("config", canonicalizeRebeccaJson(cfg, "config"), {
 				shouldDirty: true,
@@ -2510,22 +2730,6 @@ export const CoreSettingsPage: FC = () => {
 			return <CompactTextWithCopy text={str} label={t("details")} />;
 		}
 		return <Text>{str}</Text>;
-	};
-
-	const getReverseRuleSummary = (reverse: ReverseRow) => {
-		const rules = getReverseRules(canonicalRoutingRules, reverse);
-		const domainRules = rules.filter((rule) => rule.domain != null);
-		const routeRules = rules.filter((rule) => rule.domain == null);
-		return {
-			interconnection:
-				reverse.type === "bridge"
-					? domainRules[0]?.outboundTag
-					: domainRules.flatMap((rule) => rule.inboundTag ?? []),
-			target:
-				reverse.type === "bridge"
-					? routeRules[0]?.outboundTag
-					: routeRules.flatMap((rule) => rule.inboundTag ?? []),
-		};
 	};
 
 	const renderAttrsCell = (attrsValue: string | undefined) => {
@@ -2606,7 +2810,7 @@ export const CoreSettingsPage: FC = () => {
 
 	const renderOutboundTestCell = (
 		outbound: any,
-		originalIndex: number,
+		_originalIndex: number,
 		state: OutboundTestState | undefined,
 		onTest: () => void,
 	) => {
@@ -2991,10 +3195,10 @@ export const CoreSettingsPage: FC = () => {
 			isPrimary: true,
 			priority: "primary",
 			cell: (reverse) => (
-				<Tag colorScheme={reverse.type === "bridge" ? "blue" : "purple"} size="sm">
-					{reverse.type === "bridge"
-						? t("pages.xray.reverse.bridge", "Bridge")
-						: t("pages.xray.reverse.portal", "Portal")}
+				<Tag colorScheme={reverse.type === "internal" ? "blue" : "purple"} size="sm">
+					{reverse.type === "internal"
+						? t("pages.xray.reverse.internal", "Internal device")
+						: t("pages.xray.reverse.public", "Public server")}
 				</Tag>
 			),
 		},
@@ -3006,34 +3210,20 @@ export const CoreSettingsPage: FC = () => {
 			mobileSummary: true,
 		},
 		{
-			id: "domain",
-			header: t("pages.xray.reverse.domain", "Domain"),
+			id: "connection",
+			header: t("pages.xray.reverse.connection", "Connection"),
 			priority: "high",
-			cell: (reverse) => renderTextValue(reverse.domain),
-		},
-		{
-			id: "interconnection",
-			header: t("pages.xray.reverse.interconnection", "Interconnection"),
-			priority: "medium",
-			hideBelow: "lg",
-			cell: (reverse) => {
-				const summary = getReverseRuleSummary(reverse);
-				return Array.isArray(summary.interconnection)
-					? renderChipList(summary.interconnection, "teal")
-					: renderTextValue(summary.interconnection);
-			},
+			cell: (reverse) => renderTextValue(reverse.connectionTag),
 		},
 		{
 			id: "target",
 			header: t("pages.xray.reverse.target", "Target"),
 			priority: "medium",
 			hideBelow: "lg",
-			cell: (reverse) => {
-				const summary = getReverseRuleSummary(reverse);
-				return Array.isArray(summary.target)
-					? renderChipList(summary.target, "cyan")
-					: renderTextValue(summary.target);
-			},
+			cell: (reverse) =>
+				reverse.type === "internal"
+					? renderTextValue(reverse.targetTag)
+					: renderChipList(reverse.inboundTags, "cyan"),
 		},
 	];
 
@@ -4127,14 +4317,14 @@ export const CoreSettingsPage: FC = () => {
 										value: reverseData.length,
 									},
 									{
-										label: t("pages.xray.reverse.bridge", "Bridge"),
-										value: reverseData.filter((reverse) => reverse.type === "bridge")
+										label: t("pages.xray.reverse.internal", "Internal device"),
+										value: reverseData.filter((reverse) => reverse.type === "internal")
 											.length,
 										colorScheme: "blue",
 									},
 									{
-										label: t("pages.xray.reverse.portal", "Portal"),
-										value: reverseData.filter((reverse) => reverse.type === "portal")
+										label: t("pages.xray.reverse.public", "Public server"),
+										value: reverseData.filter((reverse) => reverse.type === "public")
 											.length,
 										colorScheme: "purple",
 									},
@@ -4680,6 +4870,8 @@ export const CoreSettingsPage: FC = () => {
 				initialReverse={editingReverseInitial}
 				inboundTags={availableInboundTags}
 				outboundTags={availableOutboundTags}
+				vlessInboundTags={vlessInboundTags}
+				vlessOutboundTags={vlessOutboundTags}
 				existingTags={existingReverseTags}
 				reverseCount={reverseData.length}
 				onSubmit={handleReverseSubmit}

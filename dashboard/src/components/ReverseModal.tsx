@@ -10,7 +10,7 @@ import {
 	ModalOverlay,
 	VStack,
 } from "@chakra-ui/react";
-import { type FC, useEffect, useMemo } from "react";
+import { type FC, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { SearchableTagSelect } from "./common/SearchableTagSelect";
@@ -23,15 +23,16 @@ import {
 	XrayModalHeader,
 } from "./xray/XrayDialog";
 
-export type ReverseType = "bridge" | "portal";
+export type ReverseType = "internal" | "public";
 
 export type ReverseFormValues = {
 	type: ReverseType;
 	tag: string;
-	domain: string;
+	credentialId: string;
+	flow: string;
 	interconnectionOutboundTag: string;
 	outboundTag: string;
-	interconnectionInboundTags: string[];
+	interconnectionInboundTag: string;
 	inboundTags: string[];
 };
 
@@ -42,18 +43,26 @@ interface ReverseModalProps {
 	initialReverse?: ReverseFormValues | null;
 	inboundTags: string[];
 	outboundTags: string[];
+	vlessInboundTags: string[];
+	vlessOutboundTags: string[];
 	existingTags: string[];
 	reverseCount: number;
 	onSubmit: (values: ReverseFormValues) => void;
 }
 
-const defaultReverseFormValues = (reverseCount: number): ReverseFormValues => ({
-	type: "bridge",
-	tag: `reverse-${reverseCount}`,
-	domain: "reverse.xui",
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const defaultValues = (reverseCount: number): ReverseFormValues => ({
+	type: "internal",
+	tag: `reverse-${reverseCount + 1}`,
+	credentialId:
+		typeof crypto !== "undefined" && crypto.randomUUID
+			? crypto.randomUUID()
+			: "",
+	flow: "",
 	interconnectionOutboundTag: "",
 	outboundTag: "",
-	interconnectionInboundTags: [],
+	interconnectionInboundTag: "",
 	inboundTags: [],
 });
 
@@ -64,67 +73,52 @@ export const ReverseModal: FC<ReverseModalProps> = ({
 	initialReverse,
 	inboundTags,
 	outboundTags,
+	vlessInboundTags,
+	vlessOutboundTags,
 	existingTags,
 	reverseCount,
 	onSubmit,
 }) => {
 	const { t } = useTranslation();
-	const modalForm = useForm<ReverseFormValues>({
-		defaultValues: defaultReverseFormValues(reverseCount),
+	const form = useForm<ReverseFormValues>({
+		defaultValues: defaultValues(reverseCount),
 	});
 
 	useEffect(() => {
 		if (!isOpen) return;
-		modalForm.reset(
+		form.reset(
 			initialReverse
-				? {
-						...defaultReverseFormValues(reverseCount),
-						...initialReverse,
-						tag: initialReverse.tag ?? "",
-						domain: initialReverse.domain ?? "",
-						interconnectionInboundTags:
-							initialReverse.interconnectionInboundTags ?? [],
-						inboundTags: initialReverse.inboundTags ?? [],
-					}
-				: defaultReverseFormValues(reverseCount),
+				? { ...defaultValues(reverseCount), ...initialReverse }
+				: defaultValues(reverseCount),
 		);
-	}, [initialReverse, isOpen, modalForm, reverseCount]);
+	}, [form, initialReverse, isOpen, reverseCount]);
 
-	const type = modalForm.watch("type");
-	const tag = modalForm.watch("tag");
-	const domain = modalForm.watch("domain");
-	const interconnectionOutboundTag = modalForm.watch(
-		"interconnectionOutboundTag",
-	);
-	const outboundTag = modalForm.watch("outboundTag");
-	const interconnectionInboundTags =
-		modalForm.watch("interconnectionInboundTags") ?? [];
-	const inboundTagsValue = modalForm.watch("inboundTags") ?? [];
+	const type = form.watch("type");
+	const tag = form.watch("tag");
+	const credentialId = form.watch("credentialId");
+	const connectionOutbound = form.watch("interconnectionOutboundTag");
+	const targetOutbound = form.watch("outboundTag");
+	const connectionInbound = form.watch("interconnectionInboundTag");
+	const sourceInbounds = form.watch("inboundTags") ?? [];
+	const duplicateTag = existingTags.includes(tag.trim());
+	const tagInvalid = !tag.trim() || duplicateTag;
+	const credentialInvalid =
+		type === "public" && !uuidPattern.test(credentialId.trim());
+	const isValid =
+		!tagInvalid &&
+		!credentialInvalid &&
+		(type === "internal"
+			? Boolean(connectionOutbound && targetOutbound)
+			: Boolean(connectionInbound && sourceInbounds.length));
 
-	const tagTrimmed = tag.trim();
-	const domainTrimmed = domain.trim();
-	const duplicateTag = existingTags.includes(tagTrimmed);
-	const tagInvalid = !tagTrimmed || duplicateTag;
-	const domainInvalid = !domainTrimmed;
-	const bridgeInvalid =
-		type === "bridge" && (!interconnectionOutboundTag || !outboundTag);
-	const portalInvalid =
-		type === "portal" &&
-		(interconnectionInboundTags.length === 0 || inboundTagsValue.length === 0);
-
-	const isValid = useMemo(
-		() => !tagInvalid && !domainInvalid && !bridgeInvalid && !portalInvalid,
-		[tagInvalid, domainInvalid, bridgeInvalid, portalInvalid],
-	);
-
-	const onSubmitInternal = modalForm.handleSubmit((data) => {
+	const submit = form.handleSubmit((values) => {
 		if (!isValid) return;
 		onSubmit({
-			...data,
-			tag: data.tag.trim(),
-			domain: data.domain.trim().replace(/^full:/, ""),
-			interconnectionInboundTags: data.interconnectionInboundTags ?? [],
-			inboundTags: data.inboundTags ?? [],
+			...values,
+			tag: values.tag.trim(),
+			credentialId: values.credentialId.trim(),
+			flow: values.flow.trim(),
+			inboundTags: values.inboundTags ?? [],
 		});
 	});
 
@@ -134,232 +128,247 @@ export const ReverseModal: FC<ReverseModalProps> = ({
 			<XrayModalContent mx="3">
 				<XrayModalHeader>
 					{mode === "edit"
-						? t("pages.xray.reverse.edit", "Edit Reverse")
-						: t("pages.xray.reverse.add", "Add Reverse")}
+						? t("pages.xray.reverse.edit", "Edit reverse proxy")
+						: t("pages.xray.reverse.add", "Add reverse proxy")}
 				</XrayModalHeader>
 				<ModalCloseButton />
-				<form onSubmit={onSubmitInternal}>
+				<form onSubmit={submit}>
 					<XrayModalBody>
 						<VStack spacing={4} align="stretch">
 							<XrayDialogSection
-								title={t("pages.xray.reverse.title", "Reverse")}
+								title={t("pages.xray.reverse.connection", "Connection")}
 							>
 								<XrayFieldGrid>
 									<FormControl>
-									<FormLabel>
-										{t("pages.xray.reverse.type", "Type")}
-									</FormLabel>
+										<FormLabel>
+											{t("pages.xray.reverse.role", "Server role")}
+										</FormLabel>
 										<SearchableTagSelect
 											mode="single"
 											options={[
 												{
-													value: "bridge",
-													label: t("pages.xray.reverse.bridge", "Bridge"),
+													value: "internal",
+													label: t(
+														"pages.xray.reverse.internal",
+														"Internal device",
+													),
 												},
 												{
-													value: "portal",
-													label: t("pages.xray.reverse.portal", "Portal"),
+													value: "public",
+													label: t(
+														"pages.xray.reverse.public",
+														"Public server",
+													),
 												},
 											]}
-											value={modalForm.watch("type") ?? "bridge"}
+											value={type}
 											onChange={(value) =>
-												modalForm.setValue("type", value as ReverseType, {
+												form.setValue("type", value as ReverseType, {
 													shouldDirty: true,
 												})
 											}
-											placeholder={t("pages.xray.reverse.type", "Type")}
+											placeholder={t("pages.xray.reverse.role", "Server role")}
 											searchPlaceholder={t("search", "Search")}
 										/>
 									</FormControl>
-
 									<FormControl isInvalid={tagInvalid}>
 										<FormLabel>{t("pages.xray.reverse.tag", "Tag")}</FormLabel>
-										<Input
-											{...modalForm.register("tag")}
-											size="sm"
-											placeholder="reverse-0"
-										/>
+										<Input {...form.register("tag")} size="sm" placeholder="reverse-1" />
 										{tagInvalid ? (
 											<FormErrorMessage>
 												{duplicateTag
 													? t(
 															"pages.xray.reverse.tagDuplicate",
-															"This reverse tag already exists.",
+															"This tag is already in use.",
 														)
 													: t(
 															"pages.xray.reverse.tagError",
-															"Reverse tag is required.",
+															"Enter a reverse tag.",
 														)}
 											</FormErrorMessage>
 										) : (
 											<FormHelperText>
 												{t(
 													"pages.xray.reverse.tagHint",
-													"Unique tag for this reverse entry.",
+													"Xray creates this tag locally.",
 												)}
 											</FormHelperText>
 										)}
 									</FormControl>
-
-									<FormControl isInvalid={domainInvalid}>
-										<FormLabel>
-											{t("pages.xray.reverse.domain", "Domain")}
-										</FormLabel>
-										<Input
-											{...modalForm.register("domain")}
-											size="sm"
-											placeholder="reverse.xui"
-										/>
-										<FormErrorMessage>
-											{t(
-												"pages.xray.reverse.domainError",
-												"Domain is required.",
-											)}
-										</FormErrorMessage>
-									</FormControl>
 								</XrayFieldGrid>
 							</XrayDialogSection>
 
-							{type === "bridge" ? (
+							{type === "internal" ? (
 								<XrayDialogSection
-									title={t("pages.xray.reverse.bridge", "Bridge")}
+									title={t(
+										"pages.xray.reverse.internal",
+										"Internal device",
+									)}
 								>
 									<XrayFieldGrid>
-										<FormControl isInvalid={!interconnectionOutboundTag}>
+										<FormControl isInvalid={!connectionOutbound}>
 											<FormLabel>
 												{t(
-													"pages.xray.reverse.interconnection",
-													"Interconnection",
+													"pages.xray.reverse.vlessOutbound",
+													"VLESS connection",
 												)}
 											</FormLabel>
 											<SearchableTagSelect
 												mode="single"
-												options={outboundTags}
-												value={interconnectionOutboundTag}
+												options={vlessOutboundTags}
+												value={connectionOutbound}
 												onChange={(value) =>
-													modalForm.setValue(
+													form.setValue(
 														"interconnectionOutboundTag",
 														value as string,
 														{ shouldDirty: true },
 													)
 												}
 												placeholder={t(
-													"pages.xray.reverse.selectOutbound",
-													"Select outbound tag",
+													"pages.xray.reverse.selectVlessOutbound",
+													"Select a VLESS outbound",
 												)}
 												searchPlaceholder={t("search", "Search")}
 												emptyText={t(
-													"pages.xray.outbound.empty",
-													"No outbound found",
+													"pages.xray.reverse.noVlessOutbound",
+													"No compatible VLESS outbound",
 												)}
 											/>
 											<FormErrorMessage>
 												{t(
-													"pages.xray.reverse.outboundRequired",
-													"Select an outbound tag.",
+													"pages.xray.reverse.vlessOutboundRequired",
+													"Select the VLESS connection.",
 												)}
 											</FormErrorMessage>
 										</FormControl>
-										<FormControl isInvalid={!outboundTag}>
-											<FormLabel>{t("pages.xray.rules.outbound")}</FormLabel>
+										<FormControl isInvalid={!targetOutbound}>
+											<FormLabel>
+												{t("pages.xray.reverse.target", "Target outbound")}
+											</FormLabel>
 											<SearchableTagSelect
 												mode="single"
-												options={outboundTags}
-												value={outboundTag}
+												options={outboundTags.filter(
+													(tag) => tag !== connectionOutbound,
+												)}
+												value={targetOutbound}
 												onChange={(value) =>
-													modalForm.setValue("outboundTag", value as string, {
+													form.setValue("outboundTag", value as string, {
 														shouldDirty: true,
 													})
 												}
 												placeholder={t(
-													"pages.xray.reverse.selectOutbound",
-													"Select outbound tag",
+													"pages.xray.reverse.selectTargetOutbound",
+													"Select a target outbound",
 												)}
 												searchPlaceholder={t("search", "Search")}
 												emptyText={t(
-													"pages.xray.outbound.empty",
-													"No outbound found",
+													"pages.xray.reverse.noTargetOutbound",
+													"No target outbound",
 												)}
 											/>
 											<FormErrorMessage>
 												{t(
-													"pages.xray.reverse.outboundRequired",
-												"Select an outbound tag.",
-											)}
-										</FormErrorMessage>
-									</FormControl>
+													"pages.xray.reverse.targetRequired",
+													"Select the target outbound.",
+												)}
+											</FormErrorMessage>
+										</FormControl>
 									</XrayFieldGrid>
 								</XrayDialogSection>
 							) : (
 								<XrayDialogSection
-									title={t("pages.xray.reverse.portal", "Portal")}
+									title={t("pages.xray.reverse.public", "Public server")}
 								>
 									<XrayFieldGrid>
-										<FormControl
-											isInvalid={interconnectionInboundTags.length === 0}
-										>
+										<FormControl isInvalid={!connectionInbound}>
 											<FormLabel>
 												{t(
-													"pages.xray.reverse.interconnection",
-													"Interconnection",
+													"pages.xray.reverse.vlessInbound",
+													"VLESS connection",
 												)}
 											</FormLabel>
 											<SearchableTagSelect
-												mode="multiple"
-												options={inboundTags}
-												value={interconnectionInboundTags}
+												mode="single"
+												options={vlessInboundTags}
+												value={connectionInbound}
 												onChange={(value) =>
-													modalForm.setValue(
-														"interconnectionInboundTags",
-														value as string[],
+													form.setValue(
+														"interconnectionInboundTag",
+														value as string,
 														{ shouldDirty: true },
 													)
 												}
 												placeholder={t(
-													"pages.xray.rules.inboundTag",
-													"Inbound Tags",
+													"pages.xray.reverse.selectVlessInbound",
+													"Select a VLESS inbound",
 												)}
 												searchPlaceholder={t("search", "Search")}
-												emptyText={t(
-													"pages.inbounds.empty",
-													"No inbound found",
-												)}
 											/>
 											<FormErrorMessage>
 												{t(
-													"pages.xray.reverse.inboundRequired",
-													"Select at least one inbound tag.",
+													"pages.xray.reverse.vlessInboundRequired",
+													"Select the VLESS connection.",
 												)}
 											</FormErrorMessage>
 										</FormControl>
-										<FormControl isInvalid={inboundTagsValue.length === 0}>
-											<FormLabel>{t("pages.xray.rules.inbound")}</FormLabel>
+										<FormControl isInvalid={credentialInvalid}>
+											<FormLabel>
+												{t("pages.xray.reverse.credentialId", "Connection UUID")}
+											</FormLabel>
+											<Input {...form.register("credentialId")} size="sm" fontFamily="mono" />
+											<FormErrorMessage>
+												{t(
+													"pages.xray.reverse.credentialIdError",
+													"Enter a valid UUID.",
+												)}
+											</FormErrorMessage>
+										</FormControl>
+										<FormControl>
+											<FormLabel>{t("pages.outbound.flow", "Flow")}</FormLabel>
+											<SearchableTagSelect
+												mode="single"
+											options={[
+												{ value: "", label: t("common.none", "None") },
+												"xtls-rprx-vision",
+											]}
+												value={form.watch("flow")}
+												onChange={(value) =>
+													form.setValue("flow", value as string, {
+														shouldDirty: true,
+													})
+												}
+												placeholder={t("common.none", "None")}
+												searchPlaceholder={t("search", "Search")}
+											/>
+										</FormControl>
+										<FormControl isInvalid={!sourceInbounds.length}>
+											<FormLabel>
+												{t("pages.xray.reverse.sourceInbounds", "Source inbounds")}
+											</FormLabel>
 											<SearchableTagSelect
 												mode="multiple"
-												options={inboundTags}
-												value={inboundTagsValue}
+												options={inboundTags.filter(
+													(tag) => tag !== connectionInbound,
+												)}
+												value={sourceInbounds}
 												onChange={(value) =>
-													modalForm.setValue("inboundTags", value as string[], {
+													form.setValue("inboundTags", value as string[], {
 														shouldDirty: true,
 													})
 												}
 												placeholder={t(
-													"pages.xray.rules.inboundTag",
-													"Inbound Tags",
+													"pages.xray.reverse.selectSourceInbounds",
+													"Select source inbounds",
 												)}
 												searchPlaceholder={t("search", "Search")}
-												emptyText={t(
-													"pages.inbounds.empty",
-													"No inbound found",
-												)}
 											/>
 											<FormErrorMessage>
 												{t(
 													"pages.xray.reverse.inboundRequired",
-												"Select at least one inbound tag.",
-											)}
-										</FormErrorMessage>
-									</FormControl>
+													"Select at least one source inbound.",
+												)}
+											</FormErrorMessage>
+										</FormControl>
 									</XrayFieldGrid>
 								</XrayDialogSection>
 							)}
@@ -369,15 +378,8 @@ export const ReverseModal: FC<ReverseModalProps> = ({
 						<Button variant="outline" onClick={onClose}>
 							{t("cancel")}
 						</Button>
-						<Button
-							type="submit"
-							colorScheme="primary"
-							size="sm"
-							isDisabled={!isValid}
-						>
-							{mode === "edit"
-								? t("pages.xray.reverse.edit", "Edit Reverse")
-								: t("pages.xray.reverse.add", "Add Reverse")}
+						<Button type="submit" colorScheme="primary" size="sm" isDisabled={!isValid}>
+							{mode === "edit" ? t("save") : t("add")}
 						</Button>
 					</XrayModalFooter>
 				</form>

@@ -459,22 +459,25 @@ export class TlsStreamSettings extends CommonClass {
 	serverName: string;
 	alpn: string[];
 	fingerprint: string;
-	allowInsecure: boolean;
 	echConfigList: string;
+	pinnedPeerCertSha256: string;
+	verifyPeerCertByName: string;
 
 	constructor(
 		serverName = "",
 		alpn: string[] = [],
 		fingerprint = "",
-		allowInsecure = false,
 		echConfigList = "",
+		pinnedPeerCertSha256 = "",
+		verifyPeerCertByName = "",
 	) {
 		super();
 		this.serverName = serverName ?? "";
 		this.alpn = alpn ?? [];
 		this.fingerprint = fingerprint ?? "";
-		this.allowInsecure = Boolean(allowInsecure);
 		this.echConfigList = echConfigList ?? "";
+		this.pinnedPeerCertSha256 = pinnedPeerCertSha256 ?? "";
+		this.verifyPeerCertByName = verifyPeerCertByName ?? "";
 	}
 
 	static override fromJson(json: any = {}): TlsStreamSettings {
@@ -482,8 +485,9 @@ export class TlsStreamSettings extends CommonClass {
 			json?.serverName ?? "",
 			Array.isArray(json?.alpn) ? json.alpn : [],
 			json?.fingerprint ?? "",
-			Boolean(json?.allowInsecure),
 			json?.echConfigList ?? "",
+			json?.pinnedPeerCertSha256 ?? "",
+			json?.verifyPeerCertByName ?? "",
 		);
 	}
 
@@ -492,8 +496,9 @@ export class TlsStreamSettings extends CommonClass {
 			serverName: this.serverName || undefined,
 			alpn: this.alpn?.length ? this.alpn : undefined,
 			fingerprint: this.fingerprint || undefined,
-			allowInsecure: this.allowInsecure,
 			echConfigList: this.echConfigList || undefined,
+			pinnedPeerCertSha256: this.pinnedPeerCertSha256 || undefined,
+			verifyPeerCertByName: this.verifyPeerCertByName || undefined,
 		};
 	}
 }
@@ -700,7 +705,7 @@ export class StreamSettings extends CommonClass {
 
 	static override fromJson(json: any = {}): StreamSettings {
 		return new StreamSettings(
-			json?.network ?? "tcp",
+			json?.method ?? json?.network ?? "tcp",
 			json?.security ?? "none",
 			TlsStreamSettings.fromJson(json?.tlsSettings),
 			RealityStreamSettings.fromJson(json?.realitySettings),
@@ -1014,7 +1019,9 @@ export class Outbound extends CommonClass {
 				json?.sni ?? "",
 				json?.alpn ? String(json.alpn).split(",") : [],
 				json?.fp ?? "",
-				Boolean(json?.allowInsecure),
+				json?.ech ?? "",
+				json?.pinSHA256 ?? json?.pcs ?? "",
+				json?.verifyPeerCertByName ?? json?.vcn ?? "",
 			);
 		}
 
@@ -1110,15 +1117,20 @@ export class Outbound extends CommonClass {
 		if (security === "tls") {
 			const fp = url.searchParams.get("fp") ?? "none";
 			const alpn = url.searchParams.get("alpn");
-			const allowInsecure = url.searchParams.get("allowInsecure");
 			const sni = url.searchParams.get("sni") ?? "";
 			const ech = url.searchParams.get("ech") ?? "";
+			const pinnedPeerCertSha256 =
+				url.searchParams.get("pcs") ??
+				url.searchParams.get("pinSHA256") ??
+				"";
+			const verifyPeerCertByName = url.searchParams.get("vcn") ?? "";
 			stream.tls = new TlsStreamSettings(
 				sni,
 				alpn ? alpn.split(",") : [],
 				fp,
-				allowInsecure === "1",
 				ech,
+				pinnedPeerCertSha256,
+				verifyPeerCertByName,
 			);
 		}
 
@@ -1499,6 +1511,18 @@ export class Outbound extends CommonClass {
 		}
 
 		static override fromJson(json: any = {}) {
+			if (
+				Object.hasOwn(json, "address") ||
+				json?.reverse
+			) {
+				return new Outbound.VLESSSettings(
+					json?.address ?? "",
+					json?.port ?? 0,
+					json?.id ?? "",
+					json?.flow ?? "",
+					json?.encryption ?? "none",
+				);
+			}
 			if (ObjectUtil.isArrEmpty(json?.vnext))
 				return new Outbound.VLESSSettings();
 			const server = json.vnext[0];

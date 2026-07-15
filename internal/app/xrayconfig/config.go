@@ -95,6 +95,13 @@ func Parse(input any, opts Options) (*Config, error) {
 
 func NormalizePayload(payload map[string]any) map[string]any {
 	cfg := deepCopyMap(payload)
+	removeLegacyReverse(cfg)
+	for _, inbound := range listOfMaps(cfg["inbounds"]) {
+		normalizeRemovedTLSFields(mapValue(inbound["streamSettings"]), true)
+	}
+	for _, outbound := range listOfMaps(cfg["outbounds"]) {
+		normalizeRemovedTLSFields(mapValue(outbound["streamSettings"]), false)
+	}
 	logCfg := mapValue(cfg["log"])
 	if _, ok := logCfg["access"]; !ok {
 		logCfg["access"] = ""
@@ -229,7 +236,7 @@ func validateExecutableInbound(inbound map[string]any) error {
 	if len(stream) == 0 {
 		return nil
 	}
-	network := normalizeNetwork(stringValue(stream["network"]))
+	network := streamNetwork(stream)
 	if network == "" {
 		network = "tcp"
 	}
@@ -487,7 +494,7 @@ func (c *Config) resolveInbound(inbound map[string]any) (ResolvedInbound, error)
 	if len(stream) == 0 {
 		return resolved, nil
 	}
-	network := normalizeNetwork(stringValue(stream["network"]))
+	network := streamNetwork(stream)
 	networkSettings := mapValue(stream[networkSettingsKey(network)])
 	security := strings.ToLower(stringValue(stream["security"]))
 	securitySettings := mapValue(stream[security+"Settings"])
@@ -644,7 +651,7 @@ func migrateStreamSettings(stream map[string]any, useVerifyPeerCertByName bool) 
 	if len(stream) == 0 {
 		return
 	}
-	switch normalizeNetwork(stringValue(stream["network"])) {
+	switch streamNetwork(stream) {
 	case "ws":
 		ws := mapValue(stream["wsSettings"])
 		headers := mapValue(ws["headers"])
@@ -659,7 +666,7 @@ func migrateStreamSettings(stream map[string]any, useVerifyPeerCertByName bool) 
 			stream["wsSettings"] = ws
 		}
 	case "tcp", "raw":
-		key := networkSettingsKey(normalizeNetwork(stringValue(stream["network"])))
+		key := networkSettingsKey(streamNetwork(stream))
 		tcp := mapValue(stream[key])
 		header := mapValue(tcp["header"])
 		request := mapValue(header["request"])
@@ -675,6 +682,55 @@ func migrateStreamSettings(stream map[string]any, useVerifyPeerCertByName bool) 
 	if tlsSettings := mapValue(stream["tlsSettings"]); len(tlsSettings) > 0 {
 		stream["tlsSettings"] = normalizeTLSVerifyPeerFields(tlsSettings, useVerifyPeerCertByName)
 	}
+}
+
+func streamNetwork(stream map[string]any) string {
+	return normalizeNetwork(firstNonEmptyString(stream["method"], stream["network"]))
+}
+
+func normalizeRemovedTLSFields(stream map[string]any, preserveMetadata bool) {
+	if len(stream) == 0 {
+		return
+	}
+	tlsSettings := mapValue(stream["tlsSettings"])
+	if len(tlsSettings) == 0 {
+		return
+	}
+	if allow, exists := tlsSettings["allowInsecure"]; preserveMetadata && exists {
+		metadata := mapValue(tlsSettings["settings"])
+		if _, configured := metadata["allowInsecure"]; !configured {
+			metadata["allowInsecure"] = allow
+		}
+		tlsSettings["settings"] = metadata
+	}
+	delete(tlsSettings, "allowInsecure")
+	delete(tlsSettings, "echForceQuery")
+
+	if oldNames := stringList(tlsSettings["verifyPeerCertInNames"]); stringValue(tlsSettings["verifyPeerCertByName"]) == "" && len(oldNames) > 0 {
+		tlsSettings["verifyPeerCertByName"] = strings.Join(oldNames, ",")
+	}
+	delete(tlsSettings, "verifyPeerCertInNames")
+	if preserveMetadata {
+		stream["tlsSettings"] = tlsSettings
+		return
+	}
+
+	legacySettings := mapValue(tlsSettings["settings"])
+	delete(legacySettings, "allowInsecure")
+	for _, key := range []string{"fingerprint", "echConfigList", "pinnedPeerCertSha256", "verifyPeerCertByName"} {
+		if _, exists := tlsSettings[key]; !exists {
+			if value, ok := legacySettings[key]; ok {
+				tlsSettings[key] = value
+			}
+		}
+		delete(legacySettings, key)
+	}
+	if len(legacySettings) == 0 {
+		delete(tlsSettings, "settings")
+	} else {
+		tlsSettings["settings"] = legacySettings
+	}
+	stream["tlsSettings"] = tlsSettings
 }
 
 func normalizeTLSVerifyPeerFields(settings map[string]any, useVerifyPeerCertByName bool) map[string]any {

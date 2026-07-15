@@ -104,6 +104,89 @@ func TestParseMigratesWebSocketHostAndNormalizesLog(t *testing.T) {
 	}
 }
 
+func TestNormalizePayloadRemovesLegacyReverseAndRemovedTLSFields(t *testing.T) {
+	cfg := map[string]any{
+		"reverse": map[string]any{
+			"bridges": []any{map[string]any{"tag": "old-bridge", "domain": "bridge.example"}},
+			"portals": []any{map[string]any{"tag": "old-portal", "domain": "portal.example"}},
+		},
+		"routing": map[string]any{"rules": []any{
+			map[string]any{"type": "field", "inboundTag": []any{"old-bridge"}, "outboundTag": "direct"},
+			map[string]any{"type": "field", "inboundTag": []any{"source"}, "outboundTag": "old-portal"},
+			map[string]any{"type": "field", "inboundTag": []any{"source"}, "outboundTag": "direct"},
+		}},
+		"inbounds": []any{map[string]any{
+			"streamSettings": map[string]any{"security": "tls", "tlsSettings": map[string]any{
+				"allowInsecure": true,
+				"echForceQuery": "half",
+			}},
+		}},
+		"outbounds": []any{map[string]any{
+			"streamSettings": map[string]any{"security": "tls", "tlsSettings": map[string]any{
+				"allowInsecure":         true,
+				"verifyPeerCertInNames": []any{"example.com"},
+			}},
+		}},
+	}
+
+	normalized := NormalizePayload(cfg)
+	if _, ok := normalized["reverse"]; ok {
+		t.Fatal("legacy reverse config was not removed")
+	}
+	rules := listOfMaps(mapValue(normalized["routing"])["rules"])
+	if len(rules) != 1 || stringValue(rules[0]["outboundTag"]) != "direct" {
+		t.Fatalf("legacy reverse routing rules were not removed: %#v", rules)
+	}
+	inboundTLS := mapValue(mapValue(listOfMaps(normalized["inbounds"])[0]["streamSettings"])["tlsSettings"])
+	if _, ok := inboundTLS["allowInsecure"]; ok {
+		t.Fatalf("removed TLS field was retained: %#v", inboundTLS)
+	}
+	if _, ok := inboundTLS["echForceQuery"]; ok {
+		t.Fatalf("removed ECH field was retained: %#v", inboundTLS)
+	}
+	if mapValue(inboundTLS["settings"])["allowInsecure"] != true {
+		t.Fatalf("subscription metadata should be preserved: %#v", inboundTLS)
+	}
+	outboundTLS := mapValue(mapValue(listOfMaps(normalized["outbounds"])[0]["streamSettings"])["tlsSettings"])
+	if _, ok := outboundTLS["allowInsecure"]; ok {
+		t.Fatalf("removed outbound TLS field was retained: %#v", outboundTLS)
+	}
+	if outboundTLS["verifyPeerCertByName"] != "example.com" {
+		t.Fatalf("certificate name migration failed: %#v", outboundTLS)
+	}
+}
+
+func TestParseAcceptsStreamMethod(t *testing.T) {
+	cfg := testConfig()
+	inbound := cfg["inbounds"].([]any)[0].(map[string]any)
+	stream := inbound["streamSettings"].(map[string]any)
+	delete(stream, "network")
+	stream["method"] = "raw"
+
+	parsed, err := Parse(cfg, Options{})
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if got := parsed.InboundsByTag()["vless-tcp"]["network"]; got != "raw" {
+		t.Fatalf("method alias was not resolved: %#v", got)
+	}
+}
+
+func TestReverseClientsKeepsOnlyStaticReverseAccounts(t *testing.T) {
+	clients := []any{
+		map[string]any{"id": "regular"},
+		map[string]any{"id": "reverse", "reverse": map[string]any{"tag": "reverse-in"}},
+	}
+	kept := ReverseClients(clients)
+	if len(kept) != 1 || stringValue(kept[0].(map[string]any)["id"]) != "reverse" {
+		t.Fatalf("unexpected reverse clients: %#v", kept)
+	}
+	kept[0].(map[string]any)["id"] = "changed"
+	if clients[1].(map[string]any)["id"] != "reverse" {
+		t.Fatal("ReverseClients mutated the source config")
+	}
+}
+
 func TestInvalidConfig(t *testing.T) {
 	cases := []struct {
 		name string

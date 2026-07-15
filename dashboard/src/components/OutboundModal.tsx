@@ -97,6 +97,7 @@ interface OutboundFormValues {
 	id: string;
 	encryption: string;
 	flow: string;
+	reverseTag: string;
 	password: string;
 	user: string;
 	pass: string;
@@ -109,8 +110,9 @@ interface OutboundFormValues {
 	tlsServerName: string;
 	tlsFingerprint: string;
 	tlsAlpn: string;
-	tlsAllowInsecure: boolean;
 	tlsEchConfigList: string;
+	tlsPinnedPeerCertSha256: string;
+	tlsVerifyPeerCertByName: string;
 	realityEnabled: boolean;
 	realityServerName: string;
 	realityFingerprint: string;
@@ -179,6 +181,7 @@ const defaultValues: OutboundFormValues = {
 	id: "",
 	encryption: "none",
 	flow: "",
+	reverseTag: "",
 	password: "",
 	user: "",
 	pass: "",
@@ -191,8 +194,9 @@ const defaultValues: OutboundFormValues = {
 	tlsServerName: "",
 	tlsFingerprint: "",
 	tlsAlpn: "",
-	tlsAllowInsecure: false,
 	tlsEchConfigList: "",
+	tlsPinnedPeerCertSha256: "",
+	tlsVerifyPeerCertByName: "",
 	realityEnabled: false,
 	realityServerName: "",
 	realityFingerprint: "",
@@ -310,19 +314,28 @@ const buildOutboundJson = (values: OutboundFormValues) => {
 			];
 			break;
 		case Protocols.VLESS:
-			settings.vnext = [
-				{
-					address: baseAddress,
-					port: basePort,
-					users: [
-						{
-							id: values.id || undefined,
-							encryption: values.encryption || undefined,
-							flow: values.flow || undefined,
-						},
-					],
-				},
-			];
+			if (values.reverseTag) {
+				settings.address = baseAddress;
+				settings.port = basePort;
+				settings.id = values.id || undefined;
+				settings.encryption = values.encryption || "none";
+				settings.flow = values.flow || undefined;
+				settings.reverse = { tag: values.reverseTag };
+			} else {
+				settings.vnext = [
+					{
+						address: baseAddress,
+						port: basePort,
+						users: [
+							{
+								id: values.id || undefined,
+								encryption: values.encryption || undefined,
+								flow: values.flow || undefined,
+							},
+						],
+					},
+				];
+			}
 			break;
 		case Protocols.Trojan:
 			settings.servers = [
@@ -475,8 +488,9 @@ const buildOutboundJson = (values: OutboundFormValues) => {
 			values.tlsServerName,
 			splitComma(values.tlsAlpn),
 			values.tlsFingerprint,
-			values.tlsAllowInsecure,
 			values.tlsEchConfigList,
+			values.tlsPinnedPeerCertSha256,
+			values.tlsVerifyPeerCertByName,
 		);
 	}
 
@@ -654,7 +668,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 		const streamSecurity =
 			(streamRaw?.security as OutboundSecurityValue | undefined) ?? "none";
 		mapped.network =
-			(streamRaw?.network as OutboundFormValues["network"]) ??
+			((streamRaw?.method ?? streamRaw?.network) as OutboundFormValues["network"]) ??
 			defaultValues.network;
 		mapped.tlsEnabled = streamSecurity === "tls";
 		mapped.realityEnabled = streamSecurity === "reality";
@@ -664,8 +678,10 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 		mapped.tlsAlpn = Array.isArray(tlsSettings?.alpn)
 			? tlsSettings.alpn.join(",")
 			: "";
-		mapped.tlsAllowInsecure = Boolean(tlsSettings?.allowInsecure);
 		mapped.tlsEchConfigList = tlsSettings?.echConfigList ?? "";
+		mapped.tlsPinnedPeerCertSha256 =
+			tlsSettings?.pinnedPeerCertSha256 ?? "";
+		mapped.tlsVerifyPeerCertByName = tlsSettings?.verifyPeerCertByName ?? "";
 
 		const realitySettings =
 			streamRaw?.reality ?? streamRaw?.realitySettings ?? {};
@@ -763,6 +779,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 			}
 			case Protocols.VLESS: {
 				const settings = outbound.settings as Outbound.VLESSSettings;
+				mapped.reverseTag = json?.settings?.reverse?.tag ?? "";
 				mapped.id = settings?.id ?? "";
 				mapped.flow = settings?.flow ?? "";
 				mapped.encryption = settings?.encryption ?? mapped.encryption;
@@ -999,8 +1016,9 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 			setValue("tlsServerName", "");
 			setValue("tlsFingerprint", "");
 			setValue("tlsAlpn", "");
-			setValue("tlsAllowInsecure", false);
 			setValue("tlsEchConfigList", "");
+			setValue("tlsPinnedPeerCertSha256", "");
+			setValue("tlsVerifyPeerCertByName", "");
 		}
 	}, [canTls, setValue, tlsEnabled]);
 
@@ -2172,8 +2190,9 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 															setValue("tlsServerName", "");
 															setValue("tlsFingerprint", "");
 															setValue("tlsAlpn", "");
-															setValue("tlsAllowInsecure", false);
 															setValue("tlsEchConfigList", "");
+															setValue("tlsPinnedPeerCertSha256", "");
+															setValue("tlsVerifyPeerCertByName", "");
 														}
 														if (next !== "reality") {
 															setValue("realityServerName", "");
@@ -2235,16 +2254,20 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 															{...register("tlsEchConfigList")}
 														/>
 													</FormControl>
-													<FormControl
-														display="flex"
-														alignItems="center"
-														gap={2}
-													>
-														<Switch
+													<FormControl>
+														<FormLabel>Certificate SHA-256 pin</FormLabel>
+														<Input
 															size="sm"
-															{...register("tlsAllowInsecure")}
+															{...register("tlsPinnedPeerCertSha256")}
 														/>
-														<FormLabel mb="0">Allow Insecure</FormLabel>
+													</FormControl>
+													<FormControl>
+														<FormLabel>Verify certificate name</FormLabel>
+														<Input
+															size="sm"
+															placeholder="example.com"
+															{...register("tlsVerifyPeerCertByName")}
+														/>
 													</FormControl>
 												</VStack>
 											)}

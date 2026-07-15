@@ -53,6 +53,7 @@ func (c Controller) buildRuntimeConfigWithData(ctx context.Context, node NodeRow
 	if merged, err := c.outboundSubs.MergeActiveIntoConfig(ctx, raw); err == nil {
 		raw = merged
 	}
+	raw = xrayconfig.NormalizePayload(raw)
 	raw = mergeNodeVirtualTunnelConfig(raw, node.XrayConfig)
 	raw = xrayconfig.TranslateVirtualTunnelInboundsForRuntime(raw)
 	if err := inlineTLSCertificateFiles(raw); err != nil {
@@ -160,7 +161,7 @@ func (c Controller) includeDBUsers(ctx context.Context, raw map[string]any, data
 			continue
 		}
 		settings := ensureMap(inbound, "settings")
-		settings["clients"] = []any{}
+		settings["clients"] = xrayconfig.ReverseClients(settings["clients"])
 		inboundsByProtocol[protocol] = append(inboundsByProtocol[protocol], inbound)
 	}
 	if len(inboundsByProtocol) == 0 {
@@ -473,7 +474,10 @@ func mapsToInterfaces(items []map[string]any) []any {
 func flowSupportedForInbound(inbound map[string]any) bool {
 	stream := mapValue(inbound["streamSettings"])
 	security := strings.ToLower(stringValue(stream["security"]))
-	network := strings.ToLower(stringValue(stream["network"]))
+	network := strings.ToLower(stringValue(stream["method"]))
+	if network == "" {
+		network = strings.ToLower(stringValue(stream["network"]))
+	}
 	tcpSettings := mapValue(stream["tcpSettings"])
 	header := mapValue(tcpSettings["header"])
 	headerType := strings.ToLower(stringValue(header["type"]))

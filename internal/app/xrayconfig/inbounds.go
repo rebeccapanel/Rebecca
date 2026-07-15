@@ -192,12 +192,24 @@ func (r Repository) UpdateInbound(ctx context.Context, tag string, payload map[s
 	if err != nil {
 		return InboundMutationResult{}, err
 	}
+	fallbackReverseClients := []any{}
+	for _, targetID := range currentTargets {
+		if clients, _ := reverseClientsForInbound(configs[targetID], tag); len(clients) > 0 {
+			fallbackReverseClients = clients
+			break
+		}
+	}
 	for _, targetID := range changedTargets {
 		if targetSet[targetID] {
-			if err := validatePortAvailable(configs[targetID], inbound, tag); err != nil {
+			clients, exists := reverseClientsForInbound(configs[targetID], tag)
+			if !exists {
+				clients = fallbackReverseClients
+			}
+			nextInbound := withReverseClients(inbound, clients)
+			if err := validatePortAvailable(configs[targetID], nextInbound, tag); err != nil {
 				return InboundMutationResult{}, err
 			}
-			upsertInbound(configs[targetID], inbound, tag)
+			upsertInbound(configs[targetID], nextInbound, tag)
 			continue
 		}
 		removeInboundFromConfig(configs[targetID], tag)
@@ -447,7 +459,7 @@ func (r Repository) prepareInboundPayload(payload map[string]any, enforceTag str
 	if len(settings) == 0 {
 		settings = make(map[string]any)
 	}
-	settings["clients"] = []any{}
+	settings["clients"] = ReverseClients(settings["clients"])
 	if protocol == "hysteria" {
 		if _, ok := settings["version"]; !ok {
 			settings["version"] = 2
@@ -673,6 +685,23 @@ func sanitizeInbound(inbound map[string]any, directTargets []string, effectiveTa
 	sanitized["targets"] = targetObjects(directTargets)
 	sanitized["effective_targets"] = targetObjects(effectiveTargets)
 	return sanitized
+}
+
+func reverseClientsForInbound(config map[string]any, tag string) ([]any, bool) {
+	for _, inbound := range listOfMaps(config["inbounds"]) {
+		if stringValue(inbound["tag"]) == tag {
+			return ReverseClients(mapValue(inbound["settings"])["clients"]), true
+		}
+	}
+	return nil, false
+}
+
+func withReverseClients(inbound map[string]any, clients []any) map[string]any {
+	next := deepCopyMap(inbound)
+	settings := mapValue(next["settings"])
+	settings["clients"] = clients
+	next["settings"] = settings
+	return next
 }
 
 func targetObjects(targetIDs []string) []any {
