@@ -2552,7 +2552,13 @@ dispatch_command() {
             ;;
     esac
     case "$cmd" in
-        install) install_command ;;
+        install)
+            if [ ! -t 0 ] && [ -r /dev/tty ]; then
+                install_command </dev/tty
+            else
+                install_command
+            fi
+        ;;
         update) update_command ;;
         uninstall) uninstall_command ;;
         up) up_command ;;
