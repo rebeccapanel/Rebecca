@@ -8,35 +8,21 @@ import (
 )
 
 type Authenticator struct {
-	repo    Repository
-	sudoers map[string]struct{}
-	now     func() time.Time
+	repo Repository
+	now  func() time.Time
 }
 
 type AuthenticatorOption func(*Authenticator)
 
 func NewAuthenticator(repo Repository, opts ...AuthenticatorOption) Authenticator {
 	auth := Authenticator{
-		repo:    repo,
-		sudoers: map[string]struct{}{},
-		now:     func() time.Time { return time.Now().UTC() },
+		repo: repo,
+		now:  func() time.Time { return time.Now().UTC() },
 	}
 	for _, opt := range opts {
 		opt(&auth)
 	}
 	return auth
-}
-
-func WithSudoers(usernames []string) AuthenticatorOption {
-	return func(auth *Authenticator) {
-		auth.sudoers = map[string]struct{}{}
-		for _, username := range usernames {
-			normalized := normalizeUsername(username)
-			if normalized != "" {
-				auth.sudoers[normalized] = struct{}{}
-			}
-		}
-	}
 }
 
 func WithClock(now func() time.Time) AuthenticatorOption {
@@ -68,19 +54,6 @@ func (a Authenticator) authenticateJWT(ctx context.Context, token string) (Effec
 	payload, err := VerifyAdminToken(token, secret, a.now())
 	if err != nil {
 		return EffectiveAdminContext{}, err
-	}
-	if _, ok := a.sudoers[normalizeUsername(payload.Username)]; ok {
-		admin := Admin{
-			Username:    payload.Username,
-			Role:        payload.Role,
-			Permissions: RoleDefaultPermissions(payload.Role),
-			Status:      StatusActive,
-		}
-		return EffectiveAdminContext{
-			Admin:          admin,
-			Source:         AuthSourceSudoer,
-			TokenCreatedAt: payload.CreatedAt,
-		}, nil
 	}
 	dbadmin, found, err := a.repo.AdminByUsername(ctx, payload.Username)
 	if err != nil {
@@ -141,10 +114,6 @@ func (a Authenticator) authenticateAPIKey(ctx context.Context, token string) (Ef
 		Source: AuthSourceAPIKey,
 		APIKey: &apiKey,
 	}, nil
-}
-
-func normalizeUsername(username string) string {
-	return strings.ToLower(strings.TrimSpace(username))
 }
 
 func looksLikeJWT(token string) bool {

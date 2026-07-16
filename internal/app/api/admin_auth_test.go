@@ -63,7 +63,25 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 			delete_user_usage_limit_enabled INTEGER DEFAULT 0,
 			delete_user_usage_limit BIGINT NULL,
 			expire INTEGER NULL,
-			users_limit INTEGER NULL
+			users_limit INTEGER NULL,
+			require_2fa INTEGER NOT NULL DEFAULT 0,
+			totp_secret TEXT NULL,
+			totp_enabled_at DATETIME NULL,
+			totp_last_counter BIGINT NULL
+		)`,
+		`CREATE TABLE admin_sessions (
+			id INTEGER PRIMARY KEY,
+			admin_id INTEGER NOT NULL,
+			token_hash TEXT NOT NULL UNIQUE,
+			state TEXT NOT NULL,
+			created_at DATETIME NOT NULL,
+			last_seen_at DATETIME NOT NULL,
+			expires_at DATETIME NOT NULL,
+			ip_address TEXT NULL,
+			user_agent TEXT NULL,
+			pending_totp_secret TEXT NULL,
+			otp_attempts INTEGER NOT NULL DEFAULT 0,
+			revoked_at DATETIME NULL
 		)`,
 		`CREATE TABLE admin_api_keys (
 			id INTEGER PRIMARY KEY,
@@ -264,16 +282,11 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 		cfg: Config{
 			Database:                    "sqlite:///" + filepath.ToSlash(path),
 			JWTAccessTokenExpireMinutes: 1440,
-			SudoUsername:                "env-admin",
-			SudoPassword:                "env-pass",
 		},
-		db:        db,
-		dialect:   "sqlite",
-		adminRepo: repo,
-		adminAuth: adminapp.NewAuthenticator(
-			repo,
-			adminapp.WithSudoers([]string{"env-admin"}),
-		),
+		db:             db,
+		dialect:        "sqlite",
+		adminRepo:      repo,
+		adminAuth:      adminapp.NewAuthenticator(repo),
 		nodeController: nodecontroller.NewController(nodecontroller.NewRepository(db, "sqlite")),
 		nodeMutations:  nodeapp.NewRepository(db, "sqlite"),
 		warpService:    warpapp.NewService(warpRepo, warpapp.NewClient("")),
@@ -329,6 +342,102 @@ func postAdminLogin(t *testing.T, server *Server, username string, password stri
 	rec := httptest.NewRecorder()
 	server.Handler().ServeHTTP(rec, req)
 	return rec
+}
+
+func TestAdminSessionLoginAndPasswordRevocation(t *testing.T) {
+	server, db := testAdminServer(t)
+	insertMasterAPIAdmin(t, db, 40, "session-admin", "session-pass", adminapp.RoleFullAccess, adminapp.StatusActive)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"username":"session-admin","password":"session-pass"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://example.com")
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("session login status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var cookie *http.Cookie
+	for _, candidate := range rec.Result().Cookies() {
+		if candidate.Name == adminSessionCookie {
+			cookie = candidate
+		}
+	}
+	if cookie == nil || cookie.Value == "" {
+		t.Fatal("session cookie was not set")
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/auth/session", nil)
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"state":"active"`) {
+		t.Fatalf("session context status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/myaccount/change_password", strings.NewReader(`{"current_password":"session-pass","new_password":"new-session-pass"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://example.com")
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("password update status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/auth/session", nil)
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("revoked session status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestAdminSessionRequiresOriginAndMandatory2FASetup(t *testing.T) {
+	server, db := testAdminServer(t)
+	insertMasterAPIAdmin(t, db, 41, "setup-admin", "session-pass", adminapp.RoleFullAccess, adminapp.StatusActive)
+	if _, err := db.Exec(`UPDATE admins SET require_2fa = 1 WHERE id = 41`); err != nil {
+		t.Fatal(err)
+	}
+
+	loginBody := `{"username":"setup-admin","password":"session-pass"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(loginBody))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("cross-origin login status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(loginBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://example.com")
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"state":"setup_required"`) {
+		t.Fatalf("mandatory 2FA login status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	cookies := rec.Result().Cookies()
+	if len(cookies) == 0 {
+		t.Fatal("session cookie was not set")
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/admin", nil)
+	req.AddCookie(cookies[0])
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("restricted session accessed admin API: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/auth/2fa/setup", nil)
+	req.Header.Set("Origin", "http://example.com")
+	req.AddCookie(cookies[0])
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"otpauth://totp/`) {
+		t.Fatalf("mandatory 2FA setup status=%d body=%s", rec.Code, rec.Body.String())
+	}
 }
 
 func adminBearerToken(t *testing.T, server *Server, username string, password string) string {
@@ -388,6 +497,20 @@ func TestAdminLoginValidAndCurrentAdmin(t *testing.T) {
 	}
 	if current["username"] != "pouria" || current["role"] != "full_access" {
 		t.Fatalf("unexpected current admin: %#v", current)
+	}
+}
+
+func TestLegacyAdminLoginBypassesRequired2FA(t *testing.T) {
+	server, db := testAdminServer(t)
+	insertMasterAPIAdmin(t, db, 1, "legacy-admin", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
+	if _, err := db.Exec(`UPDATE admins SET require_2fa = 1 WHERE id = 1`); err != nil {
+		t.Fatal(err)
+	}
+
+	token := adminBearerToken(t, server, "legacy-admin", "pass123")
+	rec := adminJSONRequest(t, server, http.MethodGet, "/api/admin", token, ``)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("legacy JWT with required 2FA status = %d body=%s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -543,24 +666,11 @@ VALUES (?, 1, ?, ?, ?)`,
 	}
 }
 
-func TestAdminLoginSudoer(t *testing.T) {
+func TestAdminLoginDoesNotReadSudoEnvironment(t *testing.T) {
 	server, _ := testAdminServer(t)
 	rec := postAdminLogin(t, server, "env-admin", "env-pass")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("sudoer login status = %d body=%s", rec.Code, rec.Body.String())
-	}
-	var tokenResponse struct {
-		AccessToken string `json:"access_token"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &tokenResponse); err != nil {
-		t.Fatal(err)
-	}
-	req := httptest.NewRequest(http.MethodGet, "/api/admin", nil)
-	req.Header.Set("Authorization", "Bearer "+tokenResponse.AccessToken)
-	rec = httptest.NewRecorder()
-	server.Handler().ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("sudoer current status = %d body=%s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("env-only login status = %d body=%s", rec.Code, rec.Body.String())
 	}
 }
 

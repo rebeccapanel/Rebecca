@@ -30,6 +30,7 @@ import {
 } from "@heroicons/react/24/outline";
 import type { ApexOptions } from "apexcharts";
 import { ChartBox } from "components/common/ChartBox";
+import { AccountSecurity } from "components/AccountSecurity";
 import {
 	DateRangePicker,
 	type DateRangeValue,
@@ -66,6 +67,7 @@ import type {
 	MyAccountUsagePoint,
 } from "types/MyAccount";
 import { formatBytes } from "utils/formatByte";
+import { clearClientSession } from "utils/session";
 
 dayjs.extend(utc);
 const CopyIcon = chakra(ClipboardIcon, { baseStyle: { w: 4, h: 4 } });
@@ -649,11 +651,13 @@ export const MyAccountPage: React.FC = () => {
 		self_myaccount: false,
 		self_change_password: false,
 		self_api_keys: false,
+		self_sessions: false,
+		self_2fa: false,
 	};
 	const baseSelfPermissions =
 		userData?.permissions?.self_permissions ?? defaultSelfPermissions;
 	const selfPermissions = isFullAccess
-		? { self_myaccount: true, self_change_password: true, self_api_keys: true }
+		? { self_myaccount: true, self_change_password: true, self_api_keys: true, self_sessions: true, self_2fa: true }
 		: baseSelfPermissions;
 
 	const { data, isLoading, isFetching } = useQuery<MyAccountResponse>(
@@ -816,6 +820,8 @@ export const MyAccountPage: React.FC = () => {
 			current_password: current,
 			new_password: next,
 		});
+		clearClientSession();
+		window.location.reload();
 	};
 
 	const dailyUsagePoints: MyAccountUsagePoint[] = useMemo(
@@ -942,6 +948,12 @@ export const MyAccountPage: React.FC = () => {
 						</HStack>
 					) : undefined
 				}
+			/>
+
+			<AccountSecurity
+				totpEnabled={Boolean(userData.totp_enabled)}
+				canManageSessions={Boolean(selfPermissions.self_sessions)}
+				canManage2FA={Boolean(selfPermissions.self_2fa)}
 			/>
 
 			<SimpleGrid columns={{ base: 1, xl: 2 }} spacing={4}>

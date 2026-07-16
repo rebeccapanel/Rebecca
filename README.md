@@ -300,8 +300,6 @@ By default the app will be run on `http://localhost:8000/dashboard`. You can con
 
 | Variable                                 | Description                                                                                                              |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| SUDO_USERNAME                            | Bootstrap superuser username.                                                                                            |
-| SUDO_PASSWORD                            | Bootstrap superuser password.                                                                                            |
 | SQLALCHEMY_DATABASE_URL                  | Database URL. The legacy name is still used by the Go runtime for compatibility.                                         |
 | UVICORN_HOST                             | Public gateway bind host (default: `0.0.0.0`).                                                                           |
 | UVICORN_PORT                             | Public gateway bind port (default: `8000`).                                                                              |

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/url"
 	"strings"
 
 	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
@@ -27,6 +28,10 @@ func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 			writeAuthError(w, err)
 			return
 		}
+		if principal.Context.Source == adminapp.AuthSourceSession && !requestOriginAllowed(r) {
+			writeError(w, http.StatusForbidden, "Invalid request origin")
+			return
+		}
 		ctx := context.WithValue(r.Context(), adminContextKey, principal)
 		next(w, r.WithContext(ctx))
 	}
@@ -35,7 +40,11 @@ func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 func (s *Server) requireSudo(next http.HandlerFunc) http.HandlerFunc {
 	return s.requireAdmin(func(w http.ResponseWriter, r *http.Request) {
 		principal, _ := r.Context().Value(adminContextKey).(adminPrincipal)
-		if principal.Role != string(adminapp.RoleSudo) && principal.Role != string(adminapp.RoleFullAccess) {
+		if principal.Role == string(adminapp.RoleFullAccess) {
+			next(w, r)
+			return
+		}
+		if principal.Role != string(adminapp.RoleSudo) || !sudoScopeAllowed(principal.Context.Admin.Permissions.Sudo, r.URL.Path) {
 			writeError(w, http.StatusForbidden, "You're not allowed")
 			return
 		}
@@ -45,14 +54,71 @@ func (s *Server) requireSudo(next http.HandlerFunc) http.HandlerFunc {
 
 func (s *Server) authenticate(ctx context.Context, r *http.Request) (adminPrincipal, error) {
 	token := bearerToken(r)
-	if token == "" {
-		return adminPrincipal{}, errors.New("missing bearer token")
+	if token != "" {
+		authCtx, err := s.adminAuth.AuthenticateBearer(ctx, token)
+		if err != nil {
+			return adminPrincipal{}, err
+		}
+		return principalFromContext(authCtx), nil
 	}
-	authCtx, err := s.adminAuth.AuthenticateBearer(ctx, token)
+	sessionToken := sessionCookieToken(r)
+	if sessionToken == "" {
+		return adminPrincipal{}, errors.New("missing credentials")
+	}
+	authCtx, err := s.adminAuth.AuthenticateSession(ctx, sessionToken)
 	if err != nil {
 		return adminPrincipal{}, err
 	}
 	return principalFromContext(authCtx), nil
+}
+
+func (s *Server) requireSameOrigin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if !requestOriginAllowed(r) {
+			writeError(w, http.StatusForbidden, "Invalid request origin")
+			return
+		}
+		next(w, r)
+	}
+}
+
+func requestOriginAllowed(r *http.Request) bool {
+	switch r.Method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return true
+	}
+	source := strings.TrimSpace(r.Header.Get("Origin"))
+	if source == "" {
+		source = strings.TrimSpace(r.Header.Get("Referer"))
+	}
+	parsed, err := url.Parse(source)
+	if err != nil || parsed.Host == "" {
+		return false
+	}
+	return strings.EqualFold(parsed.Host, r.Host)
+}
+
+func sudoScopeAllowed(scopes adminapp.SudoPermissionSettings, path string) bool {
+	switch {
+	case strings.HasPrefix(path, "/api/node"), strings.HasPrefix(path, "/api/nodes"):
+		return scopes.Nodes
+	case strings.HasPrefix(path, "/api/settings/backup"), strings.Contains(path, "/telegram/backup"):
+		return scopes.Backups
+	case strings.HasPrefix(path, "/api/settings/subscriptions"):
+		return scopes.Subscriptions
+	case strings.HasPrefix(path, "/api/settings/phpmyadmin"):
+		return scopes.PHPMyAdmin
+	case strings.HasPrefix(path, "/api/maintenance"):
+		return scopes.Maintenance
+	case strings.HasPrefix(path, "/api/settings"):
+		return scopes.Settings
+	case strings.HasPrefix(path, "/api/core"), strings.HasPrefix(path, "/api/xray"),
+		strings.HasPrefix(path, "/api/inbounds"), strings.HasPrefix(path, "/api/panel/xray"),
+		strings.HasPrefix(path, "/xray"), strings.HasPrefix(path, "/inbounds"):
+		return scopes.Xray
+	default:
+		return false
+	}
 }
 
 func bearerToken(r *http.Request) string {

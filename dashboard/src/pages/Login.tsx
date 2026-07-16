@@ -51,8 +51,16 @@ import {
 } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { fetch } from "service/http";
-import { setAuthToken } from "utils/authStorage";
+import { QRCodeCanvas } from "qrcode.react";
+import {
+	confirm2FASetup,
+	getSession,
+	login as createSession,
+	logout,
+	start2FASetup,
+	type TOTPSetup,
+	verify2FA,
+} from "service/auth";
 import { clearClientSession } from "utils/session";
 import { updateThemeColor } from "utils/themeColor";
 import { z } from "zod";
@@ -274,6 +282,12 @@ const LoginThemeMenu: FC = () => {
 export const Login: FC = () => {
 	const [error, setError] = useState("");
 	const [showPassword, setShowPassword] = useState(false);
+	const [step, setStep] = useState<"credentials" | "otp" | "setup">(
+		"credentials",
+	);
+	const [otp, setOTP] = useState("");
+	const [setup, setSetup] = useState<TOTPSetup | null>(null);
+	const [challengeLoading, setChallengeLoading] = useState(false);
 	const navigate = useNavigate();
 	const { t, i18n } = useTranslation();
 	const dir = i18n.language === "fa" ? "rtl" : "ltr";
@@ -334,29 +348,82 @@ export const Login: FC = () => {
 		// eslint-disable-next-line react-hooks/exhaustive-deps
 	}, [usernameValue, passwordValue]);
 
+	useEffect(() => {
+		getSession()
+			.then(async (session) => {
+				if (session.state === "active") {
+					navigate("/");
+				} else if (session.state === "pending_2fa") {
+					setStep("otp");
+				} else {
+					setSetup(await start2FASetup());
+					setStep("setup");
+				}
+			})
+			.catch(() => undefined);
+	}, [navigate]);
+
+	const completeLogin = () => {
+		clearClientSession();
+		navigate("/");
+	};
+
+	const openRequiredSetup = async () => {
+		setSetup(await start2FASetup());
+		setStep("setup");
+	};
+
 	const login = async (values: LoginFormValues) => {
 		setError("");
-		const formData = new URLSearchParams();
-		formData.set("username", values.username);
-		formData.set("password", values.password);
-		formData.set("grant_type", "password");
-
 		try {
-			const { access_token: token } = await fetch<{ access_token: string }>(
-				"/admin/token",
-				{
-					body: formData,
-					headers: {
-						"content-type": "application/x-www-form-urlencoded",
-					},
-					method: "post",
-				},
-			);
-			clearClientSession();
-			setAuthToken(token);
-			navigate("/");
+			const session = await createSession(values.username, values.password);
+			if (session.state === "pending_2fa") {
+				setStep("otp");
+				setOTP("");
+			} else if (session.state === "setup_required") {
+				await openRequiredSetup();
+			} else {
+				completeLogin();
+			}
 		} catch (err: any) {
 			setError(err.response?._data?.detail || "Login failed");
+		}
+	};
+
+	const submitOTP = async () => {
+		setError("");
+		setChallengeLoading(true);
+		try {
+			await verify2FA(otp);
+			completeLogin();
+		} catch (err: any) {
+			setError(err.response?._data?.detail || "Invalid authentication code");
+		} finally {
+			setChallengeLoading(false);
+		}
+	};
+
+	const confirmSetup = async () => {
+		setError("");
+		setChallengeLoading(true);
+		try {
+			await confirm2FASetup(otp);
+			completeLogin();
+		} catch (err: any) {
+			setError(err.response?._data?.detail || "Invalid authentication code");
+		} finally {
+			setChallengeLoading(false);
+		}
+	};
+
+	const cancelChallenge = async () => {
+		try {
+			await logout();
+		} finally {
+			setStep("credentials");
+			setOTP("");
+			setSetup(null);
+			setError("");
 		}
 	};
 
@@ -434,17 +501,23 @@ export const Login: FC = () => {
 
 					<VStack align="stretch" spacing={1} textAlign="center">
 						<Text color={textColor} fontSize="lg" fontWeight="800">
-							{t("login.welcome", "Welcome Back")}
+							{step === "credentials"
+								? t("login.welcome", "Welcome Back")
+								: step === "otp"
+									? t("login.twoFactorTitle", "Two-factor authentication")
+									: t("login.setupTwoFactorTitle", "Secure your account")}
 						</Text>
 						<Text color={mutedColor} fontSize="sm">
-							{t(
-								"login.welcomeBack",
-								"Enter your credentials to access your account.",
-							)}
+							{step === "credentials"
+								? t("login.welcomeBack", "Enter your credentials to access your account.")
+								: step === "otp"
+									? t("login.twoFactorHint", "Enter the 6-digit code from your authenticator app.")
+									: t("login.setupTwoFactorHint", "Scan the QR code before continuing.")}
 						</Text>
 					</VStack>
 
 					<Box mt={6}>
+						{step === "credentials" ? (
 						<form onSubmit={handleSubmit(login, handleInvalid)}>
 							<VStack spacing={4}>
 								<LoginField
@@ -507,6 +580,51 @@ export const Login: FC = () => {
 								</Button>
 							</VStack>
 						</form>
+						) : (
+							<VStack spacing={4}>
+								{step === "setup" && setup && (
+									<>
+										<Box bg="white" borderRadius="8px" p={3}>
+											<QRCodeCanvas value={setup.uri} size={180} />
+										</Box>
+										<Text color={mutedColor} fontFamily="mono" fontSize="xs" wordBreak="break-all">
+											{setup.secret}
+										</Text>
+									</>
+								)}
+								<FormControl>
+									<FormLabel>{t("login.authenticationCode", "Authentication code")}</FormLabel>
+									<CInput
+										autoComplete="one-time-code"
+										inputMode="numeric"
+										maxLength={6}
+										textAlign="center"
+										value={otp}
+										onChange={(event) => setOTP(event.target.value.replace(/\D/g, ""))}
+									/>
+								</FormControl>
+								{error && (
+									<Alert borderRadius="8px" fontSize="sm" status="error" variant="left-accent" w="full">
+										<AlertIcon />
+										<AlertDescription>{error}</AlertDescription>
+									</Alert>
+								)}
+								<Button
+									bg={accentColor}
+									color="white"
+									h="44px"
+									isDisabled={otp.length !== 6}
+									isLoading={challengeLoading}
+									onClick={step === "otp" ? submitOTP : confirmSetup}
+									w="full"
+								>
+									{t("continue", "Continue")}
+								</Button>
+								<Button onClick={cancelChallenge} variant="ghost" w="full">
+									{t("back", "Back")}
+								</Button>
+							</VStack>
+						)}
 					</Box>
 				</Box>
 			</VStack>

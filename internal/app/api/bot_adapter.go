@@ -38,18 +38,13 @@ func (b botSettingsSource) BotSettings(ctx context.Context) (telegrambot.Setting
 	}, nil
 }
 
-// botAuthorizer resolves the admin actor bot mutations run as. It uses the
-// configured sudo admin, mirroring the legacy bot which acted with full access.
+// botAuthorizer resolves the active full-access admin bot mutations run as.
 type botAuthorizer struct {
 	server *Server
 }
 
 func (b botAuthorizer) Actor(ctx context.Context) (telegrambot.Actor, bool) {
-	username := strings.TrimSpace(b.server.cfg.SudoUsername)
-	if username == "" {
-		return telegrambot.Actor{}, false
-	}
-	admin, ok, err := b.server.adminRepo.AdminByUsername(ctx, username)
+	admin, ok, err := b.server.adminRepo.FirstFullAccessAdmin(ctx)
 	if err != nil || !ok {
 		return telegrambot.Actor{}, false
 	}

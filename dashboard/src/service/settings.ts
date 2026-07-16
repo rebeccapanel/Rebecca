@@ -1,4 +1,3 @@
-import { getAuthToken } from "utils/authStorage";
 import { $fetch, apiBaseURL, fetch as apiFetch } from "./http";
 
 export interface TelegramTopicSettingsPayload {
@@ -300,14 +299,12 @@ export const disablePHPMyAdmin =
 export const getPHPMyAdminEmbedHTML = async (
 	theme?: string,
 ): Promise<string> => {
-	const token = getAuthToken();
 	const search = theme ? `?theme=${encodeURIComponent(theme)}` : "";
 	const response = await fetch(
 		`${apiBaseURL}/settings/phpmyadmin/embed-html${search}`,
 		{
-			headers: token ? { Authorization: `Bearer ${token}` } : undefined,
 			cache: "no-store",
-			credentials: "same-origin",
+			credentials: "include",
 		},
 	);
 	if (!response.ok) {
@@ -339,10 +336,9 @@ export const updatePanelSettings = async (
 export const exportRebeccaBackup = async (
 	scope: RebeccaBackupScope,
 ): Promise<Blob> => {
-	const token = getAuthToken();
 	return $fetch<Blob>(`/settings/backup/export?scope=${scope}`, {
 		responseType: "blob",
-		headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+		credentials: "include",
 	} as any);
 };
 

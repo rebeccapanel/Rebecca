@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Rebecca API",
-    "version": "0.2.1",
-    "description": "Go-native Rebecca panel API. This document replaces the former FastAPI /docs page and is intended for dashboard, bot, and third-party client developers.\n\nAuthentication: protected routes use `Authorization: Bearer <api_key>` for bots and external integrations. Create a personal admin API key from My Account -> API Keys, then pass that value directly as the bearer token. API keys run as their owner admin and keep the same permissions, service scope, limits, and visibility rules. Dashboard JWTs from `POST /api/admin/token` remain supported for interactive panel sessions, and the embedded Swagger UI auto-authorizes with the current dashboard session when opened from the panel.\n\nDo not automate username/password login for bots. Use API keys so credentials are not stored in external scripts and tokens can be revoked independently.\n\nResponse compatibility: most endpoints intentionally keep the JSON shape expected by the current dashboard. Some schemas are documented as generic JSON while the migration to strict OpenAPI component schemas continues.\n\nMutation behavior: user, service, node, config, and host mutations are designed to be transactional. When runtime sync is required, Rebecca applies node changes through the Go node controller and records operational state for recovery."
+    "version": "0.3.0",
+    "description": "Go-native Rebecca panel API for dashboard, bot, and third-party client developers.\n\nAuthentication: the dashboard uses an opaque server-side session stored in the HttpOnly `rebecca_session` cookie. Session permissions are loaded from the database on every request, so permission changes take effect without logging out. Bots and external integrations should use personal `rk_...` API keys as `Authorization: Bearer <api_key>`. Legacy JWT creation at `POST /admin/token` and `POST /api/admin/token` remains available only for older Marzban-compatible clients.\n\nDo not automate username/password login for bots. API keys can be revoked independently and inherit the owner admin permissions, service scope, and limits.\n\nMutation behavior: user, service, node, config, and host mutations are transactional where applicable. Runtime changes are synchronized to nodes through gRPC and recorded for recovery."
   },
   "servers": [
     {
@@ -13,21 +13,24 @@
   ],
   "security": [
     {
+      "cookieAuth": []
+    },
+    {
       "bearerAuth": []
     }
   ],
   "tags": [
     {
       "name": "Docs",
-      "description": "Interactive API documentation and OpenAPI schema. Swagger UI is served offline from the Go binary; no CDN is required. When opened inside the dashboard, it authorizes with the current panel session automatically."
+      "description": "Interactive API documentation and OpenAPI schema served from the Go binary. Dashboard requests use the existing HttpOnly session cookie; integrations can authorize manually with an API key."
     },
     {
       "name": "Admin",
-      "description": "Admin authentication, management, permissions, API keys, and usage analytics. Bots and third-party tools should use personal admin API keys instead of automating login. Standard admins are scope-limited; sudo/full_access admins can manage global state."
+      "description": "Admin session authentication, legacy JWT compatibility, permissions, session and 2FA management, API keys, and usage analytics."
     },
     {
       "name": "My Account",
-      "description": "Current admin account settings and personal API keys. These routes always operate on the authenticated admin. API keys are intended for bots and integrations and inherit the owner admin permissions. Password changes update password_reset_at and invalidate older JWTs."
+      "description": "Current admin account settings, personal API keys, login sessions, and TOTP two-factor authentication. Password changes revoke every active session."
     },
     {
       "name": "Users",
@@ -124,8 +127,8 @@
         "tags": [
           "Admin"
         ],
-        "summary": "Authenticate admin",
-        "description": "Authenticate an admin and issue a short-lived dashboard JWT access token. This is the compatibility alias used by the former FastAPI OAuth2 form route.\n\nBots and third-party integrations should not automate this login route. Create a personal admin API key from My Account -> API Keys and send it as `Authorization: Bearer <api_key>` instead.\n\nAuthentication: public route; no bearer token is required.\n\nRequest body: accepts `application/x-www-form-urlencoded` for OAuth2-compatible clients and JSON for dashboard/programmatic compatibility.",
+        "summary": "Create legacy admin JWT",
+        "description": "Authenticate a database-backed admin and issue a legacy JWT bearer token for older Marzban-compatible clients. The Rebecca dashboard does not call this endpoint; it uses the opaque session flow under /api/auth instead. New bots and integrations should use personal rk_ API keys rather than storing an admin password.",
         "security": [],
         "requestBody": {
           "$ref": "#/components/requestBodies/LoginForm"
@@ -146,8 +149,8 @@
         "tags": [
           "Admin"
         ],
-        "summary": "Authenticate admin",
-        "description": "Authenticate an admin and issue a short-lived dashboard JWT access token. This route exists for the Rebecca dashboard and interactive compatibility with the old FastAPI OAuth2-style login flow.\n\nBots and third-party integrations should not automate this login route. Create a personal admin API key from My Account -> API Keys and send it as `Authorization: Bearer <api_key>` instead.\n\nAuthentication: public route; no bearer token is required.\n\nRequest body: accepts `application/x-www-form-urlencoded` for OAuth2-compatible clients and JSON for dashboard/programmatic compatibility.",
+        "summary": "Create legacy admin JWT",
+        "description": "Authenticate a database-backed admin and issue a legacy JWT bearer token for older Marzban-compatible clients. The Rebecca dashboard does not call this endpoint; it uses the opaque session flow under /api/auth instead. New bots and integrations should use personal rk_ API keys rather than storing an admin password.",
         "security": [],
         "requestBody": {
           "$ref": "#/components/requestBodies/LoginForm"
@@ -3650,6 +3653,405 @@
           }
         }
       }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Create dashboard session",
+        "description": "Validate database-backed admin credentials and issue an opaque HttpOnly session cookie. The response indicates whether login is complete, requires a TOTP code, or is restricted until mandatory 2FA enrollment is completed. This endpoint is for the dashboard; integrations should use API keys.",
+        "security": [],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/LoginForm"
+        },
+        "responses": {
+          "200": {
+            "description": "Current server-side login state and fresh admin permission context.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSession"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "operationId": "postAuthLogin"
+      }
+    },
+    "/api/auth/session": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Get dashboard session",
+        "description": "Resolve the opaque dashboard cookie, enforce idle and absolute expiry, reload the current admin and permissions from the database, and return the current login state. The dashboard polls this endpoint so permission changes are reflected without a new login.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current server-side login state and fresh admin permission context.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSession"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "operationId": "getAuthSession"
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Log out current session",
+        "description": "Revoke the current server-side dashboard session and expire its HttpOnly cookie. Other browser sessions for the same admin stay active and can be reviewed or revoked separately from the account security page.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Operation completed with no response body."
+          }
+        },
+        "operationId": "postAuthLogout"
+      }
+    },
+    "/api/auth/2fa/verify": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Complete two-factor login",
+        "description": "Verify a six-digit TOTP code for a pending dashboard login, reject replayed counters, and promote the restricted five-minute challenge into an active session. Five invalid attempts revoke the pending session.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/OTPCode"
+        },
+        "responses": {
+          "200": {
+            "description": "Current server-side login state and fresh admin permission context.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSession"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "operationId": "postAuth2faVerify"
+      }
+    },
+    "/api/auth/2fa/setup": {
+      "post": {
+        "tags": [
+          "My Account"
+        ],
+        "summary": "Start two-factor enrollment",
+        "description": "Generate a new TOTP secret for the current admin and keep it pending on the current session until confirmation. The secret is returned once as text and an otpauth URI; it is not enabled until a valid code is submitted.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One-time authenticator enrollment secret and otpauth URI.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TOTPSetup"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "operationId": "postAuth2faSetup"
+      }
+    },
+    "/api/auth/2fa/confirm": {
+      "post": {
+        "tags": [
+          "My Account"
+        ],
+        "summary": "Confirm two-factor enrollment",
+        "description": "Validate a code from the pending TOTP secret, enable two-factor authentication for the current admin, activate a setup-required session, and revoke every other active login session for that admin.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/OTPCode"
+        },
+        "responses": {
+          "200": {
+            "description": "Current server-side login state and fresh admin permission context.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSession"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "operationId": "postAuth2faConfirm"
+      }
+    },
+    "/api/auth/2fa": {
+      "delete": {
+        "tags": [
+          "My Account"
+        ],
+        "summary": "Disable own two-factor authentication",
+        "description": "Disable TOTP for the current admin after checking both the current password and a fresh authenticator code. Other sessions are revoked; when 2FA is mandatory, the current session becomes setup-only until enrollment is completed again.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/Disable2FA"
+        },
+        "responses": {
+          "200": {
+            "description": "Current server-side login state and fresh admin permission context.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthSession"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Error"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "operationId": "deleteAuth2fa"
+      }
+    },
+    "/api/auth/sessions": {
+      "get": {
+        "tags": [
+          "My Account"
+        ],
+        "summary": "List own login sessions",
+        "description": "List the current admin's active, non-expired browser sessions with creation time, last activity, expiry, source IP, user agent, and a marker identifying the session making this request.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Active, non-expired login sessions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSessions"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "operationId": "getAuthSessions"
+      }
+    },
+    "/api/auth/sessions/{session_id}": {
+      "delete": {
+        "tags": [
+          "My Account"
+        ],
+        "summary": "Revoke own login session",
+        "description": "Revoke one active login session owned by the current admin. Revoking the session used for this request also expires its cookie, while revoking another device leaves the current dashboard session active.",
+        "security": [
+          {
+            "cookieAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SessionID"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Operation completed with no response body."
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "operationId": "deleteAuthSession"
+      }
+    },
+    "/api/admin/{username}/sessions": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "List admin login sessions",
+        "description": "List active login sessions for a target admin. Full-access admins can inspect every account; delegated admins need the manage_sessions permission and cannot inspect protected full-access or unauthorized sudo accounts.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Username"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Active, non-expired login sessions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSessions"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "operationId": "getAdminSessions"
+      }
+    },
+    "/api/admin/{username}/sessions/{session_id}": {
+      "delete": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Revoke admin login session",
+        "description": "Revoke one active browser session belonging to a target admin. This uses the same full-access and manage_sessions checks as session listing and does not affect personal API keys or legacy JWT compatibility tokens.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Username"
+          },
+          {
+            "$ref": "#/components/parameters/SessionID"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Operation completed with no response body."
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "operationId": "deleteAdminSession"
+      }
+    },
+    "/api/admin/{username}/2fa/setup": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Replace admin two-factor secret",
+        "description": "Generate and immediately enable a new TOTP secret for a target admin, revoke all of that admin's active sessions, and return the one-time enrollment secret and QR-compatible URI. Full access or delegated manage_2fa permission is required.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Username"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One-time authenticator enrollment secret and otpauth URI.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TOTPSetup"
+                }
+              }
+            }
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "operationId": "postAdmin2faSetup"
+      }
+    },
+    "/api/admin/{username}/2fa": {
+      "delete": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Remove admin two-factor authentication",
+        "description": "Remove TOTP from a target admin without asking for that admin's password or current code, then revoke every active browser session for the target. Full access or delegated manage_2fa permission is required.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Username"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Operation completed with no response body."
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "operationId": "deleteAdmin2fa"
+      }
     }
   },
   "components": {
@@ -3657,8 +4059,14 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "bearerFormat": "Rebecca admin API key or dashboard JWT",
-        "description": "Use a personal admin API key for bots and third-party integrations. Create keys in My Account -> API Keys and send `Authorization: Bearer <api_key>`. Dashboard JWTs are accepted for interactive panel sessions and the embedded Swagger UI auto-authorizes with the current session token."
+        "bearerFormat": "Rebecca admin API key or legacy JWT",
+        "description": "Use a personal rk_ API key for bots and third-party integrations. Legacy JWTs from /admin/token remain accepted for older Marzban-compatible clients."
+      },
+      "cookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "rebecca_session",
+        "description": "Opaque HttpOnly dashboard session cookie issued by POST /api/auth/login. It is managed by the browser and is not readable by dashboard JavaScript."
       }
     },
     "parameters": {
@@ -3769,6 +4177,16 @@
           "default": "day"
         },
         "description": "Analytics bucket size. Use `hour` for detailed charts and `day` for longer ranges."
+      },
+      "SessionID": {
+        "name": "session_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "integer",
+          "format": "int64"
+        },
+        "description": "Numeric login session ID returned by a session-list endpoint."
       }
     },
     "requestBodies": {
@@ -3828,7 +4246,54 @@
             }
           }
         },
-        "description": "Admin login credentials for the dashboard login route. Form encoding is compatible with OAuth2PasswordRequestForm; JSON is accepted by the Go implementation. Bots and external integrations should create a personal API key in My Account and use it as bearer auth instead of storing username/password."
+        "description": "Database-backed admin username and password. JSON is used by the session dashboard endpoint; form encoding remains accepted by the legacy JWT compatibility endpoints."
+      },
+      "OTPCode": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "code"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "pattern": "^[0-9]{6}$",
+                  "example": "123456"
+                }
+              }
+            }
+          }
+        },
+        "description": "Six-digit TOTP code generated by the admin's authenticator app."
+      },
+      "Disable2FA": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "required": [
+                "password",
+                "code"
+              ],
+              "properties": {
+                "password": {
+                  "type": "string",
+                  "format": "password"
+                },
+                "code": {
+                  "type": "string",
+                  "pattern": "^[0-9]{6}$",
+                  "example": "123456"
+                }
+              }
+            }
+          }
+        },
+        "description": "Current password and a fresh TOTP code. Both are required when an admin removes two-factor authentication from their own account."
       }
     },
     "responses": {
@@ -3848,7 +4313,7 @@
         }
       },
       "Token": {
-        "description": "Short-lived dashboard access token. Use personal admin API keys for bots and third-party integrations.",
+        "description": "Legacy JWT access token for older Marzban-compatible clients. New integrations should use personal rk_ API keys.",
         "content": {
           "application/json": {
             "schema": {
@@ -3921,6 +4386,108 @@
         "properties": {
           "detail": {
             "type": "string"
+          }
+        }
+      },
+      "AuthSession": {
+        "type": "object",
+        "required": [
+          "state",
+          "admin",
+          "permissions_version",
+          "totp_enabled",
+          "require_2fa"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "active",
+              "pending_2fa",
+              "setup_required"
+            ]
+          },
+          "admin": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "permissions_version": {
+            "type": "string",
+            "description": "Changes when the current role or permission document changes."
+          },
+          "totp_enabled": {
+            "type": "boolean"
+          },
+          "require_2fa": {
+            "type": "boolean"
+          }
+        }
+      },
+      "TOTPSetup": {
+        "type": "object",
+        "required": [
+          "secret",
+          "uri"
+        ],
+        "properties": {
+          "secret": {
+            "type": "string",
+            "description": "Base32 TOTP secret shown only while enrolling the authenticator."
+          },
+          "uri": {
+            "type": "string",
+            "format": "uri",
+            "description": "otpauth URI suitable for a QR code."
+          }
+        }
+      },
+      "AdminSession": {
+        "type": "object",
+        "required": [
+          "id",
+          "created_at",
+          "last_seen_at",
+          "expires_at"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "last_seen_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ip_address": {
+            "type": "string"
+          },
+          "user_agent": {
+            "type": "string"
+          },
+          "current": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AdminSessions": {
+        "type": "object",
+        "required": [
+          "sessions"
+        ],
+        "properties": {
+          "sessions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdminSession"
+            }
           }
         }
       }

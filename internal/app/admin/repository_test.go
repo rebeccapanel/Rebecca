@@ -48,7 +48,11 @@ func testAdminRepository(t *testing.T) (Repository, *sql.DB) {
 			delete_user_usage_limit_enabled INTEGER DEFAULT 0,
 			delete_user_usage_limit BIGINT NULL,
 			expire INTEGER NULL,
-			users_limit INTEGER NULL
+			users_limit INTEGER NULL,
+			require_2fa INTEGER NOT NULL DEFAULT 0,
+			totp_secret TEXT NULL,
+			totp_enabled_at DATETIME NULL,
+			totp_last_counter BIGINT NULL
 		)`,
 		`CREATE TABLE admin_api_keys (
 			id INTEGER PRIMARY KEY,
@@ -57,6 +61,20 @@ func testAdminRepository(t *testing.T) (Repository, *sql.DB) {
 			created_at DATETIME NOT NULL,
 			expires_at DATETIME NULL,
 			last_used_at DATETIME NULL
+		)`,
+		`CREATE TABLE admin_sessions (
+			id INTEGER PRIMARY KEY,
+			admin_id INTEGER NOT NULL,
+			token_hash TEXT NOT NULL UNIQUE,
+			state TEXT NOT NULL,
+			created_at DATETIME NOT NULL,
+			last_seen_at DATETIME NOT NULL,
+			expires_at DATETIME NOT NULL,
+			ip_address TEXT NULL,
+			user_agent TEXT NULL,
+			pending_totp_secret TEXT NULL,
+			otp_attempts INTEGER NOT NULL DEFAULT 0,
+			revoked_at DATETIME NULL
 		)`,
 		`CREATE TABLE admins_services (
 			admin_id INTEGER NOT NULL,
@@ -224,27 +242,5 @@ func TestAuthenticatorWithJWTAndAPIKey(t *testing.T) {
 	}
 	if !touched.Valid {
 		t.Fatal("expected last_used_at to be updated")
-	}
-}
-
-func TestAuthenticatorSudoerBypassesDB(t *testing.T) {
-	ctx := context.Background()
-	repo, _ := testAdminRepository(t)
-	now := time.Date(2026, 6, 4, 12, 0, 0, 0, time.UTC)
-	auth := NewAuthenticator(
-		repo,
-		WithClock(func() time.Time { return now }),
-		WithSudoers([]string{"root-admin"}),
-	)
-	token, err := CreateAdminTokenAt("root-admin", RoleSudo, "admin-secret", time.Hour, now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result, err := auth.AuthenticateBearer(ctx, token)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if result.Source != AuthSourceSudoer || result.Admin.Username != "root-admin" {
-		t.Fatalf("unexpected sudoer result: %#v", result)
 	}
 }

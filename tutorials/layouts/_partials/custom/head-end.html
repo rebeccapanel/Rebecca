@@ -8,10 +8,6 @@
 				localStorage.setItem("color-theme", mode);
 				setTheme(mode);
 			}
-			const marker = "/tutorial-content/";
-			const markerIndex = location.pathname.indexOf(marker);
-			const panelRoot = markerIndex >= 0 ? location.pathname.slice(0, markerIndex) : "";
-			if (!localStorage.getItem("token")) window.top?.location.replace(`${panelRoot}/login`);
 			if (document.querySelector('meta[name="rb-admin-only"]')?.content === "true") {
 				document.documentElement.dataset.rbAdminPage = "true";
 			}

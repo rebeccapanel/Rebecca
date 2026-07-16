@@ -100,16 +100,12 @@ func New(cfg Config) (*Server, error) {
 	backupService := backupapp.NewService(pool.DB, pool.Dialect, cfg.Database)
 	outboundSubs := outboundsubapp.NewService(pool.DB, pool.Dialect)
 	configRepo := xrayconfig.NewRepository(pool.DB, pool.Dialect, xrayconfig.Options{})
-	sudoers := []string{}
-	if strings.TrimSpace(cfg.SudoUsername) != "" && strings.TrimSpace(cfg.SudoPassword) != "" {
-		sudoers = append(sudoers, cfg.SudoUsername)
-	}
 	return &Server{
 		cfg:            cfg,
 		db:             pool.DB,
 		dialect:        pool.Dialect,
 		adminRepo:      adminRepo,
-		adminAuth:      adminapp.NewAuthenticator(adminRepo, adminapp.WithSudoers(sudoers)),
+		adminAuth:      adminapp.NewAuthenticator(adminRepo),
 		nodeController: nodecontroller.NewController(nodeRepo),
 		nodeMutations:  nodeMutationRepo,
 		systemService:  systemapp.NewService(pool.DB, pool.Dialect, systemapp.DefaultVersion),

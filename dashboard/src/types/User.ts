@@ -162,6 +162,8 @@ export type UserApi = {
 	service_limits?: import("./Admin").AdminServiceTrafficLimit[];
 	status?: AdminStatus;
 	disabled_reason?: string | null;
+	require_2fa?: boolean;
+	totp_enabled?: boolean;
 };
 
 export type UseGetUserReturn = {

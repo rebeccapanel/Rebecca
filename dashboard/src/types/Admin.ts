@@ -34,6 +34,8 @@ export enum AdminManagementPermission {
 	View = "can_view",
 	Edit = "can_edit",
 	ManageSudo = "can_manage_sudo",
+	ManageSessions = "manage_sessions",
+	Manage2FA = "manage_2fa",
 }
 
 export enum AdminSection {
@@ -50,6 +52,18 @@ export enum SelfPermissionToggle {
 	SelfMyAccount = "self_myaccount",
 	SelfChangePassword = "self_change_password",
 	SelfApiKeys = "self_api_keys",
+	SelfSessions = "self_sessions",
+	Self2FA = "self_2fa",
+}
+
+export enum AdminSudoScope {
+	Nodes = "nodes",
+	Xray = "xray",
+	Settings = "settings",
+	Subscriptions = "subscriptions",
+	Backups = "backups",
+	Maintenance = "maintenance",
+	PHPMyAdmin = "phpmyadmin",
 }
 
 export type UserPermissionSettings = Record<UserPermissionToggle, boolean> & {
@@ -62,6 +76,7 @@ export type AdminManagementPermissions = Record<
 >;
 
 export type SectionPermissionSettings = Record<AdminSection, boolean>;
+export type SudoPermissionSettings = Record<AdminSudoScope, boolean>;
 
 export type AdminPermissions = {
 	users: UserPermissionSettings;
@@ -71,7 +86,10 @@ export type AdminPermissions = {
 		self_myaccount: boolean;
 		self_change_password: boolean;
 		self_api_keys: boolean;
+		self_sessions: boolean;
+		self_2fa: boolean;
 	};
+	sudo: SudoPermissionSettings;
 };
 
 export type AdminServiceTrafficLimit = {
@@ -130,6 +148,8 @@ export type Admin = {
 	unlimited_users_usage?: number | null;
 	reset_bytes?: number | null;
 	lifetime_usage?: number | null;
+	require_2fa?: boolean;
+	totp_enabled?: boolean;
 };
 
 export type AdminCreatePayload = {
@@ -149,6 +169,7 @@ export type AdminCreatePayload = {
 	expire?: number | null;
 	users_limit?: number | null;
 	service_limits?: AdminServiceTrafficLimitPayload[];
+	require_2fa?: boolean;
 };
 
 export type AdminUpdatePayload = {
@@ -167,6 +188,7 @@ export type AdminUpdatePayload = {
 	expire?: number | null;
 	users_limit?: number | null;
 	service_limits?: AdminServiceTrafficLimitPayload[];
+	require_2fa?: boolean;
 };
 
 export type StandardAdminPermissionsBulkPayload = {

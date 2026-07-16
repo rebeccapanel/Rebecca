@@ -9,7 +9,6 @@ import type {
 	UserListItem,
 	UsersListResponse,
 } from "types/User";
-import { getAuthToken } from "utils/authStorage";
 import { queryClient } from "utils/react-query";
 import { getUsersPerPageLimitSize } from "utils/userPreferenceStorage";
 import { create } from "zustand";
@@ -236,7 +235,7 @@ const fetchUsers = (
 ): Promise<UsersListResponse> => {
 	const sanitizedQuery = sanitizeFilterQuery(query);
 	const cacheKey = buildUsersCacheKey(sanitizedQuery);
-	const currentAuthToken = getAuthToken();
+	const currentAuthToken = "session";
 	const { lastUsersFetchAt, usersCacheKey, usersCacheAuthToken, users } =
 		useDashboard.getState();
 	const now = Date.now();

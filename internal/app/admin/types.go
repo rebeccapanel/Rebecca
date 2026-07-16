@@ -33,9 +33,9 @@ const (
 type AuthSource string
 
 const (
-	AuthSourceJWT    AuthSource = "jwt"
-	AuthSourceAPIKey AuthSource = "api_key"
-	AuthSourceSudoer AuthSource = "sudoer"
+	AuthSourceJWT     AuthSource = "jwt"
+	AuthSourceAPIKey  AuthSource = "api_key"
+	AuthSourceSession AuthSource = "session"
 )
 
 var (
@@ -49,6 +49,8 @@ var (
 	ErrAdminDataExhausted = errors.New("admin data limit is exhausted")
 	ErrPasswordResetAfter = errors.New("token was issued before password reset")
 	ErrPermissionDenied   = errors.New("permission denied")
+	ErrSessionExpired     = errors.New("admin session expired")
+	ErrSessionRestricted  = errors.New("admin session requires additional authentication")
 )
 
 type UserPermissionSettings struct {
@@ -67,9 +69,21 @@ type UserPermissionSettings struct {
 }
 
 type AdminManagementPermissions struct {
-	CanView       bool `json:"can_view"`
-	CanEdit       bool `json:"can_edit"`
-	CanManageSudo bool `json:"can_manage_sudo"`
+	CanView        bool `json:"can_view"`
+	CanEdit        bool `json:"can_edit"`
+	CanManageSudo  bool `json:"can_manage_sudo"`
+	ManageSessions bool `json:"manage_sessions"`
+	Manage2FA      bool `json:"manage_2fa"`
+}
+
+type SudoPermissionSettings struct {
+	Nodes         bool `json:"nodes"`
+	Xray          bool `json:"xray"`
+	Settings      bool `json:"settings"`
+	Subscriptions bool `json:"subscriptions"`
+	Backups       bool `json:"backups"`
+	Maintenance   bool `json:"maintenance"`
+	PHPMyAdmin    bool `json:"phpmyadmin"`
 }
 
 type SectionPermissionSettings struct {
@@ -87,6 +101,7 @@ type AdminPermissions struct {
 	AdminManagement AdminManagementPermissions `json:"admin_management"`
 	Sections        SectionPermissionSettings  `json:"sections"`
 	SelfPermissions map[string]bool            `json:"self_permissions"`
+	Sudo            SudoPermissionSettings     `json:"sudo"`
 }
 
 type AdminServiceLimit struct {
@@ -129,6 +144,10 @@ type Admin struct {
 	UsersLimit                  *int64                `json:"users_limit"`
 	ServiceLimits               []AdminServiceLimit   `json:"service_limits"`
 	PasswordResetAt             *time.Time            `json:"-"`
+	Require2FA                  bool                  `json:"require_2fa"`
+	TOTPEnabled                 bool                  `json:"totp_enabled"`
+	TOTPSecret                  string                `json:"-"`
+	TOTPLastCounter             *int64                `json:"-"`
 }
 
 type AdminAPIKey struct {
@@ -141,10 +160,11 @@ type AdminAPIKey struct {
 }
 
 type EffectiveAdminContext struct {
-	Admin          Admin        `json:"admin"`
-	Source         AuthSource   `json:"source"`
-	TokenCreatedAt *time.Time   `json:"token_created_at,omitempty"`
-	APIKey         *AdminAPIKey `json:"api_key,omitempty"`
+	Admin          Admin         `json:"admin"`
+	Source         AuthSource    `json:"source"`
+	TokenCreatedAt *time.Time    `json:"token_created_at,omitempty"`
+	APIKey         *AdminAPIKey  `json:"api_key,omitempty"`
+	Session        *AdminSession `json:"session,omitempty"`
 }
 
 func ParseRole(value string) (AdminRole, error) {

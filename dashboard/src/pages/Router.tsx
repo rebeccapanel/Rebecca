@@ -9,7 +9,6 @@ import {
 } from "react-router-dom";
 import { AppLayout } from "../components/AppLayout";
 import { fetch } from "../service/http";
-import { getAuthToken, removeAuthToken } from "../utils/authStorage";
 import AccessInsightsPage from "./AccessInsightsPage";
 import { AdminsPage } from "./AdminsPage";
 import { ApiDocsPage } from "./ApiDocsPage";
@@ -128,16 +127,8 @@ normalizeLegacyHashRoute(dashboardBasename);
 
 const fetchAdminLoader = async () => {
 	try {
-		const token = getAuthToken();
-		if (!token) {
-			console.warn("No authentication token found");
-			throw redirect("/login/");
-		}
-		const response = await fetch("/admin", {
-			headers: {
-				Authorization: `Bearer ${token}`,
-			},
-		});
+		const response = await fetch<{ state?: string }>("/auth/session");
+		if (response?.state !== "active") throw redirect("/login/");
 		if (response && typeof response === "object" && "error" in response) {
 			throw new Error(`API error: ${response.error || "Unknown error"}`);
 		}
@@ -147,7 +138,6 @@ const fetchAdminLoader = async () => {
 			(error as { response?: { status?: number }; status?: number })?.response
 				?.status ?? (error as { status?: number })?.status;
 		if (status === 401 || status === 403) {
-			removeAuthToken();
 			throw redirect("/login/");
 		}
 		console.error("Loader error:", error);

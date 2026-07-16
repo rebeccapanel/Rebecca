@@ -23,6 +23,7 @@ func RoleDefaultPermissions(role AdminRole) AdminPermissions {
 	baseSections := SectionPermissionSettings{
 		Hosts: true,
 	}
+	baseSudo := SudoPermissionSettings{}
 
 	switch role {
 	case RoleSudo:
@@ -31,6 +32,7 @@ func RoleDefaultPermissions(role AdminRole) AdminPermissions {
 		baseAdminManagement.CanView = true
 		baseAdminManagement.CanEdit = true
 		baseSections = allSectionPermissions()
+		baseSudo = allSudoPermissions()
 	case RoleFullAccess:
 		baseUsers.Delete = true
 		baseUsers.ResetUsage = true
@@ -39,7 +41,10 @@ func RoleDefaultPermissions(role AdminRole) AdminPermissions {
 		baseAdminManagement.CanView = true
 		baseAdminManagement.CanEdit = true
 		baseAdminManagement.CanManageSudo = true
+		baseAdminManagement.ManageSessions = true
+		baseAdminManagement.Manage2FA = true
 		baseSections = allSectionPermissions()
+		baseSudo = allSudoPermissions()
 	case RoleStandard, RoleReseller:
 		// Defaults above intentionally match Python AdminPermissions defaults.
 	default:
@@ -51,6 +56,7 @@ func RoleDefaultPermissions(role AdminRole) AdminPermissions {
 		AdminManagement: baseAdminManagement,
 		Sections:        baseSections,
 		SelfPermissions: defaultSelfPermissions(),
+		Sudo:            baseSudo,
 	}
 }
 
@@ -94,6 +100,15 @@ func defaultSelfPermissions() map[string]bool {
 		"self_myaccount":       true,
 		"self_change_password": true,
 		"self_api_keys":        true,
+		"self_sessions":        true,
+		"self_2fa":             true,
+	}
+}
+
+func allSudoPermissions() SudoPermissionSettings {
+	return SudoPermissionSettings{
+		Nodes: true, Xray: true, Settings: true, Subscriptions: true,
+		Backups: true, Maintenance: true, PHPMyAdmin: true,
 	}
 }
 

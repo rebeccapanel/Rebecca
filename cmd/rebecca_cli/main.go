@@ -313,8 +313,6 @@ func (c *cli) runAdmin(args []string) error {
 		return c.adminUsage(args[1:])
 	case "reset-usage":
 		return c.adminResetUsage(args[1:])
-	case "import-from-env":
-		return c.adminImportFromEnv(args[1:])
 	case "-h", "--help", "help":
 		printAdminUsage()
 		return nil
@@ -696,8 +694,25 @@ func (c *cli) adminUpdate(args []string) error {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	_, err = c.db.ExecContext(ctx, "UPDATE admins SET "+strings.Join(updates, ", ")+" WHERE id = ?", params...)
+	tx, err := c.db.BeginTx(ctx, nil)
 	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err = tx.ExecContext(ctx, "UPDATE admins SET "+strings.Join(updates, ", ")+" WHERE id = ?", params...); err != nil {
+		return err
+	}
+	revokeSessions := password.set && password.value != ""
+	if statusValue.set {
+		status := strings.ToLower(strings.TrimSpace(statusValue.value))
+		revokeSessions = revokeSessions || status == "disabled" || status == "deleted"
+	}
+	if revokeSessions {
+		if _, err = tx.ExecContext(ctx, `UPDATE admin_sessions SET revoked_at = ? WHERE admin_id = ? AND revoked_at IS NULL`, time.Now().UTC(), admin.ID); err != nil {
+			return err
+		}
+	}
+	if err = tx.Commit(); err != nil {
 		return err
 	}
 	if jsonOutput {
@@ -764,7 +779,19 @@ func (c *cli) adminSetPassword(args []string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if _, err := c.db.ExecContext(ctx, `UPDATE admins SET hashed_password = ?, password_reset_at = ? WHERE id = ?`, hash, time.Now().UTC(), admin.ID); err != nil {
+	now := time.Now().UTC()
+	tx, err := c.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `UPDATE admins SET hashed_password = ?, password_reset_at = ? WHERE id = ?`, hash, now, admin.ID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE admin_sessions SET revoked_at = ? WHERE admin_id = ? AND revoked_at IS NULL`, now, admin.ID); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 	if jsonOutput {
@@ -880,8 +907,19 @@ func (c *cli) adminDelete(args []string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	_, err = c.db.ExecContext(ctx, "UPDATE admins SET status = 'deleted' WHERE id = ?", admin.ID)
+	tx, err := c.db.BeginTx(ctx, nil)
 	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	now := time.Now().UTC()
+	if _, err = tx.ExecContext(ctx, "UPDATE admins SET status = 'deleted' WHERE id = ?", admin.ID); err != nil {
+		return err
+	}
+	if _, err = tx.ExecContext(ctx, `UPDATE admin_sessions SET revoked_at = ? WHERE admin_id = ? AND revoked_at IS NULL`, now, admin.ID); err != nil {
+		return err
+	}
+	if err = tx.Commit(); err != nil {
 		return err
 	}
 	if jsonOutput {
@@ -992,54 +1030,6 @@ func (c *cli) adminResetUsage(args []string) error {
 		return writeJSON(map[string]any{"username": admin.Username, "usage_reset": true})
 	}
 	fmt.Printf("Usage for %q reset successfully.\n", admin.Username)
-	return nil
-}
-
-func (c *cli) adminImportFromEnv(args []string) error {
-	fs := newFlagSet("admin import-from-env")
-	var yes bool
-	var jsonOutput bool
-	fs.BoolVar(&yes, "yes", false, "skip confirmations")
-	fs.BoolVar(&yes, "y", false, "skip confirmations")
-	fs.BoolVar(&jsonOutput, "json", false, "print machine-readable JSON")
-	if err := fs.Parse(args); err != nil {
-		return err
-	}
-	username := strings.TrimSpace(os.Getenv("SUDO_USERNAME"))
-	password := os.Getenv("SUDO_PASSWORD")
-	if username == "" || password == "" {
-		return errors.New("SUDO_USERNAME and SUDO_PASSWORD must be set")
-	}
-
-	admin, err := c.getAdminByUsername(username)
-	if err == nil && admin.ID > 0 {
-		if !yes && !c.confirm(fmt.Sprintf("Admin %q already exists. Sync it with env?", username), false) {
-			return errors.New("operation aborted")
-		}
-		if err := c.adminUpdate([]string{"--username", username, "--role", "full_access", "--password", password}); err != nil {
-			return err
-		}
-	} else {
-		if err := c.adminCreate([]string{"--username", username, "--role", "full_access", "--password", password}); err != nil {
-			return err
-		}
-		admin, err = c.getAdminByUsername(username)
-		if err != nil {
-			return err
-		}
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	result, err := c.db.ExecContext(ctx, "UPDATE users SET admin_id = ? WHERE admin_id IS NULL", admin.ID)
-	if err != nil {
-		return err
-	}
-	count, _ := result.RowsAffected()
-	if jsonOutput {
-		return writeJSON(map[string]any{"username": username, "linked_users": count})
-	}
-	fmt.Printf("Admin %q imported successfully. %d users linked.\n", username, count)
 	return nil
 }
 
@@ -2944,7 +2934,6 @@ func printAdminUsage() {
 	fmt.Println("  delete <admin>        Soft delete admin")
 	fmt.Println("  usage <admin>         Show admin usage counters")
 	fmt.Println("  reset-usage <admin>   Reset usage/created traffic counters")
-	fmt.Println("  import-from-env       Create or sync SUDO_USERNAME/SUDO_PASSWORD")
 }
 
 func printUserUsage() {

@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
+
+	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
 )
 
 func TestHostsCRUDOnMigratedSQLite(t *testing.T) {
@@ -16,13 +18,18 @@ func TestHostsCRUDOnMigratedSQLite(t *testing.T) {
 	server, err := New(Config{
 		Database:                    "sqlite:///" + filepath.ToSlash(dbPath),
 		JWTAccessTokenExpireMinutes: 1440,
-		SudoUsername:                "root",
-		SudoPassword:                "pass123",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = server.db.Close() })
+	hash, err := adminapp.HashPassword("pass123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := server.db.Exec(`INSERT INTO admins (username, hashed_password, role, permissions, status) VALUES (?, ?, ?, ?, ?)`, "root", hash, "full_access", "{}", "active"); err != nil {
+		t.Fatal(err)
+	}
 
 	token := sqliteAdminToken(t, server)
 	if _, err := server.db.Exec(`INSERT INTO inbounds (tag) VALUES (?)`, "sqlite-in"); err != nil {

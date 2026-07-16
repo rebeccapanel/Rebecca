@@ -61,6 +61,7 @@ import {
 import ReactCountryFlag from "react-country-flag";
 import { useTranslation } from "react-i18next";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
+import { logout as logoutSession } from "service/auth";
 import { AdminRole, AdminSection } from "types/Admin";
 import { clearClientSession } from "utils/session";
 import { ReactComponent as ImperialIranFlag } from "../assets/imperial-iran-flag.svg";
@@ -988,9 +989,13 @@ export function AppLayout() {
 													bg: "transparent !important",
 												},
 											}}
-											onClick={() => {
+										onClick={async () => {
+											try {
+												await logoutSession();
+											} finally {
 												clearClientSession();
 												navigate("/login");
+											}
 											}}
 										>
 											{t("header.logout", "Log out")}
@@ -1449,10 +1454,14 @@ export function AppLayout() {
 																	_active={{ bg: menuHover }}
 																	_focus={{ bg: "transparent" }}
 																	_focusVisible={{ bg: menuHover }}
-																	onClick={() => {
+																onClick={async () => {
+																	try {
+																		await logoutSession();
+																	} finally {
 																		clearClientSession();
 																		handleAccountMenuClose();
 																		navigate("/login");
+																	}
 																	}}
 																>
 																	{t("header.logout", "Log out")}

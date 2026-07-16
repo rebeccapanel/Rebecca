@@ -1,5 +1,7 @@
 import {
 	Button,
+	HStack,
+	Switch,
 	Text,
 	useToast,
 } from "@chakra-ui/react";
@@ -7,9 +9,10 @@ import { AppDialog } from "components/dialogs/AppDialog";
 import { DEFAULT_ADMIN_PERMISSIONS } from "constants/adminPermissions";
 import { useAdminsStore } from "contexts/AdminsContext";
 import { useEffect, useState } from "react";
+import useGetUser from "hooks/useGetUser";
 import { useTranslation } from "react-i18next";
 import type { Admin, AdminPermissions } from "types/Admin";
-import { AdminRole } from "types/Admin";
+import { AdminManagementPermission, AdminRole } from "types/Admin";
 import {
 	generateErrorMessage,
 	generateSuccessMessage,
@@ -30,15 +33,21 @@ export const AdminPermissionsModal = ({
 	const { t } = useTranslation();
 	const toast = useToast();
 	const updateAdmin = useAdminsStore((state) => state.updateAdmin);
+	const { userData } = useGetUser();
 	const [permissionsDraft, setPermissionsDraft] = useState<AdminPermissions>(
 		admin?.permissions ?? DEFAULT_ADMIN_PERMISSIONS,
 	);
 	const [maxDataLimitValue, setMaxDataLimitValue] = useState<string>("");
 	const [saving, setSaving] = useState(false);
+	const [require2FA, setRequire2FA] = useState(false);
 	const isFullAccess = admin?.role === AdminRole.FullAccess;
+	const canManage2FA =
+		userData.role === AdminRole.FullAccess ||
+		Boolean(userData.permissions.admin_management[AdminManagementPermission.Manage2FA]);
 
 	useEffect(() => {
 		if (admin) {
+			setRequire2FA(Boolean(admin.require_2fa));
 			setPermissionsDraft(admin.permissions ?? DEFAULT_ADMIN_PERMISSIONS);
 			setMaxDataLimitValue(
 				admin.permissions.users.max_data_limit_per_user
@@ -51,6 +60,7 @@ export const AdminPermissionsModal = ({
 					: "",
 			);
 		} else {
+			setRequire2FA(false);
 			setPermissionsDraft(DEFAULT_ADMIN_PERMISSIONS);
 			setMaxDataLimitValue("");
 		}
@@ -58,11 +68,11 @@ export const AdminPermissionsModal = ({
 
 	const handleSave = async () => {
 		if (!admin) return;
-		if (isFullAccess) return;
 		setSaving(true);
 		try {
 			await updateAdmin(admin.username, {
-				permissions: permissionsDraft,
+				...(isFullAccess ? {} : { permissions: permissionsDraft }),
+				...(canManage2FA ? { require_2fa: require2FA } : {}),
 			});
 			generateSuccessMessage(
 				t("admins.permissions.updateSuccess", "Permissions updated"),
@@ -103,7 +113,7 @@ export const AdminPermissionsModal = ({
 						colorScheme="primary"
 						onClick={handleSave}
 						isLoading={saving}
-						isDisabled={!admin || isFullAccess}
+						isDisabled={!admin || (isFullAccess && !canManage2FA)}
 					>
 						{t("save")}
 					</Button>
@@ -138,6 +148,10 @@ export const AdminPermissionsModal = ({
 						hideExtendedSections={false}
 						isReadOnly={isFullAccess}
 					/>
+					<HStack borderWidth="1px" borderRadius="md" justify="space-between" mt={5} p={3}>
+						<Text>{t("admins.security.require2FA", "Require two-factor authentication")}</Text>
+						<Switch isChecked={require2FA} isDisabled={!canManage2FA} onChange={(event) => setRequire2FA(event.target.checked)} />
+					</HStack>
 		</AppDialog>
 	);
 };

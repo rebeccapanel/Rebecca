@@ -269,8 +269,6 @@ server {
 
 | توضیحات | متغیر |
 | ---: | :---: |
-| نام کاربری ادمین اولیه | SUDO_USERNAME |
-| رمز عبور ادمین اولیه | SUDO_PASSWORD |
 | آدرس دیتابیس؛ این نام legacy برای سازگاری با runtime جدید Go حفظ شده است | SQLALCHEMY_DATABASE_URL |
 | هاست gateway گو (پیش‌فرض: `0.0.0.0`) | UVICORN_HOST |
 | پورت gateway گو (پیش‌فرض: `8000`) | UVICORN_PORT |

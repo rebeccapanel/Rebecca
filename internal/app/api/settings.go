@@ -29,7 +29,7 @@ func (s *Server) handlePanelSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, settings)
 	case http.MethodPut:
 		principal, _ := r.Context().Value(adminContextKey).(adminPrincipal)
-		if principal.Role != "sudo" && principal.Role != "full_access" {
+		if principal.Role != "full_access" && (principal.Role != "sudo" || !principal.Context.Admin.Permissions.Sudo.Settings) {
 			writeError(w, http.StatusForbidden, "You're not allowed")
 			return
 		}
@@ -64,7 +64,7 @@ func (s *Server) handleRuntimeSettings(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, settings)
 	case http.MethodPut:
 		principal, _ := r.Context().Value(adminContextKey).(adminPrincipal)
-		if principal.Role != "sudo" && principal.Role != "full_access" {
+		if principal.Role != "full_access" && (principal.Role != "sudo" || !principal.Context.Admin.Permissions.Sudo.Settings) {
 			writeError(w, http.StatusForbidden, "You're not allowed")
 			return
 		}

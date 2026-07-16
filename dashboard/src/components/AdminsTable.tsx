@@ -32,6 +32,7 @@ import {
 	PencilIcon,
 	PlayIcon,
 	PlusCircleIcon,
+	ShieldCheckIcon,
 	TrashIcon,
 	XCircleIcon,
 } from "@heroicons/react/24/outline";
@@ -65,6 +66,7 @@ import {
 } from "utils/toastHandler";
 import { copyTextToClipboard } from "utils/clipboard";
 import AdminPermissionsModal from "./AdminPermissionsModal";
+import { AdminSecurityDialog } from "./AdminSecurityDialog";
 import { ConfirmDialog } from "./dialogs/ConfirmDialog";
 import {
 	DataTable,
@@ -316,6 +318,8 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		admin: Admin;
 		type: "usage" | "deleted";
 	} | null>(null);
+	const [securityAdmin, setSecurityAdmin] = useState<Admin | null>(null);
+	const securityDialog = useDisclosure();
 
 	const currentAdminUsername = userData.username;
 	const hasFullAccess = userData.role === AdminRole.FullAccess;
@@ -326,6 +330,18 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 	const canManageSudoAdmins = Boolean(
 		adminManagement?.[AdminManagementPermission.ManageSudo] || hasFullAccess,
 	);
+	const canManageSessions = Boolean(
+		adminManagement?.[AdminManagementPermission.ManageSessions] || hasFullAccess,
+	);
+	const canManage2FA = Boolean(
+		adminManagement?.[AdminManagementPermission.Manage2FA] || hasFullAccess,
+	);
+	const canManageSecurityFor = (target: Admin) => {
+		if (hasFullAccess) return true;
+		if (target.role === AdminRole.FullAccess) return false;
+		if (target.role === AdminRole.Sudo && !canManageSudoAdmins) return false;
+		return canManageSessions || canManage2FA;
+	};
 	const canManageAdminAccount = (target: Admin) => {
 		if (target.username === currentAdminUsername) {
 			return true;
@@ -1161,6 +1177,18 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			);
 		}
 
+		if (canManageSecurityFor(admin)) {
+			actions.push({
+				id: "security",
+				label: t("admins.security.action", "Sessions and 2FA"),
+				icon: <ShieldCheckIcon width={16} />,
+				onClick: () => {
+					setSecurityAdmin(admin);
+					securityDialog.onOpen();
+				},
+			});
+		}
+
 		if (meta.canManage && (admin.deleted_users_usage ?? 0) > 0) {
 			actions.push({
 				id: "resetDeleted",
@@ -1466,6 +1494,17 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 				isOpen={isPermissionsModalOpen}
 				onClose={handleClosePermissionsModal}
 				admin={adminForPermissions}
+			/>
+			<AdminSecurityDialog
+				admin={securityAdmin}
+				isOpen={securityDialog.isOpen}
+				onClose={() => {
+					securityDialog.onClose();
+					setSecurityAdmin(null);
+				}}
+				canManageSessions={canManageSessions}
+				canManage2FA={canManage2FA}
+				onChanged={() => fetchAdmins(undefined, { force: true })}
 			/>
 		</>
 	);

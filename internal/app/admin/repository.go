@@ -55,6 +55,21 @@ func (r Repository) AdminByID(ctx context.Context, id int64) (Admin, bool, error
 	return r.scanAdmin(ctx, `WHERE id = ? AND status != ?`, id, string(StatusDeleted))
 }
 
+func (r Repository) FirstFullAccessAdmin(ctx context.Context) (Admin, bool, error) {
+	var username string
+	err := r.db.QueryRowContext(ctx, `
+SELECT username FROM admins
+WHERE role = ? AND status = ?
+ORDER BY id LIMIT 1`, string(RoleFullAccess), string(StatusActive)).Scan(&username)
+	if err == sql.ErrNoRows {
+		return Admin{}, false, nil
+	}
+	if err != nil {
+		return Admin{}, false, err
+	}
+	return r.AdminByUsername(ctx, username)
+}
+
 func (r Repository) APIKeyByToken(ctx context.Context, token string) (AdminAPIKey, bool, error) {
 	token = strings.TrimSpace(token)
 	if token == "" {
@@ -132,15 +147,22 @@ func (r Repository) scanAdmin(ctx context.Context, where string, args ...any) (A
 	delete_user_usage_limit,
 	expire,
 	users_limit
+	, COALESCE(require_2fa, 0)
+	, COALESCE(totp_secret, '')
+	, totp_enabled_at
+	, totp_last_counter
 FROM admins ` + where + ` LIMIT 1`
 
 	var admin Admin
 	var roleText, statusText, trafficLimitMode string
 	var rawPermissions, rawSubscriptionSettings any
 	var resetRaw any
+	var totpEnabledRaw any
 	var disabledReason, subscriptionDomain sql.NullString
 	var telegramID, dataLimit, deleteUserUsageLimit, expire, usersLimit sql.NullInt64
+	var totpLastCounter sql.NullInt64
 	var useServiceLimits, showUserTraffic, deleteUserUsageLimitEnabled int64
+	var require2FA int64
 	err := r.db.QueryRowContext(ctx, query, args...).Scan(
 		&admin.ID,
 		&admin.Username,
@@ -165,6 +187,10 @@ FROM admins ` + where + ` LIMIT 1`
 		&deleteUserUsageLimit,
 		&expire,
 		&usersLimit,
+		&require2FA,
+		&admin.TOTPSecret,
+		&totpEnabledRaw,
+		&totpLastCounter,
 	)
 	if err == sql.ErrNoRows {
 		return Admin{}, false, nil
@@ -203,6 +229,9 @@ FROM admins ` + where + ` LIMIT 1`
 	admin.DeleteUserUsageLimit = nullInt64Ptr(deleteUserUsageLimit)
 	admin.Expire = nullInt64Ptr(expire)
 	admin.UsersLimit = nullInt64Ptr(usersLimit)
+	admin.Require2FA = require2FA != 0
+	admin.TOTPEnabled = parseOptionalDBTime(totpEnabledRaw) != nil && admin.TOTPSecret != ""
+	admin.TOTPLastCounter = nullInt64Ptr(totpLastCounter)
 	if admin.HasFullAccess() {
 		admin.TrafficLimitMode = TrafficLimitUsedTraffic
 		admin.ShowUserTraffic = true

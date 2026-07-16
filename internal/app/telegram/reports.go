@@ -14,7 +14,6 @@ type Reporter struct {
 
 type LoginReport struct {
 	Username string
-	Password string
 	ClientIP string
 	Success  bool
 }
@@ -70,7 +69,6 @@ func (r Reporter) Login(ctx context.Context, report LoginReport) {
 	r.sendHTML(ctx, "login", reportText(
 		"🔐 <b>#Login</b>",
 		line("Username", report.Username),
-		line("Password", report.Password),
 		line("Client IP", report.ClientIP),
 		separator(),
 		line("Status", status),

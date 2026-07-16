@@ -42,7 +42,6 @@ func (s *Server) handleAdminToken(w http.ResponseWriter, r *http.Request) {
 		logging.Warnf(logging.ComponentAdmin, "login failed username=%q remote=%s reason=missing_credentials", username, requestRemote(r))
 		s.telegramReports.Login(r.Context(), telegramapp.LoginReport{
 			Username: username,
-			Password: password,
 			ClientIP: requestRemote(r),
 			Success:  false,
 		})
@@ -50,7 +49,7 @@ func (s *Server) handleAdminToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	role, ok, reason, err := s.validateLogin(r.Context(), username, password)
+	dbadmin, ok, reason, err := s.validateLogin(r.Context(), username, password)
 	if err != nil {
 		logging.Errorf(logging.ComponentAdmin, "login error username=%q remote=%s error=%v", username, requestRemote(r), err)
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -60,7 +59,6 @@ func (s *Server) handleAdminToken(w http.ResponseWriter, r *http.Request) {
 		logging.Warnf(logging.ComponentAdmin, "login failed username=%q remote=%s reason=%s", username, requestRemote(r), reason)
 		s.telegramReports.Login(r.Context(), telegramapp.LoginReport{
 			Username: username,
-			Password: password,
 			ClientIP: requestRemote(r),
 			Success:  false,
 		})
@@ -77,15 +75,14 @@ func (s *Server) handleAdminToken(w http.ResponseWriter, r *http.Request) {
 	if s.cfg.JWTAccessTokenExpireMinutes > 0 {
 		expiresIn = time.Duration(s.cfg.JWTAccessTokenExpireMinutes) * time.Minute
 	}
-	token, err := adminapp.CreateAdminToken(username, role, secret, expiresIn)
+	token, err := adminapp.CreateAdminToken(username, dbadmin.Role, secret, expiresIn)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	logging.Infof(logging.ComponentAdmin, "login success username=%q role=%s remote=%s", username, role, requestRemote(r))
+	logging.Infof(logging.ComponentAdmin, "login success username=%q role=%s remote=%s", username, dbadmin.Role, requestRemote(r))
 	s.telegramReports.Login(r.Context(), telegramapp.LoginReport{
 		Username: username,
-		Password: password,
 		ClientIP: requestRemote(r),
 		Success:  true,
 	})
@@ -139,27 +136,21 @@ func (s *Server) handleInternalAdminValidate(w http.ResponseWriter, r *http.Requ
 	})
 }
 
-func (s *Server) validateLogin(ctx context.Context, username string, password string) (adminapp.AdminRole, bool, string, error) {
-	if strings.TrimSpace(s.cfg.SudoUsername) != "" &&
-		username == s.cfg.SudoUsername &&
-		password == s.cfg.SudoPassword {
-		return adminapp.RoleFullAccess, true, "ok", nil
-	}
-
+func (s *Server) validateLogin(ctx context.Context, username string, password string) (adminapp.Admin, bool, string, error) {
 	dbadmin, found, err := s.adminRepo.AdminByUsername(ctx, username)
 	if err != nil {
-		return "", false, "repository_error", err
+		return adminapp.Admin{}, false, "repository_error", err
 	}
 	if !found {
-		return "", false, "admin_not_found", nil
+		return adminapp.Admin{}, false, "admin_not_found", nil
 	}
 	if !adminapp.VerifyPassword(dbadmin.HashedPassword, password) {
-		return "", false, "invalid_password", nil
+		return adminapp.Admin{}, false, "invalid_password", nil
 	}
 	if err := dbadmin.ValidateAuthAllowed(time.Now().UTC()); err != nil {
-		return "", false, "auth_not_allowed", nil
+		return adminapp.Admin{}, false, "auth_not_allowed", nil
 	}
-	return dbadmin.Role, true, "ok", nil
+	return dbadmin, true, "ok", nil
 }
 
 func readAdminLoginRequest(r *http.Request) (adminLoginRequest, error) {
@@ -241,6 +232,8 @@ func adminResponse(dbadmin adminapp.Admin) map[string]any {
 		"expire":                          dbadmin.Expire,
 		"users_limit":                     dbadmin.UsersLimit,
 		"service_limits":                  dbadmin.ServiceLimits,
+		"require_2fa":                     dbadmin.Require2FA,
+		"totp_enabled":                    dbadmin.TOTPEnabled,
 		"users_count":                     nil,
 		"active_users":                    nil,
 		"online_users":                    nil,

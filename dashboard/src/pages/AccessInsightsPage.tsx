@@ -78,7 +78,6 @@ import type {
 	AccessInsightsResponse,
 	AccessInsightUnmatched,
 } from "types/AccessInsights";
-import { getAuthToken } from "utils/authStorage";
 import IrancellSvg from "../assets/operators/irancell-svgrepo-com.svg";
 import MciSvg from "../assets/operators/mci-svgrepo-com.svg";
 import RightelSvg from "../assets/operators/rightel-svgrepo-com.svg";
@@ -973,13 +972,12 @@ const AccessInsightsPage: FC = () => {
 			const query = new URLSearchParams({
 				max_lines: String(DEFAULT_MAX_LINES),
 			});
-			const token = getAuthToken();
 			const rawResponse = await window.fetch(
 				buildApiUrl("/core/access/logs/raw", query),
 				{
 					method: "GET",
-					headers: token ? { Authorization: `Bearer ${token}` } : {},
 					cache: "no-store",
+					credentials: "include",
 				},
 			);
 			if (!rawResponse.ok) {

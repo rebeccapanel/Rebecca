@@ -44,6 +44,7 @@ type adminWritePayload struct {
 	UsersLimit                  *int64           `json:"users_limit"`
 	Services                    *[]int64         `json:"services"`
 	ServiceLimits               *[]serviceLimit  `json:"service_limits"`
+	Require2FA                  *bool            `json:"require_2fa"`
 	fields                      map[string]json.RawMessage
 }
 
@@ -133,6 +134,10 @@ func (s *Server) handleCreateAdmin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "Only full access admins can create full access accounts")
 		return
 	}
+	if payload.Require2FA != nil && !canManageAdmin2FA(principal.Context.Admin, adminapp.Admin{Role: role}) {
+		writeError(w, http.StatusForbidden, "You're not allowed")
+		return
+	}
 
 	var created adminapp.Admin
 	err = s.withTx(r.Context(), func(tx *sql.Tx) error {
@@ -172,14 +177,15 @@ func (s *Server) handleCreateAdmin(w http.ResponseWriter, r *http.Request) {
 		if !perms.Users.Delete {
 			deleteLimitEnabled = false
 		}
+		require2FA := optionalBool(payload.Require2FA, false)
 		result, err := tx.ExecContext(
 			r.Context(),
 			`INSERT INTO admins (
 	username, hashed_password, role, permissions, status, telegram_id, subscription_domain,
 	subscription_settings, users_usage, lifetime_usage, created_traffic, deleted_users_usage, data_limit, traffic_limit_mode,
 	use_service_traffic_limits, show_user_traffic, delete_user_usage_limit_enabled,
-	delete_user_usage_limit, expire, users_limit
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	delete_user_usage_limit, expire, users_limit, require_2fa
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			payload.Username,
 			hash,
 			string(role),
@@ -196,6 +202,7 @@ func (s *Server) handleCreateAdmin(w http.ResponseWriter, r *http.Request) {
 			nullableInt64(payload.DeleteUserUsageLimit),
 			normalizePositiveInt64(payload.Expire),
 			nullableInt64(payload.UsersLimit),
+			boolInt(require2FA),
 		)
 		if err != nil {
 			return err
@@ -237,6 +244,9 @@ func (s *Server) handleAdminMutationPath(w http.ResponseWriter, r *http.Request)
 	username, suffix, ok := parseAdminPath(r.URL.Path)
 	if !ok {
 		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if s.handleAdminSecurityPath(w, r, username, suffix) {
 		return
 	}
 	switch suffix {
@@ -368,6 +378,13 @@ func (s *Server) handleUpdateAdmin(w http.ResponseWriter, r *http.Request, usern
 			assignments = append(assignments, "hashed_password = ?", "password_reset_at = ?")
 			args = append(args, hash, dbTimestamp(time.Now().UTC()))
 		}
+		if _, ok := payload.fields["require_2fa"]; ok {
+			if !canManageAdmin2FA(principal.Context.Admin, target) {
+				return statusError{status: http.StatusForbidden, detail: "You're not allowed"}
+			}
+			assignments = append(assignments, "require_2fa = ?")
+			args = append(args, boolPtrInt(payload.Require2FA, false))
+		}
 		appendNullable := func(field string, value any) {
 			assignments = append(assignments, field+" = ?")
 			args = append(args, value)
@@ -407,6 +424,17 @@ func (s *Server) handleUpdateAdmin(w http.ResponseWriter, r *http.Request, usern
 				appendNullable("delete_user_usage_limit", nullableInt64(payload.DeleteUserUsageLimit))
 			}
 		}
+		if _, ok := payload.fields["require_2fa"]; ok {
+			if boolPtrValue(payload.Require2FA) && !target.TOTPEnabled {
+				if _, err := tx.ExecContext(r.Context(), `UPDATE admin_sessions SET state = ? WHERE admin_id = ? AND revoked_at IS NULL`, string(adminapp.SessionSetupRequired), target.ID); err != nil {
+					return err
+				}
+			} else if !boolPtrValue(payload.Require2FA) {
+				if _, err := tx.ExecContext(r.Context(), `UPDATE admin_sessions SET state = ?, expires_at = ? WHERE admin_id = ? AND state = ? AND revoked_at IS NULL`, string(adminapp.SessionActive), dbTimestamp(time.Now().UTC().Add(activeSessionLife)), target.ID, string(adminapp.SessionSetupRequired)); err != nil {
+					return err
+				}
+			}
+		}
 		args = append(args, target.ID)
 		if _, err := tx.ExecContext(
 			r.Context(),
@@ -414,6 +442,11 @@ func (s *Server) handleUpdateAdmin(w http.ResponseWriter, r *http.Request, usern
 			args...,
 		); err != nil {
 			return err
+		}
+		if payload.Password != "" {
+			if _, err := tx.ExecContext(r.Context(), `UPDATE admin_sessions SET revoked_at = ? WHERE admin_id = ? AND revoked_at IS NULL`, dbTimestamp(time.Now().UTC()), target.ID); err != nil {
+				return err
+			}
 		}
 		if !perms.Users.Delete {
 			if _, err := tx.ExecContext(r.Context(), `UPDATE admins SET delete_user_usage_limit_enabled = 0 WHERE id = ?`, target.ID); err != nil {
@@ -459,6 +492,9 @@ func (s *Server) handleUpdateAdmin(w http.ResponseWriter, r *http.Request, usern
 	if limitTransition.Disabled {
 		s.telegramReports.AdminLimitReached(r.Context(), telegramAdminLimitReport(updated.Username, limitTransition.Reason, telegramActor(r)))
 	}
+	if payload.Password != "" && principal.ID == updated.ID {
+		clearAdminSessionCookie(w, r)
+	}
 	writeJSON(w, http.StatusOK, adminResponse(updated))
 }
 
@@ -475,6 +511,9 @@ func (s *Server) handleDeleteAdmin(w http.ResponseWriter, r *http.Request, usern
 			return err
 		}
 		if _, err := tx.ExecContext(r.Context(), `DELETE FROM admin_api_keys WHERE admin_id = ?`, target.ID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(r.Context(), `DELETE FROM admin_sessions WHERE admin_id = ?`, target.ID); err != nil {
 			return err
 		}
 		if _, err := tx.ExecContext(r.Context(), `DELETE FROM admin_created_traffic_logs WHERE admin_id = ?`, target.ID); err != nil {
@@ -539,6 +578,9 @@ func (s *Server) handleDisableAdmin(w http.ResponseWriter, r *http.Request, user
 		}
 		now := dbTimestamp(time.Now().UTC())
 		if _, err := tx.ExecContext(r.Context(), `UPDATE admins SET status = ?, disabled_reason = ? WHERE id = ?`, string(adminapp.StatusDisabled), reason, target.ID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(r.Context(), `UPDATE admin_sessions SET revoked_at = ? WHERE admin_id = ? AND revoked_at IS NULL`, now, target.ID); err != nil {
 			return err
 		}
 		userIDs, err := userIDsByAdminStatusInTx(r.Context(), tx, target.ID, []string{"active", "on_hold"})
@@ -1023,7 +1065,11 @@ func adminByUsernameTx(ctx context.Context, tx *sql.Tx, username string) (admina
 	COALESCE(delete_user_usage_limit_enabled, 0),
 	delete_user_usage_limit,
 	expire,
-	users_limit
+	users_limit,
+	COALESCE(require_2fa, 0),
+	COALESCE(totp_secret, ''),
+	totp_enabled_at,
+	totp_last_counter
 FROM admins WHERE LOWER(username) = LOWER(?) AND status != ? LIMIT 1`,
 		username,
 		string(adminapp.StatusDeleted),
@@ -1039,10 +1085,12 @@ func scanAdminFromRow(ctx context.Context, tx *sql.Tx, row scanner) (adminapp.Ad
 	var dbadmin adminapp.Admin
 	var roleText, statusText, trafficLimitMode string
 	var rawPermissions, rawSubscriptionSettings any
-	var resetRaw any
+	var resetRaw, totpEnabledRaw any
 	var disabledReason, subscriptionDomain sql.NullString
 	var telegramID, dataLimit, deleteUserUsageLimit, expire, usersLimit sql.NullInt64
+	var totpLastCounter sql.NullInt64
 	var useServiceLimits, showUserTraffic, deleteUserUsageLimitEnabled int64
+	var require2FA int64
 	if err := row.Scan(
 		&dbadmin.ID,
 		&dbadmin.Username,
@@ -1067,6 +1115,10 @@ func scanAdminFromRow(ctx context.Context, tx *sql.Tx, row scanner) (adminapp.Ad
 		&deleteUserUsageLimit,
 		&expire,
 		&usersLimit,
+		&require2FA,
+		&dbadmin.TOTPSecret,
+		&totpEnabledRaw,
+		&totpLastCounter,
 	); err != nil {
 		return adminapp.Admin{}, err
 	}
@@ -1097,6 +1149,9 @@ func scanAdminFromRow(ctx context.Context, tx *sql.Tx, row scanner) (adminapp.Ad
 	dbadmin.DeleteUserUsageLimit = nullInt64PtrLocal(deleteUserUsageLimit)
 	dbadmin.Expire = nullInt64PtrLocal(expire)
 	dbadmin.UsersLimit = nullInt64PtrLocal(usersLimit)
+	dbadmin.Require2FA = require2FA != 0
+	dbadmin.TOTPEnabled = parseDBTime(totpEnabledRaw) != nil && dbadmin.TOTPSecret != ""
+	dbadmin.TOTPLastCounter = nullInt64PtrLocal(totpLastCounter)
 	if dbadmin.Role == adminapp.RoleFullAccess {
 		dbadmin.TrafficLimitMode = adminapp.TrafficLimitUsedTraffic
 		dbadmin.ShowUserTraffic = true

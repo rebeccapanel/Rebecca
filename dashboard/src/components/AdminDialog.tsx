@@ -35,6 +35,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAdminsStore } from "contexts/AdminsContext";
+import { getDefaultPermissionsForRole } from "constants/adminPermissions";
 import dayjs from "dayjs";
 import useGetUser from "hooks/useGetUser";
 import { type FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -73,151 +74,8 @@ import {
 const GB_IN_BYTES = 1024 * 1024 * 1024;
 const MB_IN_BYTES = 1024 * 1024;
 
-const ROLE_PERMISSION_PRESETS: Record<AdminRole, AdminPermissions> = {
-	[AdminRole.Standard]: {
-		users: {
-			create: true,
-			delete: false,
-			reset_usage: false,
-			revoke: true,
-			create_on_hold: true,
-			allow_unlimited_data: true,
-			allow_unlimited_expire: true,
-			allow_next_plan: true,
-			advanced_actions: true,
-			set_flow: false,
-			allow_custom_key: false,
-			max_data_limit_per_user: null,
-		},
-		admin_management: {
-			can_view: false,
-			can_edit: false,
-			can_manage_sudo: false,
-		},
-		self_permissions: {
-			self_myaccount: true,
-			self_change_password: true,
-			self_api_keys: true,
-		},
-		sections: {
-			usage: false,
-			admins: false,
-			services: false,
-			hosts: false,
-			nodes: false,
-			integrations: false,
-			xray: false,
-		},
-	},
-	[AdminRole.Reseller]: {
-		users: {
-			create: true,
-			delete: false,
-			reset_usage: false,
-			revoke: true,
-			create_on_hold: true,
-			allow_unlimited_data: true,
-			allow_unlimited_expire: true,
-			allow_next_plan: true,
-			advanced_actions: true,
-			set_flow: false,
-			allow_custom_key: false,
-			max_data_limit_per_user: null,
-		},
-		admin_management: {
-			can_view: false,
-			can_edit: false,
-			can_manage_sudo: false,
-		},
-		self_permissions: {
-			self_myaccount: true,
-			self_change_password: true,
-			self_api_keys: true,
-		},
-		sections: {
-			usage: false,
-			admins: false,
-			services: false,
-			hosts: false,
-			nodes: false,
-			integrations: false,
-			xray: false,
-		},
-	},
-	[AdminRole.Sudo]: {
-		users: {
-			create: true,
-			delete: false,
-			reset_usage: false,
-			revoke: true,
-			create_on_hold: true,
-			allow_unlimited_data: true,
-			allow_unlimited_expire: true,
-			allow_next_plan: true,
-			advanced_actions: true,
-			set_flow: true,
-			allow_custom_key: true,
-			max_data_limit_per_user: null,
-		},
-		admin_management: {
-			can_view: true,
-			can_edit: true,
-			can_manage_sudo: false,
-		},
-		self_permissions: {
-			self_myaccount: true,
-			self_change_password: true,
-			self_api_keys: true,
-		},
-		sections: {
-			usage: true,
-			admins: true,
-			services: true,
-			hosts: true,
-			nodes: true,
-			integrations: true,
-			xray: true,
-		},
-	},
-	[AdminRole.FullAccess]: {
-		users: {
-			create: true,
-			delete: true,
-			reset_usage: true,
-			revoke: true,
-			create_on_hold: true,
-			allow_unlimited_data: true,
-			allow_unlimited_expire: true,
-			allow_next_plan: true,
-			advanced_actions: true,
-			set_flow: true,
-			allow_custom_key: true,
-			max_data_limit_per_user: null,
-		},
-		admin_management: {
-			can_view: true,
-			can_edit: true,
-			can_manage_sudo: true,
-		},
-		self_permissions: {
-			self_myaccount: true,
-			self_change_password: true,
-			self_api_keys: true,
-		},
-		sections: {
-			usage: true,
-			admins: true,
-			services: true,
-			hosts: true,
-			nodes: true,
-			integrations: true,
-			xray: true,
-		},
-	},
-};
-
 const clonePermissions = (role: AdminRole): AdminPermissions =>
-	JSON.parse(JSON.stringify(ROLE_PERMISSION_PRESETS[role]));
+	getDefaultPermissionsForRole(role);
 
 const formatBytesToGbString = (value?: number | null) =>
 	value && value > 0 ? String(Math.floor(value / GB_IN_BYTES)) : "";
@@ -241,11 +99,15 @@ const adminPermissionsSchema: z.ZodType<AdminPermissions> = z.object({
 		can_view: z.boolean(),
 		can_edit: z.boolean(),
 		can_manage_sudo: z.boolean(),
+		manage_sessions: z.boolean(),
+		manage_2fa: z.boolean(),
 	}),
 	self_permissions: z.object({
 		self_myaccount: z.boolean(),
 		self_change_password: z.boolean(),
 		self_api_keys: z.boolean(),
+		self_sessions: z.boolean(),
+		self_2fa: z.boolean(),
 	}),
 	sections: z.object({
 		usage: z.boolean(),
@@ -256,6 +118,15 @@ const adminPermissionsSchema: z.ZodType<AdminPermissions> = z.object({
 		integrations: z.boolean(),
 		xray: z.boolean(),
 	}),
+	sudo: z.object({
+		nodes: z.boolean(),
+		xray: z.boolean(),
+		settings: z.boolean(),
+		subscriptions: z.boolean(),
+		backups: z.boolean(),
+		maintenance: z.boolean(),
+		phpmyadmin: z.boolean(),
+	}),
 });
 
 type AdminFormValues = {
@@ -263,6 +134,7 @@ type AdminFormValues = {
 	password?: string;
 	telegram_id?: string;
 	role: AdminRole;
+	require_2fa: boolean;
 	traffic_limit_mode: AdminTrafficLimitMode;
 	use_service_traffic_limits: boolean;
 	show_user_traffic: boolean;
@@ -313,6 +185,8 @@ export const AdminDialog: FC = () => {
 			};
 	const { userData } = useGetUser();
 	const canCreateFullAccess = userData.role === AdminRole.FullAccess;
+	const canManage2FA =
+		canCreateFullAccess || Boolean(userData.permissions.admin_management.manage_2fa);
 	const toast = useToast();
 	const {
 		admins,
@@ -375,6 +249,7 @@ export const AdminDialog: FC = () => {
 						t("admins.validation.telegramNumeric"),
 					),
 				role: z.nativeEnum(AdminRole).optional(),
+				require_2fa: z.boolean().default(false),
 				traffic_limit_mode: z
 					.nativeEnum(AdminTrafficLimitMode)
 					.default(AdminTrafficLimitMode.UsedTraffic),
@@ -445,6 +320,7 @@ export const AdminDialog: FC = () => {
 			password: "",
 			telegram_id: "",
 			role: AdminRole.Standard,
+			require_2fa: false,
 			traffic_limit_mode: AdminTrafficLimitMode.UsedTraffic,
 			use_service_traffic_limits: false,
 			show_user_traffic: true,
@@ -741,6 +617,7 @@ export const AdminDialog: FC = () => {
 						? String(admin.telegram_id)
 						: "",
 				role: nextRole,
+				require_2fa: admin?.require_2fa ?? false,
 				traffic_limit_mode:
 					admin?.traffic_limit_mode ?? AdminTrafficLimitMode.UsedTraffic,
 				use_service_traffic_limits: admin?.use_service_traffic_limits ?? false,
@@ -956,6 +833,7 @@ export const AdminDialog: FC = () => {
 					username: values.username.trim(),
 					password: values.password ?? "",
 					role: selectedRole,
+					require_2fa: canManage2FA ? values.require_2fa : undefined,
 					permissions: permissionPayload ?? clonePermissions(selectedRole),
 					services: values.services || [],
 					telegram_id: values.telegram_id
@@ -1039,6 +917,7 @@ export const AdminDialog: FC = () => {
 			} else if (admin) {
 				const payload: AdminUpdatePayload = {
 					role: selectedRole,
+					require_2fa: canManage2FA ? values.require_2fa : undefined,
 					permissions:
 						selectedRole === AdminRole.FullAccess
 							? undefined
@@ -1837,19 +1716,35 @@ export const AdminDialog: FC = () => {
 	);
 
 	const permissionsPanel = (
-		<AdminPermissionsEditor
-			value={permissionsValue ?? clonePermissions(watchRole ?? AdminRole.Standard)}
-			onChange={handlePermissionsChange}
-			showReset
-			onReset={resetPermissionsToRole}
-			maxDataLimitValue={maxDataLimitValue}
-			onMaxDataLimitChange={handleMaxDataLimitChange}
-			maxDataLimitError={
-				errors.maxDataLimitPerUserGb?.message as string | undefined
-			}
-			hideExtendedSections={watchRole === AdminRole.Standard}
-			isReadOnly={watchRole === AdminRole.FullAccess}
-		/>
+		<VStack align="stretch" spacing={4}>
+			<AdminPermissionsEditor
+				value={permissionsValue ?? clonePermissions(watchRole ?? AdminRole.Standard)}
+				onChange={handlePermissionsChange}
+				showReset
+				onReset={resetPermissionsToRole}
+				maxDataLimitValue={maxDataLimitValue}
+				onMaxDataLimitChange={handleMaxDataLimitChange}
+				maxDataLimitError={
+					errors.maxDataLimitPerUserGb?.message as string | undefined
+				}
+				hideExtendedSections={watchRole === AdminRole.Standard}
+				isReadOnly={watchRole === AdminRole.FullAccess}
+			/>
+			{canManage2FA && (
+				<Box className="xray-dialog-section">
+					<Checkbox
+						isChecked={watch("require_2fa")}
+						onChange={(event) =>
+							setValue("require_2fa", event.target.checked, {
+								shouldDirty: true,
+							})
+						}
+					>
+						{t("admins.security.require2FA", "Require two-factor authentication")}
+					</Checkbox>
+				</Box>
+			)}
+		</VStack>
 	);
 
 	return (

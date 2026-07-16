@@ -37,52 +37,10 @@ func swaggerUIHandler() http.Handler {
 		BasePath:    "/docs/",
 		SettingsUI: map[string]string{
 			"persistAuthorization": "true",
-			"requestInterceptor":   swaggerRequestInterceptorJS,
-			"onComplete":           swaggerOnCompleteJS,
 		},
 		AppendHead: template.HTML(swaggerDarkThemeCSS), //nolint:gosec // Static CSS only.
 	})
 }
-
-const swaggerStoredTokenJS = `function() {
-	try {
-		var token = window.localStorage && window.localStorage.getItem("token");
-		return token && token.trim ? token.trim() : "";
-	} catch (error) {
-		return "";
-	}
-}`
-
-const swaggerRequestInterceptorJS = `function(req) {
-	if (!req.loadSpec) {
-		var token = (` + swaggerStoredTokenJS + `)();
-		if (token && !(req.headers && req.headers.Authorization)) {
-			req.headers = req.headers || {};
-			req.headers.Authorization = "Bearer " + token;
-		}
-	}
-	return req;
-}`
-
-const swaggerOnCompleteJS = `function() {
-	var token = (` + swaggerStoredTokenJS + `)();
-	if (token && window.ui && window.ui.preauthorizeApiKey) {
-		window.ui.preauthorizeApiKey("bearerAuth", token);
-	}
-
-	var dom = document.querySelector(".scheme-container select");
-	if (!dom) {
-		return;
-	}
-	for (var key in dom) {
-		if (key.startsWith("__reactInternalInstance$") && dom[key]._currentElement) {
-			var compWrapper = dom[key]._currentElement._owner;
-			if (compWrapper && compWrapper._instance && compWrapper._instance.setScheme) {
-				compWrapper._instance.setScheme(window.location.protocol.slice(0, -1));
-			}
-		}
-	}
-}`
 
 const swaggerDarkThemeCSS = `<style>
 :root {

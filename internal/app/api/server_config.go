@@ -30,8 +30,6 @@ type Config struct {
 	JWTAccessTokenExpireMinutes  int
 	UsersListTimeoutSeconds      float64
 	SubscriptionReadOnly         bool
-	SudoUsername                 string
-	SudoPassword                 string
 	TelegramAPIBase              string
 	APIDocsEnabled               bool
 	WebhookAddresses             []string
@@ -75,8 +73,6 @@ func LoadConfig() (Config, error) {
 		UserAutodeleteIncludeLimited: parseBoolDefault(lookup("USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS"), false),
 		JWTAccessTokenExpireMinutes:  parseIntDefault(lookup("JWT_ACCESS_TOKEN_EXPIRE_MINUTES"), 1440),
 		UsersListTimeoutSeconds:      parseFloatDefault(lookup("USERS_LIST_TIMEOUT_SECONDS"), 0),
-		SudoUsername:                 lookup("SUDO_USERNAME"),
-		SudoPassword:                 lookup("SUDO_PASSWORD"),
 		TelegramAPIBase:              lookup("REBECCA_TELEGRAM_API_BASE"),
 		WebhookAddresses:             splitWebhookAddresses(lookup("WEBHOOK_ADDRESS")),
 		WebhookSecret:                lookup("WEBHOOK_SECRET"),

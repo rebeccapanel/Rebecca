@@ -97,12 +97,17 @@ func (s *Server) handleMyAccountChangePassword(w http.ResponseWriter, r *http.Re
 			dbTimestamp(time.Now().UTC()),
 			dbadmin.ID,
 		)
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(r.Context(), `UPDATE admin_sessions SET revoked_at = ? WHERE admin_id = ? AND revoked_at IS NULL`, dbTimestamp(time.Now().UTC()), dbadmin.ID)
 		return err
 	})
 	if err != nil {
 		writeStatusError(w, err)
 		return
 	}
+	clearAdminSessionCookie(w, r)
 	writeJSON(w, http.StatusOK, map[string]any{"detail": "Password updated successfully"})
 }
 

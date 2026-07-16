@@ -6,7 +6,6 @@ import type {
 	StandardAdminPermissionsBulkPayload,
 	StandardAdminPermissionsBulkResponse,
 } from "types/Admin";
-import { getAuthToken } from "utils/authStorage";
 import { getAdminsPerPageLimitSize } from "utils/userPreferenceStorage";
 import { create } from "zustand";
 
@@ -165,7 +164,7 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 		} = get();
 		const now = Date.now();
 		const force = options?.force === true;
-		const currentAuthToken = getAuthToken();
+		const currentAuthToken = "session";
 
 		const filters = {
 			...stateFilters,
@@ -277,7 +276,7 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 		return promise;
 	},
 	async fetchAdminOptions(overrides, options) {
-		const currentAuthToken = getAuthToken();
+		const currentAuthToken = "session";
 		const force = options?.force === true;
 		const filters: AdminFilters = {
 			search: "",

@@ -5,7 +5,6 @@
 		markerIndex >= 0 ? location.pathname.slice(0, markerIndex) : "";
 	const docsRoot = `${panelRoot}/tutorial-content`;
 	const lang = document.documentElement.lang.startsWith("fa") ? "fa" : "en";
-	const token = localStorage.getItem("token");
 	const nativeFetch = window.fetch.bind(window);
 	window.fetch = (input, options) => {
 		if (
@@ -63,20 +62,23 @@
 		}
 	});
 
-	if (!token) return;
-	fetch("/api/admin", {
-		headers: { Authorization: `Bearer ${token}` },
+	fetch("/api/auth/session", {
 		cache: "no-store",
+		credentials: "same-origin",
 	})
 		.then((response) => {
 			if (response.status === 401 || response.status === 403) {
-				localStorage.removeItem("token");
 				window.top?.location.replace(`${panelRoot}/login`);
 				return null;
 			}
 			return response.ok ? response.json() : null;
 		})
-		.then((admin) => {
+		.then((session) => {
+			if (!session || session.state !== "active") {
+				window.top?.location.replace(`${panelRoot}/login`);
+				return;
+			}
+			const admin = session.admin;
 			const privileged = admin && ["sudo", "full_access"].includes(admin.role);
 			document.documentElement.dataset.rbPrivileged = privileged
 				? "true"
