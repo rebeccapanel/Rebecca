@@ -2347,6 +2347,19 @@ export const CoreSettingsPage: FC = () => {
 				.map((outbound: any) => String(outbound.tag)),
 		[canonicalOutbounds, editingReverseRow?.connectionTag],
 	);
+	const vlessOutboundDetails = useMemo(
+		() =>
+			Object.fromEntries(
+				canonicalOutbounds.map((outbound: any) => {
+					const account = readVlessOutboundAccount(outbound);
+					return [
+						String(outbound?.tag ?? ""),
+						{ credentialId: account.id, flow: account.flow },
+					];
+				}),
+			),
+		[canonicalOutbounds],
+	);
 
 	const existingReverseTags = useMemo(
 		() =>
@@ -4888,6 +4901,7 @@ export const CoreSettingsPage: FC = () => {
 				outboundTags={availableOutboundTags}
 				vlessInboundTags={vlessInboundTags}
 				vlessOutboundTags={vlessOutboundTags}
+				vlessOutboundDetails={vlessOutboundDetails}
 				existingTags={existingReverseTags}
 				reverseCount={reverseData.length}
 				onSubmit={handleReverseSubmit}

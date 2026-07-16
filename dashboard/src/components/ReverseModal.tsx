@@ -45,6 +45,7 @@ interface ReverseModalProps {
 	outboundTags: string[];
 	vlessInboundTags: string[];
 	vlessOutboundTags: string[];
+	vlessOutboundDetails: Record<string, { credentialId: string; flow: string }>;
 	existingTags: string[];
 	reverseCount: number;
 	onSubmit: (values: ReverseFormValues) => void;
@@ -75,6 +76,7 @@ export const ReverseModal: FC<ReverseModalProps> = ({
 	outboundTags,
 	vlessInboundTags,
 	vlessOutboundTags,
+	vlessOutboundDetails,
 	existingTags,
 	reverseCount,
 	onSubmit,
@@ -97,6 +99,7 @@ export const ReverseModal: FC<ReverseModalProps> = ({
 	const tag = form.watch("tag");
 	const credentialId = form.watch("credentialId");
 	const connectionOutbound = form.watch("interconnectionOutboundTag");
+	const connectionDetails = vlessOutboundDetails[connectionOutbound];
 	const targetOutbound = form.watch("outboundTag");
 	const connectionInbound = form.watch("interconnectionInboundTag");
 	const sourceInbounds = form.watch("inboundTags") ?? [];
@@ -188,10 +191,15 @@ export const ReverseModal: FC<ReverseModalProps> = ({
 											</FormErrorMessage>
 										) : (
 											<FormHelperText>
-												{t(
-													"pages.xray.reverse.tagHint",
-													"Xray creates this tag locally.",
-												)}
+												{type === "public"
+													? t(
+															"pages.xray.reverse.tagPendingHint",
+															"Xray activates this tag after the internal device connects.",
+														)
+													: t(
+															"pages.xray.reverse.tagHint",
+															"Xray creates this tag locally.",
+														)}
 											</FormHelperText>
 										)}
 									</FormControl>
@@ -273,6 +281,35 @@ export const ReverseModal: FC<ReverseModalProps> = ({
 												)}
 											</FormErrorMessage>
 										</FormControl>
+										{connectionDetails && (
+											<>
+												<FormControl>
+													<FormLabel>
+														{t("pages.xray.reverse.credentialId", "Connection UUID")}
+													</FormLabel>
+													<Input
+														value={connectionDetails.credentialId}
+														isReadOnly
+														fontFamily="mono"
+														size="sm"
+													/>
+													<FormHelperText>
+														{t(
+															"pages.xray.reverse.pairingHint",
+															"UUID and Flow must match the internal VLESS outbound.",
+														)}
+													</FormHelperText>
+												</FormControl>
+												<FormControl>
+													<FormLabel>{t("pages.outbound.flow", "Flow")}</FormLabel>
+													<Input
+														value={connectionDetails.flow || t("common.none", "None")}
+														isReadOnly
+														size="sm"
+													/>
+												</FormControl>
+											</>
+										)}
 									</XrayFieldGrid>
 								</XrayDialogSection>
 							) : (
@@ -316,12 +353,21 @@ export const ReverseModal: FC<ReverseModalProps> = ({
 												{t("pages.xray.reverse.credentialId", "Connection UUID")}
 											</FormLabel>
 											<Input {...form.register("credentialId")} size="sm" fontFamily="mono" />
-											<FormErrorMessage>
-												{t(
-													"pages.xray.reverse.credentialIdError",
-													"Enter a valid UUID.",
-												)}
-											</FormErrorMessage>
+											{credentialInvalid ? (
+												<FormErrorMessage>
+													{t(
+														"pages.xray.reverse.credentialIdError",
+														"Enter a valid UUID.",
+													)}
+												</FormErrorMessage>
+											) : (
+												<FormHelperText>
+													{t(
+														"pages.xray.reverse.pairingHint",
+														"UUID and Flow must match the internal VLESS outbound.",
+													)}
+												</FormHelperText>
+											)}
 										</FormControl>
 										<FormControl>
 											<FormLabel>{t("pages.outbound.flow", "Flow")}</FormLabel>
