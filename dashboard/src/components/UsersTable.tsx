@@ -62,7 +62,7 @@ import {
 import { copyTextToClipboard } from "utils/clipboard";
 import { formatBytes } from "utils/formatByte";
 import { generateUserLinks } from "utils/userLinks";
-import { DeleteConfirmDialog } from "./dialogs/ConfirmDialog";
+import { ConfirmDialog, DeleteConfirmDialog } from "./dialogs/ConfirmDialog";
 import { OnlineStatus } from "./OnlineStatus";
 import { StatusBadge } from "./StatusBadge";
 import {
@@ -460,6 +460,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 	const [contextAction, setContextAction] = useState<string | null>(null);
 	const [selectedUsernames, setSelectedUsernames] = useState<string[]>([]);
 	const [bulkAction, setBulkAction] = useState<string | null>(null);
+	const [isBulkResetOpen, setIsBulkResetOpen] = useState(false);
 
 	const visibleUsernames = useMemo(
 		() => usersResponse.users.map((user) => user.username),
@@ -519,18 +520,9 @@ export const UsersTable: FC<UsersTableProps> = ({
 
 	const closeContextMenu = useCallback(() => undefined, []);
 
-	const handleResetUsage = async (user: UserListItem) => {
-		setContextAction("reset");
-		try {
-			await resetDataUsage(user);
-			notify(t("usersTable.resetUsage", "Usage reset"), "success");
-			refetchUsers(true);
-		} catch (error: any) {
-			notify(error?.data?.detail || error?.message || t("error"), "error");
-		} finally {
-			setContextAction(null);
-			closeContextMenu();
-		}
+	const handleResetUsage = (user: UserListItem) => {
+		useDashboard.setState({ resetUsageUser: user });
+		closeContextMenu();
 	};
 
 	const handleRevokeSub = async (user: UserListItem) => {
@@ -760,13 +752,15 @@ export const UsersTable: FC<UsersTableProps> = ({
 			t("usersTable.enableUser", "Enable user"),
 		);
 
-	const handleBulkReset = () =>
-		runBulkUserAction(
+	const handleBulkReset = async () => {
+		await runBulkUserAction(
 			"reset",
 			selectedUsers,
 			(user) => resetDataUsage(user),
 			t("usersTable.resetUsage", "Usage reset"),
 		);
+		setIsBulkResetOpen(false);
+	};
 
 	const handleBulkRevoke = () =>
 		runBulkUserAction(
@@ -1388,7 +1382,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 										size="sm"
 										variant="outline"
 										leftIcon={<ResetIcon />}
-										onClick={handleBulkReset}
+										onClick={() => setIsBulkResetOpen(true)}
 										isLoading={bulkAction === "reset"}
 										isDisabled={
 											Boolean(bulkAction) || selectedUsers.length === 0
@@ -1475,6 +1469,20 @@ export const UsersTable: FC<UsersTableProps> = ({
 					</Flex>
 				)}
 			</Box>
+			<ConfirmDialog
+				isOpen={isBulkResetOpen}
+				onClose={() => setIsBulkResetOpen(false)}
+				onConfirm={handleBulkReset}
+				title={t("usersTable.resetUsage", "Reset usage")}
+				description={t(
+					"usersTable.bulkResetPrompt",
+					"Reset usage for {{count}} selected users?",
+					{ count: selectedUsers.length },
+				)}
+				confirmLabel={t("reset", "Reset")}
+				isLoading={bulkAction === "reset"}
+				isConfirmDisabled={selectedUsers.length === 0}
+			/>
 		</VStack>
 	);
 };

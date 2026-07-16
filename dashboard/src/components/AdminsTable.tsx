@@ -312,6 +312,10 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		onClose: closeQuickPassConfirm,
 	} = useDisclosure();
 	const [quickPassAdmin, setQuickPassAdmin] = useState<Admin | null>(null);
+	const [resetConfirmation, setResetConfirmation] = useState<{
+		admin: Admin;
+		type: "usage" | "deleted";
+	} | null>(null);
 
 	const currentAdminUsername = userData.username;
 	const hasFullAccess = userData.role === AdminRole.FullAccess;
@@ -397,6 +401,16 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		} finally {
 			setActionState(null);
 		}
+	};
+
+	const confirmUsageReset = async () => {
+		if (!resetConfirmation) return;
+		if (resetConfirmation.type === "deleted") {
+			await runResetDeletedUsersUsage(resetConfirmation.admin);
+		} else {
+			await runResetUsage(resetConfirmation.admin);
+		}
+		setResetConfirmation(null);
 	};
 
 	const startDisableAdmin = (admin: Admin) => {
@@ -1139,7 +1153,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 					id: "reset",
 					label: t("admins.resetUsage", "Reset usage"),
 					icon: <ResetIcon />,
-					onClick: () => runResetUsage(admin),
+					onClick: () => setResetConfirmation({ admin, type: "usage" }),
 					isDisabled:
 						actionState?.username === admin.username &&
 						actionState?.type === "reset",
@@ -1152,7 +1166,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 				id: "resetDeleted",
 				label: t("admins.resetDeletedUsage", "Reset deleted-user usage"),
 				icon: <QuickPassIcon />,
-				onClick: () => runResetDeletedUsersUsage(admin),
+				onClick: () => setResetConfirmation({ admin, type: "deleted" }),
 				isDisabled:
 					actionState?.username === admin.username &&
 					actionState?.type === "resetDeleted",
@@ -1263,6 +1277,27 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 					tableProps={tableProps}
 				/>
 			</Stack>
+
+			<ConfirmDialog
+				isOpen={Boolean(resetConfirmation)}
+				onClose={() => setResetConfirmation(null)}
+				onConfirm={confirmUsageReset}
+				title={t(
+					resetConfirmation?.type === "deleted"
+						? "admins.resetDeletedUsage"
+						: "admins.resetUsage",
+					"Reset usage",
+				)}
+				description={t(
+					"admins.resetUsageConfirm",
+					"Reset usage for {{username}}?",
+					{ username: resetConfirmation?.admin.username ?? "" },
+				)}
+				confirmLabel={t("reset", "Reset")}
+				isLoading={
+					actionState?.type === "reset" || actionState?.type === "resetDeleted"
+				}
+			/>
 
 			<ConfirmDialog
 				isOpen={isDeleteDialogOpen}
