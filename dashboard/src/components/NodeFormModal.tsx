@@ -870,17 +870,27 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 										}
 									>
 										<FormLabel>{t("nodes.proxyType", "Proxy type")}</FormLabel>
-										<Select
-											size="sm"
-											placeholder={t(
-												"nodes.proxyTypePlaceholder",
-												"Select proxy type",
-											)}
-											{...form.register("proxy_type")}
-										>
-											<option value="http">HTTP</option>
-											<option value="socks5">SOCKS5</option>
-										</Select>
+									<Controller
+										control={form.control}
+										name="proxy_type"
+										render={({ field }) => (
+											<Select
+												size="sm"
+												placeholder={t(
+													"nodes.proxyTypePlaceholder",
+													"Select proxy type",
+												)}
+												name={field.name}
+												value={field.value ?? ""}
+												onBlur={field.onBlur}
+												onValueChange={(value) => field.onChange(value || null)}
+												options={[
+													{ value: "http", label: "HTTP" },
+													{ value: "socks5", label: "SOCKS5" },
+												]}
+											/>
+										)}
+									/>
 										<FormErrorMessage>
 											{getInputError(form.formState?.errors?.proxy_type)}
 										</FormErrorMessage>
