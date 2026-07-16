@@ -1,0 +1,60 @@
+name: گزارش باگ (فارسی)
+description: یک مشکل قابل تکرار در ربکا را گزارش کنید.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: لطفاً رمز عبور، توکن، کلید خصوصی و اطلاعات حساس را از لاگ‌ها و تصاویر حذف کنید.
+  - type: input
+    id: version
+    attributes:
+      label: نسخه ربکا
+      placeholder: کامیت dev، تگ نسخه یا تاریخ بیلد
+    validations:
+      required: true
+  - type: dropdown
+    id: install_mode
+    attributes:
+      label: روش نصب
+      options: [Binary, Docker, Source]
+    validations:
+      required: true
+  - type: dropdown
+    id: component
+    attributes:
+      label: بخش درگیر
+      options: [داشبورد, مستر, نود, Xray, ساب, دیتابیس, نصب‌کننده, سایر]
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: شرح مشکل
+      description: اتفاق رخ‌داده و نتیجه مورد انتظار را توضیح دهید.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: مراحل تکرار
+      placeholder: |
+        1. وارد ... شوید
+        2. گزینه ... را تغییر دهید
+        3. خطا نمایش داده می‌شود
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: لاگ یا تصویر مرتبط
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: بررسی نهایی
+      options:
+        - label: ایشوهای قبلی را برای این مشکل جست‌وجو کردم.
+          required: true
+        - label: اطلاعات ورود و داده‌های خصوصی را از گزارش حذف کردم.
+          required: true
