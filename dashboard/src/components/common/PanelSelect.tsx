@@ -738,6 +738,7 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 					readOnly
 				/>
 				<Menu
+					autoSelect={false}
 					closeOnSelect={closeOnSelect ?? true}
 					isOpen={disabledState ? false : undefined}
 					isLazy
