@@ -10,11 +10,12 @@ import (
 )
 
 type Config struct {
-	Addr          string
-	TLSCertFile   string
-	TLSKeyFile    string
-	DashboardPath string
-	APIHandler    http.Handler
+	Addr             string
+	ExtraListenPorts []int
+	TLSCertFile      string
+	TLSKeyFile       string
+	DashboardPath    string
+	APIHandler       http.Handler
 }
 
 func LoadConfig() Config {

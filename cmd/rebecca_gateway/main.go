@@ -31,6 +31,11 @@ func main() {
 	} else {
 		logging.Warnf(logging.ComponentRuntime, "failed to load dashboard path from settings: %v", err)
 	}
+	if subscriptionSettings, err := api.SubscriptionSettings(ctx); err == nil {
+		cfg.ExtraListenPorts = subscriptionSettings.SubscriptionPorts
+	} else {
+		logging.Warnf(logging.ComponentRuntime, "failed to load subscription ports from settings: %v", err)
+	}
 	api.StartBackground(ctx)
 	cfg.APIHandler = api.Handler()
 
@@ -45,7 +50,7 @@ func main() {
 		if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
 			scheme = "https"
 		}
-		logging.Infof(logging.ComponentRuntime, "server listening on %s://%s", scheme, cfg.Addr)
+		logging.Infof(logging.ComponentRuntime, "server listening on %s://%s extra_ports=%v", scheme, cfg.Addr, cfg.ExtraListenPorts)
 		errCh <- server.Run()
 	}()
 

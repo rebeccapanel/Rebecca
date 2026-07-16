@@ -153,3 +153,17 @@ func TestGatewayHealthChecks(t *testing.T) {
 		}
 	}
 }
+
+func TestExtraListenAddrsUsePrimaryHostAndSkipDuplicates(t *testing.T) {
+	got := extraListenAddrs(":443", []int{443, 2053, 0, 70000, 8443, 2053})
+	want := []string{":2053", ":8443"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("extraListenAddrs(:443)=%v want %v", got, want)
+	}
+
+	got = extraListenAddrs("127.0.0.1:443", []int{2053})
+	want = []string{"127.0.0.1:2053"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("extraListenAddrs(127.0.0.1:443)=%v want %v", got, want)
+	}
+}
