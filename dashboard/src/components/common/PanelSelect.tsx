@@ -252,21 +252,10 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 		const normalizedOptions = useMemo(
 			() =>
 				dedupeOptions([
-					...(placeholder && mode === "single"
-						? [
-								{
-									disabled: false,
-									label: placeholder,
-									searchLabel: placeholder,
-									title: placeholder,
-									value: "",
-								},
-							]
-						: []),
 					...collectOptionsFromChildren(children),
 					...options.map(normalizeOption),
-				]),
-			[children, mode, options, placeholder],
+				]).filter((option) => option.value || optionText(option.label).trim()),
+			[children, options],
 		);
 		const selectedValues = useMemo(() => {
 			if (Array.isArray(value)) return dedupeValues(value);
