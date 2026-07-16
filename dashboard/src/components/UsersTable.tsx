@@ -11,6 +11,7 @@ import {
 	MenuItem,
 	MenuList,
 	Portal,
+	Spinner,
 	Stack,
 	Text,
 	Tooltip,
@@ -62,6 +63,7 @@ import {
 import { copyTextToClipboard } from "utils/clipboard";
 import { formatBytes } from "utils/formatByte";
 import { generateUserLinks } from "utils/userLinks";
+import { AppDialog } from "./dialogs/AppDialog";
 import { ConfirmDialog, DeleteConfirmDialog } from "./dialogs/ConfirmDialog";
 import { OnlineStatus } from "./OnlineStatus";
 import { StatusBadge } from "./StatusBadge";
@@ -461,6 +463,11 @@ export const UsersTable: FC<UsersTableProps> = ({
 	const [selectedUsernames, setSelectedUsernames] = useState<string[]>([]);
 	const [bulkAction, setBulkAction] = useState<string | null>(null);
 	const [isBulkResetOpen, setIsBulkResetOpen] = useState(false);
+	const [ipDialog, setIPDialog] = useState<{
+		username: string;
+		records: UserIPRecord[];
+		error?: string;
+	} | null>(null);
 
 	const visibleUsernames = useMemo(
 		() => usersResponse.users.map((user) => user.username),
@@ -641,31 +648,43 @@ export const UsersTable: FC<UsersTableProps> = ({
 
 	const handleGetIPs = async (user: UserListItem) => {
 		setContextAction("ips");
+		setIPDialog({ username: user.username, records: [] });
+		closeContextMenu();
 		try {
 			const response = await fetch<UserIPsResponse>(
 				`/user/${encodeURIComponent(user.username)}/ips`,
 			);
-			const text = formatUserIPRecords(response.ips || []);
-			await copyTextToClipboard(text).catch(() => undefined);
-			toast({
-				title: t("usersTable.getIps", "Get IPs"),
-				description: text,
-				status: response.ips?.length ? "success" : "info",
-				duration: 9000,
-				isClosable: true,
-			});
+			setIPDialog((current) =>
+				current?.username === user.username
+					? { username: user.username, records: response.ips || [] }
+					: current,
+			);
 		} catch (error: any) {
-			toast({
-				title:
-					error?.data?.detail ||
-					error?.message ||
-					t("usersTable.getIpsFailed", "Unable to get IPs"),
-				status: "error",
-				duration: 1800,
-			});
+			const message =
+				error?.data?.detail ||
+				error?.message ||
+				t("usersTable.getIpsFailed", "Unable to get IPs");
+			setIPDialog((current) =>
+				current?.username === user.username
+					? { ...current, error: message }
+					: current,
+			);
 		} finally {
 			setContextAction(null);
-			closeContextMenu();
+		}
+	};
+
+	const handleCopyIPs = async () => {
+		if (!ipDialog?.records.length) return;
+		try {
+			await copyTextToClipboard(formatUserIPRecords(ipDialog.records));
+			notify(t("usersTable.ipsCopied", "IP addresses copied"), "success", {
+				duration: 1200,
+			});
+		} catch {
+			notify(t("usersTable.copyFailed", "Copy failed"), "error", {
+				duration: 1600,
+			});
 		}
 	};
 
@@ -1052,7 +1071,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 			},
 			{
 				id: "get-ips",
-				label: t("usersTable.getIps", "Get IPs"),
+				label: t("usersTable.getIps", "View IP addresses"),
 				icon: <IPsIcon />,
 				isDisabled: contextAction === "ips",
 				onClick: () => handleGetIPs(user),
@@ -1469,6 +1488,169 @@ export const UsersTable: FC<UsersTableProps> = ({
 					</Flex>
 				)}
 			</Box>
+			<AppDialog
+				isOpen={ipDialog !== null}
+				onClose={() => setIPDialog(null)}
+				title={t("usersTable.ipsDialogTitle", "IP addresses")}
+				isCentered
+				size="lg"
+				scrollBehavior="inside"
+				contentProps={{
+					bg: "panel.surface",
+					borderColor: "panel.border",
+					borderWidth: "1px",
+					borderRadius: "lg",
+					overflow: "hidden",
+				}}
+				bodyProps={{ pb: 5 }}
+				footer={
+					<HStack w="full" justify="flex-end" spacing={2}>
+						<Button size="sm" onClick={() => setIPDialog(null)}>
+							{t("close", "Close")}
+						</Button>
+						<Button
+							size="sm"
+							colorScheme="primary"
+							leftIcon={<CopyIcon />}
+							onClick={handleCopyIPs}
+							isDisabled={
+								contextAction === "ips" ||
+								Boolean(ipDialog?.error) ||
+								!ipDialog?.records.length
+							}
+						>
+							{t("usersTable.copyIps", "Copy all IPs")}
+						</Button>
+					</HStack>
+				}
+			>
+				<Stack spacing={4}>
+					<Box>
+						<HStack justify="space-between" align="baseline" spacing={3}>
+							<Text fontWeight="700" dir="ltr" noOfLines={1}>
+								{ipDialog?.username}
+							</Text>
+							{contextAction !== "ips" && !ipDialog?.error && (
+								<Text fontSize="xs" color="panel.textMuted" flexShrink={0}>
+									{t("usersTable.ipsDialogCount", "{{count}} IP records", {
+										count: ipDialog?.records.length ?? 0,
+									})}
+								</Text>
+							)}
+						</HStack>
+						<Text mt={1} fontSize="sm" color="panel.textMuted">
+							{t(
+								"usersTable.ipsDialogDescription",
+								"Current IP records reported for this user.",
+							)}
+						</Text>
+					</Box>
+
+					{contextAction === "ips" ? (
+						<Flex align="center" justify="center" gap={3} py={8}>
+							<Spinner size="sm" color="panel.accent" />
+							<Text fontSize="sm" color="panel.textMuted">
+								{t("usersTable.ipsDialogLoading", "Loading IP addresses...")}
+							</Text>
+						</Flex>
+					) : ipDialog?.error ? (
+						<Box
+							role="alert"
+							borderWidth="1px"
+							borderColor="red.400"
+							borderRadius="md"
+							bg="red.50"
+							color="red.700"
+							_dark={{ bg: "rgba(127, 29, 29, 0.22)", color: "red.200" }}
+							px={3}
+							py={2.5}
+							fontSize="sm"
+						>
+							{ipDialog.error}
+						</Box>
+					) : !ipDialog?.records.length ? (
+						<Box
+							borderWidth="1px"
+							borderColor="panel.border"
+							borderRadius="md"
+							px={4}
+							py={8}
+							textAlign="center"
+						>
+							<Text fontSize="sm" color="panel.textMuted">
+								{t(
+									"usersTable.ipsDialogEmpty",
+									"No IP addresses are currently reported.",
+								)}
+							</Text>
+						</Box>
+					) : (
+						<Stack
+							spacing={0}
+							borderWidth="1px"
+							borderColor="panel.border"
+							borderRadius="md"
+							overflow="hidden"
+						>
+							{ipDialog.records.map((record, index) => {
+								const node = record.node_name || `node-${record.node_id}`;
+								const ip = record.ip || record.assigned_ip || "-";
+								const metadata = [record.protocol, record.inbound_tag, node]
+									.filter(Boolean)
+									.join(" · ");
+								const assignedIP =
+									record.assigned_ip && record.assigned_ip !== ip
+										? record.assigned_ip
+										: null;
+
+								return (
+									<Box
+										key={record.session_id || `${metadata}-${ip}-${index}`}
+										px={3}
+										py={2.5}
+										borderBottomWidth={
+											index === ipDialog.records.length - 1 ? 0 : "1px"
+										}
+										borderColor="panel.border"
+									>
+										<Text
+											dir="ltr"
+											fontFamily="mono"
+											fontWeight="700"
+											fontSize="sm"
+											overflowWrap="anywhere"
+										>
+											{ip}
+										</Text>
+										<Text
+											mt={0.5}
+											dir="ltr"
+											fontSize="xs"
+											color="panel.textMuted"
+											overflowWrap="anywhere"
+										>
+											{metadata}
+										</Text>
+										{assignedIP && (
+											<Text
+												mt={1}
+												fontSize="xs"
+												color="panel.textSecondary"
+												overflowWrap="anywhere"
+											>
+												{t("usersTable.assignedIp", "Assigned IP")}: {" "}
+												<chakra.span dir="ltr" display="inline-block">
+													{assignedIP}
+												</chakra.span>
+											</Text>
+										)}
+									</Box>
+								);
+							})}
+						</Stack>
+					)}
+				</Stack>
+			</AppDialog>
 			<ConfirmDialog
 				isOpen={isBulkResetOpen}
 				onClose={() => setIsBulkResetOpen(false)}

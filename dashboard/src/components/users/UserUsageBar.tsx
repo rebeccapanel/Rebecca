@@ -48,7 +48,8 @@ export const UserUsageBar: FC<UserUsageBarProps> = ({
 	const isUnlimited = total === 0 || total === null;
 	const percent = isUnlimited ? 0 : Math.min((used / (total || 1)) * 100, 100);
 	const tone = getUsageTone(percent, isUnlimited);
-	const fillWidth = isUnlimited ? "100%" : `${Math.max(percent, 2)}%`;
+	const fillWidth =
+		used <= 0 ? "0%" : isUnlimited ? "100%" : `${Math.max(percent, 2)}%`;
 	const percentLabel = isUnlimited ? "∞" : `${Math.round(percent)}%`;
 
 	const track = (
