@@ -18,31 +18,29 @@ export const HostsPage: FC = () => {
 	const hostsTabIndex = 1;
 	const canManageHosts =
 		getUserIsSuccess && Boolean(userData.permissions?.sections.hosts);
-	const splitHash = useCallback(() => {
-		const hash = window.location.hash || "";
-		const idx = hash.indexOf("#", 1);
-		return {
-			base: idx >= 0 ? hash.slice(0, idx) : hash,
-			tab: idx >= 0 ? hash.slice(idx + 1) : "",
-		};
-	}, []);
+	const readHashTab = useCallback(
+		() => (window.location.hash || "").replace(/^#/, "").toLowerCase(),
+		[],
+	);
 
 	useEffect(() => {
 		const syncFromHash = () => {
-			const { tab } = splitHash();
-			const idx = tabKeys.indexOf(tab.toLowerCase());
+			const idx = tabKeys.indexOf(readHashTab());
 			if (idx >= 0) {
 				setActiveTab(idx);
 			} else {
 				setActiveTab(0);
-				const { base } = splitHash();
-				window.location.hash = `${base || "#"}#${tabKeys[0]}`;
+				window.history.replaceState(
+					null,
+					"",
+					`${window.location.pathname}${window.location.search}#${tabKeys[0]}`,
+				);
 			}
 		};
 		syncFromHash();
 		window.addEventListener("hashchange", syncFromHash);
 		return () => window.removeEventListener("hashchange", syncFromHash);
-	}, [splitHash, tabKeys]);
+	}, [readHashTab, tabKeys]);
 
 	useEffect(() => {
 		if (activeTab !== hostsTabIndex) {
@@ -58,8 +56,7 @@ export const HostsPage: FC = () => {
 	const handleTabChange = (index: number) => {
 		setActiveTab(index);
 		const key = tabKeys[index] || "";
-		const { base } = splitHash();
-		window.location.hash = `${base || "#"}#${key}`;
+		if (readHashTab() !== key) window.location.hash = key;
 	};
 	if (!canManageHosts) {
 		return (
