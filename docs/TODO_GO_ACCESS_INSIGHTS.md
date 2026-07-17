@@ -1,8 +1,26 @@
-# TODO: Rebuild Access Insights In Go
+# Access Insights Go Rebuild
+
+## Implemented Online View
+
+The Go API now restores Live Access Insights as a bounded online-session view.
+It reads the existing `user_online_ips` snapshots for Xray and active session
+records for OpenVPN, WireGuard, L2TP/IPsec, IKEv2, and Cisco AnyConnect. Page
+refreshes do not dial nodes or call the Xray stats API; those snapshots continue
+to arrive through the normal 30-second accounting collection.
+
+The view is capped at 500 users and 5,000 records, applies admin ownership in
+SQL, hides duplicate Xray pool IPs created by routed tunnel traffic, and keeps
+automatic refresh optional. ISP ranges are loaded from `ISPbyrange.json` with a
+short network timeout, a response-size cap, and a 24-hour in-memory cache. The
+same resolver enriches the Users page Get IPs dialog.
+
+The destination/platform analysis described below remains a separate future
+phase. Direct-egress tunnel protocols do not expose destination traffic to Xray,
+so source IP, protocol, node, and operator are the common reliable live data.
 
 Access Insights is temporarily disabled in the Python backend. The frontend page
-is kept as a Coming soon surface, but all backend parsing, geo lookup, and raw
-log streaming must be rebuilt in Go before the feature is enabled again.
+has been restored using the Go online-session API. Raw access-log parsing,
+destination geo lookup, and raw log streaming remain future work.
 
 ## Current Feature Intent
 
@@ -55,9 +73,9 @@ The removed Python API surface was:
 - `POST /api/core/access/operators`
 - `WS /api/core/access/logs/ws`
 
-For now, HTTP routes return `410 Gone` and the websocket closes with a disabled
-reason. The frontend page should not call these routes while the feature is in
-Coming soon state.
+The online-session rebuild restores the insights, multi-node, and operator HTTP
+routes. Raw-log HTTP streaming and websocket routes remain disabled until the
+destination-analysis phase is implemented with bounded node gRPC streaming.
 
 ## Old Query/Runtime Parameters
 
@@ -303,7 +321,7 @@ version should:
 
 ## Frontend Requirements
 
-The page remains in the UI as Coming soon.
+The page is enabled as the bounded online-session view described above.
 
 When rebuilt:
 
@@ -312,16 +330,9 @@ When rebuilt:
 - the page must stay usable with dozens or hundreds of nodes
 - disabled/down nodes should appear as source status, not page-level failure
 
-## Rebuild Checklist
+## Remaining Destination-Analysis Checklist
 
-1. Add Go package for access insight parsing and aggregation.
-2. Add Go geo asset loader/cache.
-3. Add node gRPC access-log stream or bounded fetch API.
-4. Add Go Master API routes.
-5. Add Gateway direct routing.
-6. Restore frontend calls and remove Coming soon state.
-7. Add unit tests for parsing, classification, source budgeting, aggregation,
-   and operator lookup.
-8. Add integration tests with multiple nodes and node-down behavior.
-9. Add load test with many nodes and large access logs.
-10. Remove temporary 410 route stubs.
+1. Add a bounded node gRPC access-log stream.
+2. Add Go destination parsing and geo classification.
+3. Restore the optional raw NDJSON/websocket routes with backpressure.
+4. Add parser, node-down, and large-log load tests.

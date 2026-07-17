@@ -115,7 +115,6 @@ func TestRemovedAndDeprecatedRoutes(t *testing.T) {
 		want   int
 	}{
 		{method: http.MethodPost, path: "/api/core/xray/update", want: http.StatusGone},
-		{method: http.MethodGet, path: "/api/core/access/insights", want: http.StatusGone},
 		{method: http.MethodGet, path: "/api/node/master", want: http.StatusGone},
 		{method: http.MethodPost, path: "/api/node/master/usage/reset", want: http.StatusGone},
 	}
@@ -128,6 +127,23 @@ func TestRemovedAndDeprecatedRoutes(t *testing.T) {
 				t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 			}
 		})
+	}
+}
+
+func TestAccessInsightsRouteReachesAPI(t *testing.T) {
+	server, err := NewServer(Config{APIHandler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/core/access/insights" {
+			t.Fatalf("path=%s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/core/access/insights", nil))
+	if recorder.Code != http.StatusNoContent {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
 }
 

@@ -138,6 +138,8 @@ type UserIPRecord = {
 	session_id?: string;
 	ip?: string;
 	assigned_ip?: string;
+	operator_short_name?: string;
+	operator_owner?: string;
 	last_seen_at?: string;
 };
 
@@ -641,7 +643,8 @@ export const UsersTable: FC<UsersTableProps> = ({
 						? ` assigned=${record.assigned_ip}`
 						: "";
 				const inbound = record.inbound_tag ? ` ${record.inbound_tag}` : "";
-				return `${record.protocol}${inbound} @ ${node}: ${ip}${assigned}`;
+				const operator = record.operator_short_name || record.operator_owner;
+				return `${record.protocol}${inbound} @ ${node}: ${ip}${assigned}${operator ? ` operator=${operator}` : ""}`;
 			})
 			.join("\n");
 	};
@@ -1602,6 +1605,10 @@ export const UsersTable: FC<UsersTableProps> = ({
 									record.assigned_ip && record.assigned_ip !== ip
 										? record.assigned_ip
 										: null;
+								const operator =
+									record.operator_short_name ||
+									record.operator_owner ||
+									t("usersTable.operatorUnknown", "Unknown operator");
 
 								return (
 									<Box
@@ -1631,6 +1638,15 @@ export const UsersTable: FC<UsersTableProps> = ({
 										>
 											{metadata}
 										</Text>
+										<Text mt={1} fontSize="xs" color="panel.textSecondary">
+											{t("usersTable.operator", "Operator")}: {operator}
+										</Text>
+										{record.operator_owner &&
+											record.operator_owner !== record.operator_short_name && (
+												<Text mt={0.5} fontSize="xs" color="panel.textMuted">
+													{record.operator_owner}
+												</Text>
+											)}
 										{assignedIP && (
 											<Text
 												mt={1}

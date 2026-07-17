@@ -1760,6 +1760,77 @@
         "operationId": "postCoreRestart"
       }
     },
+    "/api/core/access/insights": {
+      "get": {
+        "tags": ["Core"],
+        "summary": "Get live access insights",
+        "description": "Return bounded online user snapshots across Xray, OpenVPN, WireGuard, L2TP/IPsec, IKEv2, and Cisco AnyConnect. Data is read from accounting snapshots and does not trigger node polling.",
+        "parameters": [
+          {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 250, "minimum": 1, "maximum": 500}},
+          {"name": "window_seconds", "in": "query", "schema": {"type": "integer", "default": 300, "minimum": 30, "maximum": 600}},
+          {"name": "search", "in": "query", "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Current online access snapshot.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AccessInsightsResponse"}}}
+          }
+        },
+        "operationId": "getAccessInsights"
+      }
+    },
+    "/api/core/access/insights/multi-node": {
+      "get": {
+        "tags": ["Core"],
+        "summary": "Get multi-node live access insights",
+        "description": "Dashboard-compatible alias for the bounded live access snapshot across all connected nodes. Reads accounting snapshots only and requires an authenticated admin with Xray section access.",
+        "parameters": [
+          {"name": "limit", "in": "query", "schema": {"type": "integer", "default": 250, "minimum": 1, "maximum": 500}},
+          {"name": "window_seconds", "in": "query", "schema": {"type": "integer", "default": 300, "minimum": 30, "maximum": 600}},
+          {"name": "search", "in": "query", "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Current online access snapshot.",
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/AccessInsightsResponse"}}}
+          }
+        },
+        "operationId": "getMultiNodeAccessInsights"
+      }
+    },
+    "/api/core/access/operators": {
+      "post": {
+        "tags": ["Core"],
+        "summary": "Resolve IP operators",
+        "description": "Resolve up to 512 IPv4 addresses against the cached ISP range index used by Live Access Insights. Requires an authenticated admin with Xray section access.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["ips"],
+                "properties": {"ips": {"type": "array", "maxItems": 512, "items": {"type": "string", "format": "ipv4"}}}
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Matched operator ranges.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {"operators": {"type": "array", "items": {"$ref": "#/components/schemas/OperatorMetadata"}}}
+                }
+              }
+            }
+          }
+        },
+        "operationId": "resolveAccessOperators"
+      }
+    },
     "/api/core/logs": {
       "get": {
         "tags": [
@@ -4343,6 +4414,54 @@
       }
     },
     "schemas": {
+      "OperatorMetadata": {
+        "type": "object",
+        "required": ["ip"],
+        "properties": {
+          "ip": {"type": "string"},
+          "short_name": {"type": "string"},
+          "owner": {"type": "string"}
+        }
+      },
+      "AccessInsightProtocol": {
+        "type": "object",
+        "required": ["platform", "connections", "destinations"],
+        "properties": {
+          "platform": {"type": "string", "example": "WireGuard"},
+          "connections": {"type": "integer"},
+          "destinations": {"type": "array", "items": {"type": "string"}, "description": "Node names carrying this protocol."}
+        }
+      },
+      "AccessInsightClient": {
+        "type": "object",
+        "required": ["user_key", "user_label", "last_seen", "connections", "sources", "nodes", "platforms"],
+        "properties": {
+          "user_key": {"type": "string"},
+          "user_label": {"type": "string"},
+          "last_seen": {"type": "string", "format": "date-time"},
+          "route": {"type": "string"},
+          "connections": {"type": "integer"},
+          "sources": {"type": "array", "items": {"type": "string"}},
+          "nodes": {"type": "array", "items": {"type": "string"}},
+          "source_nodes": {"type": "object", "additionalProperties": {"type": "array", "items": {"type": "string"}}},
+          "operators": {"type": "array", "items": {"$ref": "#/components/schemas/OperatorMetadata"}},
+          "operator_counts": {"type": "object", "additionalProperties": {"type": "integer"}},
+          "platforms": {"type": "array", "items": {"$ref": "#/components/schemas/AccessInsightProtocol"}}
+        }
+      },
+      "AccessInsightsResponse": {
+        "type": "object",
+        "required": ["mode", "items", "platform_counts", "matched_entries", "generated_at"],
+        "properties": {
+          "mode": {"type": "string", "example": "sessions"},
+          "items": {"type": "array", "items": {"$ref": "#/components/schemas/AccessInsightClient"}},
+          "platform_counts": {"type": "object", "additionalProperties": {"type": "integer"}},
+          "matched_entries": {"type": "integer"},
+          "generated_at": {"type": "string", "format": "date-time"},
+          "lookback_lines": {"type": "integer"},
+          "window_seconds": {"type": "integer"}
+        }
+      },
       "Object": {
         "type": "object",
         "additionalProperties": true,

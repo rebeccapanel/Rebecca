@@ -87,7 +87,7 @@ func apiHealthRequest(r *http.Request) *http.Request {
 
 func isDeprecatedRuntimeRoute(r *http.Request) bool {
 	path := strings.TrimRight(r.URL.Path, "/")
-	return path == "/api/core/xray/update" || path == "/api/core/access" || strings.HasPrefix(path, "/api/core/access/")
+	return path == "/api/core/xray/update"
 }
 
 func deprecatedRuntimeRouteDetail(r *http.Request) string {
@@ -95,7 +95,7 @@ func deprecatedRuntimeRouteDetail(r *http.Request) string {
 	if path == "/api/core/xray/update" {
 		return "Master runtime is node-only; update nodes instead."
 	}
-	return "Access Insights is temporarily disabled while it is rebuilt as a Go-native feature."
+	return "Master runtime is node-only; update nodes instead."
 }
 
 func isDeprecatedMasterNodeRoute(r *http.Request) bool {

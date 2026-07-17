@@ -60,6 +60,7 @@ type Server struct {
 	userOpsKicking     bool
 	userOpsKickUserIDs map[int64]struct{}
 	sessionAdmissionMu sync.Mutex
+	operators          *operatorResolver
 }
 
 func New(cfg Config) (*Server, error) {
@@ -116,6 +117,7 @@ func New(cfg Config) (*Server, error) {
 		nordService:    nordvpnapp.NewService(nordRepo, nordvpnapp.NewClient("")),
 		outboundSubs:   outboundSubs,
 		configRepo:     configRepo,
+		operators:      newOperatorResolver(),
 		settingsRepo:   settingsRepo,
 		telegramRepo:   telegramRepo,
 		telegramSender: telegramSender,

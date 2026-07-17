@@ -229,6 +229,7 @@ func (s *Server) handleUserIPs(w http.ResponseWriter, r *http.Request, username 
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	records = s.enrichOnlineIPRecords(ctx, records)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"username": result.Username,
 		"ips":      records,
