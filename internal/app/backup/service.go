@@ -521,7 +521,16 @@ func (s *Service) restoreFileRoots(filesDir string) ([]string, []string, error) 
 		if allowed[target] != root.ArchiveName {
 			return nil, nil, Error{Message: "Refusing to restore outside Rebecca paths: " + root.Path}
 		}
-		if err := replaceDirectoryContents(source, target, skips); err != nil {
+		sourceInfo, err := os.Stat(source)
+		if err != nil {
+			return nil, nil, err
+		}
+		if sourceInfo.IsDir() {
+			err = replaceDirectoryContents(source, target, skips)
+		} else {
+			err = copyFile(source, target, sourceInfo.Mode().Perm())
+		}
+		if err != nil {
 			return nil, nil, err
 		}
 		restored = append(restored, root.Path)
@@ -1178,10 +1187,29 @@ func defaultFileRoots() []FileRoot {
 	if dataDir == "" {
 		dataDir = "/var/lib/rebecca"
 	}
-	return []FileRoot{
+	roots := []FileRoot{
 		{ArchiveName: "etc_rebecca", Path: configDir},
 		{ArchiveName: "var_lib_rebecca", Path: dataDir},
 	}
+	if envFile := defaultEnvFileRoot(); envFile != "" {
+		roots = append(roots, FileRoot{ArchiveName: "rebecca_env", Path: envFile})
+	}
+	return roots
+}
+
+func defaultEnvFileRoot() string {
+	for _, candidate := range []string{
+		strings.TrimSpace(os.Getenv("REBECCA_ENV_FILE")),
+		"/opt/rebecca/.env",
+	} {
+		if candidate == "" {
+			continue
+		}
+		if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() {
+			return candidate
+		}
+	}
+	return ""
 }
 
 func normalizeDialect(dialect string) string {

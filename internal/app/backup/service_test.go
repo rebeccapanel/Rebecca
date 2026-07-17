@@ -71,6 +71,7 @@ func TestExportImportFullBackupFileRoots(t *testing.T) {
 
 	configRoot := filepath.Join(t.TempDir(), "etc")
 	dataRoot := filepath.Join(t.TempDir(), "var")
+	envFile := filepath.Join(t.TempDir(), ".env")
 	if err := os.MkdirAll(filepath.Join(configRoot, "nested"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -83,10 +84,14 @@ func TestExportImportFullBackupFileRoots(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dataRoot, "state.txt"), []byte("state"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(envFile, []byte("SQLALCHEMY_DATABASE_URL=sqlite:///db.sqlite3\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	service := NewService(db, "sqlite", sqliteURL(dbPath), WithFileRoots([]FileRoot{
 		{ArchiveName: "etc_rebecca", Path: configRoot},
 		{ArchiveName: "var_lib_rebecca", Path: dataRoot},
+		{ArchiveName: "rebecca_env", Path: envFile},
 	}))
 	exported, err := service.Export(ctx, ScopeFull)
 	if err != nil {
@@ -102,16 +107,22 @@ func TestExportImportFullBackupFileRoots(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(configRoot, "stale.txt"), []byte("old"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Remove(envFile); err != nil {
+		t.Fatal(err)
+	}
 
 	result, err := service.Import(ctx, exported.Path, ScopeFull)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.FilesRestored) != 2 {
-		t.Fatalf("expected two restored roots, got %#v", result)
+	if len(result.FilesRestored) != 3 {
+		t.Fatalf("expected three restored roots, got %#v", result)
 	}
 	if _, err := os.Stat(filepath.Join(configRoot, "nested", "config.yml")); err != nil {
 		t.Fatalf("restored config missing: %v", err)
+	}
+	if content, err := os.ReadFile(envFile); err != nil || !strings.Contains(string(content), "SQLALCHEMY_DATABASE_URL") {
+		t.Fatalf("restored env missing or invalid: %q err=%v", content, err)
 	}
 	if _, err := os.Stat(filepath.Join(configRoot, "stale.txt")); !os.IsNotExist(err) {
 		t.Fatalf("stale file should be removed, stat err=%v", err)
