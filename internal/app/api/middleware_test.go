@@ -10,23 +10,33 @@ import (
 
 func TestRequestOriginAllowed(t *testing.T) {
 	tests := []struct {
-		method string
-		origin string
-		want   bool
+		name          string
+		method        string
+		origin        string
+		forwardedHost string
+		want          bool
 	}{
-		{http.MethodGet, "", true},
-		{http.MethodPost, "https://panel.example", true},
-		{http.MethodPost, "https://other.example", false},
-		{http.MethodPost, "", false},
+		{"safe method", http.MethodGet, "", "", true},
+		{"direct host", http.MethodPost, "https://panel.example", "", true},
+		{"reverse proxy host", http.MethodPost, "https://public.example", "public.example", true},
+		{"first forwarded host", http.MethodPost, "https://public.example", "public.example, proxy.internal", true},
+		{"different host", http.MethodPost, "https://other.example", "", false},
+		{"spoofed origin", http.MethodPost, "https://other.example", "panel.example", false},
+		{"missing origin", http.MethodPost, "", "", false},
 	}
 	for _, test := range tests {
-		req := httptest.NewRequest(test.method, "https://panel.example/api/auth/login", nil)
-		if test.origin != "" {
-			req.Header.Set("Origin", test.origin)
-		}
-		if got := requestOriginAllowed(req); got != test.want {
-			t.Fatalf("method=%s origin=%q: got %v, want %v", test.method, test.origin, got, test.want)
-		}
+		t.Run(test.name, func(t *testing.T) {
+			req := httptest.NewRequest(test.method, "https://panel.example/api/auth/login", nil)
+			if test.origin != "" {
+				req.Header.Set("Origin", test.origin)
+			}
+			if test.forwardedHost != "" {
+				req.Header.Set("X-Forwarded-Host", test.forwardedHost)
+			}
+			if got := requestOriginAllowed(req); got != test.want {
+				t.Fatalf("got %v, want %v", got, test.want)
+			}
+		})
 	}
 }
 

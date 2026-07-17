@@ -393,6 +393,22 @@ func TestAdminSessionLoginAndPasswordRevocation(t *testing.T) {
 	}
 }
 
+func TestAdminSessionLoginBehindReverseProxy(t *testing.T) {
+	server, db := testAdminServer(t)
+	insertMasterAPIAdmin(t, db, 42, "proxy-admin", "session-pass", adminapp.RoleFullAccess, adminapp.StatusActive)
+
+	req := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8000/api/auth/login", strings.NewReader(`{"username":"proxy-admin","password":"session-pass"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "https://panel.example")
+	req.Header.Set("X-Forwarded-Host", "panel.example")
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK || len(rec.Result().Cookies()) == 0 {
+		t.Fatalf("session login status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestAdminSessionRequiresOriginAndMandatory2FASetup(t *testing.T) {
 	server, db := testAdminServer(t)
 	insertMasterAPIAdmin(t, db, 41, "setup-admin", "session-pass", adminapp.RoleFullAccess, adminapp.StatusActive)

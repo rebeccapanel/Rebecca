@@ -95,7 +95,11 @@ func requestOriginAllowed(r *http.Request) bool {
 	if err != nil || parsed.Host == "" {
 		return false
 	}
-	return strings.EqualFold(parsed.Host, r.Host)
+	if strings.EqualFold(parsed.Host, r.Host) {
+		return true
+	}
+	forwardedHost := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Host"), ",")[0])
+	return forwardedHost != "" && strings.EqualFold(parsed.Host, forwardedHost)
 }
 
 func sudoScopeAllowed(scopes adminapp.SudoPermissionSettings, path string) bool {
