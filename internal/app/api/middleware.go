@@ -95,11 +95,21 @@ func requestOriginAllowed(r *http.Request) bool {
 	if err != nil || parsed.Host == "" {
 		return false
 	}
-	if strings.EqualFold(parsed.Host, r.Host) {
-		return true
-	}
 	forwardedHost := strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Host"), ",")[0])
-	return forwardedHost != "" && strings.EqualFold(parsed.Host, forwardedHost)
+	sameOriginFetch := strings.EqualFold(strings.TrimSpace(r.Header.Get("Sec-Fetch-Site")), "same-origin")
+	for _, host := range []string{r.Host, forwardedHost} {
+		host = strings.TrimSpace(host)
+		if strings.EqualFold(parsed.Host, host) {
+			return true
+		}
+		// Nginx's common `Host $host` setting drops non-default public ports.
+		// Only trust a hostname-only match when the browser confirms same-origin.
+		candidate := &url.URL{Host: host}
+		if sameOriginFetch && candidate.Port() == "" && parsed.Hostname() != "" && strings.EqualFold(parsed.Hostname(), candidate.Hostname()) {
+			return true
+		}
+	}
+	return false
 }
 
 func sudoScopeAllowed(scopes adminapp.SudoPermissionSettings, path string) bool {
