@@ -169,3 +169,76 @@ func visibleOnlineAccessRecords(records []UserOnlineIPRecord) []UserOnlineIPReco
 	}
 	return result
 }
+
+func collapseUserOnlineIPs(records []UserOnlineIPRecord) []UserOnlineIPRecord {
+	type group struct {
+		record      UserOnlineIPRecord
+		nodes       map[string]struct{}
+		protocols   map[string]struct{}
+		inbounds    map[string]struct{}
+		assignedIPs map[string]struct{}
+	}
+	groups := make(map[string]*group, len(records))
+	order := make([]string, 0, len(records))
+	for _, item := range records {
+		ip := strings.TrimSpace(item.IP)
+		if normalized, ok := normalizedUsableIP(ip); ok {
+			ip = normalized
+		}
+		if ip == "" {
+			ip = strings.TrimSpace(item.AssignedIP)
+		}
+		key := fmt.Sprintf("%d:%s", item.UserID, ip)
+		if ip == "" {
+			key = fmt.Sprintf("%d:%d:%s:%s", item.UserID, item.NodeID, item.Protocol, item.SessionID)
+		}
+		current := groups[key]
+		if current == nil {
+			item.IP = ip
+			current = &group{
+				record: item, nodes: map[string]struct{}{}, protocols: map[string]struct{}{},
+				inbounds: map[string]struct{}{}, assignedIPs: map[string]struct{}{},
+			}
+			groups[key] = current
+			order = append(order, key)
+		} else if item.LastSeenAt.After(current.record.LastSeenAt) {
+			current.record.NodeID = item.NodeID
+			current.record.NodeName = item.NodeName
+			current.record.Protocol = item.Protocol
+			current.record.InboundTag = item.InboundTag
+			current.record.SessionID = item.SessionID
+			current.record.AssignedIP = item.AssignedIP
+			current.record.LastSeenAt = item.LastSeenAt
+		}
+		addRecordValue(current.nodes, item.NodeName)
+		addRecordValue(current.protocols, normalizedOnlineProtocol(item.Protocol))
+		addRecordValue(current.inbounds, item.InboundTag)
+		addRecordValue(current.assignedIPs, item.AssignedIP)
+	}
+	result := make([]UserOnlineIPRecord, 0, len(order))
+	for _, key := range order {
+		current := groups[key]
+		current.record.NodeNames = sortedRecordValues(current.nodes)
+		current.record.Protocols = sortedRecordValues(current.protocols)
+		current.record.InboundTags = sortedRecordValues(current.inbounds)
+		current.record.AssignedIPs = sortedRecordValues(current.assignedIPs)
+		result = append(result, current.record)
+	}
+	sort.SliceStable(result, func(i, j int) bool { return result[i].LastSeenAt.After(result[j].LastSeenAt) })
+	return result
+}
+
+func addRecordValue(values map[string]struct{}, value string) {
+	if value = strings.TrimSpace(value); value != "" {
+		values[value] = struct{}{}
+	}
+}
+
+func sortedRecordValues(values map[string]struct{}) []string {
+	result := make([]string, 0, len(values))
+	for value := range values {
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
+}

@@ -29,13 +29,17 @@ type OnlineIPSample struct {
 type UserOnlineIPRecord struct {
 	NodeID            int64     `json:"node_id"`
 	NodeName          string    `json:"node_name"`
+	NodeNames         []string  `json:"node_names,omitempty"`
 	UserID            int64     `json:"user_id"`
 	Username          string    `json:"username,omitempty"`
 	Protocol          string    `json:"protocol"`
+	Protocols         []string  `json:"protocols,omitempty"`
 	InboundTag        string    `json:"inbound_tag,omitempty"`
+	InboundTags       []string  `json:"inbound_tags,omitempty"`
 	SessionID         string    `json:"session_id,omitempty"`
 	IP                string    `json:"ip,omitempty"`
 	AssignedIP        string    `json:"assigned_ip,omitempty"`
+	AssignedIPs       []string  `json:"assigned_ips,omitempty"`
 	OperatorShortName string    `json:"operator_short_name,omitempty"`
 	OperatorOwner     string    `json:"operator_owner,omitempty"`
 	LastSeenAt        time.Time `json:"last_seen_at"`
@@ -239,7 +243,7 @@ func (c Controller) UserOnlineIPs(ctx context.Context, userID int64) ([]UserOnli
 	if err != nil {
 		return nil, err
 	}
-	return visibleOnlineAccessRecords(records), nil
+	return collapseUserOnlineIPs(visibleOnlineAccessRecords(records)), nil
 }
 
 func (c Controller) OnlineAccessRecords(ctx context.Context, query OnlineAccessQuery) ([]UserOnlineIPRecord, error) {

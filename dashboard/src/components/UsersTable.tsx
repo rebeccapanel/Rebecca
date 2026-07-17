@@ -66,6 +66,7 @@ import { generateUserLinks } from "utils/userLinks";
 import { AppDialog } from "./dialogs/AppDialog";
 import { ConfirmDialog, DeleteConfirmDialog } from "./dialogs/ConfirmDialog";
 import { OnlineStatus } from "./OnlineStatus";
+import { OperatorIdentity } from "./OperatorIdentity";
 import { StatusBadge } from "./StatusBadge";
 import {
 	DataTable,
@@ -133,11 +134,15 @@ const IPsIcon = chakra(GlobeAltIcon, iconProps);
 type UserIPRecord = {
 	node_id: number;
 	node_name?: string;
+	node_names?: string[];
 	protocol: string;
+	protocols?: string[];
 	inbound_tag?: string;
+	inbound_tags?: string[];
 	session_id?: string;
 	ip?: string;
 	assigned_ip?: string;
+	assigned_ips?: string[];
 	operator_short_name?: string;
 	operator_owner?: string;
 	last_seen_at?: string;
@@ -146,6 +151,76 @@ type UserIPRecord = {
 type UserIPsResponse = {
 	username: string;
 	ips: UserIPRecord[];
+};
+
+const uniqueIPValues = (values: Array<string | undefined>) =>
+	Array.from(
+		new Set(values.map((value) => value?.trim()).filter(Boolean) as string[]),
+	).sort();
+
+const deduplicateUserIPRecords = (records: UserIPRecord[]) => {
+	const byIP = new Map<string, UserIPRecord>();
+	for (const record of records) {
+		const ip = (record.ip || record.assigned_ip || "").trim();
+		const key =
+			ip || `${record.node_id}:${record.protocol}:${record.session_id || ""}`;
+		const current = byIP.get(key);
+		if (!current) {
+			byIP.set(key, {
+				...record,
+				ip,
+				node_names: uniqueIPValues([
+					...(record.node_names || []),
+					record.node_name,
+				]),
+				protocols: uniqueIPValues([
+					...(record.protocols || []),
+					record.protocol,
+				]),
+				inbound_tags: uniqueIPValues([
+					...(record.inbound_tags || []),
+					record.inbound_tag,
+				]),
+				assigned_ips: uniqueIPValues([
+					...(record.assigned_ips || []),
+					record.assigned_ip,
+				]),
+			});
+			continue;
+		}
+		current.node_names = uniqueIPValues([
+			...(current.node_names || []),
+			...(record.node_names || []),
+			record.node_name,
+		]);
+		current.protocols = uniqueIPValues([
+			...(current.protocols || []),
+			...(record.protocols || []),
+			record.protocol,
+		]);
+		current.inbound_tags = uniqueIPValues([
+			...(current.inbound_tags || []),
+			...(record.inbound_tags || []),
+			record.inbound_tag,
+		]);
+		current.assigned_ips = uniqueIPValues([
+			...(current.assigned_ips || []),
+			...(record.assigned_ips || []),
+			record.assigned_ip,
+		]);
+		if ((record.last_seen_at || "") > (current.last_seen_at || "")) {
+			current.last_seen_at = record.last_seen_at;
+		}
+		if (!current.operator_short_name) {
+			current.operator_short_name = record.operator_short_name;
+		}
+		if (!current.operator_owner) {
+			current.operator_owner = record.operator_owner;
+		}
+	}
+	return Array.from(byIP.values()).sort((left, right) =>
+		(right.last_seen_at || "").localeCompare(left.last_seen_at || ""),
+	);
 };
 
 const TRAFFIC_AMOUNTS = [1, 2, 3, 5, 10] as const;
@@ -157,14 +232,7 @@ const TrafficSubmenu: FC<{
 	onClose: () => void;
 	onSelect: (gigabytes: number) => void;
 	getOptionLabel: (gigabytes: number) => string;
-}> = ({
-	label,
-	isRTL,
-	activeAction,
-	onClose,
-	onSelect,
-	getOptionLabel,
-}) => {
+}> = ({ label, isRTL, activeAction, onClose, onSelect, getOptionLabel }) => {
 	const [isOpen, setIsOpen] = useState(false);
 	const closeTimer = useRef<number | null>(null);
 
@@ -636,15 +704,25 @@ export const UsersTable: FC<UsersTableProps> = ({
 		}
 		return records
 			.map((record) => {
-				const node = record.node_name || `node-${record.node_id}`;
+				const nodes = uniqueIPValues([
+					...(record.node_names || []),
+					record.node_name || `node-${record.node_id}`,
+				]);
+				const protocols = uniqueIPValues([
+					...(record.protocols || []),
+					record.protocol,
+				]);
+				const inbounds = uniqueIPValues([
+					...(record.inbound_tags || []),
+					record.inbound_tag,
+				]);
 				const ip = record.ip || record.assigned_ip || "-";
-				const assigned =
-					record.assigned_ip && record.assigned_ip !== ip
-						? ` assigned=${record.assigned_ip}`
-						: "";
-				const inbound = record.inbound_tag ? ` ${record.inbound_tag}` : "";
+				const assigned = uniqueIPValues([
+					...(record.assigned_ips || []),
+					record.assigned_ip,
+				]).filter((value) => value !== ip);
 				const operator = record.operator_short_name || record.operator_owner;
-				return `${record.protocol}${inbound} @ ${node}: ${ip}${assigned}${operator ? ` operator=${operator}` : ""}`;
+				return `${protocols.join(", ")}${inbounds.length ? ` (${inbounds.join(", ")})` : ""} @ ${nodes.join(", ")}: ${ip}${assigned.length ? ` assigned=${assigned.join(",")}` : ""}${operator ? ` operator=${operator}` : ""}`;
 			})
 			.join("\n");
 	};
@@ -659,7 +737,10 @@ export const UsersTable: FC<UsersTableProps> = ({
 			);
 			setIPDialog((current) =>
 				current?.username === user.username
-					? { username: user.username, records: response.ips || [] }
+					? {
+							username: user.username,
+							records: deduplicateUserIPRecords(response.ips || []),
+						}
 					: current,
 			);
 		} catch (error: any) {
@@ -1151,9 +1232,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 						isRTL={isRTL}
 						activeAction={contextAction}
 						onClose={onClose}
-						onSelect={(gigabytes) =>
-							handleAdjustTraffic(user, gigabytes)
-						}
+						onSelect={(gigabytes) => handleAdjustTraffic(user, gigabytes)}
 						getOptionLabel={(gigabytes) =>
 							t("usersTable.addGb", "Add {{count}} GB", {
 								count: gigabytes,
@@ -1596,23 +1675,34 @@ export const UsersTable: FC<UsersTableProps> = ({
 							overflow="hidden"
 						>
 							{ipDialog.records.map((record, index) => {
-								const node = record.node_name || `node-${record.node_id}`;
+								const nodes = uniqueIPValues([
+									...(record.node_names || []),
+									record.node_name || `node-${record.node_id}`,
+								]);
+								const protocols = uniqueIPValues([
+									...(record.protocols || []),
+									record.protocol,
+								]);
+								const inbounds = uniqueIPValues([
+									...(record.inbound_tags || []),
+									record.inbound_tag,
+								]);
 								const ip = record.ip || record.assigned_ip || "-";
-								const metadata = [record.protocol, record.inbound_tag, node]
+								const metadata = [
+									protocols.join(", "),
+									inbounds.join(", "),
+									nodes.join(", "),
+								]
 									.filter(Boolean)
 									.join(" · ");
-								const assignedIP =
-									record.assigned_ip && record.assigned_ip !== ip
-										? record.assigned_ip
-										: null;
-								const operator =
-									record.operator_short_name ||
-									record.operator_owner ||
-									t("usersTable.operatorUnknown", "Unknown operator");
+								const assignedIPs = uniqueIPValues([
+									...(record.assigned_ips || []),
+									record.assigned_ip,
+								]).filter((value) => value !== ip);
 
 								return (
 									<Box
-										key={record.session_id || `${metadata}-${ip}-${index}`}
+										key={ip === "-" ? `${metadata}-${index}` : ip}
 										px={3}
 										py={2.5}
 										borderBottomWidth={
@@ -1620,15 +1710,26 @@ export const UsersTable: FC<UsersTableProps> = ({
 										}
 										borderColor="panel.border"
 									>
-										<Text
-											dir="ltr"
-											fontFamily="mono"
-											fontWeight="700"
-											fontSize="sm"
-											overflowWrap="anywhere"
+										<Stack
+											direction={{ base: "column", sm: "row" }}
+											justify="space-between"
+											align={{ base: "stretch", sm: "center" }}
+											spacing={2.5}
 										>
-											{ip}
-										</Text>
+											<Text
+												dir="ltr"
+												fontFamily="mono"
+												fontWeight="700"
+												fontSize="sm"
+												overflowWrap="anywhere"
+											>
+												{ip}
+											</Text>
+											<OperatorIdentity
+												shortName={record.operator_short_name}
+												owner={record.operator_owner}
+											/>
+										</Stack>
 										<Text
 											mt={0.5}
 											dir="ltr"
@@ -1638,25 +1739,16 @@ export const UsersTable: FC<UsersTableProps> = ({
 										>
 											{metadata}
 										</Text>
-										<Text mt={1} fontSize="xs" color="panel.textSecondary">
-											{t("usersTable.operator", "Operator")}: {operator}
-										</Text>
-										{record.operator_owner &&
-											record.operator_owner !== record.operator_short_name && (
-												<Text mt={0.5} fontSize="xs" color="panel.textMuted">
-													{record.operator_owner}
-												</Text>
-											)}
-										{assignedIP && (
+										{assignedIPs.length > 0 && (
 											<Text
 												mt={1}
 												fontSize="xs"
 												color="panel.textSecondary"
 												overflowWrap="anywhere"
 											>
-												{t("usersTable.assignedIp", "Assigned IP")}: {" "}
+												{t("usersTable.assignedIp", "Assigned IP")}:{" "}
 												<chakra.span dir="ltr" display="inline-block">
-													{assignedIP}
+													{assignedIPs.join(", ")}
 												</chakra.span>
 											</Text>
 										)}

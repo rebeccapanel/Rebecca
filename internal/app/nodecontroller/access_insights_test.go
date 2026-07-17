@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,5 +71,22 @@ INSERT INTO vpn_user_sessions (node_id, user_id, protocol, inbound_tag, session_
 		if !protocols[protocol] {
 			t.Fatalf("missing protocol %s in %#v", protocol, records)
 		}
+	}
+}
+
+func TestCollapseUserOnlineIPsMergesNodesAndProtocols(t *testing.T) {
+	now := time.Now().UTC()
+	records := collapseUserOnlineIPs([]UserOnlineIPRecord{
+		{NodeID: 7, NodeName: "edge-de", UserID: 42, Protocol: "xray", IP: "198.51.100.10", LastSeenAt: now.Add(-time.Second)},
+		{NodeID: 8, NodeName: "edge-fi", UserID: 42, Protocol: "ov", InboundTag: "ov-main", IP: "198.51.100.10", AssignedIP: "10.66.0.2", LastSeenAt: now},
+	})
+	if len(records) != 1 {
+		t.Fatalf("records=%d want=1: %#v", len(records), records)
+	}
+	if got := strings.Join(records[0].NodeNames, ","); got != "edge-de,edge-fi" {
+		t.Fatalf("nodes=%q", got)
+	}
+	if got := strings.Join(records[0].Protocols, ","); got != "ov,xray" {
+		t.Fatalf("protocols=%q", got)
 	}
 }

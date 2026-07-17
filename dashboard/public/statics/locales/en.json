@@ -1061,6 +1061,7 @@
 	"pages.accessInsights.disabled": "Access Insights is disabled.",
 	"pages.accessInsights.liveSubtitle": "Active users across Xray, OpenVPN, WireGuard, L2TP, IKEv2, and Cisco AnyConnect.",
 	"pages.accessInsights.liveSearch": "Search user, IP, node, or protocol",
+	"pages.accessInsights.onlineSessions": "Online sessions",
 	"pages.accessInsights.onlineUsers": "Online users",
 	"pages.accessInsights.uniqueIps": "Unique IPs",
 	"pages.accessInsights.activeNodes": "Active nodes",

@@ -1052,6 +1052,7 @@
 	"pages.accessInsights.disabled": "Access Insights غیرفعال است.",
 	"pages.accessInsights.liveSubtitle": "کاربران آنلاین Xray، OpenVPN، WireGuard، L2TP، IKEv2 و Cisco AnyConnect.",
 	"pages.accessInsights.liveSearch": "جستجو بر اساس کاربر، IP، نود یا پروتکل",
+	"pages.accessInsights.onlineSessions": "نشست‌های آنلاین",
 	"pages.accessInsights.onlineUsers": "کاربران آنلاین",
 	"pages.accessInsights.uniqueIps": "IPهای یکتا",
 	"pages.accessInsights.activeNodes": "نودهای فعال",
