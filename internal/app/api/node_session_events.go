@@ -7,7 +7,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -120,6 +119,14 @@ func (s *Server) applyNodeSessionEvent(ctx context.Context, payload nodeSessionE
 
 	switch strings.ToLower(strings.TrimSpace(payload.Event)) {
 	case "start", "seen":
+		if _, err := tx.ExecContext(ctx, `
+UPDATE vpn_user_sessions
+SET last_seen_at = ?, ended_at = ?
+WHERE user_id = ? AND ended_at IS NULL
+  AND COALESCE(assigned_ip, '') = '' AND COALESCE(client_ip, '') = ''`,
+			dbTimestamp(now), dbTimestamp(now), payload.UserID); err != nil {
+			return err
+		}
 		allowed, err := sessionAdmissionAllowed(ctx, tx, payload)
 		if err != nil {
 			return err
@@ -156,7 +163,10 @@ WHERE user_id = ? AND ended_at IS NULL`, payload.UserID)
 	}
 	defer rows.Close()
 
-	incoming := globalSessionDeviceKey(payload.NodeID, payload.SessionID, payload.AssignedIP, payload.ClientIP)
+	incoming := globalSessionDeviceKey(payload.AssignedIP, payload.ClientIP)
+	if incoming == "" {
+		return false, nil
+	}
 	devices := map[string]struct{}{}
 	for rows.Next() {
 		var nodeID int64
@@ -167,7 +177,10 @@ WHERE user_id = ? AND ended_at IS NULL`, payload.UserID)
 		if nodeID == payload.NodeID && strings.TrimSpace(sessionID) == strings.TrimSpace(payload.SessionID) {
 			continue
 		}
-		devices[globalSessionDeviceKey(nodeID, sessionID, assignedIP, clientIP)] = struct{}{}
+		if strings.TrimSpace(assignedIP) == "" && strings.TrimSpace(clientIP) == "" {
+			continue
+		}
+		devices[globalSessionDeviceKey(assignedIP, clientIP)] = struct{}{}
 	}
 	if err := rows.Err(); err != nil {
 		return false, err
@@ -178,14 +191,14 @@ WHERE user_id = ? AND ended_at IS NULL`, payload.UserID)
 	return int64(len(devices)) < limit, nil
 }
 
-func globalSessionDeviceKey(nodeID int64, sessionID, assignedIP, clientIP string) string {
+func globalSessionDeviceKey(assignedIP, clientIP string) string {
 	if value := strings.TrimSpace(clientIP); value != "" {
 		return "client:" + value
 	}
 	if value := strings.TrimSpace(assignedIP); value != "" {
 		return "assigned:" + value
 	}
-	return "session:" + strings.TrimSpace(sessionID) + "@" + strconv.FormatInt(nodeID, 10)
+	return ""
 }
 
 func upsertVPNSession(ctx context.Context, tx *sql.Tx, payload nodeSessionEventPayload, now time.Time) error {
