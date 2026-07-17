@@ -119,7 +119,7 @@ func TestExportImportFullBackupFileRoots(t *testing.T) {
 }
 
 func TestMySQLBackupURLParsing(t *testing.T) {
-	service := NewService(nil, "mysql", "mysql+pymysql://rebecca:p%40ss%21@127.0.0.1:3306/rebecca")
+	service := NewService(nil, "mysql", "mysql+pymysql://rebecca:p%40ss%21%23frag%3Deq%5Cslash@127.0.0.1:3306/rebecca")
 	name, err := service.mysqlDatabaseName()
 	if err != nil {
 		t.Fatal(err)
@@ -138,15 +138,48 @@ func TestMySQLBackupURLParsing(t *testing.T) {
 	}
 	text := string(content)
 	for _, expected := range []string{
-		"user=rebecca",
-		"password=p@ss!",
-		"host=127.0.0.1",
-		"port=3306",
+		`user="rebecca"`,
+		`password="p@ss!#frag=eq\\slash"`,
+		`host="127.0.0.1"`,
+		`port="3306"`,
 		"protocol=tcp",
 	} {
 		if !strings.Contains(text, expected) {
 			t.Fatalf("defaults file missing %q in %q", expected, text)
 		}
+	}
+}
+
+func TestFilterMySQLDumpForDatabase(t *testing.T) {
+	dir := t.TempDir()
+	input := filepath.Join(dir, "in.sql")
+	output := filepath.Join(dir, "out.sql")
+	content := strings.Join([]string{
+		"-- Current Database: `rebecca`",
+		"/*!40000 DROP DATABASE IF EXISTS `rebecca`*/;",
+		"CREATE DATABASE /*!32312 IF NOT EXISTS*/ `rebecca` /*!40100 DEFAULT CHARACTER SET utf8mb4 */;",
+		"USE `rebecca`;",
+		"CREATE TABLE `users` (`id` int);",
+		"INSERT INTO `users` VALUES (1);",
+	}, "\n")
+	if err := os.WriteFile(input, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := filterMySQLDumpForDatabase(input, output); err != nil {
+		t.Fatal(err)
+	}
+	filteredBytes, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filtered := string(filteredBytes)
+	for _, forbidden := range []string{"DROP DATABASE", "CREATE DATABASE", "USE `rebecca`"} {
+		if strings.Contains(filtered, forbidden) {
+			t.Fatalf("filtered dump still contains %q: %s", forbidden, filtered)
+		}
+	}
+	if !strings.Contains(filtered, "CREATE TABLE `users`") || !strings.Contains(filtered, "INSERT INTO `users`") {
+		t.Fatalf("filtered dump lost table/data statements: %s", filtered)
 	}
 }
 

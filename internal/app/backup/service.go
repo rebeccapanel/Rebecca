@@ -2,6 +2,7 @@ package backup
 
 import (
 	"archive/tar"
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"context"
@@ -348,20 +349,59 @@ func (s *Service) restoreMySQL(ctx context.Context, payloadPath string) error {
 	if err != nil {
 		return err
 	}
-	dropCmd := exec.CommandContext(ctx, command, "--defaults-extra-file="+defaultsFile, "-e", "DROP DATABASE IF EXISTS "+quoteMySQLIdentifier(databaseName))
-	if stderr, err := dropCmd.CombinedOutput(); err != nil {
-		return Error{Message: "Failed to restore MySQL/MariaDB database: " + strings.TrimSpace(string(stderr))}
+	if err := s.dropMySQLTables(ctx); err != nil {
+		return err
 	}
-	input, err := os.Open(payloadPath)
+	filteredPath := filepath.Join(tempDir, "database.sql")
+	if err := filterMySQLDumpForDatabase(payloadPath, filteredPath); err != nil {
+		return err
+	}
+	input, err := os.Open(filteredPath)
 	if err != nil {
 		return err
 	}
 	defer input.Close()
-	restoreCmd := exec.CommandContext(ctx, command, "--defaults-extra-file="+defaultsFile)
+	restoreCmd := exec.CommandContext(ctx, command, "--defaults-extra-file="+defaultsFile, "--database="+databaseName)
 	restoreCmd.Stdin = input
 	if stderr, err := restoreCmd.CombinedOutput(); err != nil {
 		return Error{Message: "Failed to restore MySQL/MariaDB database: " + strings.TrimSpace(string(stderr))}
 	}
+	return nil
+}
+
+func (s *Service) dropMySQLTables(ctx context.Context) error {
+	if s.db == nil {
+		return Error{Message: "MySQL/MariaDB database connection is not available"}
+	}
+	tables, err := s.tableNames(ctx)
+	if err != nil {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback()
+		}
+	}()
+	if _, err := tx.ExecContext(ctx, "SET FOREIGN_KEY_CHECKS=0"); err != nil {
+		return err
+	}
+	for _, table := range tables {
+		if _, err := tx.ExecContext(ctx, "DROP TABLE IF EXISTS "+quoteMySQLIdentifier(table)); err != nil {
+			return err
+		}
+	}
+	if _, err := tx.ExecContext(ctx, "SET FOREIGN_KEY_CHECKS=1"); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	committed = true
 	return nil
 }
 
@@ -659,30 +699,70 @@ func (s *Service) writeMySQLDefaultsFile(dir string) (string, error) {
 	lines := []string{"[client]"}
 	if parsed.User != nil {
 		if user := parsed.User.Username(); user != "" {
-			lines = append(lines, "user="+user)
+			lines = append(lines, "user="+mysqlOptionValue(user))
 		}
 		if password, ok := parsed.User.Password(); ok {
-			lines = append(lines, "password="+password)
+			lines = append(lines, "password="+mysqlOptionValue(password))
 		}
 	}
 	host := parsed.Host
 	if host != "" {
 		if h, p, err := net.SplitHostPort(host); err == nil {
-			lines = append(lines, "host="+h, "protocol=tcp", "port="+p)
+			lines = append(lines, "host="+mysqlOptionValue(h), "protocol=tcp", "port="+mysqlOptionValue(p))
 		} else {
-			lines = append(lines, "host="+host, "protocol=tcp")
+			lines = append(lines, "host="+mysqlOptionValue(host), "protocol=tcp")
 		}
 	}
 	query := parsed.Query()
 	socketPath := firstNonEmpty(query.Get("unix_socket"), query.Get("socket"))
 	if socketPath != "" {
-		lines = append(lines, "socket="+socketPath)
+		lines = append(lines, "socket="+mysqlOptionValue(socketPath))
 	}
 	path := filepath.Join(dir, "mysql-client.cnf")
 	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
 		return "", err
 	}
 	return path, nil
+}
+
+func mysqlOptionValue(value string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`, "\r", `\r`)
+	return `"` + replacer.Replace(value) + `"`
+}
+
+func filterMySQLDumpForDatabase(inputPath string, outputPath string) error {
+	input, err := os.Open(inputPath)
+	if err != nil {
+		return err
+	}
+	defer input.Close()
+	output, err := os.Create(outputPath)
+	if err != nil {
+		return err
+	}
+	defer output.Close()
+	scanner := bufio.NewScanner(input)
+	scanner.Buffer(make([]byte, 0, 1024*1024), 64*1024*1024)
+	writer := bufio.NewWriter(output)
+	defer writer.Flush()
+	for scanner.Scan() {
+		line := scanner.Text()
+		normalized := strings.TrimSpace(line)
+		upper := strings.ToUpper(normalized)
+		if strings.HasPrefix(upper, "USE ") ||
+			strings.Contains(upper, "DROP DATABASE") ||
+			strings.Contains(upper, "CREATE DATABASE") ||
+			strings.HasPrefix(upper, "-- CURRENT DATABASE:") {
+			continue
+		}
+		if _, err := writer.WriteString(line + "\n"); err != nil {
+			return err
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Service) quoteIdentifier(name string) string {
