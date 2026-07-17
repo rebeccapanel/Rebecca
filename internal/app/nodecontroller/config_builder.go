@@ -229,15 +229,24 @@ func (c Controller) userOperationRequiresConfigSync(ctx context.Context, node No
 	}
 	target := xrayconfig.NodeTargetID(node.ID)
 	for _, inbound := range inbounds {
-		switch strings.ToLower(stringValue(inbound["protocol"])) {
-		case xrayconfig.OVProtocol, xrayconfig.L2TPProtocol, xrayconfig.PPTPProtocol, xrayconfig.WGProtocol:
-			tag := stringValue(inbound["tag"])
-			if tag != "" && serviceTags[serviceID.Int64][tag] && OVInboundMatchesTarget(inbound, target) {
-				return true, nil
-			}
+		if !protocolRequiresFullUserSync(stringValue(inbound["protocol"])) {
+			continue
+		}
+		tag := stringValue(inbound["tag"])
+		if tag != "" && serviceTags[serviceID.Int64][tag] && OVInboundMatchesTarget(inbound, target) {
+			return true, nil
 		}
 	}
 	return false, nil
+}
+
+func protocolRequiresFullUserSync(protocol string) bool {
+	switch strings.ToLower(strings.TrimSpace(protocol)) {
+	case xrayconfig.OVProtocol, xrayconfig.L2TPProtocol, xrayconfig.PPTPProtocol, xrayconfig.WGProtocol, xrayconfig.IKEv2Protocol, xrayconfig.AnyConnectProtocol:
+		return true
+	default:
+		return false
+	}
 }
 
 func (c Controller) loadRuntimeConfigData(ctx context.Context) (*runtimeConfigData, error) {

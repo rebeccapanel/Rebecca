@@ -47,6 +47,17 @@ func TestApplyRuntimeAPIEnablesOnlineUserStats(t *testing.T) {
 	}
 }
 
+func TestRemoteAccessProtocolsRequireFullUserSync(t *testing.T) {
+	for _, protocol := range []string{"openvpn", "l2tp", "pptp", "wireguard", "ikev2", "anyconnect"} {
+		if !protocolRequiresFullUserSync(protocol) {
+			t.Fatalf("%s user changes must trigger a full runtime sync", protocol)
+		}
+	}
+	if protocolRequiresFullUserSync("vless") {
+		t.Fatal("Xray-native users should keep using hot user updates")
+	}
+}
+
 func TestInlineTLSCertificateFilesReadsMasterPaths(t *testing.T) {
 	dir := t.TempDir()
 	certPath := filepath.Join(dir, "fullchain.pem")
