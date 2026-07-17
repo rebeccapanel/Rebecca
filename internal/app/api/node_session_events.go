@@ -127,6 +127,23 @@ WHERE user_id = ? AND ended_at IS NULL
 			dbTimestamp(now), dbTimestamp(now), payload.UserID); err != nil {
 			return err
 		}
+		if normalizedVPNProtocol(payload.Protocol) == "ov" && strings.TrimSpace(payload.AssignedIP) != "" {
+			if _, err := tx.ExecContext(ctx, `
+UPDATE vpn_user_sessions
+SET last_seen_at = ?, ended_at = ?
+WHERE node_id = ? AND user_id = ? AND protocol = 'ov' AND COALESCE(inbound_tag, '') = ?
+  AND COALESCE(assigned_ip, '') = ? AND session_id <> ? AND ended_at IS NULL`,
+				dbTimestamp(now),
+				dbTimestamp(now),
+				payload.NodeID,
+				payload.UserID,
+				strings.TrimSpace(payload.InboundTag),
+				strings.TrimSpace(payload.AssignedIP),
+				strings.TrimSpace(payload.SessionID),
+			); err != nil {
+				return err
+			}
+		}
 		allowed, err := sessionAdmissionAllowed(ctx, tx, payload)
 		if err != nil {
 			return err
