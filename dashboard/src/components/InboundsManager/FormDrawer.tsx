@@ -63,6 +63,7 @@ import {
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import {
+	generateAnyConnectSelfSigned,
 	generateEchCert,
 	generateOVSelfSigned,
 	generateWGKeypair,
@@ -331,6 +332,7 @@ export const InboundFormModal: FC<Props> = ({
 	);
 	const [vlessAuthLoading, setVlessAuthLoading] = useState(false);
 	const [ovCertLoading, setOVCertLoading] = useState(false);
+	const [anyConnectCertLoading, setAnyConnectCertLoading] = useState(false);
 	const [wgKeyLoading, setWGKeyLoading] = useState(false);
 	const [activeTab, setActiveTab] = useState(0);
 	const [jsonText, setJsonText] = useState<string>("");
@@ -483,6 +485,8 @@ export const InboundFormModal: FC<Props> = ({
 		useWatch({ control, name: "l2tpTproxyEnabled" }) ??
 		watch("l2tpTproxyEnabled") ??
 		true;
+	const acUDPPortValue =
+		useWatch({ control, name: "acUDPPort" }) || watch("acUDPPort") || "";
 	const raTproxyEnabled =
 		useWatch({ control, name: "raTproxyEnabled" }) ??
 		watch("raTproxyEnabled") ??
@@ -490,6 +494,7 @@ export const InboundFormModal: FC<Props> = ({
 	const autoOVTunnelPortRef = useRef("");
 	const autoWGTunnelPortRef = useRef("");
 	const autoL2TPTunnelPortRef = useRef("");
+	const autoAnyConnectUDPPortRef = useRef("");
 	const supportsStreamSettings =
 		currentProtocol !== "http" &&
 		currentProtocol !== "socks" &&
@@ -802,6 +807,29 @@ export const InboundFormModal: FC<Props> = ({
 		streamNetwork,
 		streamSecurity,
 	]);
+
+	useEffect(() => {
+		if (currentProtocol !== "anyconnect") {
+			autoAnyConnectUDPPortRef.current = "";
+			return;
+		}
+		const port = Number(portValue);
+		if (!Number.isInteger(port) || port < 1 || port > 65535) {
+			return;
+		}
+		const nextUDPPort = String(port);
+		const currentUDPPort = String(acUDPPortValue).trim();
+		if (currentUDPPort && currentUDPPort !== autoAnyConnectUDPPortRef.current) {
+			return;
+		}
+		if (currentUDPPort !== nextUDPPort) {
+			autoAnyConnectUDPPortRef.current = nextUDPPort;
+			form.setValue("acUDPPort", nextUDPPort, {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+		}
+	}, [acUDPPortValue, currentProtocol, form, portValue]);
 
 	const BLOCKED_PORTS = useMemo(
 		() =>
@@ -1118,6 +1146,61 @@ export const InboundFormModal: FC<Props> = ({
 			});
 		} finally {
 			setOVCertLoading(false);
+		}
+	}, [form, t, toast]);
+
+	const handleGenerateAnyConnectSelfSigned = useCallback(async () => {
+		const names = form
+			.getValues("raCertificateNames")
+			.split(/[\n,]/)
+			.map((value) => value.trim())
+			.filter(Boolean);
+		if (names.length === 0) {
+			form.setError("raCertificateNames", {
+				type: "required",
+				message: t(
+					"inbounds.anyconnect.certificateNamesRequired",
+					"Enter at least one domain or IP before generating certificates.",
+				),
+			});
+			return;
+		}
+		setAnyConnectCertLoading(true);
+		try {
+			const certs = await generateAnyConnectSelfSigned(names);
+			form.clearErrors("raCertificateNames");
+			form.setValue("raCA", certs.ca ?? "", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+			form.setValue("raServerCertificate", certs.serverCertificate ?? "", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+			form.setValue("raServerKey", certs.serverKey ?? "", {
+				shouldDirty: true,
+				shouldValidate: true,
+			});
+			toast({
+				status: "success",
+				title: t(
+					"inbounds.anyconnect.generateSelfSignedSuccess",
+					"AnyConnect certificates generated",
+				),
+				duration: 2500,
+				isClosable: true,
+			});
+		} catch (error) {
+			toast({
+				status: "error",
+				title: t(
+					"inbounds.anyconnect.generateSelfSignedError",
+					"Unable to generate AnyConnect certificates",
+				),
+				description: error instanceof Error ? error.message : undefined,
+			});
+		} finally {
+			setAnyConnectCertLoading(false);
 		}
 	}, [form, t, toast]);
 
@@ -1580,7 +1663,7 @@ export const InboundFormModal: FC<Props> = ({
 																"hysteriaQuicParams.enabled",
 																false,
 																{
-																shouldDirty: true,
+																	shouldDirty: true,
 																},
 															);
 															form.setValue("tlsAlpn", ["h3"], {
@@ -1647,6 +1730,10 @@ export const InboundFormModal: FC<Props> = ({
 																	shouldValidate: true,
 																});
 																form.setValue("raIPv4Pool", "10.71.0.0/16", {
+																	shouldDirty: true,
+																});
+																autoAnyConnectUDPPortRef.current = "443";
+																form.setValue("acUDPPort", "443", {
 																	shouldDirty: true,
 																});
 																if (!form.getValues("raTunnelPort"))
@@ -2698,6 +2785,43 @@ export const InboundFormModal: FC<Props> = ({
 														<Switch {...register("raRedirectGateway")} />
 													</FormControl>
 												</SimpleGrid>
+												{currentProtocol === "anyconnect" && (
+													<Stack spacing={2}>
+														<FormControl
+															isInvalid={Boolean(errors.raCertificateNames)}
+														>
+															{ovLabel(
+																"inbounds.anyconnect.certificateNames",
+																"Certificate domains / IPs",
+																"inbounds.anyconnect.help.certificateNames",
+																"Domains and IPs stored in the generated certificate SAN, one per line.",
+															)}
+															<Textarea
+																rows={2}
+																{...register("raCertificateNames")}
+																placeholder={"vpn.example.com\n203.0.113.10"}
+															/>
+															{errors.raCertificateNames?.message && (
+																<Text fontSize="xs" color="red.500" mt={1}>
+																	{String(errors.raCertificateNames.message)}
+																</Text>
+															)}
+														</FormControl>
+														<Box>
+															<Button
+																size="sm"
+																leftIcon={<SparklesIcon width={16} />}
+																onClick={handleGenerateAnyConnectSelfSigned}
+																isLoading={anyConnectCertLoading}
+															>
+																{t(
+																	"inbounds.anyconnect.generateSelfSigned",
+																	"Generate self-signed certificates",
+																)}
+															</Button>
+														</Box>
+													</Stack>
+												)}
 												<FormControl
 													isRequired={
 														currentProtocol === "ikev2" ||
@@ -2936,6 +3060,117 @@ export const InboundFormModal: FC<Props> = ({
 													</Stack>
 												) : (
 													<Stack spacing={3}>
+														<Text fontSize="sm" fontWeight="semibold">
+															{t(
+																"inbounds.anyconnect.connection",
+																"Connection",
+															)}
+														</Text>
+														<SimpleGrid
+															columns={{ base: 1, md: 2 }}
+															spacing={3}
+														>
+															<FormControl>
+																{ovLabel(
+																	"inbounds.anyconnect.transport",
+																	"Transport",
+																	"inbounds.anyconnect.help.transport",
+																	"AnyConnect always uses TCP/TLS; DTLS adds a faster UDP data channel.",
+																)}
+																<Controller
+																	control={control}
+																	name="acUDPEnabled"
+																	render={({ field }) => (
+																		<SearchableTagSelect
+																			value={field.value ? "tcp-udp" : "tcp"}
+																			placeholder={t(
+																				"inbounds.anyconnect.transport",
+																				"Transport",
+																			)}
+																			onChange={(value) =>
+																				field.onChange(value === "tcp-udp")
+																			}
+																			options={[
+																				{
+																					value: "tcp-udp",
+																					label: t(
+																						"inbounds.anyconnect.tcpUdp",
+																						"TCP + UDP/DTLS",
+																					),
+																				},
+																				{
+																					value: "tcp",
+																					label: t(
+																						"inbounds.anyconnect.tcpOnly",
+																						"TCP only",
+																					),
+																				},
+																			]}
+																		/>
+																	)}
+																/>
+															</FormControl>
+															<FormControl
+																isRequired={watch("acUDPEnabled")}
+																isInvalid={Boolean(
+																	fieldValidationErrors.acUDPPort,
+																)}
+															>
+																{ovLabel(
+																	"inbounds.anyconnect.udpPort",
+																	"UDP/DTLS port",
+																	"inbounds.anyconnect.help.udpPort",
+																	"UDP data-channel port; normally the same as the public TCP port.",
+																)}
+																<Input
+																	{...register("acUDPPort")}
+																	isDisabled={!watch("acUDPEnabled")}
+																/>
+																{fieldValidationErrors.acUDPPort && (
+																	<Text fontSize="xs" color="red.500" mt={1}>
+																		{fieldValidationErrors.acUDPPort}
+																	</Text>
+																)}
+															</FormControl>
+															<FormControl>
+																{ovLabel(
+																	"inbounds.anyconnect.listenHost",
+																	"TCP listen host",
+																	"inbounds.anyconnect.help.listenHost",
+																	"Optional local IP or hostname to bind; empty listens on all addresses.",
+																)}
+																<Input {...register("acListenHost")} />
+															</FormControl>
+															<FormControl>
+																{ovLabel(
+																	"inbounds.anyconnect.udpListenHost",
+																	"UDP listen host",
+																	"inbounds.anyconnect.help.udpListenHost",
+																	"Optional UDP bind address; empty reuses the TCP listen host.",
+																)}
+																<Input
+																	{...register("acUDPListenHost")}
+																	isDisabled={!watch("acUDPEnabled")}
+																/>
+															</FormControl>
+														</SimpleGrid>
+														<FormControl display="flex" alignItems="center">
+															{ovLabel(
+																"inbounds.anyconnect.listenHostIsDynDNS",
+																"Dynamic listen hostname",
+																"inbounds.anyconnect.help.listenHostIsDynDNS",
+																"Resolve the listen hostname again when reconnecting.",
+																{ mb: 0 },
+															)}
+															<Switch {...register("acListenHostIsDynDNS")} />
+														</FormControl>
+														<Divider />
+														<Text fontSize="sm" fontWeight="semibold">
+															{t(
+																"inbounds.anyconnect.sessions",
+																"Sessions and health",
+															)}
+														</Text>
 														<SimpleGrid
 															columns={{ base: 1, md: 3 }}
 															spacing={3}
@@ -2989,7 +3224,12 @@ export const InboundFormModal: FC<Props> = ({
 																	],
 																] as const
 															).map(([name, label, help]) => (
-																<FormControl key={name}>
+																<FormControl
+																	key={name}
+																	isInvalid={Boolean(
+																		fieldValidationErrors[name],
+																	)}
+																>
 																	{ovLabel(
 																		`inbounds.anyconnect.${name}`,
 																		label,
@@ -2997,9 +3237,122 @@ export const InboundFormModal: FC<Props> = ({
 																		help,
 																	)}
 																	<Input {...register(name)} />
+																	{fieldValidationErrors[name] && (
+																		<Text fontSize="xs" color="red.500" mt={1}>
+																			{fieldValidationErrors[name]}
+																		</Text>
+																	)}
 																</FormControl>
 															))}
 														</SimpleGrid>
+														<SimpleGrid
+															columns={{ base: 1, md: 3 }}
+															spacing={3}
+														>
+															{(
+																[
+																	[
+																		"acAuthTimeout",
+																		"Auth timeout",
+																		"Seconds allowed to finish authentication.",
+																	],
+																	[
+																		"acMinReauthTime",
+																		"Min reauth time",
+																		"Delay after failed authentication attempts.",
+																	],
+																	[
+																		"acMaxBanScore",
+																		"Max ban score",
+																		"Authentication score that temporarily bans an address; zero disables bans.",
+																	],
+																	[
+																		"acBanResetTime",
+																		"Ban reset time",
+																		"Seconds before accumulated ban points reset.",
+																	],
+																	[
+																		"acRekeyTime",
+																		"Rekey time",
+																		"Seconds between key refreshes; zero disables rekeying.",
+																	],
+																	[
+																		"acSwitchToTCPTimeout",
+																		"UDP fallback timeout",
+																		"Seconds without UDP traffic before falling back to TCP.",
+																	],
+																	[
+																		"acStatsReportTime",
+																		"Stats report interval",
+																		"Worker accounting report interval; zero uses live occtl polling only.",
+																	],
+																	[
+																		"acRateLimitMs",
+																		"Connection rate limit",
+																		"Minimum milliseconds between queued incoming connections; zero disables it.",
+																	],
+																] as const
+															).map(([name, label, help]) => (
+																<FormControl
+																	key={name}
+																	isInvalid={Boolean(
+																		fieldValidationErrors[name],
+																	)}
+																>
+																	{ovLabel(
+																		`inbounds.anyconnect.${name}`,
+																		label,
+																		`inbounds.anyconnect.help.${name}`,
+																		help,
+																	)}
+																	<Input {...register(name)} />
+																	{fieldValidationErrors[name] && (
+																		<Text fontSize="xs" color="red.500" mt={1}>
+																			{fieldValidationErrors[name]}
+																		</Text>
+																	)}
+																</FormControl>
+															))}
+														</SimpleGrid>
+														<FormControl>
+															{ovLabel(
+																"inbounds.anyconnect.rekeyMethod",
+																"Rekey method",
+																"inbounds.anyconnect.help.rekeyMethod",
+																"SSL rekeys seamlessly; new tunnel reconnects the data channel for legacy clients.",
+															)}
+															<Controller
+																control={control}
+																name="acRekeyMethod"
+																render={({ field }) => (
+																	<SearchableTagSelect
+																		value={field.value}
+																		placeholder={t(
+																			"inbounds.anyconnect.rekeyMethod",
+																			"Rekey method",
+																		)}
+																		onChange={field.onChange}
+																		options={[
+																			{ value: "ssl", label: "SSL" },
+																			{
+																				value: "new-tunnel",
+																				label: t(
+																					"inbounds.anyconnect.newTunnel",
+																					"New tunnel",
+																				),
+																			},
+																		]}
+																	/>
+																)}
+															/>
+														</FormControl>
+														<Divider />
+														<Text fontSize="sm" fontWeight="semibold">
+															{t(
+																"inbounds.anyconnect.networking",
+																"Networking and DNS",
+															)}
+														</Text>
 														<FormControl>
 															{ovLabel(
 																"inbounds.anyconnect.routes",
@@ -3022,6 +3375,132 @@ export const InboundFormModal: FC<Props> = ({
 															columns={{ base: 1, md: 2 }}
 															spacing={3}
 														>
+															<FormControl
+																isInvalid={Boolean(
+																	fieldValidationErrors.acNBNS,
+																)}
+															>
+																{ovLabel(
+																	"inbounds.anyconnect.nbns",
+																	"NBNS servers",
+																	"inbounds.anyconnect.help.nbns",
+																	"Optional IPv4 WINS/NBNS servers, one per line.",
+																)}
+																<Textarea rows={2} {...register("acNBNS")} />
+																{fieldValidationErrors.acNBNS && (
+																	<Text fontSize="xs" color="red.500" mt={1}>
+																		{fieldValidationErrors.acNBNS}
+																	</Text>
+																)}
+															</FormControl>
+															<FormControl
+																isInvalid={Boolean(
+																	fieldValidationErrors.acSplitDNS,
+																)}
+															>
+																{ovLabel(
+																	"inbounds.anyconnect.splitDNS",
+																	"Split DNS domains",
+																	"inbounds.anyconnect.help.splitDNS",
+																	"Domains resolved through the tunnel, one per line.",
+																)}
+																<Textarea
+																	rows={2}
+																	{...register("acSplitDNS")}
+																/>
+																{fieldValidationErrors.acSplitDNS && (
+																	<Text fontSize="xs" color="red.500" mt={1}>
+																		{fieldValidationErrors.acSplitDNS}
+																	</Text>
+																)}
+															</FormControl>
+														</SimpleGrid>
+														<FormControl
+															isInvalid={Boolean(
+																fieldValidationErrors.acRestrictToPorts,
+															)}
+														>
+															{ovLabel(
+																"inbounds.anyconnect.restrictToPorts",
+																"Allowed destination ports",
+																"inbounds.anyconnect.help.restrictToPorts",
+																"Optional ocserv port policy, for example: tcp(80,443), udp(53).",
+															)}
+															<Input
+																{...register("acRestrictToPorts")}
+																placeholder="tcp(80,443), udp(53)"
+															/>
+															{fieldValidationErrors.acRestrictToPorts && (
+																<Text fontSize="xs" color="red.500" mt={1}>
+																	{fieldValidationErrors.acRestrictToPorts}
+																</Text>
+															)}
+														</FormControl>
+														<SimpleGrid
+															columns={{ base: 1, md: 3 }}
+															spacing={3}
+														>
+															{(
+																[
+																	[
+																		"acRXDataPerSec",
+																		"Download limit",
+																		"Maximum receive bytes per second per user; zero is unlimited.",
+																	],
+																	[
+																		"acTXDataPerSec",
+																		"Upload limit",
+																		"Maximum transmit bytes per second per user; zero is unlimited.",
+																	],
+																	[
+																		"acOutputBuffer",
+																		"Output buffer",
+																		"Per-client output buffer size; zero uses the ocserv default.",
+																	],
+																	[
+																		"acNetPriority",
+																		"Network priority",
+																		"Linux socket priority from 0 to 6.",
+																	],
+																	[
+																		"acNoCompressLimit",
+																		"Compression threshold",
+																		"Do not compress packets smaller than this byte count.",
+																	],
+																] as const
+															).map(([name, label, help]) => (
+																<FormControl
+																	key={name}
+																	isInvalid={Boolean(
+																		fieldValidationErrors[name],
+																	)}
+																>
+																	{ovLabel(
+																		`inbounds.anyconnect.${name}`,
+																		label,
+																		`inbounds.anyconnect.help.${name}`,
+																		help,
+																	)}
+																	<Input {...register(name)} />
+																	{fieldValidationErrors[name] && (
+																		<Text fontSize="xs" color="red.500" mt={1}>
+																			{fieldValidationErrors[name]}
+																		</Text>
+																	)}
+																</FormControl>
+															))}
+														</SimpleGrid>
+														<Divider />
+														<Text fontSize="sm" fontWeight="semibold">
+															{t(
+																"inbounds.anyconnect.tlsCompatibility",
+																"TLS and compatibility",
+															)}
+														</Text>
+														<SimpleGrid
+															columns={{ base: 1, md: 2 }}
+															spacing={3}
+														>
 															<FormControl>
 																{ovLabel(
 																	"inbounds.anyconnect.banner",
@@ -3033,6 +3512,15 @@ export const InboundFormModal: FC<Props> = ({
 															</FormControl>
 															<FormControl>
 																{ovLabel(
+																	"inbounds.anyconnect.preLoginBanner",
+																	"Pre-login banner",
+																	"inbounds.anyconnect.help.preLoginBanner",
+																	"Message shown before authentication by compatible clients.",
+																)}
+																<Input {...register("acPreLoginBanner")} />
+															</FormControl>
+															<FormControl>
+																{ovLabel(
 																	"inbounds.anyconnect.defaultDomain",
 																	"Default domain",
 																	"inbounds.anyconnect.help.defaultDomain",
@@ -3040,18 +3528,49 @@ export const InboundFormModal: FC<Props> = ({
 																)}
 																<Input {...register("acDefaultDomain")} />
 															</FormControl>
+															<FormControl
+																isInvalid={Boolean(
+																	fieldValidationErrors.acCertUserOID,
+																)}
+															>
+																{ovLabel(
+																	"inbounds.anyconnect.certUserOID",
+																	"Certificate username OID",
+																	"inbounds.anyconnect.help.certUserOID",
+																	"Certificate field used as the username; 2.5.4.3 is Common Name.",
+																)}
+																<Input {...register("acCertUserOID")} />
+																{fieldValidationErrors.acCertUserOID && (
+																	<Text fontSize="xs" color="red.500" mt={1}>
+																		{fieldValidationErrors.acCertUserOID}
+																	</Text>
+																)}
+															</FormControl>
 														</SimpleGrid>
+														<FormControl
+															isInvalid={Boolean(
+																fieldValidationErrors.acTLSPriorities,
+															)}
+														>
+															{ovLabel(
+																"inbounds.anyconnect.tlsPriorities",
+																"TLS priorities",
+																"inbounds.anyconnect.help.tlsPriorities",
+																"Advanced GnuTLS priority string. Keep the secure default unless a client requires a change.",
+															)}
+															<Input {...register("acTLSPriorities")} />
+															{fieldValidationErrors.acTLSPriorities && (
+																<Text fontSize="xs" color="red.500" mt={1}>
+																	{fieldValidationErrors.acTLSPriorities}
+																</Text>
+															)}
+														</FormControl>
 														<SimpleGrid
 															columns={{ base: 1, md: 3 }}
 															spacing={3}
 														>
 															{(
 																[
-																	[
-																		"acUDPEnabled",
-																		"Enable DTLS/UDP",
-																		"Use UDP/DTLS beside TLS for better throughput.",
-																	],
 																	[
 																		"acCompression",
 																		"Compression",
@@ -3076,6 +3595,46 @@ export const InboundFormModal: FC<Props> = ({
 																		"acRestrictToRoutes",
 																		"Restrict to routes",
 																		"Prevent users from reaching addresses outside configured routes.",
+																	],
+																	[
+																		"acPersistentCookies",
+																		"Persistent cookies",
+																		"Keep authentication cookies valid across reconnects until they expire.",
+																	],
+																	[
+																		"acTryMTUDiscovery",
+																		"MTU discovery",
+																		"Let the server discover a suitable path MTU.",
+																	],
+																	[
+																		"acPingLeases",
+																		"Ping leases",
+																		"Probe an address before leasing it to a client.",
+																	],
+																	[
+																		"acDTLSPSK",
+																		"DTLS PSK",
+																		"Enable the modern pre-shared-key DTLS channel.",
+																	],
+																	[
+																		"acDTLSLegacy",
+																		"Legacy DTLS",
+																		"Permit the legacy DTLS channel used by older clients.",
+																	],
+																	[
+																		"acCiscoSVCCompat",
+																		"Legacy Cisco SVC",
+																		"Enable compatibility for older Cisco SVC clients. Requires ocserv 1.2 or newer.",
+																	],
+																	[
+																		"acClientBypassProtocol",
+																		"Client bypass protocol",
+																		"Allow compatible clients to bypass unsupported IP protocols.",
+																	],
+																	[
+																		"acMatchTLSDTLSCiphers",
+																		"Match TLS/DTLS ciphers",
+																		"Use matching cipher policy for TLS and DTLS.",
 																	],
 																] as const
 															).map(([name, label, help]) => (
@@ -4593,15 +5152,15 @@ export const InboundFormModal: FC<Props> = ({
 																>
 																	{HYSTERIA_QUIC_INPUT_FIELDS.map(
 																		({ name, label, placeholder }) => (
-																		<FormControl key={name}>
-																			<FormLabel>{label}</FormLabel>
-																			<Input
-																				{...register(
-																					`hysteriaQuicParams.${name}` as const,
-																				)}
-																				placeholder={placeholder}
-																			/>
-																		</FormControl>
+																			<FormControl key={name}>
+																				<FormLabel>{label}</FormLabel>
+																				<Input
+																					{...register(
+																						`hysteriaQuicParams.${name}` as const,
+																					)}
+																					placeholder={placeholder}
+																				/>
+																			</FormControl>
 																		),
 																	)}
 																</SimpleGrid>
@@ -5678,73 +6237,73 @@ export const InboundFormModal: FC<Props> = ({
 										currentProtocol !== "pptp" &&
 										currentProtocol !== "ikev2" &&
 										currentProtocol !== "anyconnect" && (
-									<Stack className="xray-dialog-section" spacing={3}>
-										<Flex align="center" justify="space-between">
-											<HStack spacing={2}>
-												<Box fontWeight="medium">
-													{t("inbounds.sniffing", "Sniffing")}
-												</Box>
-												<Tooltip
-													label={t(
-														"inbounds.sniffingHint",
-														"It is recommended to keep the default.",
-													)}
-												>
-													<QuestionMarkCircleIcon width={16} height={16} />
-												</Tooltip>
-											</HStack>
-											<Switch {...register("sniffingEnabled")} />
-										</Flex>
-										{sniffingEnabled && (
-											<Stack spacing={3}>
-												<FormControl>
-													<FormLabel>
-														{t(
-															"inbounds.sniffingDestinations",
-															"Protocols to sniff",
-														)}
-													</FormLabel>
-													<Controller
-														control={control}
-														name="sniffingDestinations"
-														render={({ field }) => (
-															<CheckboxGroup
-																value={field.value ?? []}
-																onChange={field.onChange}
-															>
-																<HStack spacing={4}>
-																	{sniffingOptions.map((option) => (
-																		<Checkbox
-																			key={option.value}
-																			value={option.value}
-																		>
-																			{option.label}
-																		</Checkbox>
-																	))}
-																</HStack>
-															</CheckboxGroup>
-														)}
-													/>
-												</FormControl>
-												<FormControl display="flex" alignItems="center">
-													<FormLabel mb={0}>
-														{t("inbounds.sniffingRouteOnly", "Route only")}
-													</FormLabel>
-													<Switch {...register("sniffingRouteOnly")} />
-												</FormControl>
-												<FormControl display="flex" alignItems="center">
-													<FormLabel mb={0}>
-														{t(
-															"inbounds.sniffingMetadataOnly",
-															"Metadata only",
-														)}
-													</FormLabel>
-													<Switch {...register("sniffingMetadataOnly")} />
-												</FormControl>
+											<Stack className="xray-dialog-section" spacing={3}>
+												<Flex align="center" justify="space-between">
+													<HStack spacing={2}>
+														<Box fontWeight="medium">
+															{t("inbounds.sniffing", "Sniffing")}
+														</Box>
+														<Tooltip
+															label={t(
+																"inbounds.sniffingHint",
+																"It is recommended to keep the default.",
+															)}
+														>
+															<QuestionMarkCircleIcon width={16} height={16} />
+														</Tooltip>
+													</HStack>
+													<Switch {...register("sniffingEnabled")} />
+												</Flex>
+												{sniffingEnabled && (
+													<Stack spacing={3}>
+														<FormControl>
+															<FormLabel>
+																{t(
+																	"inbounds.sniffingDestinations",
+																	"Protocols to sniff",
+																)}
+															</FormLabel>
+															<Controller
+																control={control}
+																name="sniffingDestinations"
+																render={({ field }) => (
+																	<CheckboxGroup
+																		value={field.value ?? []}
+																		onChange={field.onChange}
+																	>
+																		<HStack spacing={4}>
+																			{sniffingOptions.map((option) => (
+																				<Checkbox
+																					key={option.value}
+																					value={option.value}
+																				>
+																					{option.label}
+																				</Checkbox>
+																			))}
+																		</HStack>
+																	</CheckboxGroup>
+																)}
+															/>
+														</FormControl>
+														<FormControl display="flex" alignItems="center">
+															<FormLabel mb={0}>
+																{t("inbounds.sniffingRouteOnly", "Route only")}
+															</FormLabel>
+															<Switch {...register("sniffingRouteOnly")} />
+														</FormControl>
+														<FormControl display="flex" alignItems="center">
+															<FormLabel mb={0}>
+																{t(
+																	"inbounds.sniffingMetadataOnly",
+																	"Metadata only",
+																)}
+															</FormLabel>
+															<Switch {...register("sniffingMetadataOnly")} />
+														</FormControl>
+													</Stack>
+												)}
 											</Stack>
 										)}
-									</Stack>
-									)}
 								</VStack>
 							</TabPanel>
 							<TabPanel px={0}>

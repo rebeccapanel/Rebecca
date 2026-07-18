@@ -8,8 +8,11 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
+	"fmt"
 	"math/big"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/curve25519"
@@ -33,6 +36,8 @@ func (s *Server) handleXrayHelperPath(w http.ResponseWriter, r *http.Request) {
 		s.handleRealityShortID(w)
 	case "/api/xray/ov-self-signed", "/xray/ov-self-signed":
 		s.handleOVSelfSigned(w)
+	case "/api/xray/anyconnect-self-signed", "/xray/anyconnect-self-signed":
+		s.handleAnyConnectSelfSigned(w, r)
 	case "/api/xray/wg-keypair", "/xray/wg-keypair":
 		s.handleWGKeypair(w)
 	case "/api/xray/mldsa65", "/xray/mldsa65":
@@ -108,7 +113,90 @@ func (s *Server) handleOVSelfSigned(w http.ResponseWriter) {
 	})
 }
 
+func (s *Server) handleAnyConnectSelfSigned(w http.ResponseWriter, r *http.Request) {
+	dnsNames, ipAddresses, commonName, err := certificateNames(r.URL.Query()["name"])
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	caCert, caKey, err := generateCA("Rebecca AnyConnect CA")
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to generate AnyConnect CA")
+		return
+	}
+	serverCert, serverKey, err := generateServerCertificate(caCert, caKey, commonName, dnsNames, ipAddresses)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to generate AnyConnect server certificate")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"ca":                string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: caCert.Raw})),
+		"serverCertificate": serverCert,
+		"serverKey":         serverKey,
+	})
+}
+
+func certificateNames(values []string) ([]string, []net.IP, string, error) {
+	if len(values) == 0 || len(values) > 20 {
+		return nil, nil, "", fmt.Errorf("provide between 1 and 20 certificate names")
+	}
+	dnsNames := make([]string, 0, len(values))
+	ipAddresses := make([]net.IP, 0, len(values))
+	seen := map[string]struct{}{}
+	commonName := ""
+	for _, value := range values {
+		name := strings.TrimSpace(value)
+		if name == "" || strings.ContainsAny(name, "\r\n\t ") {
+			return nil, nil, "", fmt.Errorf("invalid certificate name %q", value)
+		}
+		if _, ok := seen[strings.ToLower(name)]; ok {
+			continue
+		}
+		seen[strings.ToLower(name)] = struct{}{}
+		if commonName == "" {
+			commonName = name
+		}
+		if ip := net.ParseIP(name); ip != nil {
+			ipAddresses = append(ipAddresses, ip)
+			continue
+		}
+		if !validCertificateDNSName(name) {
+			return nil, nil, "", fmt.Errorf("invalid certificate name %q", value)
+		}
+		dnsNames = append(dnsNames, strings.TrimSuffix(name, "."))
+	}
+	if commonName == "" {
+		return nil, nil, "", fmt.Errorf("at least one certificate name is required")
+	}
+	return dnsNames, ipAddresses, commonName, nil
+}
+
+func validCertificateDNSName(value string) bool {
+	value = strings.TrimSuffix(value, ".")
+	if strings.HasPrefix(value, "*.") {
+		value = strings.TrimPrefix(value, "*.")
+	}
+	if value == "" || len(value) > 253 {
+		return false
+	}
+	for _, label := range strings.Split(value, ".") {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, char := range label {
+			if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') && (char < '0' || char > '9') && char != '-' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func generateOVCA() (*x509.Certificate, *rsa.PrivateKey, error) {
+	return generateCA("Rebecca OV CA")
+}
+
+func generateCA(commonName string) (*x509.Certificate, *rsa.PrivateKey, error) {
 	key, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
 		return nil, nil, err
@@ -121,7 +209,7 @@ func generateOVCA() (*x509.Certificate, *rsa.PrivateKey, error) {
 	template := &x509.Certificate{
 		SerialNumber: serial,
 		Subject: pkix.Name{
-			CommonName: "Rebecca OV CA",
+			CommonName: commonName,
 		},
 		NotBefore:             now.Add(-time.Hour),
 		NotAfter:              now.Add(10 * 365 * 24 * time.Hour),
@@ -142,6 +230,10 @@ func generateOVCA() (*x509.Certificate, *rsa.PrivateKey, error) {
 }
 
 func generateOVServerCertificate(ca *x509.Certificate, caKey *rsa.PrivateKey) (string, string, error) {
+	return generateServerCertificate(ca, caKey, "Rebecca OV Server", nil, nil)
+}
+
+func generateServerCertificate(ca *x509.Certificate, caKey *rsa.PrivateKey, commonName string, dnsNames []string, ipAddresses []net.IP) (string, string, error) {
 	key, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
 		return "", "", err
@@ -154,8 +246,10 @@ func generateOVServerCertificate(ca *x509.Certificate, caKey *rsa.PrivateKey) (s
 	template := &x509.Certificate{
 		SerialNumber: serial,
 		Subject: pkix.Name{
-			CommonName: "Rebecca OV Server",
+			CommonName: commonName,
 		},
+		DNSNames:              dnsNames,
+		IPAddresses:           ipAddresses,
 		NotBefore:             now.Add(-time.Hour),
 		NotAfter:              now.Add(10 * 365 * 24 * time.Hour),
 		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,

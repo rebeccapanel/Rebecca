@@ -341,6 +341,7 @@ export type InboundFormValues = {
 	raCA: string;
 	raServerCertificate: string;
 	raServerKey: string;
+	raCertificateNames: string;
 	raServerIdentity: string;
 	raMTU: string;
 	ikeProposals: string;
@@ -355,6 +356,10 @@ export type InboundFormValues = {
 	ikeDpdDelay: string;
 	ikeRoutes: string;
 	acUDPEnabled: boolean;
+	acUDPPort: string;
+	acListenHost: string;
+	acUDPListenHost: string;
+	acListenHostIsDynDNS: boolean;
 	acMaxClients: string;
 	acMaxSameClients: string;
 	acCookieTimeout: string;
@@ -364,15 +369,43 @@ export type InboundFormValues = {
 	acKeepalive: string;
 	acDPD: string;
 	acMobileDPD: string;
+	acAuthTimeout: string;
+	acMinReauthTime: string;
+	acMaxBanScore: string;
+	acBanResetTime: string;
+	acRekeyTime: string;
+	acRekeyMethod: "ssl" | "new-tunnel";
+	acSwitchToTCPTimeout: string;
+	acStatsReportTime: string;
+	acRateLimitMs: string;
+	acRXDataPerSec: string;
+	acTXDataPerSec: string;
+	acOutputBuffer: string;
+	acNetPriority: string;
+	acNoCompressLimit: string;
 	acCompression: boolean;
 	acCiscoCompat: boolean;
+	acDTLSPSK: boolean;
+	acDTLSLegacy: boolean;
+	acCiscoSVCCompat: boolean;
+	acClientBypassProtocol: boolean;
+	acMatchTLSDTLSCiphers: boolean;
 	acDenyRoaming: boolean;
+	acPersistentCookies: boolean;
+	acTryMTUDiscovery: boolean;
+	acPingLeases: boolean;
 	acTunnelAllDNS: boolean;
 	acRestrictToRoutes: boolean;
+	acRestrictToPorts: string;
 	acRoutes: string;
 	acNoRoutes: string;
+	acNBNS: string;
+	acSplitDNS: string;
 	acBanner: string;
+	acPreLoginBanner: string;
 	acDefaultDomain: string;
+	acTLSPriorities: string;
+	acCertUserOID: string;
 
 	targetIds: string[];
 };
@@ -904,6 +937,19 @@ export const validateInboundFormFields = (
 				| "acKeepalive"
 				| "acDPD"
 				| "acMobileDPD"
+				| "acAuthTimeout"
+				| "acMinReauthTime"
+				| "acMaxBanScore"
+				| "acBanResetTime"
+				| "acRekeyTime"
+				| "acSwitchToTCPTimeout"
+				| "acStatsReportTime"
+				| "acRateLimitMs"
+				| "acRXDataPerSec"
+				| "acTXDataPerSec"
+				| "acOutputBuffer"
+				| "acNetPriority"
+				| "acNoCompressLimit"
 			>,
 			label: string,
 			min: number,
@@ -931,6 +977,9 @@ export const validateInboundFormFields = (
 			validateRemoteNumber("ikeRekeyTime", "Rekey time", 0, 2592000);
 			validateRemoteNumber("ikeDpdDelay", "DPD delay", 0, 86400);
 		} else {
+			if (values.acUDPEnabled && !isValidPortText(values.acUDPPort)) {
+				errors.acUDPPort = "UDP port must be between 1 and 65535.";
+			}
 			validateRemoteNumber("acMaxClients", "Max clients", 1, 1000000);
 			validateRemoteNumber("acMaxSameClients", "Max same clients", 0, 1000000);
 			for (const [key, label] of [
@@ -943,6 +992,56 @@ export const validateInboundFormFields = (
 				["acMobileDPD", "Mobile DPD"],
 			] as const) {
 				validateRemoteNumber(key, label, 0, 2592000);
+			}
+			validateRemoteNumber("acAuthTimeout", "Auth timeout", 1, 86400);
+			validateRemoteNumber("acMinReauthTime", "Min reauth time", 0, 2592000);
+			validateRemoteNumber("acMaxBanScore", "Max ban score", 0, 1000000);
+			validateRemoteNumber("acBanResetTime", "Ban reset time", 0, 2592000);
+			validateRemoteNumber("acRekeyTime", "Rekey time", 0, 2592000);
+			validateRemoteNumber(
+				"acSwitchToTCPTimeout",
+				"Switch to TCP timeout",
+				0,
+				86400,
+			);
+			validateRemoteNumber("acStatsReportTime", "Stats report time", 0, 86400);
+			validateRemoteNumber("acRateLimitMs", "Rate limit", 0, 60000);
+			validateRemoteNumber(
+				"acRXDataPerSec",
+				"RX bytes per second",
+				0,
+				2147483647,
+			);
+			validateRemoteNumber(
+				"acTXDataPerSec",
+				"TX bytes per second",
+				0,
+				2147483647,
+			);
+			validateRemoteNumber("acOutputBuffer", "Output buffer", 0, 100000);
+			validateRemoteNumber("acNetPriority", "Network priority", 0, 6);
+			validateRemoteNumber("acNoCompressLimit", "No-compress limit", 0, 65535);
+			if (!/^\d+(\.\d+)+$/.test(values.acCertUserOID.trim())) {
+				errors.acCertUserOID = "Certificate user OID is invalid.";
+			}
+			if (/\r|\n/.test(values.acTLSPriorities)) {
+				errors.acTLSPriorities = "TLS priorities must stay on one line.";
+			}
+			if (
+				values.acRestrictToPorts.trim() &&
+				!/^[a-zA-Z0-9!(),\- \t]+$/.test(values.acRestrictToPorts.trim())
+			) {
+				errors.acRestrictToPorts = "Restricted ports expression is invalid.";
+			}
+			if (
+				splitLines(values.acNBNS).some(
+					(value) => !/^\d{1,3}(\.\d{1,3}){3}$/.test(value),
+				)
+			) {
+				errors.acNBNS = "NBNS servers must be IPv4 addresses.";
+			}
+			if (splitLines(values.acSplitDNS).some((value) => /\s/.test(value))) {
+				errors.acSplitDNS = "Split DNS entries must be domain names.";
 			}
 		}
 	}
@@ -1359,6 +1458,7 @@ export const createDefaultInboundForm = (
 	raCA: "",
 	raServerCertificate: "",
 	raServerKey: "",
+	raCertificateNames: "",
 	raServerIdentity: "",
 	raMTU: "1400",
 	ikeProposals:
@@ -1374,6 +1474,10 @@ export const createDefaultInboundForm = (
 	ikeDpdDelay: "30",
 	ikeRoutes: "",
 	acUDPEnabled: true,
+	acUDPPort: protocol === "anyconnect" ? "443" : "",
+	acListenHost: "",
+	acUDPListenHost: "",
+	acListenHostIsDynDNS: false,
 	acMaxClients: "1024",
 	acMaxSameClients: "0",
 	acCookieTimeout: "300",
@@ -1383,15 +1487,44 @@ export const createDefaultInboundForm = (
 	acKeepalive: "300",
 	acDPD: "60",
 	acMobileDPD: "300",
+	acAuthTimeout: "240",
+	acMinReauthTime: "300",
+	acMaxBanScore: "80",
+	acBanResetTime: "1200",
+	acRekeyTime: "172800",
+	acRekeyMethod: "ssl",
+	acSwitchToTCPTimeout: "25",
+	acStatsReportTime: "0",
+	acRateLimitMs: "100",
+	acRXDataPerSec: "0",
+	acTXDataPerSec: "0",
+	acOutputBuffer: "0",
+	acNetPriority: "0",
+	acNoCompressLimit: "256",
 	acCompression: false,
 	acCiscoCompat: true,
+	acDTLSPSK: true,
+	acDTLSLegacy: true,
+	acCiscoSVCCompat: false,
+	acClientBypassProtocol: false,
+	acMatchTLSDTLSCiphers: false,
 	acDenyRoaming: false,
+	acPersistentCookies: false,
+	acTryMTUDiscovery: false,
+	acPingLeases: false,
 	acTunnelAllDNS: true,
 	acRestrictToRoutes: false,
+	acRestrictToPorts: "",
 	acRoutes: "",
 	acNoRoutes: "",
+	acNBNS: "",
+	acSplitDNS: "",
 	acBanner: "",
+	acPreLoginBanner: "",
 	acDefaultDomain: "",
+	acTLSPriorities:
+		"NORMAL:%SERVER_PRECEDENCE:%COMPAT:-VERS-SSL3.0:-VERS-TLS1.0:-VERS-TLS1.1",
+	acCertUserOID: "2.5.4.3",
 	targetIds: ["master"],
 });
 
@@ -2032,12 +2165,12 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			protocol === "l2tp"
 				? "1702"
 				: protocol === "pptp"
-				? toInputValue(
-						settings.tunnel_port ??
-							settings.xray_tunnel_port ??
-							settings.tproxy_port,
-					)
-				: base.l2tpTunnelPort,
+					? toInputValue(
+							settings.tunnel_port ??
+								settings.xray_tunnel_port ??
+								settings.tproxy_port,
+						)
+					: base.l2tpTunnelPort,
 		l2tpIPv4Pool:
 			protocol === "l2tp" || protocol === "pptp"
 				? (settings.ipv4_pool_cidr ??
@@ -2122,6 +2255,10 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			protocol === "ikev2" || protocol === "anyconnect"
 				? (settings.server_key ?? "")
 				: base.raServerKey,
+		raCertificateNames:
+			protocol === "anyconnect"
+				? joinLines(parseStringList(settings.certificate_names))
+				: base.raCertificateNames,
 		raServerIdentity:
 			protocol === "ikev2"
 				? (settings.server_identity ?? "")
@@ -2174,6 +2311,22 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			protocol === "anyconnect"
 				? Boolean(settings.udp_enabled ?? true)
 				: base.acUDPEnabled,
+		acUDPPort:
+			protocol === "anyconnect"
+				? toInputValue(settings.udp_port ?? raw.port ?? 443)
+				: base.acUDPPort,
+		acListenHost:
+			protocol === "anyconnect"
+				? (settings.listen_host ?? "")
+				: base.acListenHost,
+		acUDPListenHost:
+			protocol === "anyconnect"
+				? (settings.udp_listen_host ?? "")
+				: base.acUDPListenHost,
+		acListenHostIsDynDNS:
+			protocol === "anyconnect"
+				? Boolean(settings.listen_host_is_dyndns ?? false)
+				: base.acListenHostIsDynDNS,
 		acMaxClients:
 			protocol === "anyconnect"
 				? toInputValue(settings.max_clients ?? 1024)
@@ -2208,6 +2361,62 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			protocol === "anyconnect"
 				? toInputValue(settings.mobile_dpd ?? 300)
 				: base.acMobileDPD,
+		acAuthTimeout:
+			protocol === "anyconnect"
+				? toInputValue(settings.auth_timeout ?? 240)
+				: base.acAuthTimeout,
+		acMinReauthTime:
+			protocol === "anyconnect"
+				? toInputValue(settings.min_reauth_time ?? 300)
+				: base.acMinReauthTime,
+		acMaxBanScore:
+			protocol === "anyconnect"
+				? toInputValue(settings.max_ban_score ?? 80)
+				: base.acMaxBanScore,
+		acBanResetTime:
+			protocol === "anyconnect"
+				? toInputValue(settings.ban_reset_time ?? 1200)
+				: base.acBanResetTime,
+		acRekeyTime:
+			protocol === "anyconnect"
+				? toInputValue(settings.rekey_time ?? 172800)
+				: base.acRekeyTime,
+		acRekeyMethod:
+			protocol === "anyconnect"
+				? (settings.rekey_method ?? "ssl")
+				: base.acRekeyMethod,
+		acSwitchToTCPTimeout:
+			protocol === "anyconnect"
+				? toInputValue(settings.switch_to_tcp_timeout ?? 25)
+				: base.acSwitchToTCPTimeout,
+		acStatsReportTime:
+			protocol === "anyconnect"
+				? toInputValue(settings.stats_report_time ?? 0)
+				: base.acStatsReportTime,
+		acRateLimitMs:
+			protocol === "anyconnect"
+				? toInputValue(settings.rate_limit_ms ?? 100)
+				: base.acRateLimitMs,
+		acRXDataPerSec:
+			protocol === "anyconnect"
+				? toInputValue(settings.rx_data_per_sec ?? 0)
+				: base.acRXDataPerSec,
+		acTXDataPerSec:
+			protocol === "anyconnect"
+				? toInputValue(settings.tx_data_per_sec ?? 0)
+				: base.acTXDataPerSec,
+		acOutputBuffer:
+			protocol === "anyconnect"
+				? toInputValue(settings.output_buffer ?? 0)
+				: base.acOutputBuffer,
+		acNetPriority:
+			protocol === "anyconnect"
+				? toInputValue(settings.net_priority ?? 0)
+				: base.acNetPriority,
+		acNoCompressLimit:
+			protocol === "anyconnect"
+				? toInputValue(settings.no_compress_limit ?? 256)
+				: base.acNoCompressLimit,
 		acCompression:
 			protocol === "anyconnect"
 				? Boolean(settings.compression ?? false)
@@ -2216,10 +2425,42 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			protocol === "anyconnect"
 				? Boolean(settings.cisco_client_compat ?? true)
 				: base.acCiscoCompat,
+		acDTLSPSK:
+			protocol === "anyconnect"
+				? Boolean(settings.dtls_psk ?? true)
+				: base.acDTLSPSK,
+		acDTLSLegacy:
+			protocol === "anyconnect"
+				? Boolean(settings.dtls_legacy ?? true)
+				: base.acDTLSLegacy,
+		acCiscoSVCCompat:
+			protocol === "anyconnect"
+				? Boolean(settings.cisco_svc_client_compat ?? false)
+				: base.acCiscoSVCCompat,
+		acClientBypassProtocol:
+			protocol === "anyconnect"
+				? Boolean(settings.client_bypass_protocol ?? false)
+				: base.acClientBypassProtocol,
+		acMatchTLSDTLSCiphers:
+			protocol === "anyconnect"
+				? Boolean(settings.match_tls_dtls_ciphers ?? false)
+				: base.acMatchTLSDTLSCiphers,
 		acDenyRoaming:
 			protocol === "anyconnect"
 				? Boolean(settings.deny_roaming ?? false)
 				: base.acDenyRoaming,
+		acPersistentCookies:
+			protocol === "anyconnect"
+				? Boolean(settings.persistent_cookies ?? false)
+				: base.acPersistentCookies,
+		acTryMTUDiscovery:
+			protocol === "anyconnect"
+				? Boolean(settings.try_mtu_discovery ?? false)
+				: base.acTryMTUDiscovery,
+		acPingLeases:
+			protocol === "anyconnect"
+				? Boolean(settings.ping_leases ?? false)
+				: base.acPingLeases,
 		acTunnelAllDNS:
 			protocol === "anyconnect"
 				? Boolean(settings.tunnel_all_dns ?? true)
@@ -2228,6 +2469,10 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			protocol === "anyconnect"
 				? Boolean(settings.restrict_user_to_routes ?? false)
 				: base.acRestrictToRoutes,
+		acRestrictToPorts:
+			protocol === "anyconnect"
+				? (settings.restrict_user_to_ports ?? "")
+				: base.acRestrictToPorts,
 		acRoutes:
 			protocol === "anyconnect"
 				? joinLines(parseStringList(settings.routes))
@@ -2236,12 +2481,32 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			protocol === "anyconnect"
 				? joinLines(parseStringList(settings.no_routes))
 				: base.acNoRoutes,
+		acNBNS:
+			protocol === "anyconnect"
+				? joinLines(parseStringList(settings.nbns_servers))
+				: base.acNBNS,
+		acSplitDNS:
+			protocol === "anyconnect"
+				? joinLines(parseStringList(settings.split_dns))
+				: base.acSplitDNS,
 		acBanner:
 			protocol === "anyconnect" ? (settings.banner ?? "") : base.acBanner,
+		acPreLoginBanner:
+			protocol === "anyconnect"
+				? (settings.pre_login_banner ?? "")
+				: base.acPreLoginBanner,
 		acDefaultDomain:
 			protocol === "anyconnect"
 				? (settings.default_domain ?? "")
 				: base.acDefaultDomain,
+		acTLSPriorities:
+			protocol === "anyconnect"
+				? (settings.tls_priorities ?? base.acTLSPriorities)
+				: base.acTLSPriorities,
+		acCertUserOID:
+			protocol === "anyconnect"
+				? (settings.cert_user_oid ?? "2.5.4.3")
+				: base.acCertUserOID,
 		targetIds: raw.targets?.length ? raw.targets : base.targetIds,
 	};
 };
@@ -2992,8 +3257,17 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 				base.dpd_delay = parseOptionalNumber(values.ikeDpdDelay);
 				base.routes = splitLines(values.ikeRoutes);
 			} else {
+				base.certificate_names = splitLines(values.raCertificateNames);
 				base.mtu = parseOptionalNumber(values.raMTU);
 				base.udp_enabled = values.acUDPEnabled;
+				base.udp_port = values.acUDPEnabled
+					? parseOptionalNumber(values.acUDPPort)
+					: undefined;
+				base.listen_host = values.acListenHost.trim() || undefined;
+				base.udp_listen_host = values.acUDPEnabled
+					? values.acUDPListenHost.trim() || undefined
+					: undefined;
+				base.listen_host_is_dyndns = values.acListenHostIsDynDNS;
 				base.max_clients = parseOptionalNumber(values.acMaxClients);
 				base.max_same_clients = parseOptionalNumber(values.acMaxSameClients);
 				base.cookie_timeout = parseOptionalNumber(values.acCookieTimeout);
@@ -3005,15 +3279,46 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 				base.keepalive = parseOptionalNumber(values.acKeepalive);
 				base.dpd = parseOptionalNumber(values.acDPD);
 				base.mobile_dpd = parseOptionalNumber(values.acMobileDPD);
+				base.auth_timeout = parseOptionalNumber(values.acAuthTimeout);
+				base.min_reauth_time = parseOptionalNumber(values.acMinReauthTime);
+				base.max_ban_score = parseOptionalNumber(values.acMaxBanScore);
+				base.ban_reset_time = parseOptionalNumber(values.acBanResetTime);
+				base.rekey_time = parseOptionalNumber(values.acRekeyTime);
+				base.rekey_method = values.acRekeyMethod;
+				base.switch_to_tcp_timeout = parseOptionalNumber(
+					values.acSwitchToTCPTimeout,
+				);
+				base.stats_report_time = parseOptionalNumber(values.acStatsReportTime);
+				base.rate_limit_ms = parseOptionalNumber(values.acRateLimitMs);
+				base.rx_data_per_sec = parseOptionalNumber(values.acRXDataPerSec);
+				base.tx_data_per_sec = parseOptionalNumber(values.acTXDataPerSec);
+				base.output_buffer = parseOptionalNumber(values.acOutputBuffer);
+				base.net_priority = parseOptionalNumber(values.acNetPriority);
+				base.no_compress_limit = parseOptionalNumber(values.acNoCompressLimit);
 				base.compression = values.acCompression;
 				base.cisco_client_compat = values.acCiscoCompat;
+				base.dtls_psk = values.acDTLSPSK;
+				base.dtls_legacy = values.acDTLSLegacy;
+				base.cisco_svc_client_compat = values.acCiscoSVCCompat;
+				base.client_bypass_protocol = values.acClientBypassProtocol;
+				base.match_tls_dtls_ciphers = values.acMatchTLSDTLSCiphers;
 				base.deny_roaming = values.acDenyRoaming;
+				base.persistent_cookies = values.acPersistentCookies;
+				base.try_mtu_discovery = values.acTryMTUDiscovery;
+				base.ping_leases = values.acPingLeases;
 				base.tunnel_all_dns = values.acTunnelAllDNS;
 				base.restrict_user_to_routes = values.acRestrictToRoutes;
+				base.restrict_user_to_ports =
+					values.acRestrictToPorts.trim() || undefined;
 				base.routes = splitLines(values.acRoutes);
 				base.no_routes = splitLines(values.acNoRoutes);
+				base.nbns_servers = splitLines(values.acNBNS);
+				base.split_dns = splitLines(values.acSplitDNS);
 				base.banner = values.acBanner.trim() || undefined;
+				base.pre_login_banner = values.acPreLoginBanner.trim() || undefined;
 				base.default_domain = values.acDefaultDomain.trim() || undefined;
+				base.tls_priorities = values.acTLSPriorities.trim() || undefined;
+				base.cert_user_oid = values.acCertUserOID.trim() || undefined;
 			}
 			break;
 	}

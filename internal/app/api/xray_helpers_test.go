@@ -3,8 +3,10 @@
 package api
 
 import (
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"net/http"
 	"strings"
 	"testing"
@@ -104,6 +106,36 @@ func TestXrayHelperRoutesGoNative(t *testing.T) {
 	}
 	if !strings.Contains(ovCert.CA, "BEGIN CERTIFICATE") || !strings.Contains(ovCert.ServerCertificate, "BEGIN CERTIFICATE") || !strings.Contains(ovCert.ServerKey, "BEGIN RSA PRIVATE KEY") {
 		t.Fatalf("unexpected ov cert payload: %#v", ovCert)
+	}
+
+	rec = adminJSONRequest(t, server, http.MethodGet, "/api/xray/anyconnect-self-signed?name=vpn.example.com&name=203.0.113.8", token, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("anyconnect self-signed status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var anyConnectCert struct {
+		CA                string `json:"ca"`
+		ServerCertificate string `json:"serverCertificate"`
+		ServerKey         string `json:"serverKey"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &anyConnectCert); err != nil {
+		t.Fatal(err)
+	}
+	block, _ := pem.Decode([]byte(anyConnectCert.ServerCertificate))
+	if block == nil {
+		t.Fatal("AnyConnect server certificate is not PEM")
+	}
+	certificate, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := certificate.VerifyHostname("vpn.example.com"); err != nil {
+		t.Fatalf("certificate DNS SAN: %v", err)
+	}
+	if err := certificate.VerifyHostname("203.0.113.8"); err != nil {
+		t.Fatalf("certificate IP SAN: %v", err)
+	}
+	if !strings.Contains(anyConnectCert.CA, "BEGIN CERTIFICATE") || !strings.Contains(anyConnectCert.ServerKey, "BEGIN RSA PRIVATE KEY") {
+		t.Fatalf("unexpected AnyConnect cert payload: %#v", anyConnectCert)
 	}
 
 	for _, path := range []string{"/api/xray/mldsa65", "/api/xray/ech?sni=example.com"} {

@@ -130,6 +130,10 @@ func normalizeAnyConnectSettings(settings map[string]any) map[string]any {
 	for key, fallback := range map[string]bool{
 		"udp_enabled": true, "compression": false, "cisco_client_compat": true,
 		"deny_roaming": false, "tunnel_all_dns": true, "restrict_user_to_routes": false,
+		"persistent_cookies": false, "try_mtu_discovery": false, "ping_leases": false,
+		"dtls_psk": true, "dtls_legacy": true, "cisco_svc_client_compat": false,
+		"client_bypass_protocol": false, "match_tls_dtls_ciphers": false,
+		"listen_host_is_dyndns": false,
 	} {
 		if _, ok := out[key]; !ok {
 			out[key] = fallback
@@ -141,14 +145,30 @@ func normalizeAnyConnectSettings(settings map[string]any) map[string]any {
 		"max_clients": 1024, "max_same_clients": 0, "cookie_timeout": 300,
 		"idle_timeout": 1200, "mobile_idle_timeout": 2400, "session_timeout": 0,
 		"keepalive": 300, "dpd": 60, "mobile_dpd": 300, "mtu": 1400,
+		"udp_port": 0, "auth_timeout": 240, "min_reauth_time": 300,
+		"max_ban_score": 80, "ban_reset_time": 1200, "rekey_time": 172800,
+		"switch_to_tcp_timeout": 25, "stats_report_time": 0, "rate_limit_ms": 100,
+		"rx_data_per_sec": 0, "tx_data_per_sec": 0, "output_buffer": 0,
+		"net_priority": 0, "no_compress_limit": 256,
 	} {
-		if value, ok := normalizedOptionalInt(out[key], 0, 86400*30); ok {
+		if value, ok := normalizedOptionalInt(out[key], 0, 2147483647); ok {
 			out[key] = value
 		} else {
 			out[key] = fallback
 		}
 	}
-	for _, key := range []string{"ca_certificate", "server_certificate", "server_key", "banner", "default_domain"} {
+	for key, fallback := range map[string]string{
+		"rekey_method":   "ssl",
+		"tls_priorities": "NORMAL:%SERVER_PRECEDENCE:%COMPAT:-VERS-SSL3.0:-VERS-TLS1.0:-VERS-TLS1.1",
+		"cert_user_oid":  "2.5.4.3",
+	} {
+		value := strings.TrimSpace(stringValue(out[key]))
+		if value == "" {
+			value = fallback
+		}
+		out[key] = value
+	}
+	for _, key := range []string{"ca_certificate", "server_certificate", "server_key", "banner", "pre_login_banner", "default_domain", "listen_host", "udp_listen_host", "restrict_user_to_ports"} {
 		if value := strings.TrimSpace(stringValue(out[key])); value != "" {
 			out[key] = value
 		} else {
@@ -157,6 +177,9 @@ func normalizeAnyConnectSettings(settings map[string]any) map[string]any {
 	}
 	out["routes"] = normalizeStringAnyList(out["routes"])
 	out["no_routes"] = normalizeStringAnyList(out["no_routes"])
+	out["nbns_servers"] = normalizeStringAnyList(out["nbns_servers"])
+	out["split_dns"] = normalizeStringAnyList(out["split_dns"])
+	out["certificate_names"] = normalizeStringAnyList(out["certificate_names"])
 	return out
 }
 
@@ -457,6 +480,12 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 			return fmt.Errorf("invalid inbound %q: %s DNS servers must be IPv4 addresses", tag, strings.ToUpper(protocol))
 		}
 	}
+	for _, server := range normalizeStringAnyList(settings["nbns_servers"]) {
+		addr, err := netip.ParseAddr(stringValue(server))
+		if err != nil || !addr.Is4() {
+			return fmt.Errorf("invalid inbound %q: %s NBNS servers must be IPv4 addresses", tag, strings.ToUpper(protocol))
+		}
+	}
 	for _, key := range []string{"tunnel_port", "xray_tunnel_port", "tproxy_port", "management_port", "ipsec_ike_port", "ipsec_nat_port", "l2tp_port"} {
 		if _, exists := settings[key]; !exists {
 			continue
@@ -600,7 +629,60 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 		if domain := stringValue(settings["default_domain"]); strings.ContainsAny(domain, " \t\r\n") {
 			return fmt.Errorf("invalid inbound %q: AnyConnect default_domain is invalid", tag)
 		}
-		if err := validateRemoteAccessNumbers(tag, protocol, rawSettings, []remoteAccessNumberRule{{"mtu", 576, 1500}, {"max_clients", 1, 1000000}, {"max_same_clients", 0, 1000000}, {"cookie_timeout", 0, 2592000}, {"idle_timeout", 0, 2592000}, {"mobile_idle_timeout", 0, 2592000}, {"session_timeout", 0, 2592000}, {"keepalive", 0, 2592000}, {"dpd", 0, 2592000}, {"mobile_dpd", 0, 2592000}}); err != nil {
+		for _, key := range []string{"listen_host", "udp_listen_host"} {
+			if value := strings.TrimSpace(stringValue(settings[key])); value != "" && !validRemoteAccessHost(value) {
+				return fmt.Errorf("invalid inbound %q: AnyConnect %s is invalid", tag, key)
+			}
+		}
+		for _, value := range normalizeStringAnyList(settings["split_dns"]) {
+			domain := stringValue(value)
+			if _, err := netip.ParseAddr(domain); err == nil {
+				return fmt.Errorf("invalid inbound %q: AnyConnect split_dns entries must be domain names", tag)
+			}
+			if !validRemoteAccessHost(domain) {
+				return fmt.Errorf("invalid inbound %q: AnyConnect split_dns contains an invalid domain", tag)
+			}
+		}
+		for _, value := range normalizeStringAnyList(settings["certificate_names"]) {
+			if !validRemoteAccessHost(stringValue(value)) {
+				return fmt.Errorf("invalid inbound %q: AnyConnect certificate_names contains an invalid name", tag)
+			}
+		}
+		if method := stringValue(settings["rekey_method"]); method != "ssl" && method != "new-tunnel" {
+			return fmt.Errorf("invalid inbound %q: AnyConnect rekey_method must be ssl or new-tunnel", tag)
+		}
+		if oid := stringValue(settings["cert_user_oid"]); !validOID(oid) {
+			return fmt.Errorf("invalid inbound %q: AnyConnect cert_user_oid is invalid", tag)
+		}
+		for _, key := range []string{"tls_priorities", "restrict_user_to_ports", "banner", "pre_login_banner"} {
+			value := stringValue(settings[key])
+			if len(value) > 1024 || strings.ContainsAny(value, "\r\n") {
+				return fmt.Errorf("invalid inbound %q: AnyConnect %s is invalid", tag, key)
+			}
+		}
+		if value := stringValue(settings["restrict_user_to_ports"]); value != "" && strings.IndexFunc(value, func(r rune) bool {
+			return !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || strings.ContainsRune("!(),- \t", r))
+		}) >= 0 {
+			return fmt.Errorf("invalid inbound %q: AnyConnect restrict_user_to_ports contains unsupported characters", tag)
+		}
+		if boolValue(settings["udp_enabled"]) {
+			if raw, exists := rawSettings["udp_port"]; exists {
+				udpPort, ok := normalizedOptionalPort(raw)
+				if !ok || udpPort < 1 || udpPort > 65535 {
+					return fmt.Errorf("invalid inbound %q: AnyConnect udp_port must be between 1 and 65535", tag)
+				}
+			}
+		}
+		if err := validateRemoteAccessNumbers(tag, protocol, rawSettings, []remoteAccessNumberRule{
+			{"mtu", 576, 1500}, {"max_clients", 1, 1000000}, {"max_same_clients", 0, 1000000},
+			{"cookie_timeout", 0, 2592000}, {"idle_timeout", 0, 2592000}, {"mobile_idle_timeout", 0, 2592000},
+			{"session_timeout", 0, 2592000}, {"keepalive", 0, 2592000}, {"dpd", 0, 2592000},
+			{"mobile_dpd", 0, 2592000}, {"auth_timeout", 1, 86400}, {"min_reauth_time", 0, 2592000},
+			{"max_ban_score", 0, 1000000}, {"ban_reset_time", 0, 2592000}, {"rekey_time", 0, 2592000},
+			{"switch_to_tcp_timeout", 0, 86400}, {"stats_report_time", 0, 86400}, {"rate_limit_ms", 0, 60000},
+			{"rx_data_per_sec", 0, 2147483647}, {"tx_data_per_sec", 0, 2147483647}, {"output_buffer", 0, 100000},
+			{"net_priority", 0, 6}, {"no_compress_limit", 0, 65535},
+		}); err != nil {
 			return err
 		}
 	}
@@ -658,6 +740,46 @@ func validIPSecProposal(value string) bool {
 	return strings.IndexFunc(value, func(r rune) bool {
 		return !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || strings.ContainsRune("_+-!,", r))
 	}) < 0
+}
+
+func validRemoteAccessHost(value string) bool {
+	value = strings.TrimSpace(strings.TrimSuffix(value, "."))
+	if value == "" || strings.ContainsAny(value, " \t\r\n") {
+		return false
+	}
+	if _, err := netip.ParseAddr(value); err == nil {
+		return true
+	}
+	if strings.HasPrefix(value, "*.") {
+		value = strings.TrimPrefix(value, "*.")
+	}
+	if len(value) > 253 {
+		return false
+	}
+	for _, label := range strings.Split(value, ".") {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		if strings.IndexFunc(label, func(r rune) bool {
+			return !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-')
+		}) >= 0 {
+			return false
+		}
+	}
+	return true
+}
+
+func validOID(value string) bool {
+	parts := strings.Split(strings.TrimSpace(value), ".")
+	if len(parts) < 2 {
+		return false
+	}
+	for _, part := range parts {
+		if part == "" || strings.IndexFunc(part, func(r rune) bool { return r < '0' || r > '9' }) >= 0 {
+			return false
+		}
+	}
+	return true
 }
 
 func applyVirtualTunnelResolvedSettings(resolved ResolvedInbound, inbound map[string]any) {

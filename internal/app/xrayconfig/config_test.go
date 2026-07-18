@@ -650,6 +650,46 @@ func TestRemoteAccessInboundRejectsUnsafeSettings(t *testing.T) {
 	}
 }
 
+func TestAnyConnectAdvancedSettingsValidation(t *testing.T) {
+	settings := map[string]any{
+		"auth_mode": "password", "ipv4_pool_cidr": "10.71.0.0/24", "tproxy_enabled": false,
+		"server_certificate": "cert", "server_key": "key", "udp_enabled": true, "udp_port": 8443,
+		"listen_host": "vpn.example.com", "udp_listen_host": "192.0.2.10",
+		"nbns_servers": []any{"192.0.2.53"}, "split_dns": []any{"corp.example.com"},
+		"restrict_user_to_ports": "tcp(80,443), udp(53)", "rx_data_per_sec": 1000000000,
+		"tls_priorities": "NORMAL:-VERS-TLS1.0", "cert_user_oid": "2.5.4.3",
+	}
+	if err := validateVirtualTunnelInbound(AnyConnectProtocol, map[string]any{
+		"tag": "anyconnect", "port": 443, "protocol": AnyConnectProtocol, "settings": settings,
+	}); err != nil {
+		t.Fatalf("advanced AnyConnect settings failed validation: %v", err)
+	}
+	if got := normalizeAnyConnectSettings(settings)["rx_data_per_sec"]; got != 1000000000 {
+		t.Fatalf("rx_data_per_sec was not preserved: %#v", got)
+	}
+}
+
+func TestAnyConnectRejectsInvalidAdvancedSettings(t *testing.T) {
+	for _, override := range []map[string]any{
+		{"udp_enabled": true, "udp_port": 0},
+		{"tls_priorities": "NORMAL\nrun-script"},
+		{"split_dns": []any{"not a domain"}},
+	} {
+		settings := map[string]any{
+			"auth_mode": "password", "ipv4_pool_cidr": "10.71.0.0/24", "tproxy_enabled": false,
+			"server_certificate": "cert", "server_key": "key",
+		}
+		for key, value := range override {
+			settings[key] = value
+		}
+		if err := validateVirtualTunnelInbound(AnyConnectProtocol, map[string]any{
+			"tag": "anyconnect", "port": 443, "protocol": AnyConnectProtocol, "settings": settings,
+		}); err == nil {
+			t.Fatalf("expected invalid AnyConnect settings to be rejected: %#v", override)
+		}
+	}
+}
+
 func TestPPTPRejectsPoolLargerThan24(t *testing.T) {
 	err := validateVirtualTunnelInbound("pptp", map[string]any{
 		"tag":      "pptp",
