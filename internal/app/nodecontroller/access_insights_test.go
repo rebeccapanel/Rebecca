@@ -89,4 +89,7 @@ func TestCollapseUserOnlineIPsMergesNodesAndProtocols(t *testing.T) {
 	if got := strings.Join(records[0].Protocols, ","); got != "ov,xray" {
 		t.Fatalf("protocols=%q", got)
 	}
+	if records[0].Connections != 2 {
+		t.Fatalf("connections=%d want=2", records[0].Connections)
+	}
 }

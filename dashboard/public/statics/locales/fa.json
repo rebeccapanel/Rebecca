@@ -1770,6 +1770,8 @@
 	"usersTable.ipsDialogEmpty": "درحال‌حاضر هیچ آدرس IP گزارش نشده است.",
 	"usersTable.ipsDialogLoading": "در حال دریافت آدرس‌های IP...",
 	"usersTable.ipsDialogTitle": "آدرس‌های IP",
+	"usersTable.ipConnections_one": "{{count}} اتصال از این IP",
+	"usersTable.ipConnections_other": "{{count}} اتصال از این IP",
 	"usersTable.assignedIp": "IP اختصاص‌داده‌شده",
 	"usersTable.operator": "اپراتور",
 	"usersTable.operatorUnknown": "اپراتور نامشخص",

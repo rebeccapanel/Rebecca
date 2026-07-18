@@ -195,20 +195,24 @@ func collapseUserOnlineIPs(records []UserOnlineIPRecord) []UserOnlineIPRecord {
 		current := groups[key]
 		if current == nil {
 			item.IP = ip
+			item.Connections = max(item.Connections, 1)
 			current = &group{
 				record: item, nodes: map[string]struct{}{}, protocols: map[string]struct{}{},
 				inbounds: map[string]struct{}{}, assignedIPs: map[string]struct{}{},
 			}
 			groups[key] = current
 			order = append(order, key)
-		} else if item.LastSeenAt.After(current.record.LastSeenAt) {
-			current.record.NodeID = item.NodeID
-			current.record.NodeName = item.NodeName
-			current.record.Protocol = item.Protocol
-			current.record.InboundTag = item.InboundTag
-			current.record.SessionID = item.SessionID
-			current.record.AssignedIP = item.AssignedIP
-			current.record.LastSeenAt = item.LastSeenAt
+		} else {
+			current.record.Connections += max(item.Connections, 1)
+			if item.LastSeenAt.After(current.record.LastSeenAt) {
+				current.record.NodeID = item.NodeID
+				current.record.NodeName = item.NodeName
+				current.record.Protocol = item.Protocol
+				current.record.InboundTag = item.InboundTag
+				current.record.SessionID = item.SessionID
+				current.record.AssignedIP = item.AssignedIP
+				current.record.LastSeenAt = item.LastSeenAt
+			}
 		}
 		addRecordValue(current.nodes, item.NodeName)
 		addRecordValue(current.protocols, normalizedOnlineProtocol(item.Protocol))

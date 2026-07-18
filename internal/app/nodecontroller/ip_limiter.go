@@ -40,6 +40,7 @@ type UserOnlineIPRecord struct {
 	IP                string    `json:"ip,omitempty"`
 	AssignedIP        string    `json:"assigned_ip,omitempty"`
 	AssignedIPs       []string  `json:"assigned_ips,omitempty"`
+	Connections       int       `json:"connections"`
 	OperatorShortName string    `json:"operator_short_name,omitempty"`
 	OperatorOwner     string    `json:"operator_owner,omitempty"`
 	LastSeenAt        time.Time `json:"last_seen_at"`

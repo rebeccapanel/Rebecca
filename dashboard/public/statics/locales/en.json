@@ -1783,6 +1783,8 @@
 	"usersTable.ipsDialogEmpty": "No IP addresses are currently reported.",
 	"usersTable.ipsDialogLoading": "Loading IP addresses...",
 	"usersTable.ipsDialogTitle": "IP addresses",
+	"usersTable.ipConnections_one": "{{count}} connection from this IP",
+	"usersTable.ipConnections_other": "{{count}} connections from this IP",
 	"usersTable.assignedIp": "Assigned IP",
 	"usersTable.operator": "Operator",
 	"usersTable.operatorUnknown": "Unknown operator",

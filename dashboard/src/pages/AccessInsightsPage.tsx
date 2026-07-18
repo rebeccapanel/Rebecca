@@ -6,14 +6,13 @@ import {
 	Button,
 	ButtonGroup,
 	HStack,
-	IconButton,
 	Input,
 	InputGroup,
 	InputLeftElement,
 	Spinner,
+	Stack,
 	Switch,
 	Text,
-	Tooltip,
 	VStack,
 } from "@chakra-ui/react";
 import {
@@ -26,6 +25,7 @@ import {
 	type DataTableColumn,
 	PageHeader,
 	ResourceListCard,
+	ResourceRefreshButton,
 } from "components/ui";
 import dayjs from "dayjs";
 import useGetUser from "hooks/useGetUser";
@@ -61,7 +61,8 @@ const protocolColor = (protocol: string) => {
 };
 
 const AccessInsightsPage: FC = () => {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const isRTL = i18n.dir(i18n.language) === "rtl";
 	const { userData, getUserIsSuccess } = useGetUser();
 	const canView =
 		getUserIsSuccess && Boolean(userData.permissions?.sections.xray);
@@ -236,24 +237,13 @@ const AccessInsightsPage: FC = () => {
 				),
 			},
 			{
-				id: "nodes",
-				header: t("pages.accessInsights.nodes", "Nodes"),
-				accessor: (client) => client.nodes?.join(", ") || "-",
-				priority: "medium",
-				width: "180px",
-				minWidth: "150px",
-				truncate: true,
-				tooltip: true,
-				mobilePriority: 3,
-			},
-			{
 				id: "last_seen",
 				header: t("pages.accessInsights.lastSeen", "Last seen"),
 				accessor: "last_seen",
 				priority: "medium",
 				width: "155px",
 				minWidth: "145px",
-				mobilePriority: 4,
+				mobilePriority: 3,
 				cell: (client) => (
 					<Text dir="ltr" fontSize="xs" whiteSpace="nowrap">
 						{dayjs(client.last_seen).format("YYYY-MM-DD HH:mm:ss")}
@@ -316,7 +306,12 @@ const AccessInsightsPage: FC = () => {
 		) : null;
 
 	return (
-		<VStack spacing={4} align="stretch">
+		<VStack
+			spacing={5}
+			align="stretch"
+			dir={isRTL ? "rtl" : "ltr"}
+			data-dir={isRTL ? "rtl" : "ltr"}
+		>
 			<PageHeader
 				title={t("pages.accessInsights.title", "Live Access Insights")}
 				description={t(
@@ -325,123 +320,129 @@ const AccessInsightsPage: FC = () => {
 				)}
 			/>
 
-			<ResourceListCard
-				title={t("pages.accessInsights.onlineSessions", "Online sessions")}
-				summaryItems={[
-					{
-						label: t("pages.accessInsights.onlineUsers", "Online users"),
-						value: items.length,
-						colorScheme: "green",
-					},
-					{
-						label: t("pages.accessInsights.uniqueIps", "Unique IPs"),
-						value: totalIPs,
-						colorScheme: "blue",
-					},
-					{
-						label: t("pages.accessInsights.activeNodes", "Active nodes"),
-						value: totalNodes,
-						colorScheme: "cyan",
-					},
-				]}
-				actions={
-					<HStack spacing={3}>
-						<HStack spacing={2}>
-							<Switch
-								isChecked={autoRefresh}
-								onChange={(event) => setAutoRefresh(event.target.checked)}
-								aria-label={t(
-									"pages.accessInsights.autoRefresh",
-									"Auto refresh",
-								)}
-							/>
-							<Text fontSize="sm">
-								{t("pages.accessInsights.autoRefresh", "Auto refresh")}
-							</Text>
-						</HStack>
-						<Tooltip label={t("refresh", "Refresh")}>
-							<IconButton
+			<Stack spacing={3}>
+				<ResourceListCard
+					title={t("pages.accessInsights.onlineSessions", "Online sessions")}
+					summaryItems={[
+						{
+							label: t("pages.accessInsights.onlineUsers", "Online users"),
+							value: items.length,
+							colorScheme: "green",
+						},
+						{
+							label: t("pages.accessInsights.uniqueIps", "Unique IPs"),
+							value: totalIPs,
+							colorScheme: "blue",
+						},
+						{
+							label: t("pages.accessInsights.activeNodes", "Active nodes"),
+							value: totalNodes,
+							colorScheme: "cyan",
+						},
+					]}
+					actions={
+						<HStack spacing={3} justify={{ base: "space-between", xl: "end" }}>
+							<HStack spacing={2}>
+								<Switch
+									isChecked={autoRefresh}
+									onChange={(event) => setAutoRefresh(event.target.checked)}
+									aria-label={t(
+										"pages.accessInsights.autoRefresh",
+										"Auto refresh",
+									)}
+								/>
+								<Text fontSize="sm">
+									{t("pages.accessInsights.autoRefresh", "Auto refresh")}
+								</Text>
+							</HStack>
+							<ResourceRefreshButton
 								aria-label={t("refresh", "Refresh")}
+								label={t("refresh", "Refresh")}
 								icon={<ArrowPathIcon width={18} />}
 								onClick={() => void load()}
 								isLoading={loading}
-								size="sm"
-								variant="ghost"
 							/>
-						</Tooltip>
-					</HStack>
-				}
-				footerActions={
-					protocolTotals.length ? (
-						<HStack spacing={1.5} flexWrap="wrap">
-							{protocolTotals.map(([protocol, count]) => (
-								<Badge
-									key={protocol}
-									colorScheme={protocolColor(protocol)}
-									borderRadius="md"
-								>
-									{protocol} · {count}
-								</Badge>
-							))}
 						</HStack>
-					) : undefined
-				}
-			>
-				<HStack
-					as="form"
-					onSubmit={(event) => {
-						event.preventDefault();
-						applySearch();
-					}}
-					spacing={2}
-					maxW="520px"
+					}
+					footerActions={
+						protocolTotals.length ? (
+							<HStack spacing={1.5} flexWrap="wrap">
+								{protocolTotals.map(([protocol, count]) => (
+									<Badge
+										key={protocol}
+										colorScheme={protocolColor(protocol)}
+										borderRadius="md"
+									>
+										{protocol} · {count}
+									</Badge>
+								))}
+							</HStack>
+						) : undefined
+					}
 				>
-					<InputGroup>
-						<InputLeftElement pointerEvents="none">
-							<MagnifyingGlassIcon width={18} />
-						</InputLeftElement>
-						<Input
-							value={search}
-							onChange={(event) => setSearch(event.target.value)}
-							placeholder={t(
-								"pages.accessInsights.liveSearch",
-								"Search user, IP, node, or protocol",
-							)}
-						/>
-					</InputGroup>
-					<Button type="submit" flexShrink={0}>
-						{t("search", "Search")}
-					</Button>
-				</HStack>
-			</ResourceListCard>
+					<Stack
+						as="form"
+						onSubmit={(event) => {
+							event.preventDefault();
+							applySearch();
+						}}
+						direction={{ base: "column", sm: "row" }}
+						spacing={2}
+						w="full"
+						maxW="520px"
+					>
+						<InputGroup>
+							<InputLeftElement pointerEvents="none">
+								<MagnifyingGlassIcon width={18} />
+							</InputLeftElement>
+							<Input
+								value={search}
+								onChange={(event) => setSearch(event.target.value)}
+								placeholder={t(
+									"pages.accessInsights.liveSearch",
+									"Search user, IP, node, or protocol",
+								)}
+							/>
+						</InputGroup>
+						<Button type="submit" flexShrink={0}>
+							{t("search", "Search")}
+						</Button>
+					</Stack>
+				</ResourceListCard>
 
-			<DataTable
-				ariaLabel={t("pages.accessInsights.onlineSessions", "Online sessions")}
-				data={visibleItems}
-				columns={columns}
-				getRowId={(client) => client.user_key}
-				isLoading={loading}
-				loadingRows={8}
-				error={error || undefined}
-				emptyState={
-					<Text fontSize="sm" color="panel.textMuted" textAlign="center">
-						{t("pages.accessInsights.noData", "No recent connections found.")}
-					</Text>
-				}
-				pagination={pagination}
-				mobileBreakpoint="lg"
-				tableProps={{
-					w: "full",
-					sx: {
-						tableLayout: "fixed",
-						"& th, & td": {
-							px: { base: 2, xl: 2.5 },
-							py: 2.5,
-							verticalAlign: "middle",
+				<DataTable
+					ariaLabel={t(
+						"pages.accessInsights.onlineSessions",
+						"Online sessions",
+					)}
+					data={visibleItems}
+					columns={columns}
+					getRowId={(client) => client.user_key}
+					isLoading={loading}
+					loadingRows={8}
+					error={error || undefined}
+					emptyState={
+						<Text fontSize="sm" color="panel.textMuted" textAlign="center">
+							{t("pages.accessInsights.noData", "No recent connections found.")}
+						</Text>
+					}
+					pagination={pagination}
+					mobileBreakpoint="lg"
+					dir={isRTL ? "rtl" : "ltr"}
+					tableProps={{
+						className: isRTL ? "rb-rtl-table" : undefined,
+						w: "full",
+						sx: {
+							tableLayout: "fixed",
+							"& th, & td": {
+								px: { base: 2, xl: 2.5 },
+								py: 2.5,
+								verticalAlign: "middle",
+							},
 						},
-					},
-				}}
-			/>
+					}}
+				/>
+			</Stack>
 		</VStack>
 	);
 };
