@@ -634,6 +634,9 @@ func (s *Server) handleEnableAdmin(w http.ResponseWriter, r *http.Request, usern
 		if _, err := tx.ExecContext(r.Context(), `UPDATE admins SET status = ?, disabled_reason = NULL WHERE id = ?`, string(adminapp.StatusActive), target.ID); err != nil {
 			return err
 		}
+		if _, err := tx.ExecContext(r.Context(), `UPDATE admin_sessions SET revoked_at = ? WHERE admin_id = ? AND state = ? AND revoked_at IS NULL`, now, target.ID, string(adminapp.SessionDisabled)); err != nil {
+			return err
+		}
 		userIDs, err := disabledByAdminUserIDsTx(r.Context(), tx, target.ID)
 		if err != nil {
 			return err

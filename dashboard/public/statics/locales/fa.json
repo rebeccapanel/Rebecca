@@ -1756,6 +1756,8 @@
 	"usersTable.lifetimeUsage": "کل دوره",
 	"usersTable.listUsage": "مصرف کاربران لیست",
 	"usersTable.listUsageHelper": "مجموع ترافیک کاربران در محدوده فعلی لیست.",
+	"usersTable.adminDisabledTitle": "حساب شما غیرفعال شده است",
+	"usersTable.adminDisabledDescription": "برای فعال‌سازی مجدد حساب با مدیر سودو تماس بگیرید.",
 	"usersTable.noUser": "هنوز کاربری ندارید. برای شروع یک کاربر بسازید.",
 	"usersTable.noUserMatched": "هیچ کاربری با این فیلترها پیدا نشد.",
 	"usersTable.bulkDeletePrompt": "کاربران انتخاب‌شده حذف شوند؟ این کار قابل برگشت نیست.",

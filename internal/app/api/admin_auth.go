@@ -137,6 +137,28 @@ func (s *Server) handleInternalAdminValidate(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *Server) validateLogin(ctx context.Context, username string, password string) (adminapp.Admin, bool, string, error) {
+	dbadmin, ok, reason, err := s.validateCredentials(ctx, username, password)
+	if err != nil || !ok {
+		return dbadmin, ok, reason, err
+	}
+	if err := dbadmin.ValidateAuthAllowed(time.Now().UTC()); err != nil {
+		return adminapp.Admin{}, false, "auth_not_allowed", nil
+	}
+	return dbadmin, true, "ok", nil
+}
+
+func (s *Server) validateSessionLogin(ctx context.Context, username string, password string) (adminapp.Admin, bool, string, error) {
+	dbadmin, ok, reason, err := s.validateCredentials(ctx, username, password)
+	if err != nil || !ok || dbadmin.Status == adminapp.StatusDisabled {
+		return dbadmin, ok, reason, err
+	}
+	if err := dbadmin.ValidateAuthAllowed(time.Now().UTC()); err != nil {
+		return adminapp.Admin{}, false, "auth_not_allowed", nil
+	}
+	return dbadmin, true, "ok", nil
+}
+
+func (s *Server) validateCredentials(ctx context.Context, username string, password string) (adminapp.Admin, bool, string, error) {
 	dbadmin, found, err := s.adminRepo.AdminByUsername(ctx, username)
 	if err != nil {
 		return adminapp.Admin{}, false, "repository_error", err
@@ -146,9 +168,6 @@ func (s *Server) validateLogin(ctx context.Context, username string, password st
 	}
 	if !adminapp.VerifyPassword(dbadmin.HashedPassword, password) {
 		return adminapp.Admin{}, false, "invalid_password", nil
-	}
-	if err := dbadmin.ValidateAuthAllowed(time.Now().UTC()); err != nil {
-		return adminapp.Admin{}, false, "auth_not_allowed", nil
 	}
 	return dbadmin, true, "ok", nil
 }

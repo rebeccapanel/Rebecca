@@ -393,6 +393,60 @@ func TestAdminSessionLoginAndPasswordRevocation(t *testing.T) {
 	}
 }
 
+func TestDisabledAdminGetsRestrictedSessionWithReason(t *testing.T) {
+	server, db := testAdminServer(t)
+	insertMasterAPIAdmin(t, db, 43, "disabled-admin", "session-pass", adminapp.RoleStandard, adminapp.StatusDisabled)
+	if _, err := db.Exec(`UPDATE admins SET disabled_reason = ? WHERE id = 43`, "Payment is overdue"); err != nil {
+		t.Fatal(err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"username":"disabled-admin","password":"session-pass"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", "http://example.com")
+	rec := httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"state":"disabled"`) || !strings.Contains(rec.Body.String(), `"disabled_reason":"Payment is overdue"`) {
+		t.Fatalf("disabled login status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var cookie *http.Cookie
+	for _, candidate := range rec.Result().Cookies() {
+		if candidate.Name == adminSessionCookie {
+			cookie = candidate
+		}
+	}
+	if cookie == nil || cookie.Value == "" {
+		t.Fatal("restricted session cookie was not set")
+	}
+	if _, err := db.Exec(`UPDATE admin_sessions SET state = ? WHERE admin_id = 43`, string(adminapp.SessionActive)); err != nil {
+		t.Fatal(err)
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/auth/session", nil)
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"state":"disabled"`) {
+		t.Fatalf("disabled session status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodGet, "/api/admin", nil)
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("disabled session accessed admin API: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	req = httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+	req.Header.Set("Origin", "http://example.com")
+	req.AddCookie(cookie)
+	rec = httptest.NewRecorder()
+	server.Handler().ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("disabled session logout status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestAdminSessionLoginBehindReverseProxy(t *testing.T) {
 	server, db := testAdminServer(t)
 	insertMasterAPIAdmin(t, db, 42, "proxy-admin", "session-pass", adminapp.RoleFullAccess, adminapp.StatusActive)

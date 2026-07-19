@@ -1,7 +1,11 @@
 import type { Admin } from "types/Admin";
 import { fetch } from "./http";
 
-export type SessionState = "active" | "pending_2fa" | "setup_required";
+export type SessionState =
+	| "active"
+	| "pending_2fa"
+	| "setup_required"
+	| "disabled";
 
 export type AuthSession = {
 	state: SessionState;

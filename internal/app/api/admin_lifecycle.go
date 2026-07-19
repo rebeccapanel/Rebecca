@@ -142,6 +142,9 @@ func reconcileAdminLimitStateTx(ctx context.Context, tx *sql.Tx, target adminapp
 		if _, err := tx.ExecContext(ctx, `UPDATE admins SET status = ?, disabled_reason = NULL WHERE id = ?`, string(adminapp.StatusActive), target.ID); err != nil {
 			return adminLimitTransition{}, err
 		}
+		if _, err := tx.ExecContext(ctx, `UPDATE admin_sessions SET revoked_at = ? WHERE admin_id = ? AND state = ? AND revoked_at IS NULL`, now, target.ID, string(adminapp.SessionDisabled)); err != nil {
+			return adminLimitTransition{}, err
+		}
 		if _, err := tx.ExecContext(
 			ctx,
 			`UPDATE users SET status = CASE WHEN (on_hold_timeout IS NOT NULL AND on_hold_timeout > ?) OR COALESCE(on_hold_expire_duration, 0) > 0 THEN ? ELSE ? END, last_status_change = ?, admin_disabled_at = NULL WHERE admin_id = ? AND status = ? AND admin_disabled_at IS NOT NULL`,

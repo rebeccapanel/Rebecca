@@ -45,7 +45,7 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 		writeAdminLoginFailed(w)
 		return
 	}
-	dbadmin, ok, reason, err := s.validateLogin(r.Context(), username, credentials.Password)
+	dbadmin, ok, reason, err := s.validateSessionLogin(r.Context(), username, credentials.Password)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -59,7 +59,9 @@ func (s *Server) handleAuthLogin(w http.ResponseWriter, r *http.Request) {
 
 	state := adminapp.SessionActive
 	lifetime := activeSessionLife
-	if dbadmin.TOTPEnabled {
+	if dbadmin.Status == adminapp.StatusDisabled {
+		state = adminapp.SessionDisabled
+	} else if dbadmin.TOTPEnabled {
 		state = adminapp.SessionPending2FA
 		lifetime = pendingSessionLife
 	} else if dbadmin.Require2FA {
@@ -105,7 +107,7 @@ func (s *Server) handleAuthVerify2FA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx, err := s.sessionContext(r)
-	if err != nil || ctx.Session == nil || ctx.Session.State != adminapp.SessionPending2FA {
+	if err != nil || ctx.Admin.Status == adminapp.StatusDisabled || ctx.Session == nil || ctx.Session.State != adminapp.SessionPending2FA {
 		writeAuthError(w, adminapp.ErrInvalidToken)
 		return
 	}
@@ -361,7 +363,7 @@ func canManageAdmin2FA(actor adminapp.Admin, target adminapp.Admin) bool {
 
 func (s *Server) handleSelf2FASetup(w http.ResponseWriter, r *http.Request) {
 	ctx, err := s.sessionContext(r)
-	if err != nil || ctx.Session == nil || (ctx.Session.State != adminapp.SessionActive && ctx.Session.State != adminapp.SessionSetupRequired) {
+	if err != nil || ctx.Admin.Status == adminapp.StatusDisabled || ctx.Session == nil || (ctx.Session.State != adminapp.SessionActive && ctx.Session.State != adminapp.SessionSetupRequired) {
 		writeAuthError(w, adminapp.ErrInvalidToken)
 		return
 	}
@@ -387,7 +389,7 @@ func (s *Server) handleSelf2FASetup(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSelf2FAConfirm(w http.ResponseWriter, r *http.Request) {
 	ctx, err := s.sessionContext(r)
-	if err != nil || ctx.Session == nil || ctx.Session.PendingTOTPSecret == "" {
+	if err != nil || ctx.Admin.Status == adminapp.StatusDisabled || ctx.Session == nil || ctx.Session.PendingTOTPSecret == "" {
 		writeError(w, http.StatusBadRequest, "Start two-factor setup first")
 		return
 	}
@@ -529,13 +531,17 @@ func (s *Server) newEncryptedTOTP(r *http.Request, username string) (string, str
 
 func authSessionResponse(dbadmin adminapp.Admin, session adminapp.AdminSession) map[string]any {
 	adminData := adminResponse(dbadmin)
+	state := session.State
+	if dbadmin.Status == adminapp.StatusDisabled {
+		state = adminapp.SessionDisabled
+	}
 	encoded, _ := json.Marshal(struct {
 		Role        adminapp.AdminRole        `json:"role"`
 		Permissions adminapp.AdminPermissions `json:"permissions"`
 	}{dbadmin.Role, dbadmin.Permissions})
 	digest := sha256.Sum256(encoded)
 	return map[string]any{
-		"state":               string(session.State),
+		"state":               string(state),
 		"admin":               adminData,
 		"permissions_version": hex.EncodeToString(digest[:8]),
 		"totp_enabled":        dbadmin.TOTPEnabled,

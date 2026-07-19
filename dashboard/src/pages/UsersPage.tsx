@@ -1,12 +1,13 @@
 import {
 	Button,
 	chakra,
+	Flex,
 	Spinner,
 	Text,
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
-import { ArrowPathIcon } from "@heroicons/react/24/outline";
+import { ArrowPathIcon, LockClosedIcon } from "@heroicons/react/24/outline";
 import { AppDialog } from "components/dialogs/AppDialog";
 import { ReloadIcon } from "components/Filters";
 import { Icon } from "components/Icon";
@@ -17,11 +18,17 @@ import { UsersTable } from "components/UsersTable";
 import { PageHeader, ResourceRefreshButton } from "components/ui";
 import { UsersFilterBar, UserQuickEditModal } from "components/users";
 import { fetchInbounds, useDashboard } from "contexts/DashboardContext";
+import useGetUser from "hooks/useGetUser";
 import { type FC, useEffect, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
+import { AdminStatus } from "types/Admin";
 
 const ResetIcon = chakra(ArrowPathIcon, {
 	baseStyle: { w: 5, h: 5 },
+});
+
+const DisabledIcon = chakra(LockClosedIcon, {
+	baseStyle: { h: 12, w: 12 },
 });
 
 const UserActionDialog: FC<{ action: "reset" | "revoke" }> = ({ action }) => {
@@ -131,19 +138,63 @@ export const UsersPage: FC = () => {
 	const { t, i18n } = useTranslation();
 	const isRTL = i18n.dir(i18n.language) === "rtl";
 	const { loading, refetchUsers } = useDashboard();
+	const { userData, getUserIsPending } = useGetUser();
+	const isAdminDisabled = userData.status === AdminStatus.Disabled;
 
 	useEffect(() => {
+		if (getUserIsPending || isAdminDisabled) return;
 		useDashboard.getState().refetchUsers(true);
 		fetchInbounds();
-	}, []);
+	}, [getUserIsPending, isAdminDisabled]);
 
 	useEffect(() => {
+		if (getUserIsPending || isAdminDisabled) return;
 		const shouldOpenCreate = sessionStorage.getItem("openCreateUser");
 		if (shouldOpenCreate === "true") {
 			sessionStorage.removeItem("openCreateUser");
 			useDashboard.getState().onCreateUser(true);
 		}
-	}, []);
+	}, [getUserIsPending, isAdminDisabled]);
+
+	if (getUserIsPending) {
+		return (
+			<Flex align="center" justify="center" minH="420px">
+				<Spinner size="lg" />
+			</Flex>
+		);
+	}
+
+	if (isAdminDisabled) {
+		return (
+			<VStack spacing={5} align="stretch" dir={isRTL ? "rtl" : "ltr"}>
+				<PageHeader title={t("users")} />
+				<Flex
+					align="center"
+					border="1px solid"
+					borderColor="panel.border"
+					borderRadius="8px"
+					direction="column"
+					justify="center"
+					minH="420px"
+					px={6}
+					py={10}
+					textAlign="center"
+				>
+					<DisabledIcon color="red.400" mb={5} />
+					<Text fontSize="xl" fontWeight="bold" mb={2}>
+						{t("usersTable.adminDisabledTitle", "Your account is disabled")}
+					</Text>
+					<Text color="panel.textSecondary" maxW="520px">
+						{userData.disabled_reason ||
+							t(
+								"usersTable.adminDisabledDescription",
+								"Please contact the sudo admin to regain access.",
+							)}
+					</Text>
+				</Flex>
+			</VStack>
+		);
+	}
 
 	return (
 		<VStack

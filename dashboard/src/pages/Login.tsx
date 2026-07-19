@@ -353,6 +353,8 @@ export const Login: FC = () => {
 			.then(async (session) => {
 				if (session.state === "active") {
 					navigate("/");
+				} else if (session.state === "disabled") {
+					navigate("/users");
 				} else if (session.state === "pending_2fa") {
 					setStep("otp");
 				} else {
@@ -382,6 +384,9 @@ export const Login: FC = () => {
 				setOTP("");
 			} else if (session.state === "setup_required") {
 				await openRequiredSetup();
+			} else if (session.state === "disabled") {
+				clearClientSession();
+				navigate("/users");
 			} else {
 				completeLogin();
 			}

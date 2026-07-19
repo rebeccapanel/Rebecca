@@ -16,6 +16,7 @@ const (
 	SessionActive        SessionState = "active"
 	SessionPending2FA    SessionState = "pending_2fa"
 	SessionSetupRequired SessionState = "setup_required"
+	SessionDisabled      SessionState = "disabled"
 )
 
 type AdminSession struct {
@@ -168,6 +169,9 @@ func (a Authenticator) AuthenticateSession(ctx context.Context, token string) (E
 	if result.Session == nil || result.Session.State != SessionActive {
 		return EffectiveAdminContext{}, ErrSessionRestricted
 	}
+	if err := result.Admin.ValidateAuthAllowed(a.now()); err != nil {
+		return EffectiveAdminContext{}, err
+	}
 	return result, nil
 }
 
@@ -190,7 +194,11 @@ func (a Authenticator) SessionContext(ctx context.Context, token string) (Effect
 	if !found {
 		return EffectiveAdminContext{}, ErrAdminNotFound
 	}
-	if err := dbadmin.ValidateAuthAllowed(now); err != nil {
+	if dbadmin.Status == StatusDisabled {
+		if err := dbadmin.ValidateNotDeleted(); err != nil {
+			return EffectiveAdminContext{}, err
+		}
+	} else if err := dbadmin.ValidateAuthAllowed(now); err != nil {
 		return EffectiveAdminContext{}, err
 	}
 	if err := a.repo.TouchSession(ctx, session.ID, now); err != nil {

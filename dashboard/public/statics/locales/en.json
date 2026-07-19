@@ -1766,6 +1766,8 @@
 	"usersTable.lifetimeUsage": "Lifetime",
 	"usersTable.listUsage": "Listed users usage",
 	"usersTable.listUsageHelper": "Sum of user traffic in the current visible scope.",
+	"usersTable.adminDisabledTitle": "Your account is disabled",
+	"usersTable.adminDisabledDescription": "Please contact the sudo admin to regain access.",
 	"usersTable.noUser": "No users yet. Create one to start issuing access.",
 	"usersTable.noUserMatched": "No users match these filters.",
 	"usersTable.disableUser": "Disable user",

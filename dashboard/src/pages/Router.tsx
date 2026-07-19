@@ -125,10 +125,15 @@ const normalizeLegacyHashRoute = (basename: string) => {
 const dashboardBasename = getDashboardBasename();
 normalizeLegacyHashRoute(dashboardBasename);
 
-const fetchAdminLoader = async () => {
+const fetchAdminLoader = async ({ request }: { request: Request }) => {
 	try {
 		const response = await fetch<{ state?: string }>("/auth/session");
-		if (response?.state !== "active") throw redirect("/login/");
+		if (response?.state === "disabled") {
+			const pathname = new URL(request.url).pathname.replace(/\/+$/, "");
+			if (!pathname.endsWith("/users")) throw redirect("/users/");
+		} else if (response?.state !== "active") {
+			throw redirect("/login/");
+		}
 		if (response && typeof response === "object" && "error" in response) {
 			throw new Error(`API error: ${response.error || "Unknown error"}`);
 		}
