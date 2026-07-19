@@ -1477,16 +1477,21 @@ INSERT INTO vpn_user_sessions (node_id, user_id, protocol, session_id, assigned_
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 1 || rows[0].ID != 2 {
-		t.Fatalf("expected only user under session limit, got %#v", rows)
+	if len(rows) != len(runtimeProxyProtocolList) {
+		t.Fatalf("expected every protocol for the user under session limit, got %#v", rows)
+	}
+	for _, row := range rows {
+		if row.ID != 2 {
+			t.Fatalf("expected only user under session limit, got %#v", rows)
+		}
 	}
 
 	rows, err = repo.RuntimeUsersForProtocols(ctx, []string{"shadowsocks"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 0 {
-		t.Fatalf("expected protocol filter to skip unrelated proxies, got %#v", rows)
+	if len(rows) != 1 || rows[0].ID != 2 || rows[0].Protocol != "shadowsocks" {
+		t.Fatalf("expected synthesized shadowsocks credentials for the eligible service user, got %#v", rows)
 	}
 }
 

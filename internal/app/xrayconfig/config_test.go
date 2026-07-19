@@ -573,6 +573,29 @@ func TestTranslateVirtualInboundsToRuntimeTunnel(t *testing.T) {
 	}
 }
 
+func TestParseRejectsInvalidMultiUserShadowsocks2022(t *testing.T) {
+	base := func(method, password string) map[string]any {
+		return map[string]any{
+			"inbounds": []any{map[string]any{
+				"tag": "ss", "port": 8388, "protocol": "shadowsocks",
+				"settings": map[string]any{"method": method, "password": password},
+			}},
+			"outbounds": []any{map[string]any{"tag": "direct", "protocol": "freedom"}},
+		}
+	}
+	for _, test := range []struct {
+		method   string
+		password string
+	}{
+		{"2022-blake3-chacha20-poly1305", "c2VjcmV0"},
+		{"2022-blake3-aes-256-gcm", "c2VjcmV0"},
+	} {
+		if _, err := Parse(base(test.method, test.password), Options{}); err == nil {
+			t.Fatalf("expected %s to be rejected", test.method)
+		}
+	}
+}
+
 func TestTranslateDirectVirtualInboundSkipsRuntimeTunnelAndRouting(t *testing.T) {
 	raw := map[string]any{
 		"inbounds": []any{

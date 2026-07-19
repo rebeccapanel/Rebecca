@@ -2,6 +2,8 @@ package nodecontroller
 
 import (
 	"context"
+	"database/sql"
+	"encoding/base64"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -27,6 +29,43 @@ func TestIncludeDBUsersPreservesReverseClient(t *testing.T) {
 	clients := interfaceSlice(mapValue(listOfMaps(raw["inbounds"])[0]["settings"])["clients"])
 	if len(clients) != 1 || stringValue(mapValue(clients[0])["id"]) != "reverse" {
 		t.Fatalf("unexpected runtime clients: %#v", clients)
+	}
+}
+
+func TestIncludeDBUsersBuildsShadowsocks2022Client(t *testing.T) {
+	raw := map[string]any{
+		"inbounds": []any{map[string]any{
+			"tag":      "ss-2022",
+			"protocol": "shadowsocks",
+			"settings": map[string]any{
+				"method":   "2022-blake3-aes-256-gcm",
+				"password": "c2VydmVyLXBhc3N3ZC1tdXN0LWJlLTMya2V5cw==",
+				"clients":  []any{},
+			},
+		}},
+	}
+	data := &runtimeConfigData{
+		users: []runtimeUserRow{{
+			ID: 1, Username: "alice", CredentialKey: "05bfddf81eb418fa1edbce7cd286eee1", Protocol: "shadowsocks",
+			ServiceID: sql.NullInt64{Int64: 7, Valid: true}, Settings: map[string]any{},
+		}},
+		serviceTags: map[int64]map[string]bool{7: {"ss-2022": true}},
+		masks:       map[string][]byte{},
+	}
+	if err := (Controller{}).includeDBUsers(context.Background(), raw, data); err != nil {
+		t.Fatal(err)
+	}
+	clients := interfaceSlice(ensureMap(listOfMaps(raw["inbounds"])[0], "settings")["clients"])
+	if len(clients) != 1 {
+		t.Fatalf("expected one shadowsocks client, got %#v", clients)
+	}
+	client := mapValue(clients[0])
+	if _, exists := client["method"]; exists {
+		t.Fatalf("shadowsocks 2022 clients must not contain method: %#v", client)
+	}
+	key, err := base64.StdEncoding.DecodeString(stringValue(client["password"]))
+	if err != nil || len(key) != 32 {
+		t.Fatalf("shadowsocks 2022 client key must be 32 bytes: %#v err=%v", client, err)
 	}
 }
 

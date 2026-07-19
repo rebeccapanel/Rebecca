@@ -194,6 +194,9 @@ func (c Controller) includeDBUsers(ctx context.Context, raw map[string]any, data
 			if err != nil {
 				continue
 			}
+			if user.Protocol == "shadowsocks" {
+				settings = userread.RuntimeShadowsocksSettings(settings, ensureMap(inbound, "settings"))
+			}
 			if flow := stringValue(settings["flow"]); flow != "" && !flowSupportedForInbound(inbound) {
 				delete(settings, "flow")
 			}

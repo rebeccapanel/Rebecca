@@ -687,6 +687,18 @@ export const validateInboundFormFields = (
 	if (values.protocol === "ikev2" && values.port.trim() !== "500") {
 		errors.port = "IKEv2 port must be 500.";
 	}
+	if (values.protocol === "shadowsocks") {
+		const keyBytes =
+			values.shadowsocksMethod === "2022-blake3-aes-128-gcm" ? 16 : 32;
+		if (values.shadowsocksMethod.startsWith("2022-")) {
+			try {
+				const decoded = atob(values.shadowsocksPassword.trim());
+				if (decoded.length !== keyBytes) throw new Error("invalid key length");
+			} catch {
+				errors.shadowsocksPassword = `Shadowsocks 2022 server password must be a base64-encoded ${keyBytes}-byte key.`;
+			}
+		}
+	}
 	if (values.streamNetwork === "ws") {
 		const error = validatePath(values.wsPath ?? "", "WebSocket path");
 		if (error) errors.wsPath = error;

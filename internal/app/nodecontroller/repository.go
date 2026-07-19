@@ -245,8 +245,7 @@ LEFT JOIN (
 ) vpn_devices ON vpn_devices.user_id = u.id`
 	}
 	query += `
-WHERE u.status IN ('active', 'on_hold') AND u.service_id IS NOT NULL AND u.service_id > 0
-  AND (p.id IS NOT NULL OR NOT EXISTS (SELECT 1 FROM proxies existing WHERE existing.user_id = u.id))`
+WHERE u.status IN ('active', 'on_hold') AND u.service_id IS NOT NULL AND u.service_id > 0`
 	args := []any{}
 	if excludeVPNSessions {
 		query += `

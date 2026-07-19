@@ -1,6 +1,7 @@
 package xrayconfig
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -232,6 +233,23 @@ func validateExecutableInbound(inbound map[string]any) error {
 	}
 	if port < 1 || port > 65535 {
 		return fmt.Errorf("invalid inbound %q: port must be between 1 and 65535", tag)
+	}
+	if protocol == "shadowsocks" {
+		settings := mapValue(inbound["settings"])
+		method := stringValue(settings["method"])
+		if strings.HasPrefix(method, "2022-") {
+			keyLength := map[string]int{
+				"2022-blake3-aes-128-gcm": 16,
+				"2022-blake3-aes-256-gcm": 32,
+			}[method]
+			if keyLength == 0 {
+				return fmt.Errorf("invalid inbound %q: unsupported multi-user Shadowsocks 2022 method %q", tag, method)
+			}
+			key, err := base64.StdEncoding.DecodeString(stringValue(settings["password"]))
+			if err != nil || len(key) != keyLength {
+				return fmt.Errorf("invalid inbound %q: Shadowsocks 2022 server password must be a base64-encoded %d-byte key", tag, keyLength)
+			}
+		}
 	}
 
 	stream := mapValue(inbound["streamSettings"])
@@ -476,11 +494,14 @@ func (c *Config) resolveInbound(inbound map[string]any) (ResolvedInbound, error)
 		"is_fallback": false,
 	}
 
+	settings := mapValue(inbound["settings"])
 	if protocol == "vless" {
-		settings := mapValue(inbound["settings"])
 		if encryption := firstNonEmptyString(settings["encryption"]); encryption != "" {
 			resolved["encryption"] = encryption
 		}
+	}
+	if protocol == "shadowsocks" {
+		resolved["settings"] = settings
 	}
 
 	if isVirtualTunnelProtocol(protocol) {

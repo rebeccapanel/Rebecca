@@ -94,10 +94,10 @@ func BuildConfigLinks(
 	}
 
 	formatVariables := configFormatVariables(item)
-	proxies := item.Proxies
-	if len(proxies) == 0 {
-		proxies = virtualServiceProxies(item.ServiceID, inbounds, inboundOrder, hostsByTag)
-	}
+	proxies := mergeServiceProxies(
+		item.Proxies,
+		virtualServiceProxies(item.ServiceID, inbounds, inboundOrder, hostsByTag),
+	)
 
 	links := make([]string, 0)
 	type tagBinding struct {
@@ -244,6 +244,23 @@ func virtualServiceProxies(serviceID *int64, inbounds map[string]ResolvedInbound
 	result := make([]StoredProxy, 0, len(protocols))
 	for _, protocol := range protocols {
 		result = append(result, StoredProxy{Type: protocol, Settings: map[string]any{}})
+	}
+	return result
+}
+
+func mergeServiceProxies(stored []StoredProxy, service []StoredProxy) []StoredProxy {
+	result := append([]StoredProxy(nil), stored...)
+	seen := make(map[string]struct{}, len(stored))
+	for _, proxy := range stored {
+		seen[normalizeProxyProtocol(proxy.Type)] = struct{}{}
+	}
+	for _, proxy := range service {
+		protocol := normalizeProxyProtocol(proxy.Type)
+		if _, exists := seen[protocol]; exists {
+			continue
+		}
+		result = append(result, proxy)
+		seen[protocol] = struct{}{}
 	}
 	return result
 }
@@ -762,6 +779,34 @@ func RuntimeProxySettings(settings map[string]any, protocol string, credentialKe
 	return runtimeProxySettings(settings, protocol, credentialKey, flow, masks)
 }
 
+func RuntimeShadowsocksSettings(settings map[string]any, inboundSettings map[string]any) map[string]any {
+	data := make(map[string]any, len(settings))
+	for key, value := range settings {
+		data[key] = value
+	}
+	method := firstNonEmptyString(inboundSettings["method"], data["method"], defaultShadowsocksMethod)
+	if strings.HasPrefix(method, "2022-") {
+		data["password"] = shadowsocks2022Password(stringValue(data["password"]), method)
+		delete(data, "method")
+		delete(data, "iv_check")
+		return data
+	}
+	data["method"] = method
+	return data
+}
+
+func shadowsocks2022Password(password string, method string) string {
+	keyLength := 16
+	if strings.Contains(method, "aes-256") {
+		keyLength = 32
+	}
+	if decoded, err := base64.StdEncoding.DecodeString(password); err == nil && len(decoded) == keyLength {
+		return password
+	}
+	sum := sha256.Sum256([]byte(password))
+	return base64.StdEncoding.EncodeToString(sum[:keyLength])
+}
+
 func normalizeCredentialKey(value string) (string, error) {
 	cleaned := strings.ToLower(strings.TrimSpace(strings.ReplaceAll(value, "-", "")))
 	if len(cleaned) != 32 {
@@ -995,17 +1040,28 @@ func trojanShareLink(remark string, address string, path string, inbound Resolve
 }
 
 func shadowsocksShareLink(remark string, address string, inbound ResolvedInbound, settings map[string]any) string {
-	userInfo := stringValue(settings["method"]) + ":" + stringValue(settings["password"])
+	inboundSettings := mapValue(inbound["settings"])
+	method := firstNonEmptyString(inboundSettings["method"], settings["method"], defaultShadowsocksMethod)
+	settings = RuntimeShadowsocksSettings(settings, inboundSettings)
+	var userInfo string
+	if strings.HasPrefix(method, "2022-") {
+		userInfo = queryEscape(method) + ":" + queryEscape(stringValue(inboundSettings["password"])) + ":" + queryEscape(stringValue(settings["password"]))
+	} else {
+		userInfo = base64.RawURLEncoding.EncodeToString([]byte(method + ":" + stringValue(settings["password"])))
+	}
 	params := []queryParam{}
 	tls := stringValue(inbound["tls"])
 	netValue := stringValue(inbound["network"])
 	if tls != "" && tls != "none" {
 		params = append(params, queryParam{"security", tls})
 	}
-	if netValue != "" {
+	httpObfs := netValue == "tcp" && stringValue(inbound["header_type"]) == "http"
+	if netValue != "" && !httpObfs {
 		params = append(params, queryParam{"type", netValue})
 	}
-	if netValue != "" && netValue != "tcp" {
+	if httpObfs {
+		params = append(params, queryParam{"plugin", "obfs-local;obfs=http;obfs-host=" + stringValue(inbound["host"])})
+	} else if netValue != "" && netValue != "tcp" {
 		params = appendNetworkParams(params, netValue, stringValue(inbound["path"]), inbound)
 	}
 	params = appendTLSParams(params, tls, inbound)
@@ -1014,7 +1070,7 @@ func shadowsocksShareLink(remark string, address string, inbound ResolvedInbound
 	if len(params) > 0 {
 		query = "?" + urlencodeOrdered(params)
 	}
-	return "ss://" + base64.StdEncoding.EncodeToString([]byte(userInfo)) + "@" + address + ":" + portString(inbound["port"]) + query + "#" + percentEncode(remark, "/", false)
+	return "ss://" + userInfo + "@" + address + ":" + portString(inbound["port"]) + query + "#" + percentEncode(remark, "/", false)
 }
 
 func hysteriaShareLink(remark string, address string, inbound ResolvedInbound, settings map[string]any) string {
@@ -1181,6 +1237,9 @@ func resolveInbound(inbound map[string]any) (ResolvedInbound, error) {
 	}
 
 	settings := mapValue(inbound["settings"])
+	if protocol == "shadowsocks" {
+		resolved["settings"] = settings
+	}
 	if protocol == "vless" {
 		if encryption := firstNonEmptyString(settings["encryption"], settings["decryption"]); encryption != "" {
 			resolved["encryption"] = encryption

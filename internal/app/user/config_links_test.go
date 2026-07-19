@@ -1,12 +1,78 @@
 package user
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"net/url"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestBuildConfigLinksAddsMissingServiceProtocolForLegacyUser(t *testing.T) {
+	serviceID := int64(1)
+	credentialKey := "05bfddf81eb418fa1edbce7cd286eee1"
+	links, err := BuildConfigLinks(
+		ConfigLinkUser{
+			ID:            22,
+			Username:      "legacy",
+			Status:        "active",
+			ServiceID:     &serviceID,
+			CredentialKey: credentialKey,
+			Proxies: []StoredProxy{{
+				Type:     "vless",
+				Settings: map[string]any{"id": "05bfddf8-1eb4-18fa-1edb-ce7cd286eee1"},
+			}},
+		},
+		map[string]ResolvedInbound{
+			"VLESS": {"tag": "VLESS", "protocol": "vless", "port": int64(443), "network": "tcp", "tls": "none"},
+			"SS": {
+				"tag": "SS", "protocol": "shadowsocks", "port": int64(8388), "network": "tcp", "tls": "none",
+				"settings": map[string]any{"method": "aes-256-gcm"},
+			},
+		},
+		[]string{"VLESS", "SS"},
+		[]Host{
+			{ID: 1, InboundTag: "VLESS", Remark: "vless", Address: "vpn.example.com", Security: "inbound_default", ServiceIDs: []int64{1}},
+			{ID: 2, InboundTag: "SS", Remark: "ss", Address: "vpn.example.com", Security: "inbound_default", ServiceIDs: []int64{1}},
+		},
+		map[string][]byte{},
+		false,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(links.Links) != 2 || !strings.HasPrefix(links.Links[1], "ss://") {
+		t.Fatalf("expected legacy user to receive vless and shadowsocks links, got %#v", links.Links)
+	}
+	encoded := strings.SplitN(strings.TrimPrefix(links.Links[1], "ss://"), "@", 2)[0]
+	decoded, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil {
+		t.Fatalf("invalid SIP002 user info %q: %v", encoded, err)
+	}
+	want := "aes-256-gcm:" + keyToPassword(credentialKey, "shadowsocks")
+	if string(decoded) != want {
+		t.Fatalf("unexpected SIP002 user info: got %q want %q", decoded, want)
+	}
+}
+
+func TestShadowsocks2022LinkUsesSIP022UserInfo(t *testing.T) {
+	settings := map[string]any{"method": defaultShadowsocksMethod, "password": "client-password"}
+	inbound := ResolvedInbound{
+		"port": int64(8388), "network": "tcp", "tls": "none",
+		"settings": map[string]any{
+			"method":   "2022-blake3-aes-128-gcm",
+			"password": "c2VydmVyLXBhc3N3ZA==",
+		},
+	}
+	link := shadowsocksShareLink("ss2022", "vpn.example.com", inbound, settings)
+	if !strings.HasPrefix(link, "ss://2022-blake3-aes-128-gcm:c2VydmVyLXBhc3N3ZA%3D%3D:") {
+		t.Fatalf("unexpected SIP022 link: %s", link)
+	}
+	if strings.Contains(strings.SplitN(strings.TrimPrefix(link, "ss://"), "@", 2)[0], "method") {
+		t.Fatalf("SIP022 user info must not be base64 encoded: %s", link)
+	}
+}
 
 func TestHostRotationSelectionModes(t *testing.T) {
 	value := "one.example.com,two.example.com,one.example.com"

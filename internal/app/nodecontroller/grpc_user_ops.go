@@ -113,6 +113,9 @@ func (c Controller) grpcAddUserToNode(ctx context.Context, client *nodeclient.Cl
 				lastErr = err
 				continue
 			}
+			if runtimeUser.Protocol == "shadowsocks" {
+				settings = userread.RuntimeShadowsocksSettings(settings, ensureMap(inbound, "settings"))
+			}
 			if flow := stringValue(settings["flow"]); flow != "" && !flowSupportedForInbound(inbound) {
 				delete(settings, "flow")
 			}
