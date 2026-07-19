@@ -539,35 +539,37 @@ func TestParseRejectsIncompleteL2TPInbound(t *testing.T) {
 	}
 }
 
-func TestTranslateL2TPInboundToRuntimeTunnel(t *testing.T) {
-	raw := map[string]any{
-		"inbounds": []any{
-			map[string]any{
-				"tag":      "l2tp-edge",
-				"port":     1701,
-				"protocol": "l2tp",
-				"settings": map[string]any{
-					"tunnel_port":    1702,
-					"ipv4_pool_cidr": "10.67.0.0/16",
-					"ipsec_psk":      "secret",
-				},
-			},
-		},
-		"routing": map[string]any{
-			"rules": []any{
-				map[string]any{"type": "field", "inboundTag": []any{"l2tp-edge"}, "outboundTag": "warp"},
-			},
-		},
-	}
-	runtime := TranslateVirtualTunnelInboundsForRuntime(raw)
-	inbound := runtime["inbounds"].([]any)[0].(map[string]any)
-	if inbound["protocol"] != "dokodemo-door" || inbound["tag"] != "__rebecca_l2tp_tunnel__l2tp-edge" {
-		t.Fatalf("unexpected runtime inbound: %#v", inbound)
-	}
-	rule := runtime["routing"].(map[string]any)["rules"].([]any)[0].(map[string]any)
-	tags := rule["inboundTag"].([]any)
-	if len(tags) != 1 || tags[0] != "__rebecca_l2tp_tunnel__l2tp-edge" {
-		t.Fatalf("unexpected translated rule: %#v", rule)
+func TestTranslateVirtualInboundsToRuntimeTunnel(t *testing.T) {
+	for _, protocol := range []string{OVProtocol, WGProtocol, L2TPProtocol, PPTPProtocol, IKEv2Protocol, AnyConnectProtocol} {
+		t.Run(protocol, func(t *testing.T) {
+			tag := protocol + "-edge"
+			raw := map[string]any{
+				"inbounds": []any{map[string]any{
+					"tag":      tag,
+					"port":     1194,
+					"protocol": protocol,
+					"settings": map[string]any{"tunnel_port": 41940},
+				}},
+				"routing": map[string]any{"rules": []any{
+					map[string]any{"type": "field", "inboundTag": []any{tag}, "outboundTag": "warp"},
+				}},
+			}
+			runtime := TranslateVirtualTunnelInboundsForRuntime(raw)
+			inbound := runtime["inbounds"].([]any)[0].(map[string]any)
+			wantTag := RuntimeTunnelTagForProtocol(protocol, tag)
+			if inbound["protocol"] != "tunnel" || inbound["tag"] != wantTag {
+				t.Fatalf("unexpected runtime inbound: %#v", inbound)
+			}
+			settings := inbound["settings"].(map[string]any)
+			if settings["allowedNetwork"] != "tcp,udp" || settings["followRedirect"] != true {
+				t.Fatalf("unexpected tunnel settings: %#v", settings)
+			}
+			rule := runtime["routing"].(map[string]any)["rules"].([]any)[0].(map[string]any)
+			tags := rule["inboundTag"].([]any)
+			if len(tags) != 1 || tags[0] != wantTag {
+				t.Fatalf("unexpected translated rule: %#v", rule)
+			}
+		})
 	}
 }
 

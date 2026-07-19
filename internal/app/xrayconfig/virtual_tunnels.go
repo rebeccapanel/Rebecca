@@ -917,9 +917,9 @@ func runtimeTunnelInbound(inbound map[string]any, usedPorts map[int]struct{}) ma
 		"tag":      RuntimeTunnelTagForProtocol(protocol, stringValue(inbound["tag"])),
 		"listen":   firstNonEmptyString(settings["tunnel_listen"], settings["tproxy_listen"], "127.0.0.1"),
 		"port":     tunnelPort,
-		"protocol": "dokodemo-door",
+		"protocol": "tunnel",
 		"settings": map[string]any{
-			"network":        "tcp,udp",
+			"allowedNetwork": "tcp,udp",
 			"followRedirect": true,
 		},
 		"streamSettings": map[string]any{
