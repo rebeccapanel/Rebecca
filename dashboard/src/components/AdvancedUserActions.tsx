@@ -62,9 +62,14 @@ type OwnerSelection = "my_users" | "all_users" | `admin:${string}`;
 type AdvancedUserActionsProps = {
 	/** Render the trigger as a round icon button for tight toolbars. */
 	compact?: boolean;
+	/** Render the controls directly inside the Bulk Actions page. */
+	embedded?: boolean;
 };
 
-const AdvancedUserActions = ({ compact = false }: AdvancedUserActionsProps) => {
+const AdvancedUserActions = ({
+	compact = false,
+	embedded = false,
+}: AdvancedUserActionsProps) => {
 	const { t } = useTranslation();
 	const toast = useToast();
 	const { performBulkUserAction } = useDashboard();
@@ -105,13 +110,13 @@ const AdvancedUserActions = ({ compact = false }: AdvancedUserActionsProps) => {
 	);
 
 	useEffect(() => {
-		if (isOpen && hasScopeSelect) {
+		if ((isOpen || embedded) && hasScopeSelect) {
 			fetchAdminOptions({ limit: 1000, offset: 0, sort: "username" });
 		}
-		if (isOpen && servicesStore.serviceOptions.length === 0) {
+		if ((isOpen || embedded) && servicesStore.serviceOptions.length === 0) {
 			servicesStore.fetchServiceOptions({ limit: 1000, offset: 0 });
 		}
-	}, [fetchAdminOptions, hasScopeSelect, isOpen, servicesStore]);
+	}, [embedded, fetchAdminOptions, hasScopeSelect, isOpen, servicesStore]);
 
 	const resolveTargetAdminUsername = () => {
 		if (!hasScopeSelect) {
@@ -381,6 +386,357 @@ const AdvancedUserActions = ({ compact = false }: AdvancedUserActionsProps) => {
 		return null;
 	}
 
+	const content = (
+		<VStack spacing={6} align="stretch">
+			<Alert status="warning" borderRadius="md">
+				<AlertIcon />
+				<Text>
+					{t(
+						"filters.advancedActions.modalDescription",
+						"These tools update every user and cannot be undone. Please double-check the values before confirming.",
+					)}
+				</Text>
+			</Alert>
+
+			{hasScopeSelect && (
+				<FormControl>
+					<FormLabel fontWeight="semibold">
+						{t("filters.advancedActions.scope.label", "Scope")}
+					</FormLabel>
+					<Select
+						value={ownerSelection}
+						onChange={(event) => {
+							const nextValue = event.target.value;
+							if (
+								nextValue === "my_users" ||
+								nextValue === "all_users" ||
+								nextValue.startsWith("admin:")
+							) {
+								setOwnerSelection(nextValue as OwnerSelection);
+							}
+						}}
+						size="sm"
+					>
+						<option value="my_users">
+							{t("filters.advancedActions.scope.myUsers", "My users")}
+						</option>
+						<option value="all_users">
+							{t("filters.advancedActions.scope.allUsers", "All users")}
+						</option>
+						{adminList
+							.filter((record) => record.username !== userData.username)
+							.map((record) => (
+								<option
+									key={record.username}
+									value={`admin:${record.username}`}
+								>
+									{record.username}
+								</option>
+							))}
+					</Select>
+					<FormHelperText fontSize="sm">
+						{t(
+							"filters.advancedActions.scope.helper",
+							"Select an admin or all users for this action.",
+						)}
+					</FormHelperText>
+				</FormControl>
+			)}
+
+			{canSeeServiceControls && (
+				<>
+					<FormControl>
+						<FormLabel fontWeight="semibold">
+							{t("filters.advancedActions.service.label", "Service scope")}
+						</FormLabel>
+						<Select
+							value={selectedServiceValue}
+							onChange={(event) => {
+								setSelectedServiceValue(event.target.value);
+							}}
+							size="sm"
+						>
+							<option value="">
+								{t("filters.advancedActions.service.all", "All services")}
+							</option>
+							{servicesStore.serviceOptions.map((service) => (
+								<option key={service.id} value={String(service.id)}>
+									{service.name}
+								</option>
+							))}
+						</Select>
+						<FormHelperText fontSize="sm">
+							{t(
+								"filters.advancedActions.service.helper",
+								"Apply these actions only to users of the selected service.",
+							)}
+						</FormHelperText>
+					</FormControl>
+
+					{!serviceTransferDisabled && (
+						<Box borderWidth="1px" borderRadius="md" px={4} py={4}>
+							<Stack spacing={3}>
+								<Text fontWeight="semibold">
+									{t(
+										"filters.advancedActions.serviceChange.title",
+										"Change users' service",
+									)}
+								</Text>
+								<Text fontSize="sm" color="gray.500">
+									{t(
+										"filters.advancedActions.serviceChange.helper",
+										"Move the filtered users to another service.",
+									)}
+								</Text>
+								<Select
+									placeholder={t(
+										"filters.advancedActions.serviceChange.placeholder",
+										"Select target service",
+									)}
+									value={targetServiceValue}
+									onChange={(event) =>
+										setTargetServiceValue(event.target.value)
+									}
+									size="sm"
+								>
+									{servicesStore.serviceOptions.map((service) => (
+										<option key={service.id} value={String(service.id)}>
+											{service.name}
+										</option>
+									))}
+								</Select>
+								<Button
+									colorScheme="primary"
+									size="sm"
+									alignSelf="flex-start"
+									isLoading={isChangingService}
+									onClick={handleChangeService}
+								>
+									{t(
+										"filters.advancedActions.serviceChange.button",
+										"Move to service",
+									)}
+								</Button>
+							</Stack>
+						</Box>
+					)}
+				</>
+			)}
+
+			<Box borderWidth="1px" borderRadius="md" px={4} py={4}>
+				<Stack spacing={2}>
+					<Text fontWeight="semibold">
+						{t("filters.advancedActions.scopeStatuses.title", "Status scope")}
+					</Text>
+					<Text fontSize="sm" color="gray.500">
+						{t(
+							"filters.advancedActions.scopeStatuses.helper",
+							"Choose which user statuses are affected by expiration and traffic changes.",
+						)}
+					</Text>
+					<HStack spacing={3} flexWrap="wrap">
+						{scopeStatusOptions.map((status) => (
+							<Checkbox
+								key={status}
+								isChecked={selectedScopeStatuses.includes(status)}
+								onChange={() => toggleScopeStatus(status)}
+							>
+								{t(
+									`filters.advancedActions.scopeStatuses.${status}`,
+									status.replace("_", " "),
+								)}
+							</Checkbox>
+						))}
+					</HStack>
+				</Stack>
+			</Box>
+
+			<Stack spacing={4}>
+				<Box borderWidth="1px" borderRadius="md" px={4} py={4}>
+					<Stack spacing={2}>
+						<Text fontWeight="semibold">
+							{t(
+								"filters.advancedActions.expireSection.title",
+								"Expiration dates",
+							)}
+						</Text>
+						<Text fontSize="sm" color="gray.500">
+							{t(
+								"filters.advancedActions.expireSection.description",
+								"Add or subtract days from every user's expiration timestamp.",
+							)}
+						</Text>
+						<FormControl>
+							<FormLabel>
+								{t("filters.advancedActions.expireSection.inputLabel", "Days")}
+							</FormLabel>
+							<NumericInput
+								value={expireDays}
+								onChange={(value) => setExpireDays(value)}
+								min={1}
+								step={1}
+								w="full"
+							/>
+							<FormHelperText>
+								{t(
+									"filters.advancedActions.expireSection.helper",
+									"The entered value will be added or removed when you click a button.",
+								)}
+							</FormHelperText>
+						</FormControl>
+						<HStack spacing={2} flexWrap="wrap">
+							<Button
+								colorScheme="primary"
+								isLoading={isExtending}
+								flex="1"
+								minW="150px"
+								onClick={() => handleExpireAction("extend_expire")}
+							>
+								{t(
+									"filters.advancedActions.expireSection.addButton",
+									"Add days to all users",
+								)}
+							</Button>
+							<Button
+								colorScheme="gray"
+								variant="outline"
+								isLoading={isReducing}
+								flex="1"
+								minW="150px"
+								onClick={() => handleExpireAction("reduce_expire")}
+							>
+								{t(
+									"filters.advancedActions.expireSection.removeButton",
+									"Subtract days from all users",
+								)}
+							</Button>
+						</HStack>
+					</Stack>
+				</Box>
+
+				<Box borderWidth="1px" borderRadius="md" px={4} py={4}>
+					<Stack spacing={2}>
+						<Text fontWeight="semibold">
+							{t(
+								"filters.advancedActions.trafficSection.title",
+								"Usage and traffic",
+							)}
+						</Text>
+						<Text fontSize="sm" color="gray.500">
+							{t(
+								"filters.advancedActions.trafficSection.description",
+								"Apply a data limit adjustment to all users.",
+							)}
+						</Text>
+						<FormControl>
+							<FormLabel>
+								{t(
+									"filters.advancedActions.trafficSection.inputLabel",
+									"Gigabytes",
+								)}
+							</FormLabel>
+							<NumericInput
+								value={trafficGb}
+								onChange={(value) => setTrafficGb(value)}
+								min={0.01}
+								step={0.1}
+								w="full"
+							/>
+						</FormControl>
+						<HStack spacing={2} flexWrap="wrap">
+							<Button
+								colorScheme="primary"
+								isLoading={isIncreasingTraffic}
+								flex="1"
+								minW="150px"
+								onClick={() => handleTrafficAction("increase_traffic")}
+							>
+								{t(
+									"filters.advancedActions.trafficSection.addButton",
+									"Add traffic to all users",
+								)}
+							</Button>
+							<Button
+								colorScheme="gray"
+								variant="outline"
+								isLoading={isDecreasingTraffic}
+								flex="1"
+								minW="150px"
+								onClick={() => handleTrafficAction("decrease_traffic")}
+							>
+								{t(
+									"filters.advancedActions.trafficSection.removeButton",
+									"Subtract traffic from all users",
+								)}
+							</Button>
+						</HStack>
+					</Stack>
+				</Box>
+
+				<Box borderWidth="1px" borderRadius="md" px={4} py={4}>
+					<Stack spacing={2}>
+						<Text fontWeight="semibold">
+							{t(
+								"filters.advancedActions.cleanupSection.title",
+								"Cleanup expired or limited",
+							)}
+						</Text>
+						<Text fontSize="sm" color="gray.500">
+							{t(
+								"filters.advancedActions.cleanupSection.description",
+								"Remove users that have been expired/limited for the selected number of days.",
+							)}
+						</Text>
+						<FormControl>
+							<FormLabel>
+								{t(
+									"filters.advancedActions.cleanupSection.daysLabel",
+									"Days since status change",
+								)}
+							</FormLabel>
+							<NumericInput
+								value={cleanupDays}
+								onChange={(value) => setCleanupDays(value)}
+								min={1}
+								step={1}
+								w="full"
+							/>
+						</FormControl>
+						<HStack spacing={3}>
+							{cleanupOptions.map((status) => (
+								<Checkbox
+									key={status}
+									isChecked={selectedStatuses.includes(status)}
+									onChange={() => toggleStatus(status)}
+								>
+									{t(
+										`filters.advancedActions.cleanupSection.statuses.${status}`,
+										status.charAt(0).toUpperCase() + status.slice(1),
+									)}
+								</Checkbox>
+							))}
+						</HStack>
+						<Button
+							colorScheme="primary"
+							isLoading={isCleaning}
+							w="full"
+							onClick={handleCleanup}
+						>
+							{t(
+								"filters.advancedActions.cleanupSection.button",
+								"Delete selected users",
+							)}
+						</Button>
+					</Stack>
+				</Box>
+			</Stack>
+		</VStack>
+	);
+
+	if (embedded) {
+		return content;
+	}
+
 	return (
 		<>
 			{compact ? (
@@ -425,362 +781,7 @@ const AdvancedUserActions = ({ compact = false }: AdvancedUserActionsProps) => {
 					</Button>
 				}
 			>
-						<VStack spacing={6} align="stretch">
-							<Alert status="warning" borderRadius="md">
-								<AlertIcon />
-								<Text>
-									{t(
-										"filters.advancedActions.modalDescription",
-										"These tools update every user and cannot be undone. Please double-check the values before confirming.",
-									)}
-								</Text>
-							</Alert>
-
-							{hasScopeSelect && (
-								<FormControl>
-									<FormLabel fontWeight="semibold">
-										{t("filters.advancedActions.scope.label", "Scope")}
-									</FormLabel>
-									<Select
-										value={ownerSelection}
-										onChange={(event) => {
-											const nextValue = event.target.value;
-											if (
-												nextValue === "my_users" ||
-												nextValue === "all_users" ||
-												nextValue.startsWith("admin:")
-											) {
-												setOwnerSelection(nextValue as OwnerSelection);
-											}
-										}}
-										size="sm"
-									>
-										<option value="my_users">
-											{t("filters.advancedActions.scope.myUsers", "My users")}
-										</option>
-										<option value="all_users">
-											{t("filters.advancedActions.scope.allUsers", "All users")}
-										</option>
-										{adminList
-											.filter((record) => record.username !== userData.username)
-											.map((record) => (
-												<option
-													key={record.username}
-													value={`admin:${record.username}`}
-												>
-													{record.username}
-												</option>
-											))}
-									</Select>
-									<FormHelperText fontSize="sm">
-										{t(
-											"filters.advancedActions.scope.helper",
-											"Select an admin or all users for this action.",
-										)}
-									</FormHelperText>
-								</FormControl>
-							)}
-
-							{canSeeServiceControls && (
-								<>
-									<FormControl>
-										<FormLabel fontWeight="semibold">
-											{t(
-												"filters.advancedActions.service.label",
-												"Service scope",
-											)}
-										</FormLabel>
-										<Select
-											value={selectedServiceValue}
-											onChange={(event) => {
-												setSelectedServiceValue(event.target.value);
-											}}
-											size="sm"
-										>
-											<option value="">
-												{t(
-													"filters.advancedActions.service.all",
-													"All services",
-												)}
-											</option>
-											{servicesStore.serviceOptions.map((service) => (
-												<option key={service.id} value={String(service.id)}>
-													{service.name}
-												</option>
-											))}
-										</Select>
-										<FormHelperText fontSize="sm">
-											{t(
-												"filters.advancedActions.service.helper",
-												"Apply these actions only to users of the selected service.",
-											)}
-										</FormHelperText>
-									</FormControl>
-
-									{!serviceTransferDisabled && (
-										<Box borderWidth="1px" borderRadius="md" px={4} py={4}>
-											<Stack spacing={3}>
-												<Text fontWeight="semibold">
-													{t(
-														"filters.advancedActions.serviceChange.title",
-														"Change users' service",
-													)}
-												</Text>
-												<Text fontSize="sm" color="gray.500">
-													{t(
-														"filters.advancedActions.serviceChange.helper",
-														"Move the filtered users to another service.",
-													)}
-												</Text>
-												<Select
-													placeholder={t(
-														"filters.advancedActions.serviceChange.placeholder",
-														"Select target service",
-													)}
-													value={targetServiceValue}
-													onChange={(event) =>
-														setTargetServiceValue(event.target.value)
-													}
-													size="sm"
-												>
-													{servicesStore.serviceOptions.map((service) => (
-														<option key={service.id} value={String(service.id)}>
-															{service.name}
-														</option>
-													))}
-												</Select>
-												<Button
-													colorScheme="primary"
-													size="sm"
-													alignSelf="flex-start"
-													isLoading={isChangingService}
-													onClick={handleChangeService}
-												>
-													{t(
-														"filters.advancedActions.serviceChange.button",
-														"Move to service",
-													)}
-												</Button>
-											</Stack>
-										</Box>
-									)}
-								</>
-							)}
-
-							<Box borderWidth="1px" borderRadius="md" px={4} py={4}>
-								<Stack spacing={2}>
-									<Text fontWeight="semibold">
-										{t(
-											"filters.advancedActions.scopeStatuses.title",
-											"Status scope",
-										)}
-									</Text>
-									<Text fontSize="sm" color="gray.500">
-										{t(
-											"filters.advancedActions.scopeStatuses.helper",
-											"Choose which user statuses are affected by expiration and traffic changes.",
-										)}
-									</Text>
-									<HStack spacing={3} flexWrap="wrap">
-										{scopeStatusOptions.map((status) => (
-											<Checkbox
-												key={status}
-												isChecked={selectedScopeStatuses.includes(status)}
-												onChange={() => toggleScopeStatus(status)}
-											>
-												{t(
-													`filters.advancedActions.scopeStatuses.${status}`,
-													status.replace("_", " "),
-												)}
-											</Checkbox>
-										))}
-									</HStack>
-								</Stack>
-							</Box>
-
-							<Stack spacing={4}>
-								<Box borderWidth="1px" borderRadius="md" px={4} py={4}>
-									<Stack spacing={2}>
-										<Text fontWeight="semibold">
-											{t(
-												"filters.advancedActions.expireSection.title",
-												"Expiration dates",
-											)}
-										</Text>
-										<Text fontSize="sm" color="gray.500">
-											{t(
-												"filters.advancedActions.expireSection.description",
-												"Add or subtract days from every user's expiration timestamp.",
-											)}
-										</Text>
-										<FormControl>
-											<FormLabel>
-												{t(
-													"filters.advancedActions.expireSection.inputLabel",
-													"Days",
-												)}
-											</FormLabel>
-											<NumericInput
-												value={expireDays}
-												onChange={(value) => setExpireDays(value)}
-												min={1}
-												step={1}
-												w="full"
-											/>
-											<FormHelperText>
-												{t(
-													"filters.advancedActions.expireSection.helper",
-													"The entered value will be added or removed when you click a button.",
-												)}
-											</FormHelperText>
-										</FormControl>
-										<HStack spacing={2} flexWrap="wrap">
-											<Button
-												colorScheme="primary"
-												isLoading={isExtending}
-												flex="1"
-												minW="150px"
-												onClick={() => handleExpireAction("extend_expire")}
-											>
-												{t(
-													"filters.advancedActions.expireSection.addButton",
-													"Add days to all users",
-												)}
-											</Button>
-											<Button
-												colorScheme="gray"
-												variant="outline"
-												isLoading={isReducing}
-												flex="1"
-												minW="150px"
-												onClick={() => handleExpireAction("reduce_expire")}
-											>
-												{t(
-													"filters.advancedActions.expireSection.removeButton",
-													"Subtract days from all users",
-												)}
-											</Button>
-										</HStack>
-									</Stack>
-								</Box>
-
-								<Box borderWidth="1px" borderRadius="md" px={4} py={4}>
-									<Stack spacing={2}>
-										<Text fontWeight="semibold">
-											{t(
-												"filters.advancedActions.trafficSection.title",
-												"Usage and traffic",
-											)}
-										</Text>
-										<Text fontSize="sm" color="gray.500">
-											{t(
-												"filters.advancedActions.trafficSection.description",
-												"Apply a data limit adjustment to all users.",
-											)}
-										</Text>
-										<FormControl>
-											<FormLabel>
-												{t(
-													"filters.advancedActions.trafficSection.inputLabel",
-													"Gigabytes",
-												)}
-											</FormLabel>
-											<NumericInput
-												value={trafficGb}
-												onChange={(value) => setTrafficGb(value)}
-												min={0.01}
-												step={0.1}
-												w="full"
-											/>
-										</FormControl>
-										<HStack spacing={2} flexWrap="wrap">
-											<Button
-												colorScheme="primary"
-												isLoading={isIncreasingTraffic}
-												flex="1"
-												minW="150px"
-												onClick={() => handleTrafficAction("increase_traffic")}
-											>
-												{t(
-													"filters.advancedActions.trafficSection.addButton",
-													"Add traffic to all users",
-												)}
-											</Button>
-											<Button
-												colorScheme="gray"
-												variant="outline"
-												isLoading={isDecreasingTraffic}
-												flex="1"
-												minW="150px"
-												onClick={() => handleTrafficAction("decrease_traffic")}
-											>
-												{t(
-													"filters.advancedActions.trafficSection.removeButton",
-													"Subtract traffic from all users",
-												)}
-											</Button>
-										</HStack>
-									</Stack>
-								</Box>
-
-								<Box borderWidth="1px" borderRadius="md" px={4} py={4}>
-									<Stack spacing={2}>
-										<Text fontWeight="semibold">
-											{t(
-												"filters.advancedActions.cleanupSection.title",
-												"Cleanup expired or limited",
-											)}
-										</Text>
-										<Text fontSize="sm" color="gray.500">
-											{t(
-												"filters.advancedActions.cleanupSection.description",
-												"Remove users that have been expired/limited for the selected number of days.",
-											)}
-										</Text>
-										<FormControl>
-											<FormLabel>
-												{t(
-													"filters.advancedActions.cleanupSection.daysLabel",
-													"Days since status change",
-												)}
-											</FormLabel>
-											<NumericInput
-												value={cleanupDays}
-												onChange={(value) => setCleanupDays(value)}
-												min={1}
-												step={1}
-												w="full"
-											/>
-										</FormControl>
-										<HStack spacing={3}>
-											{cleanupOptions.map((status) => (
-												<Checkbox
-													key={status}
-													isChecked={selectedStatuses.includes(status)}
-													onChange={() => toggleStatus(status)}
-												>
-													{t(
-														`filters.advancedActions.cleanupSection.statuses.${status}`,
-														status.charAt(0).toUpperCase() + status.slice(1),
-													)}
-												</Checkbox>
-											))}
-										</HStack>
-										<Button
-											colorScheme="primary"
-											isLoading={isCleaning}
-											w="full"
-											onClick={handleCleanup}
-										>
-											{t(
-												"filters.advancedActions.cleanupSection.button",
-												"Delete selected users",
-											)}
-										</Button>
-									</Stack>
-								</Box>
-							</Stack>
-						</VStack>
+				{content}
 			</AppDialog>
 		</>
 	);

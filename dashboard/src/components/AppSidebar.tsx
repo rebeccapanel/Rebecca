@@ -21,6 +21,7 @@ import {
 	EyeIcon,
 	HomeIcon,
 	LinkIcon,
+	QueueListIcon,
 	ServerStackIcon,
 	Squares2X2Icon,
 	UserCircleIcon,
@@ -39,7 +40,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, useHref, useLocation, useNavigate } from "react-router-dom";
-import { AdminRole, AdminSection } from "types/Admin";
+import { AdminRole, AdminSection, UserPermissionToggle } from "types/Admin";
 import {
 	getTutorialManifestUrl,
 	getTutorialSeenKey,
@@ -55,6 +56,7 @@ const iconProps = {
 
 const HomeIconStyled = chakra(HomeIcon, iconProps);
 const UsersIconStyled = chakra(UserGroupIcon, iconProps);
+const BulkActionsIconStyled = chakra(QueueListIcon, iconProps);
 const SettingsIconStyled = chakra(Cog6ToothIcon, iconProps);
 const MasterSettingsIconStyled = chakra(Cog8ToothIcon, iconProps);
 const NodeIconStyled = chakra(ServerStackIcon, iconProps);
@@ -118,6 +120,13 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 	const sectionAccess = userData.permissions?.sections;
 	const isFullAccess = userData.role === AdminRole.FullAccess;
 	const isPrivilegedAdmin = isFullAccess || userData.role === AdminRole.Sudo;
+	const canUseBulkActions =
+		isFullAccess ||
+		Boolean(
+			userData.permissions?.users?.[UserPermissionToggle.Create] ||
+				userData.permissions?.users?.[UserPermissionToggle.Delete] ||
+				userData.permissions?.users?.[UserPermissionToggle.AdvancedActions],
+		);
 	const sidebarBg = useColorModeValue("panel.sidebar", "panel.sidebar");
 	const sidebarBorderColor = useColorModeValue("panel.border", "panel.border");
 	const sidebarPanelBg = useColorModeValue("panel.elevated", "panel.elevated");
@@ -281,6 +290,14 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 		{ title: t("users"), url: "/users", icon: UsersIconStyled },
 	];
 
+	if (canUseBulkActions) {
+		items.push({
+			title: t("bulkActions.menu", "Bulk Actions"),
+			url: "/bulk-actions",
+			icon: BulkActionsIconStyled,
+		});
+	}
+
 	if (selfAccess.self_myaccount) {
 		items.splice(1, 0, {
 			title: t("myaccount.menu"),
@@ -327,7 +344,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 		},
 		{
 			title: t("sidebar.groups.users", "Users"),
-			items: [pickDirect("/users")],
+			items: [pickDirect("/users"), pickDirect("/bulk-actions")],
 		},
 		{
 			title: t("sidebar.groups.infrastructure", "Infrastructure"),

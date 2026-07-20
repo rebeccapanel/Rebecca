@@ -31,7 +31,6 @@ import {
 	QuestionMarkCircleIcon,
 	XMarkIcon,
 } from "@heroicons/react/24/outline";
-import AdvancedUserActions from "components/AdvancedUserActions";
 import { PanelSelect as Select } from "components/common/PanelSelect";
 import { ADVANCED_FILTER_OPTIONS } from "components/Filters";
 import { useAdminsStore } from "contexts/AdminsContext";
@@ -364,7 +363,6 @@ export const UsersFilterBar: FC = () => {
 			{/* On desktop the bulk/create actions sit at the end of the row;
 				on mobile they stay compact next to the search field. */}
 			{!isMobile && <Box flex="1 1 auto" minW={0} />}
-			<AdvancedUserActions compact={isMobile} />
 			{showCreateButton &&
 				(isMobile ? (
 					<IconButton

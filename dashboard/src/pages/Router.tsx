@@ -12,6 +12,7 @@ import { fetch } from "../service/http";
 import AccessInsightsPage from "./AccessInsightsPage";
 import { AdminsPage } from "./AdminsPage";
 import { ApiDocsPage } from "./ApiDocsPage";
+import { BulkActionsPage } from "./BulkActionsPage";
 import { CoreSettingsPage } from "./CoreSettingsPage";
 import { DashboardPage } from "./DashboardPage";
 import { HostsPage } from "./HostsPage";
@@ -73,6 +74,7 @@ const RouteErrorPage = () => {
 const routeSegments = new Set([
 	"login",
 	"users",
+	"bulk-actions",
 	"admins",
 	"myaccount",
 	"usage",
@@ -165,6 +167,10 @@ export const router = createBrowserRouter(
 				{
 					path: "users",
 					element: <UsersPage />,
+				},
+				{
+					path: "bulk-actions",
+					element: <BulkActionsPage />,
 				},
 				{
 					path: "admins",

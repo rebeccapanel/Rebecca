@@ -30,7 +30,6 @@ import {
 	VStack,
 	Wrap,
 } from "@chakra-ui/react";
-import { PanelSelect as Select } from "components/common/PanelSelect";
 import {
 	ArrowPathIcon,
 	FunnelIcon,
@@ -40,6 +39,7 @@ import {
 	XMarkIcon,
 } from "@heroicons/react/24/outline";
 import classNames from "classnames";
+import { PanelSelect as Select } from "components/common/PanelSelect";
 import { useAdminsStore } from "contexts/AdminsContext";
 import { useDashboard } from "contexts/DashboardContext";
 import { useServicesStore } from "contexts/ServicesContext";
@@ -55,7 +55,6 @@ import {
 	UserPermissionToggle,
 } from "types/Admin";
 import { isUserManagementLocked } from "utils/adminTraffic";
-import AdvancedUserActions from "./AdvancedUserActions";
 
 const iconProps = {
 	baseStyle: {
@@ -192,10 +191,8 @@ export const Filters: FC<FilterProps> = ({
 	const activeFilters: string[] = userFiltersOnly?.advancedFilters ?? [];
 	const serviceId = userFiltersOnly?.serviceId;
 	const ownerFilter = userFiltersOnly?.owner;
-	const {
-		serviceOptions: rawServiceOptions,
-		fetchServiceOptions,
-	} = useServicesStore();
+	const { serviceOptions: rawServiceOptions, fetchServiceOptions } =
+		useServicesStore();
 	const serviceOptions = Array.isArray(rawServiceOptions)
 		? rawServiceOptions
 		: [];
@@ -562,8 +559,9 @@ export const Filters: FC<FilterProps> = ({
 										<TagLabel>
 											{t("filters.advanced.serviceTag", "Service: {{name}}", {
 												name:
-													serviceOptions.find((service) => service.id === serviceId)
-														?.name ?? serviceId,
+													serviceOptions.find(
+														(service) => service.id === serviceId,
+													)?.name ?? serviceId,
 											})}
 										</TagLabel>
 										<TagCloseButton
@@ -610,7 +608,6 @@ export const Filters: FC<FilterProps> = ({
 					w="full"
 					flexWrap="wrap"
 				>
-					{target === "users" && <AdvancedUserActions />}
 					{actionsSlot}
 					{showCreateButton && (
 						<Button
