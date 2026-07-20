@@ -155,6 +155,37 @@ func TestTorProxySetupRejectsInvalidPort(t *testing.T) {
 	}
 }
 
+func TestTorProxySetupReturnsBeforeNodeInstallation(t *testing.T) {
+	server, _ := testAdminServer(t)
+	payload := []byte(`{
+		"target_id": "node:999",
+		"port": 9050,
+		"country": "de",
+		"tag": "tor-de"
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/panel/xray/tor/setup", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.handleTorProxySetup(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Success bool `json:"success"`
+		Obj     struct {
+			Outbound map[string]any `json:"outbound"`
+		} `json:"obj"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if !body.Success || body.Obj.Outbound["tag"] != "tor-de" {
+		t.Fatalf("unexpected response: %#v", body)
+	}
+}
+
 func TestOutboundTestRejectsAddresslessTCPAndICMP(t *testing.T) {
 	server := &Server{}
 	for _, testType := range []string{"tcp", "icmp"} {

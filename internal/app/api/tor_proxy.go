@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/rebeccapanel/rebecca/internal/app/logging"
 	"github.com/rebeccapanel/rebecca/internal/app/nodecontroller"
 )
 
@@ -68,30 +69,36 @@ func (s *Server) handleTorProxySetup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "no active nodes found for Tor proxy setup")
 		return
 	}
-	timeout := time.Duration(max(90, ((len(nodeIDs)+3)/4)*100)) * time.Second
-	ctx, cancel := context.WithTimeout(r.Context(), timeout)
-	defer cancel()
-	results, failed := s.applyTorProxyToNodes(ctx, nodeIDs, port, country, boolFromAny(payload["strict"], true))
-	if len(failed) > 0 {
-		writeError(w, http.StatusBadGateway, strings.Join(failed, "; "))
-		return
+	strict := boolFromAny(payload["strict"], true)
+	outbound := map[string]any{
+		"tag":      tag,
+		"protocol": "socks",
+		"settings": map[string]any{
+			"servers": []map[string]any{{
+				"address": "127.0.0.1",
+				"port":    port,
+				"users":   []any{},
+			}},
+		},
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	nodeIDs = append([]int64(nil), nodeIDs...)
+	go func() {
+		timeout := time.Duration(max(5, ((len(nodeIDs)+3)/4)*5)) * time.Minute
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		results, failed := s.applyTorProxyToNodes(ctx, nodeIDs, port, country, strict)
+		if len(failed) > 0 {
+			logging.Warnf(logging.ComponentNode, "Tor proxy setup completed=%d failed=%d errors=%s", len(results), len(failed), strings.Join(failed, "; "))
+			return
+		}
+		logging.Infof(logging.ComponentNode, "Tor proxy setup completed nodes=%d port=%d country=%s", len(results), port, country)
+	}()
+
+	writeJSON(w, http.StatusAccepted, map[string]any{
 		"success": true,
 		"obj": map[string]any{
-			"nodes":   results,
-			"message": fmt.Sprintf("Tor SOCKS proxy is ready on 127.0.0.1:%d for %d node(s)", port, len(results)),
-			"outbound": map[string]any{
-				"tag":      tag,
-				"protocol": "socks",
-				"settings": map[string]any{
-					"servers": []map[string]any{{
-						"address": "127.0.0.1",
-						"port":    port,
-						"users":   []any{},
-					}},
-				},
-			},
+			"message":  fmt.Sprintf("Tor setup started on %d node(s); the outbound is ready to save", len(nodeIDs)),
+			"outbound": outbound,
 		},
 	})
 }

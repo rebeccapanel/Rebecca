@@ -88,6 +88,10 @@ import { NordVPNModal } from "../components/NordVPNModal";
 import { OutboundModal } from "../components/OutboundModal";
 import { OutboundSubscriptionsModal } from "../components/OutboundSubscriptionsModal";
 import {
+	type TorProxyFormValues,
+	TorProxyModal,
+} from "../components/TorProxyModal";
+import {
 	type ReverseFormValues,
 	ReverseModal,
 	type ReverseType,
@@ -642,6 +646,11 @@ export const CoreSettingsPage: FC = () => {
 		isOpen: isOutboundSubsOpen,
 		onOpen: onOutboundSubsOpen,
 		onClose: onOutboundSubsClose,
+	} = useDisclosure();
+	const {
+		isOpen: isTorProxyOpen,
+		onOpen: onTorProxyOpen,
+		onClose: onTorProxyClose,
 	} = useDisclosure();
 
 	const form = useForm({
@@ -1317,49 +1326,7 @@ export const CoreSettingsPage: FC = () => {
 		onOutboundOpen();
 	};
 
-	const addTorOutbound = async () => {
-		const country = (window.prompt(
-			isMasterTarget
-				? t(
-						"pages.xray.tor.countryPromptAll",
-						"Tor exit country code for all nodes (optional, e.g. de):",
-					)
-				: t("pages.xray.tor.countryPrompt", "Tor exit country code (optional, e.g. de):"),
-			"de",
-		) ?? "").trim().toLowerCase();
-		if (country && !/^[a-z]{2}$/.test(country)) {
-			toast({
-				title: t("pages.xray.tor.countryInvalid", "Country must be a two-letter code."),
-				status: "warning",
-				isClosable: true,
-				position: "top",
-				duration: 3000,
-			});
-			return;
-		}
-		const portText = window.prompt(
-			t("pages.xray.tor.portPrompt", "Local SOCKS port:"),
-			"9050",
-		);
-		if (portText === null) return;
-		const port = Number.parseInt(portText, 10);
-		if (!Number.isFinite(port) || port < 1024 || port > 65535) {
-			toast({
-				title: t("pages.xray.tor.portInvalid", "Port must be between 1024 and 65535."),
-				status: "warning",
-				isClosable: true,
-				position: "top",
-				duration: 3000,
-			});
-			return;
-		}
-		const defaultTag = country ? `tor-${country}` : "tor";
-		const tag = (window.prompt(
-			t("pages.xray.tor.tagPrompt", "Outbound tag:"),
-			defaultTag,
-		) ?? "").trim();
-		if (!tag) return;
-
+	const addTorOutbound = async (values: TorProxyFormValues) => {
 		setIsApplyingTorProxy(true);
 		try {
 			const response = await apiFetch<{
@@ -1370,10 +1337,10 @@ export const CoreSettingsPage: FC = () => {
 				method: "POST",
 				body: {
 					target_id: selectedTarget,
-					country,
-					port,
-					tag,
-					strict: true,
+					country: values.country.trim().toLowerCase(),
+					port: values.port,
+					tag: values.tag.trim(),
+					strict: values.strict,
 				},
 			});
 			const outbound = response?.obj?.outbound;
@@ -1390,6 +1357,7 @@ export const CoreSettingsPage: FC = () => {
 				outbounds.push(outbound);
 			}
 			commitOutbounds(outbounds);
+			onTorProxyClose();
 			toast({
 				title: response.obj?.message || t("pages.xray.tor.added", "Tor outbound added"),
 				status: "success",
@@ -4631,7 +4599,7 @@ export const CoreSettingsPage: FC = () => {
 											size="xs"
 											variant="ghost"
 											isLoading={isApplyingTorProxy}
-											onClick={addTorOutbound}
+											onClick={onTorProxyOpen}
 										>
 											{t("pages.xray.tor.setup", "Tor")}
 										</Button>
@@ -5324,6 +5292,13 @@ export const CoreSettingsPage: FC = () => {
 					await fetchActiveSubscriptionOutbounds();
 					await fetchOutboundsTraffic();
 				}}
+			/>
+			<TorProxyModal
+				isOpen={isTorProxyOpen}
+				isLoading={isApplyingTorProxy}
+				isMasterTarget={isMasterTarget}
+				onClose={onTorProxyClose}
+				onSubmit={addTorOutbound}
 			/>
 			<BalancerModal
 				isOpen={isBalancerOpen}
