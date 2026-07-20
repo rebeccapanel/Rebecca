@@ -28,6 +28,7 @@ service NodeRuntimeService {
   rpc UpdateService(ServiceUpdateRequest) returns (RuntimeActionResponse);
   rpc RebootHost(HostRebootRequest) returns (RuntimeActionResponse);
   rpc ApplyIPBlocks(IPBlockRequest) returns (RuntimeActionResponse);
+  rpc ApplyTorProxy(TorProxyRequest) returns (RuntimeActionResponse);
 }
 
 service NodeUsageService {
@@ -221,6 +222,13 @@ message IPBlockEntry {
   uint32 ttl_seconds = 2;
   string user_uid = 3;
   string reason = 4;
+}
+
+message TorProxyRequest {
+  string operation_id = 1;
+  uint32 socks_port = 2;
+  string exit_country = 3;
+  bool strict_exit = 4;
 }
 
 message SystemMetrics {

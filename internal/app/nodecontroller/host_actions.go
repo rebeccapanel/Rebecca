@@ -104,3 +104,23 @@ func (c Controller) RebootHost(ctx context.Context, req Request) (RuntimeResult,
 	}
 	return runtimeResult(node, res.GetRuntime(), nil), nil
 }
+
+func (c Controller) ApplyTorProxy(ctx context.Context, req Request) (RuntimeResult, error) {
+	client, node, err := c.dial(ctx, req.NodeID)
+	if err != nil {
+		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
+		return RuntimeResult{}, friendlyNodeError("apply tor proxy", req.NodeID, err)
+	}
+	defer client.Close()
+	res, err := client.Runtime().ApplyTorProxy(ctx, &nodev1.TorProxyRequest{
+		OperationId: "apply-tor-proxy-" + strconv.FormatInt(req.NodeID, 10),
+		SocksPort:   req.TorSocksPort,
+		ExitCountry: strings.TrimSpace(req.TorExitCountry),
+		StrictExit:  req.TorStrictExit,
+	})
+	if err != nil {
+		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
+		return RuntimeResult{}, friendlyNodeError("apply tor proxy", req.NodeID, err)
+	}
+	return runtimeResult(node, res.GetRuntime(), nil), nil
+}

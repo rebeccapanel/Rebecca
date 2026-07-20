@@ -214,6 +214,7 @@ const (
 	NodeRuntimeService_UpdateService_FullMethodName  = "/rebecca.node.v1.NodeRuntimeService/UpdateService"
 	NodeRuntimeService_RebootHost_FullMethodName     = "/rebecca.node.v1.NodeRuntimeService/RebootHost"
 	NodeRuntimeService_ApplyIPBlocks_FullMethodName  = "/rebecca.node.v1.NodeRuntimeService/ApplyIPBlocks"
+	NodeRuntimeService_ApplyTorProxy_FullMethodName  = "/rebecca.node.v1.NodeRuntimeService/ApplyTorProxy"
 )
 
 // NodeRuntimeServiceClient is the client API for NodeRuntimeService service.
@@ -237,6 +238,7 @@ type NodeRuntimeServiceClient interface {
 	UpdateService(ctx context.Context, in *ServiceUpdateRequest, opts ...grpc.CallOption) (*RuntimeActionResponse, error)
 	RebootHost(ctx context.Context, in *HostRebootRequest, opts ...grpc.CallOption) (*RuntimeActionResponse, error)
 	ApplyIPBlocks(ctx context.Context, in *IPBlockRequest, opts ...grpc.CallOption) (*RuntimeActionResponse, error)
+	ApplyTorProxy(ctx context.Context, in *TorProxyRequest, opts ...grpc.CallOption) (*RuntimeActionResponse, error)
 }
 
 type nodeRuntimeServiceClient struct {
@@ -417,6 +419,16 @@ func (c *nodeRuntimeServiceClient) ApplyIPBlocks(ctx context.Context, in *IPBloc
 	return out, nil
 }
 
+func (c *nodeRuntimeServiceClient) ApplyTorProxy(ctx context.Context, in *TorProxyRequest, opts ...grpc.CallOption) (*RuntimeActionResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RuntimeActionResponse)
+	err := c.cc.Invoke(ctx, NodeRuntimeService_ApplyTorProxy_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NodeRuntimeServiceServer is the server API for NodeRuntimeService service.
 // All implementations must embed UnimplementedNodeRuntimeServiceServer
 // for forward compatibility.
@@ -438,6 +450,7 @@ type NodeRuntimeServiceServer interface {
 	UpdateService(context.Context, *ServiceUpdateRequest) (*RuntimeActionResponse, error)
 	RebootHost(context.Context, *HostRebootRequest) (*RuntimeActionResponse, error)
 	ApplyIPBlocks(context.Context, *IPBlockRequest) (*RuntimeActionResponse, error)
+	ApplyTorProxy(context.Context, *TorProxyRequest) (*RuntimeActionResponse, error)
 	mustEmbedUnimplementedNodeRuntimeServiceServer()
 }
 
@@ -498,6 +511,9 @@ func (UnimplementedNodeRuntimeServiceServer) RebootHost(context.Context, *HostRe
 }
 func (UnimplementedNodeRuntimeServiceServer) ApplyIPBlocks(context.Context, *IPBlockRequest) (*RuntimeActionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ApplyIPBlocks not implemented")
+}
+func (UnimplementedNodeRuntimeServiceServer) ApplyTorProxy(context.Context, *TorProxyRequest) (*RuntimeActionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ApplyTorProxy not implemented")
 }
 func (UnimplementedNodeRuntimeServiceServer) mustEmbedUnimplementedNodeRuntimeServiceServer() {}
 func (UnimplementedNodeRuntimeServiceServer) testEmbeddedByValue()                            {}
@@ -826,6 +842,24 @@ func _NodeRuntimeService_ApplyIPBlocks_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NodeRuntimeService_ApplyTorProxy_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(TorProxyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeRuntimeServiceServer).ApplyTorProxy(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeRuntimeService_ApplyTorProxy_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeRuntimeServiceServer).ApplyTorProxy(ctx, req.(*TorProxyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NodeRuntimeService_ServiceDesc is the grpc.ServiceDesc for NodeRuntimeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -900,6 +934,10 @@ var NodeRuntimeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ApplyIPBlocks",
 			Handler:    _NodeRuntimeService_ApplyIPBlocks_Handler,
+		},
+		{
+			MethodName: "ApplyTorProxy",
+			Handler:    _NodeRuntimeService_ApplyTorProxy_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

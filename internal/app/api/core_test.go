@@ -134,6 +134,27 @@ func TestRouteTestRejectsMissingDestination(t *testing.T) {
 	}
 }
 
+func TestTorProxySetupRejectsMasterTarget(t *testing.T) {
+	server := &Server{}
+	payload := []byte(`{
+		"target_id": "master",
+		"port": 9050,
+		"country": "de"
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/panel/xray/tor/setup", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.handleTorProxySetup(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "target to a node") {
+		t.Fatalf("unexpected body=%s", rec.Body.String())
+	}
+}
+
 func TestOutboundTestRejectsAddresslessTCPAndICMP(t *testing.T) {
 	server := &Server{}
 	for _, testType := range []string{"tcp", "icmp"} {

@@ -21,6 +21,9 @@ type Request struct {
 	RouteNetwork     string `json:"route_network,omitempty"`
 	RouteProtocol    string `json:"route_protocol,omitempty"`
 	RouteEmail       string `json:"route_email,omitempty"`
+	TorSocksPort     uint32 `json:"tor_socks_port,omitempty"`
+	TorExitCountry   string `json:"tor_exit_country,omitempty"`
+	TorStrictExit    bool   `json:"tor_strict_exit,omitempty"`
 }
 
 type File struct {

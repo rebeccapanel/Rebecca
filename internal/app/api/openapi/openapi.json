@@ -2153,6 +2153,24 @@
         "operationId": "postPanelXrayTestOutbound"
       }
     },
+    "/api/panel/xray/tor/setup": {
+      "post": {
+        "tags": [
+          "Core"
+        ],
+        "summary": "Setup Tor SOCKS outbound",
+        "description": "Install and configure Tor on a selected node, expose a localhost-only SOCKS proxy, and return an Xray `socks` outbound object for the dashboard config. The target must be a node.\n\nAuthentication: send `Authorization: Bearer <api_key>` for bots and third-party integrations. Create personal admin API keys from My Account -> API Keys; each key inherits the owner admin permissions and limits.\n\nPermissions: Requires sudo/full_access for config/runtime/outbound helper mutations.\n\nRequest body: JSON with `target_id` or `node_id`, `port` between 1024 and 65535, optional two-letter `country`, optional `strict`, and optional outbound `tag`.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/JSON"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JSON"
+          }
+        },
+        "operationId": "postPanelXrayTorSetup"
+      }
+    },
     "/api/panel/xray/routeTest": {
       "post": {
         "tags": [

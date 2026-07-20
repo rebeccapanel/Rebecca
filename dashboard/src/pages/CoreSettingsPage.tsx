@@ -670,6 +670,7 @@ export const CoreSettingsPage: FC = () => {
 	const [outboundTestType, setOutboundTestType] =
 		useState<OutboundTestType>("latency");
 	const [testingAllOutbounds, setTestingAllOutbounds] = useState(false);
+	const [isApplyingTorProxy, setIsApplyingTorProxy] = useState(false);
 	const [routingRuleData, setRoutingRuleData] = useState<any[]>([]);
 	const [routingRuleSearch, setRoutingRuleSearch] = useState("");
 	const [routeTestDestination, setRouteTestDestination] = useState("");
@@ -1314,6 +1315,112 @@ export const CoreSettingsPage: FC = () => {
 	const addOutbound = () => {
 		setEditingOutboundIndex(null);
 		onOutboundOpen();
+	};
+
+	const addTorOutbound = async () => {
+		if (isMasterTarget) {
+			toast({
+				title: t(
+					"pages.xray.tor.nodeTargetRequired",
+					"Change the target to a node before setting up Tor.",
+				),
+				status: "warning",
+				isClosable: true,
+				position: "top",
+				duration: 4000,
+			});
+			return;
+		}
+		const country = (window.prompt(
+			t("pages.xray.tor.countryPrompt", "Tor exit country code (optional, e.g. de):"),
+			"de",
+		) ?? "").trim().toLowerCase();
+		if (country && !/^[a-z]{2}$/.test(country)) {
+			toast({
+				title: t("pages.xray.tor.countryInvalid", "Country must be a two-letter code."),
+				status: "warning",
+				isClosable: true,
+				position: "top",
+				duration: 3000,
+			});
+			return;
+		}
+		const portText = window.prompt(
+			t("pages.xray.tor.portPrompt", "Local SOCKS port:"),
+			"9050",
+		);
+		if (portText === null) return;
+		const port = Number.parseInt(portText, 10);
+		if (!Number.isFinite(port) || port < 1024 || port > 65535) {
+			toast({
+				title: t("pages.xray.tor.portInvalid", "Port must be between 1024 and 65535."),
+				status: "warning",
+				isClosable: true,
+				position: "top",
+				duration: 3000,
+			});
+			return;
+		}
+		const defaultTag = country ? `tor-${country}` : "tor";
+		const tag = (window.prompt(
+			t("pages.xray.tor.tagPrompt", "Outbound tag:"),
+			defaultTag,
+		) ?? "").trim();
+		if (!tag) return;
+
+		setIsApplyingTorProxy(true);
+		try {
+			const response = await apiFetch<{
+				success: boolean;
+				obj?: { outbound?: any; message?: string };
+				msg?: string;
+			}>("/panel/xray/tor/setup", {
+				method: "POST",
+				body: {
+					target_id: selectedTarget,
+					country,
+					port,
+					tag,
+					strict: true,
+				},
+			});
+			const outbound = response?.obj?.outbound;
+			if (!response?.success || !outbound) {
+				throw new Error(response?.msg || t("pages.xray.tor.failed", "Unable to setup Tor proxy"));
+			}
+			const outbounds = getOutbounds();
+			const existingIndex = outbounds.findIndex(
+				(item: any) => String(item?.tag ?? "") === String(outbound.tag ?? ""),
+			);
+			if (existingIndex >= 0) {
+				outbounds[existingIndex] = outbound;
+			} else {
+				outbounds.push(outbound);
+			}
+			commitOutbounds(outbounds);
+			toast({
+				title: response.obj?.message || t("pages.xray.tor.added", "Tor outbound added"),
+				status: "success",
+				isClosable: true,
+				position: "top",
+				duration: 4000,
+			});
+		} catch (error: any) {
+			const detail =
+				error?.response?._data?.detail ??
+				error?.data?.detail ??
+				error?.message ??
+				t("pages.xray.tor.failed", "Unable to setup Tor proxy");
+			toast({
+				title: typeof detail === "string" ? detail : JSON.stringify(detail),
+				status: "error",
+				isClosable: true,
+				position: "top",
+				duration: 5000,
+			});
+		} finally {
+			setIsApplyingTorProxy(false);
+		}
 	};
 
 	const editOutbound = (index: number) => {
@@ -4526,6 +4633,16 @@ export const CoreSettingsPage: FC = () => {
 											onClick={onNordOpen}
 										>
 											NordVPN
+										</Button>
+										<Button
+											leftIcon={<BoltIconStyled />}
+											size="xs"
+											variant="ghost"
+											isLoading={isApplyingTorProxy}
+											isDisabled={isMasterTarget}
+											onClick={addTorOutbound}
+										>
+											{t("pages.xray.tor.setup", "Tor")}
 										</Button>
 									</HStack>
 								}
