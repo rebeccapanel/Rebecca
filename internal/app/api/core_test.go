@@ -134,11 +134,11 @@ func TestRouteTestRejectsMissingDestination(t *testing.T) {
 	}
 }
 
-func TestTorProxySetupRejectsMasterTarget(t *testing.T) {
+func TestTorProxySetupRejectsInvalidPort(t *testing.T) {
 	server := &Server{}
 	payload := []byte(`{
-		"target_id": "master",
-		"port": 9050,
+		"target_id": "node:7",
+		"port": 80,
 		"country": "de"
 	}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/panel/xray/tor/setup", bytes.NewReader(payload))
@@ -150,7 +150,7 @@ func TestTorProxySetupRejectsMasterTarget(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	if !strings.Contains(rec.Body.String(), "target to a node") {
+	if !strings.Contains(rec.Body.String(), "port must be") {
 		t.Fatalf("unexpected body=%s", rec.Body.String())
 	}
 }

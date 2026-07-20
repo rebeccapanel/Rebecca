@@ -1147,6 +1147,7 @@
 	"pages.xray.tor.added": "اوتباند Tor اضافه شد",
 	"pages.xray.tor.countryInvalid": "کد کشور باید دو حرفی باشد.",
 	"pages.xray.tor.countryPrompt": "کد کشور خروجی Tor (اختیاری، مثلا de):",
+	"pages.xray.tor.countryPromptAll": "کد کشور خروجی Tor برای همه نودها (اختیاری، مثلا de):",
 	"pages.xray.tor.failed": "راه‌اندازی پروکسی Tor انجام نشد",
 	"pages.xray.tor.nodeTargetRequired": "قبل از راه‌اندازی Tor، تارگت را به یک نود تغییر بده.",
 	"pages.xray.tor.portInvalid": "پورت باید بین 1024 تا 65535 باشد.",

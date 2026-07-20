@@ -1318,21 +1318,13 @@ export const CoreSettingsPage: FC = () => {
 	};
 
 	const addTorOutbound = async () => {
-		if (isMasterTarget) {
-			toast({
-				title: t(
-					"pages.xray.tor.nodeTargetRequired",
-					"Change the target to a node before setting up Tor.",
-				),
-				status: "warning",
-				isClosable: true,
-				position: "top",
-				duration: 4000,
-			});
-			return;
-		}
 		const country = (window.prompt(
-			t("pages.xray.tor.countryPrompt", "Tor exit country code (optional, e.g. de):"),
+			isMasterTarget
+				? t(
+						"pages.xray.tor.countryPromptAll",
+						"Tor exit country code for all nodes (optional, e.g. de):",
+					)
+				: t("pages.xray.tor.countryPrompt", "Tor exit country code (optional, e.g. de):"),
 			"de",
 		) ?? "").trim().toLowerCase();
 		if (country && !/^[a-z]{2}$/.test(country)) {
@@ -4639,7 +4631,6 @@ export const CoreSettingsPage: FC = () => {
 											size="xs"
 											variant="ghost"
 											isLoading={isApplyingTorProxy}
-											isDisabled={isMasterTarget}
 											onClick={addTorOutbound}
 										>
 											{t("pages.xray.tor.setup", "Tor")}

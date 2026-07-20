@@ -1156,6 +1156,7 @@
 	"pages.xray.tor.added": "Tor outbound added",
 	"pages.xray.tor.countryInvalid": "Country must be a two-letter code.",
 	"pages.xray.tor.countryPrompt": "Tor exit country code (optional, e.g. de):",
+	"pages.xray.tor.countryPromptAll": "Tor exit country code for all nodes (optional, e.g. de):",
 	"pages.xray.tor.failed": "Unable to setup Tor proxy",
 	"pages.xray.tor.nodeTargetRequired": "Change the target to a node before setting up Tor.",
 	"pages.xray.tor.portInvalid": "Port must be between 1024 and 65535.",
