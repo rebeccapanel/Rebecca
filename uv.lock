@@ -382,12 +382,24 @@ wheels = [
 ]
 
 [[package]]
-name = "jdatetime"
-version = "4.1.1"
+name = "jalali-core"
+version = "1.0.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/68/e2/f3a974b25118345ad19c050c3bab37d01fcf94ba2be492b9e8b59392d067/jdatetime-4.1.1.tar.gz", hash = "sha256:1dd0ee210160c7bd30002803c443e6260ac602ea65b065652a1d567d3bfdca7a", size = 21804, upload-time = "2023-03-28T10:15:49.423Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2b/3c/21e32e3444c572174a5d774643eb2aa8ab60ef68b99a4c3585a0a11428b4/jalali_core-1.0.0.tar.gz", hash = "sha256:f4287c70c630323dcf0a3ab26df905ba4d451e230ac1f65b3bb2f77797894a2b", size = 2752, upload-time = "2024-03-25T09:36:14.934Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3b/40/ee7691411bf07e963ab83309adf797f8dd9b454dbdd027545fd789ac8d97/jdatetime-4.1.1-py3-none-any.whl", hash = "sha256:8b56c702406eaf84d2ad673c41180488f8c77f156c3ac0630ce0caabaf6af5b8", size = 13592, upload-time = "2023-03-28T10:15:47.485Z" },
+    { url = "https://files.pythonhosted.org/packages/f6/20/a4e942f9685df720a106da292e29a53212b27903749cc563b86b612b113e/jalali_core-1.0.0-py3-none-any.whl", hash = "sha256:84e6f5090eadfb35234f24fad084be831d00da3c0b238ee001e8a1fd49bf7924", size = 3616, upload-time = "2024-03-25T09:36:13.133Z" },
+]
+
+[[package]]
+name = "jdatetime"
+version = "6.0.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jalali-core" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b9/1a/6f49f59d771db850c5c895e1fc8dd7fb495e146ba7b2b247df299442bb64/jdatetime-6.0.1.tar.gz", hash = "sha256:e349ec5fe4cd42b88e6f1a1d9d1de2391bfa7702a5d3d3ce870d593a475597b0", size = 22542, upload-time = "2026-07-15T07:45:56.197Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/26/87/2a9beabec59032feb868c0d05c0db571e2dce87b854a722f46623766a9e2/jdatetime-6.0.1-py3-none-any.whl", hash = "sha256:57ab3cc70fee4b7fdd9451553fcf1aa8e63034a7c8b1b28750e02caf89183219", size = 12726, upload-time = "2026-07-15T07:45:55.199Z" },
 ]
 
 [[package]]
@@ -935,7 +947,7 @@ requires-dist = [
     { name = "email-validator", specifier = "==2.2.0" },
     { name = "fastapi", specifier = "==0.124.4" },
     { name = "grpcio", specifier = "==1.67.1" },
-    { name = "jdatetime", specifier = "==4.1.1" },
+    { name = "jdatetime", specifier = "==6.0.1" },
     { name = "jinja2", specifier = "==3.1.4" },
     { name = "passlib", extras = ["bcrypt"], specifier = "==1.7.4" },
     { name = "protobuf", specifier = "==6.31.1" },
