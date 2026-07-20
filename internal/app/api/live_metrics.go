@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rebeccapanel/rebecca/internal/app/nodecontroller"
@@ -84,9 +85,9 @@ func (s *Server) handleSystemMetricsWebSocket(w http.ResponseWriter, r *http.Req
 }
 
 func (s *Server) sendNodesMetricsSnapshot(parent context.Context, conn *websocket.Conn, interval time.Duration) error {
-	ctx, cancel := context.WithTimeout(parent, liveMetricsTimeout(interval))
-	defer cancel()
-	result, err := s.nodeController.List(ctx, nodecontroller.Request{IncludeMetrics: true})
+	baseCtx, baseCancel := context.WithTimeout(parent, 10*time.Second)
+	base, err := s.nodeController.List(baseCtx, nodecontroller.Request{IncludeMetrics: false})
+	baseCancel()
 	if err != nil {
 		return websocket.JSON.Send(conn, nodesMetricsMessage{
 			Type:  "nodes.metrics",
@@ -94,14 +95,66 @@ func (s *Server) sendNodesMetricsSnapshot(parent context.Context, conn *websocke
 			Error: err.Error(),
 		})
 	}
-	nodes := make([]map[string]any, 0, len(result.Nodes))
-	for _, node := range result.Nodes {
-		nodes = append(nodes, flattenNodeItem(node))
+	baseNodes := make([]map[string]any, 0, len(base.Nodes))
+	for _, node := range base.Nodes {
+		baseNodes = append(baseNodes, flattenNodeItem(node))
 	}
-	return websocket.JSON.Send(conn, nodesMetricsMessage{
+	if err := websocket.JSON.Send(conn, nodesMetricsMessage{
 		Type:  "nodes.metrics",
-		Nodes: nodes,
-	})
+		Nodes: baseNodes,
+	}); err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(parent, liveMetricsTimeout(interval))
+	defer cancel()
+	type nodeUpdate struct {
+		node  map[string]any
+		error string
+	}
+	updates := make(chan nodeUpdate, len(base.Nodes))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 8)
+	for _, node := range base.Nodes {
+		if node.ID <= 0 || node.Status == "disabled" || node.Status == "limited" {
+			continue
+		}
+		wg.Add(1)
+		go func(nodeID int64) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			item, err := s.nodeController.Get(ctx, nodecontroller.Request{NodeID: nodeID})
+			if err != nil {
+				updates <- nodeUpdate{error: err.Error()}
+				return
+			}
+			updates <- nodeUpdate{node: flattenNodeItem(item)}
+		}(node.ID)
+	}
+	go func() {
+		wg.Wait()
+		close(updates)
+	}()
+	for update := range updates {
+		if update.error != "" {
+			if err := websocket.JSON.Send(conn, nodesMetricsMessage{
+				Type:  "nodes.metrics",
+				Nodes: []map[string]any{},
+				Error: update.error,
+			}); err != nil {
+				return err
+			}
+			continue
+		}
+		if err := websocket.JSON.Send(conn, nodesMetricsMessage{
+			Type:  "nodes.metrics",
+			Nodes: []map[string]any{update.node},
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *Server) sendSystemMetricsSnapshot(parent context.Context, conn *websocket.Conn, r *http.Request, interval time.Duration) error {
