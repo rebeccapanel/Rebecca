@@ -783,11 +783,11 @@ wheels = [
 
 [[package]]
 name = "python-decouple"
-version = "3.6"
+version = "3.8"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ad/90/b49583e8dfb94c3b699070701ae6a8415de6c0445c1df9c11f912e051316/python-decouple-3.6.tar.gz", hash = "sha256:2838cdf77a5cf127d7e8b339ce14c25bceb3af3e674e039d4901ba16359968c7", size = 9547, upload-time = "2022-02-02T19:25:31.789Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e1/97/373dcd5844ec0ea5893e13c39a2c67e7537987ad8de3842fe078db4582fa/python-decouple-3.8.tar.gz", hash = "sha256:ba6e2657d4f376ecc46f77a3a615e058d93ba5e465c01bbe57289bfb7cce680f", size = 9612, upload-time = "2023-03-01T19:38:38.143Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3a/20/c1b1533a02946c728f7b6e1d45ed3216c5eef4c8e8777d0db06e361f11e4/python_decouple-3.6-py3-none-any.whl", hash = "sha256:6cf502dc963a5c642ea5ead069847df3d916a6420cad5599185de6bab11d8c2e", size = 9881, upload-time = "2022-02-02T19:25:29.85Z" },
+    { url = "https://files.pythonhosted.org/packages/a2/d4/9193206c4563ec771faf2ccf54815ca7918529fe81f6adb22ee6d0e06622/python_decouple-3.8-py3-none-any.whl", hash = "sha256:d0d45340815b25f4de59c974b855bb38d03151d81b037d9e3f463b0c9f8cbd66", size = 9947, upload-time = "2023-03-01T19:38:36.015Z" },
 ]
 
 [[package]]
@@ -947,7 +947,7 @@ requires-dist = [
     { name = "pysocks", specifier = "==1.7.1" },
     { name = "pytelegrambotapi", specifier = "==4.9.0" },
     { name = "python-dateutil", specifier = "==2.8.2" },
-    { name = "python-decouple", specifier = "==3.6" },
+    { name = "python-decouple", specifier = "==3.8" },
     { name = "python-dotenv", specifier = "==0.21.1" },
     { name = "python-multipart", specifier = ">=0.0.20" },
     { name = "python-socks", specifier = "==2.4.4" },

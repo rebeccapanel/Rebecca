@@ -39,7 +39,7 @@ dependencies = [
     "pyopenssl==24.2.1",
     "pytelegrambotapi==4.9.0",
     "python-dateutil==2.8.2",
-    "python-decouple==3.6",
+    "python-decouple==3.8",
     "python-dotenv==0.21.1",
     "python-multipart>=0.0.20",
     "python-socks==2.4.4",
