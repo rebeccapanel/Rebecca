@@ -207,6 +207,7 @@ const (
 	NodeRuntimeService_Metrics_FullMethodName        = "/rebecca.node.v1.NodeRuntimeService/Metrics"
 	NodeRuntimeService_PublicIPs_FullMethodName      = "/rebecca.node.v1.NodeRuntimeService/PublicIPs"
 	NodeRuntimeService_TestOutbound_FullMethodName   = "/rebecca.node.v1.NodeRuntimeService/TestOutbound"
+	NodeRuntimeService_TestRoute_FullMethodName      = "/rebecca.node.v1.NodeRuntimeService/TestRoute"
 	NodeRuntimeService_UpdateRuntime_FullMethodName  = "/rebecca.node.v1.NodeRuntimeService/UpdateRuntime"
 	NodeRuntimeService_UpdateGeo_FullMethodName      = "/rebecca.node.v1.NodeRuntimeService/UpdateGeo"
 	NodeRuntimeService_RestartService_FullMethodName = "/rebecca.node.v1.NodeRuntimeService/RestartService"
@@ -229,6 +230,7 @@ type NodeRuntimeServiceClient interface {
 	Metrics(ctx context.Context, in *MetricsRequest, opts ...grpc.CallOption) (*MetricsResponse, error)
 	PublicIPs(ctx context.Context, in *PublicIPsRequest, opts ...grpc.CallOption) (*PublicIPsResponse, error)
 	TestOutbound(ctx context.Context, in *OutboundTestRequest, opts ...grpc.CallOption) (*OutboundTestResponse, error)
+	TestRoute(ctx context.Context, in *RouteTestRequest, opts ...grpc.CallOption) (*RouteTestResponse, error)
 	UpdateRuntime(ctx context.Context, in *RuntimeUpdateRequest, opts ...grpc.CallOption) (*RuntimeActionResponse, error)
 	UpdateGeo(ctx context.Context, in *GeoUpdateRequest, opts ...grpc.CallOption) (*RuntimeActionResponse, error)
 	RestartService(ctx context.Context, in *ServiceRestartRequest, opts ...grpc.CallOption) (*RuntimeActionResponse, error)
@@ -345,6 +347,16 @@ func (c *nodeRuntimeServiceClient) TestOutbound(ctx context.Context, in *Outboun
 	return out, nil
 }
 
+func (c *nodeRuntimeServiceClient) TestRoute(ctx context.Context, in *RouteTestRequest, opts ...grpc.CallOption) (*RouteTestResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RouteTestResponse)
+	err := c.cc.Invoke(ctx, NodeRuntimeService_TestRoute_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *nodeRuntimeServiceClient) UpdateRuntime(ctx context.Context, in *RuntimeUpdateRequest, opts ...grpc.CallOption) (*RuntimeActionResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(RuntimeActionResponse)
@@ -419,6 +431,7 @@ type NodeRuntimeServiceServer interface {
 	Metrics(context.Context, *MetricsRequest) (*MetricsResponse, error)
 	PublicIPs(context.Context, *PublicIPsRequest) (*PublicIPsResponse, error)
 	TestOutbound(context.Context, *OutboundTestRequest) (*OutboundTestResponse, error)
+	TestRoute(context.Context, *RouteTestRequest) (*RouteTestResponse, error)
 	UpdateRuntime(context.Context, *RuntimeUpdateRequest) (*RuntimeActionResponse, error)
 	UpdateGeo(context.Context, *GeoUpdateRequest) (*RuntimeActionResponse, error)
 	RestartService(context.Context, *ServiceRestartRequest) (*RuntimeActionResponse, error)
@@ -464,6 +477,9 @@ func (UnimplementedNodeRuntimeServiceServer) PublicIPs(context.Context, *PublicI
 }
 func (UnimplementedNodeRuntimeServiceServer) TestOutbound(context.Context, *OutboundTestRequest) (*OutboundTestResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method TestOutbound not implemented")
+}
+func (UnimplementedNodeRuntimeServiceServer) TestRoute(context.Context, *RouteTestRequest) (*RouteTestResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method TestRoute not implemented")
 }
 func (UnimplementedNodeRuntimeServiceServer) UpdateRuntime(context.Context, *RuntimeUpdateRequest) (*RuntimeActionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method UpdateRuntime not implemented")
@@ -684,6 +700,24 @@ func _NodeRuntimeService_TestOutbound_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NodeRuntimeService_TestRoute_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RouteTestRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeRuntimeServiceServer).TestRoute(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeRuntimeService_TestRoute_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeRuntimeServiceServer).TestRoute(ctx, req.(*RouteTestRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _NodeRuntimeService_UpdateRuntime_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RuntimeUpdateRequest)
 	if err := dec(in); err != nil {
@@ -838,6 +872,10 @@ var NodeRuntimeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "TestOutbound",
 			Handler:    _NodeRuntimeService_TestOutbound_Handler,
+		},
+		{
+			MethodName: "TestRoute",
+			Handler:    _NodeRuntimeService_TestRoute_Handler,
 		},
 		{
 			MethodName: "UpdateRuntime",

@@ -53,3 +53,32 @@ func (c Controller) TestOutbound(ctx context.Context, req Request) (OutboundTest
 		Output:     res.GetOutput(),
 	}, nil
 }
+
+func (c Controller) TestRoute(ctx context.Context, req Request) (RouteTestResult, error) {
+	client, _, err := c.dial(ctx, req.NodeID)
+	if err != nil {
+		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
+		return RouteTestResult{}, friendlyNodeError("test route", req.NodeID, err)
+	}
+	defer client.Close()
+	res, err := client.Runtime().TestRoute(ctx, &nodev1.RouteTestRequest{
+		OperationId: "test-route-" + strconv.FormatInt(req.NodeID, 10),
+		InboundTag:  strings.TrimSpace(req.RouteInboundTag),
+		Domain:      strings.TrimSpace(req.RouteDomain),
+		Ip:          strings.TrimSpace(req.RouteIP),
+		Port:        req.RoutePort,
+		Network:     strings.TrimSpace(req.RouteNetwork),
+		Protocol:    strings.TrimSpace(req.RouteProtocol),
+		Email:       strings.TrimSpace(req.RouteEmail),
+	})
+	if err != nil {
+		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
+		return RouteTestResult{}, friendlyNodeError("test route", req.NodeID, err)
+	}
+	return RouteTestResult{
+		Matched:     res.GetMatched(),
+		OutboundTag: res.GetOutboundTag(),
+		GroupTags:   res.GetGroupTags(),
+		Error:       res.GetError(),
+	}, nil
+}

@@ -159,6 +159,65 @@ func (s *Server) handleOutboundTests(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "obj": results})
 }
 
+func (s *Server) handleRouteTest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	var payload map[string]any
+	if err := decodeOptionalJSON(r, &payload); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	target := stringFromAny(payload["target_id"])
+	if target == "" {
+		target = stringFromAny(payload["target"])
+	}
+	nodeID, isNode, err := nodeIDFromTarget(target, stringFromAny(payload["node_id"]))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if !isNode || nodeID <= 0 {
+		writeError(w, http.StatusBadRequest, "Route tests run on nodes only. Change the target to a node before testing this route.")
+		return
+	}
+
+	domain := strings.TrimSpace(stringFromAny(payload["domain"]))
+	ip := strings.TrimSpace(stringFromAny(payload["ip"]))
+	if domain == "" && ip == "" {
+		writeError(w, http.StatusBadRequest, "domain or ip is required")
+		return
+	}
+	if ip != "" && net.ParseIP(ip) == nil {
+		writeError(w, http.StatusBadRequest, "invalid ip address")
+		return
+	}
+	port, err := uint32FromAny(payload["port"])
+	if err != nil || port > 65535 {
+		writeError(w, http.StatusBadRequest, "port must be between 0 and 65535")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	result, err := s.nodeController.TestRoute(ctx, nodecontroller.Request{
+		NodeID:          nodeID,
+		RouteInboundTag: firstNonEmpty(stringFromAny(payload["inboundTag"]), stringFromAny(payload["inbound_tag"])),
+		RouteDomain:     domain,
+		RouteIP:         ip,
+		RoutePort:       port,
+		RouteNetwork:    strings.ToLower(strings.TrimSpace(stringFromAny(payload["network"]))),
+		RouteProtocol:   strings.TrimSpace(stringFromAny(payload["protocol"])),
+		RouteEmail:      firstNonEmpty(stringFromAny(payload["email"]), stringFromAny(payload["user"])),
+	})
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "Selected node is not available for route test")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "obj": routeTestObject(result)})
+}
+
 func (s *Server) runOutboundTest(ctx context.Context, nodeID int64, outbound map[string]any, allOutbounds []map[string]any, testType string, testURL string) nodecontroller.OutboundTestResult {
 	outboundTag := strings.TrimSpace(stringFromAny(outbound["tag"]))
 	outboundProtocol := strings.ToLower(strings.TrimSpace(stringFromAny(outbound["protocol"])))
@@ -196,6 +255,55 @@ func (s *Server) runOutboundTest(ctx context.Context, nodeID int64, outbound map
 		}
 	}
 	return result
+}
+
+func routeTestObject(result nodecontroller.RouteTestResult) map[string]any {
+	obj := map[string]any{
+		"matched": result.Matched,
+	}
+	if strings.TrimSpace(result.OutboundTag) != "" {
+		obj["outboundTag"] = result.OutboundTag
+		obj["outbound_tag"] = result.OutboundTag
+	}
+	if len(result.GroupTags) > 0 {
+		obj["groupTags"] = result.GroupTags
+		obj["group_tags"] = result.GroupTags
+	}
+	if strings.TrimSpace(result.Error) != "" {
+		obj["error"] = result.Error
+	}
+	return obj
+}
+
+func uint32FromAny(value any) (uint32, error) {
+	switch v := value.(type) {
+	case nil:
+		return 0, nil
+	case float64:
+		if v < 0 || v != float64(uint32(v)) {
+			return 0, fmt.Errorf("invalid uint32")
+		}
+		return uint32(v), nil
+	case int:
+		if v < 0 {
+			return 0, fmt.Errorf("invalid uint32")
+		}
+		return uint32(v), nil
+	case int64:
+		if v < 0 {
+			return 0, fmt.Errorf("invalid uint32")
+		}
+		return uint32(v), nil
+	case string:
+		text := strings.TrimSpace(v)
+		if text == "" {
+			return 0, nil
+		}
+		parsed, err := strconv.ParseUint(text, 10, 32)
+		return uint32(parsed), err
+	default:
+		return 0, fmt.Errorf("invalid uint32")
+	}
 }
 
 func validateOutboundTestRequest(outbound map[string]any, testType string) error {

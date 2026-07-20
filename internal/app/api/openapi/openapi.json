@@ -2153,6 +2153,24 @@
         "operationId": "postPanelXrayTestOutbound"
       }
     },
+    "/api/panel/xray/routeTest": {
+      "post": {
+        "tags": [
+          "Core"
+        ],
+        "summary": "Test route",
+        "description": "Ask the selected node's running Xray core which outbound would be selected for a synthetic routing context. No traffic is sent.\n\nAuthentication: send `Authorization: Bearer <api_key>` for bots and third-party integrations. Create personal admin API keys from My Account -> API Keys; each key inherits the owner admin permissions and limits. The current dashboard JWT from `POST /api/admin/token` is also accepted for interactive dashboard sessions and for Swagger UI when opened from inside the panel.\n\nPermissions: Requires sudo/full_access for config/runtime/geo/WARP/outbound helper mutations. `/api/core` and `/api/core/ips` can be read by authenticated admins.\n\nRequest body: send JSON with `target_id` or `node_id`, `domain` or `ip`, optional `port`, `network`, `inboundTag`, `protocol`, and `email`. The target must be a node, not master.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/JSON"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JSON"
+          }
+        },
+        "operationId": "postPanelXrayRouteTest"
+      }
+    },
     "/api/panel/xray/getOutboundsTraffic": {
       "get": {
         "tags": [

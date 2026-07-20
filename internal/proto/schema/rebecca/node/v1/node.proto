@@ -21,6 +21,7 @@ service NodeRuntimeService {
   rpc Metrics(MetricsRequest) returns (MetricsResponse);
   rpc PublicIPs(PublicIPsRequest) returns (PublicIPsResponse);
   rpc TestOutbound(OutboundTestRequest) returns (OutboundTestResponse);
+  rpc TestRoute(RouteTestRequest) returns (RouteTestResponse);
   rpc UpdateRuntime(RuntimeUpdateRequest) returns (RuntimeActionResponse);
   rpc UpdateGeo(GeoUpdateRequest) returns (RuntimeActionResponse);
   rpc RestartService(ServiceRestartRequest) returns (RuntimeActionResponse);
@@ -159,6 +160,24 @@ message OutboundTestResponse {
   string address = 6;
   int32 port = 7;
   string output = 8;
+}
+
+message RouteTestRequest {
+  string operation_id = 1;
+  string inbound_tag = 2;
+  string domain = 3;
+  string ip = 4;
+  uint32 port = 5;
+  string network = 6;
+  string protocol = 7;
+  string email = 8;
+}
+
+message RouteTestResponse {
+  bool matched = 1;
+  string outbound_tag = 2;
+  repeated string group_tags = 3;
+  string error = 4;
 }
 
 message RuntimeUpdateRequest {

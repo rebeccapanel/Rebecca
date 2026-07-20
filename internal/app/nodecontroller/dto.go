@@ -14,6 +14,13 @@ type Request struct {
 	AllOutboundsJSON string `json:"all_outbounds_json,omitempty"`
 	OutboundTestURL  string `json:"test_url,omitempty"`
 	OutboundTestType string `json:"test_type,omitempty"`
+	RouteInboundTag  string `json:"route_inbound_tag,omitempty"`
+	RouteDomain      string `json:"route_domain,omitempty"`
+	RouteIP          string `json:"route_ip,omitempty"`
+	RoutePort        uint32 `json:"route_port,omitempty"`
+	RouteNetwork     string `json:"route_network,omitempty"`
+	RouteProtocol    string `json:"route_protocol,omitempty"`
+	RouteEmail       string `json:"route_email,omitempty"`
 }
 
 type File struct {
@@ -107,6 +114,13 @@ type OutboundTestResult struct {
 	Address    string `json:"address,omitempty"`
 	Port       int32  `json:"port,omitempty"`
 	Output     string `json:"output,omitempty"`
+}
+
+type RouteTestResult struct {
+	Matched     bool     `json:"matched"`
+	OutboundTag string   `json:"outboundTag,omitempty"`
+	GroupTags   []string `json:"groupTags,omitempty"`
+	Error       string   `json:"error,omitempty"`
 }
 
 type NodeListResult struct {
