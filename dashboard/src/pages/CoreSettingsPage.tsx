@@ -46,6 +46,7 @@ import {
 	ArrowUpIcon,
 	ArrowUpTrayIcon,
 	BoltIcon,
+	CheckCircleIcon,
 	CloudArrowUpIcon,
 	TrashIcon as DeleteIcon,
 	DocumentTextIcon,
@@ -55,6 +56,7 @@ import {
 	ArrowPathIcon as ReloadIcon,
 	ScaleIcon,
 	WrenchScrewdriverIcon,
+	XCircleIcon,
 } from "@heroicons/react/24/outline";
 import { CompactChips, CompactTextWithCopy } from "components/CompactPopover";
 import { ConfirmDialog } from "components/dialogs/ConfirmDialog";
@@ -148,6 +150,8 @@ const AdvancedTabIcon = chakra(WrenchScrewdriverIcon, {
 const LogsTabIcon = chakra(DocumentTextIcon, { baseStyle: { w: 4, h: 4 } });
 const WarpIconStyled = chakra(CloudArrowUpIcon, { baseStyle: { w: 4, h: 4 } });
 const BoltIconStyled = chakra(BoltIcon, { baseStyle: { w: 4, h: 4 } });
+const CheckCircleIconStyled = chakra(CheckCircleIcon, { baseStyle: { w: 3.5, h: 3.5 } });
+const XCircleIconStyled = chakra(XCircleIcon, { baseStyle: { w: 3.5, h: 3.5 } });
 const MoreIconStyled = chakra(EllipsisHorizontalIcon, { baseStyle: { w: 4, h: 4 } });
 const NordVPNIconStyled = () => (
 	<Box as="span" display="inline-flex" color="#4687ff">
@@ -802,8 +806,10 @@ export const CoreSettingsPage: FC = () => {
 	const outboundTestResultLabel = useCallback(
 		(result: OutboundTestResult) => {
 			const delayLabel =
-				typeof result.delay === "number" && result.delay > 0
-					? `${result.delay}ms`
+				typeof result.delay === "number" && Number.isFinite(result.delay)
+					? result.delay < 1
+						? "<1 ms"
+						: `${result.delay} ms`
 					: "-";
 			const targetLabel = result.address
 				? result.port
@@ -2355,10 +2361,15 @@ export const CoreSettingsPage: FC = () => {
 		const traffic = outboundId
 			? targetTraffic.find((t) => t.outbound_id === outboundId)
 			: targetTraffic.find((t) => t.tag === outbound.tag);
-		return traffic
-			? `${SizeFormatter.sizeFormat(traffic.up)} / ${SizeFormatter.sizeFormat(traffic.down)}`
-			: `${SizeFormatter.sizeFormat(0)} / ${SizeFormatter.sizeFormat(0)}`;
+		return { up: Number(traffic?.up) || 0, down: Number(traffic?.down) || 0 };
 	};
+
+	const renderOutboundTraffic = (traffic?: { up?: number; down?: number }) => (
+		<HStack spacing={3} whiteSpace="nowrap" fontSize="xs" sx={{ fontVariantNumeric: "tabular-nums" }}>
+			<Text color="teal.400">↑ {SizeFormatter.sizeFormat(Number(traffic?.up) || 0)}</Text>
+			<Text color="blue.400">↓ {SizeFormatter.sizeFormat(Number(traffic?.down) || 0)}</Text>
+		</HStack>
+	);
 
 	const canonicalOutbounds = useMemo<OutboundJson[]>(
 		() =>
@@ -3032,9 +3043,33 @@ export const CoreSettingsPage: FC = () => {
 			</VStack>
 		);
 
-	const renderOutboundTestCell = (
+	const renderOutboundTestResult = (state: OutboundTestState | undefined) => {
+		if (state?.testing) return <Spinner size="xs" />;
+		if (!state?.result) return <Text fontSize="xs" color="gray.500">-</Text>;
+
+		const result = state.result;
+		return (
+			<Tooltip
+				hasArrow
+				label={result.success
+					? result.output || outboundTestResultLabel(result)
+					: result.error || t("pages.xray.outbound.testFailed", "Outbound test failed")}
+				whiteSpace="pre-wrap"
+			>
+				<Tag colorScheme={result.success ? "green" : "red"} size="sm" borderRadius="full" gap={1} sx={{ fontVariantNumeric: "tabular-nums" }}>
+					{result.success ? <CheckCircleIconStyled /> : <XCircleIconStyled />}
+					{result.success
+						? typeof result.delay === "number" && result.delay < 1
+							? "<1 ms"
+							: `${result.delay ?? "-"} ms`
+						: t("pages.xray.outbound.testFailedBadge", "Failed")}
+				</Tag>
+			</Tooltip>
+		);
+	};
+
+	const renderOutboundTestButton = (
 		outbound: any,
-		_originalIndex: number,
 		state: OutboundTestState | undefined,
 		onTest: () => void,
 	) => {
@@ -3051,53 +3086,24 @@ export const CoreSettingsPage: FC = () => {
 			String(outbound.protocol ?? "").toLowerCase().trim() === "blackhole" ||
 			String(outbound.tag ?? "").toLowerCase().trim() === "blocked";
 
+		const testLabel = `${t("pages.xray.outbound.test", "Test")} · ${outboundTestTypeLabels[outboundTestType]}`;
 		return (
-			<HStack spacing={2} minW={0}>
-				<Tooltip
-					hasArrow
-					isDisabled={!disabledReason}
-					label={disabledReason}
-					shouldWrapChildren
-				>
-					<IconButton
-						aria-label={t("pages.xray.outbound.test", "Test")}
-						icon={<BoltIconStyled />}
-						size="xs"
-						variant="ghost"
-						colorScheme="yellow"
-						isLoading={Boolean(state?.testing)}
-						isDisabled={Boolean(disabledReason) || isBlocked}
-						onClick={(event) => {
-							event.stopPropagation();
-							onTest();
-						}}
-					/>
-				</Tooltip>
-				{state?.result ? (
-					state.result.success ? (
-						<Tooltip
-							label={
-								state.result.output || outboundTestResultLabel(state.result)
-							}
-							whiteSpace="pre-wrap"
-						>
-							<Tag colorScheme="green" size="sm">
-								{outboundTestResultLabel(state.result)}
-							</Tag>
-						</Tooltip>
-					) : (
-						<Tooltip label={state.result.error || "-"}>
-							<Tag colorScheme="red" size="sm">
-								{t("pages.xray.outbound.testFailedBadge", "Failed")}
-							</Tag>
-						</Tooltip>
-					)
-				) : (
-					<Text fontSize="xs" color="gray.500">
-						-
-					</Text>
-				)}
-			</HStack>
+			<Tooltip hasArrow label={disabledReason || testLabel} shouldWrapChildren>
+				<IconButton
+					aria-label={testLabel}
+					icon={<BoltIconStyled />}
+					size="sm"
+					isRound
+					variant="solid"
+					colorScheme="primary"
+					isLoading={Boolean(state?.testing)}
+					isDisabled={Boolean(disabledReason) || isBlocked}
+					onClick={(event) => {
+						event.stopPropagation();
+						onTest();
+					}}
+				/>
+			</Tooltip>
 		);
 	};
 
@@ -3264,11 +3270,15 @@ export const CoreSettingsPage: FC = () => {
 			header: t("pages.inbounds.traffic"),
 			priority: "high",
 			mobileSummary: true,
-			cell: ({ outbound, originalIndex }) => (
-				<Tag colorScheme="green" size="sm">
-					{findOutboundTraffic(outbound, originalIndex)}
-				</Tag>
-			),
+			cell: ({ outbound, originalIndex }) =>
+				renderOutboundTraffic(findOutboundTraffic(outbound, originalIndex)),
+		},
+		{
+			id: "latency",
+			header: t("pages.nodes.latency", "Latency"),
+			priority: "high",
+			cell: ({ originalIndex }) => renderOutboundTestResult(outboundTestStates[originalIndex]),
+			mobileMetaLabel: t("pages.nodes.latency", "Latency"),
 		},
 		{
 			id: "test",
@@ -3276,9 +3286,8 @@ export const CoreSettingsPage: FC = () => {
 			priority: "medium",
 			hideBelow: "lg",
 			cell: ({ outbound, originalIndex }) =>
-				renderOutboundTestCell(
+				renderOutboundTestButton(
 					outbound,
-					originalIndex,
 					outboundTestStates[originalIndex],
 					() => testOutbound(originalIndex),
 				),
@@ -3388,14 +3397,15 @@ export const CoreSettingsPage: FC = () => {
 				const traffic = outboundsTraffic
 					.filter((item) => (item.target_id || "master") === selectedTarget)
 					.find((item) => item.tag === outbound.tag);
-				return (
-					<Tag colorScheme="green" size="sm">
-						{traffic
-							? `${SizeFormatter.sizeFormat(traffic.up)} / ${SizeFormatter.sizeFormat(traffic.down)}`
-							: `${SizeFormatter.sizeFormat(0)} / ${SizeFormatter.sizeFormat(0)}`}
-					</Tag>
-				);
+				return renderOutboundTraffic(traffic);
 			},
+		},
+		{
+			id: "latency",
+			header: t("pages.nodes.latency", "Latency"),
+			priority: "high",
+			cell: ({ stateKey }) => renderOutboundTestResult(subscriptionOutboundTestStates[stateKey]),
+			mobileMetaLabel: t("pages.nodes.latency", "Latency"),
 		},
 		{
 			id: "test",
@@ -3403,9 +3413,8 @@ export const CoreSettingsPage: FC = () => {
 			priority: "medium",
 			hideBelow: "lg",
 			cell: ({ outbound, index, stateKey }) =>
-				renderOutboundTestCell(
+				renderOutboundTestButton(
 					outbound,
-					index,
 					subscriptionOutboundTestStates[stateKey],
 					() => testSubscriptionOutbound(outbound, index),
 				),
@@ -4753,9 +4762,8 @@ export const CoreSettingsPage: FC = () => {
 											{t("pages.xray.outbound.resetAll", "Reset all")}
 										</Button>
 										<Button
-											size="xs"
-											variant="ghost"
 											leftIcon={<BoltIconStyled />}
+											{...compactActionButtonProps}
 											isLoading={testingAllOutbounds}
 											isDisabled={isMasterTarget}
 											onClick={testAllOutbounds}
