@@ -52,7 +52,6 @@ import {
 	PencilIcon as EditIcon,
 	GlobeAltIcon,
 	EllipsisHorizontalIcon,
-	SignalIcon,
 	ArrowPathIcon as ReloadIcon,
 	ScaleIcon,
 	WrenchScrewdriverIcon,
@@ -82,7 +81,9 @@ import {
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery } from "react-query";
+import { SiNordvpn, SiTorproject } from "react-icons/si";
 import { fetch as apiFetch } from "service/http";
+import windscribeIconUrl from "../assets/brands/windscribe.png";
 import {
 	type BalancerFormValues,
 	BalancerModal,
@@ -148,7 +149,26 @@ const LogsTabIcon = chakra(DocumentTextIcon, { baseStyle: { w: 4, h: 4 } });
 const WarpIconStyled = chakra(CloudArrowUpIcon, { baseStyle: { w: 4, h: 4 } });
 const BoltIconStyled = chakra(BoltIcon, { baseStyle: { w: 4, h: 4 } });
 const MoreIconStyled = chakra(EllipsisHorizontalIcon, { baseStyle: { w: 4, h: 4 } });
-const WindscribeIconStyled = chakra(SignalIcon, { baseStyle: { w: 4, h: 4 } });
+const NordVPNIconStyled = () => (
+	<Box as="span" display="inline-flex" color="#4687ff">
+		{SiNordvpn({ size: 16, "aria-hidden": true })}
+	</Box>
+);
+const TorIconStyled = () => (
+	<Box as="span" display="inline-flex" color="#7d4698">
+		{SiTorproject({ size: 16, "aria-hidden": true })}
+	</Box>
+);
+const WindscribeIconStyled = () => (
+	<Box
+		as="img"
+		src={windscribeIconUrl}
+		alt=""
+		aria-hidden="true"
+		boxSize={4}
+		objectFit="contain"
+	/>
+);
 const compactActionButtonProps = {
 	colorScheme: "primary",
 	size: "xs" as const,
@@ -4681,11 +4701,11 @@ export const CoreSettingsPage: FC = () => {
 															? t("pages.xray.warp.manage", "Manage WARP")
 															: t("pages.xray.warp.create", "Create WARP")}
 													</MenuItem>
-													<MenuItem icon={<GlobeAltIcon width={16} />} onClick={onNordOpen}>
+													<MenuItem icon={<NordVPNIconStyled />} onClick={onNordOpen}>
 														NordVPN
 													</MenuItem>
 													<MenuItem
-														icon={<BoltIconStyled />}
+														icon={<TorIconStyled />}
 														isDisabled={isApplyingTorProxy}
 														onClick={onTorProxyOpen}
 													>
