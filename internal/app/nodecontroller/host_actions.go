@@ -124,3 +124,35 @@ func (c Controller) ApplyTorProxy(ctx context.Context, req Request) (RuntimeResu
 	}
 	return runtimeResult(node, res.GetRuntime(), nil), nil
 }
+
+func (c Controller) ConfigureWindscribe(ctx context.Context, req Request) (WindscribeResult, error) {
+	client, node, err := c.dial(ctx, req.NodeID)
+	if err != nil {
+		return WindscribeResult{}, friendlyNodeError("configure Windscribe", req.NodeID, err)
+	}
+	defer client.Close()
+	res, err := client.Runtime().ConfigureWindscribe(ctx, &nodev1.WindscribeProxyRequest{
+		OperationId:   "windscribe-" + strings.TrimSpace(req.WindscribeAction) + "-" + strconv.FormatInt(req.NodeID, 10),
+		Action:        strings.TrimSpace(req.WindscribeAction),
+		Username:      strings.TrimSpace(req.WindscribeUsername),
+		Password:      req.WindscribePassword,
+		Location:      strings.TrimSpace(req.WindscribeLocation),
+		SocksPort:     req.WindscribeSocksPort,
+		ProxyUsername: req.WindscribeProxyUsername,
+		ProxyPassword: req.WindscribeProxyPassword,
+	})
+	if err != nil {
+		return WindscribeResult{}, friendlyNodeError("configure Windscribe", req.NodeID, err)
+	}
+	locations := make([]WindscribeLocation, 0, len(res.GetLocations()))
+	for _, location := range res.GetLocations() {
+		locations = append(locations, WindscribeLocation{
+			Name:      location.GetName(),
+			Available: location.GetAvailable(),
+		})
+	}
+	return WindscribeResult{
+		Runtime:   runtimeResult(node, res.GetRuntime(), nil),
+		Locations: locations,
+	}, nil
+}

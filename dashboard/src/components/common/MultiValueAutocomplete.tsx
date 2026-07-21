@@ -8,7 +8,10 @@ import {
 export type MultiValueAutocompleteOption = PanelSelectOption;
 
 type MultiValueAutocompleteProps = {
+	allowCustom?: boolean;
 	emptyText?: string;
+	isDisabled?: boolean;
+	maxValues?: number;
 	options?: MultiValueAutocompleteOption[];
 	placeholder?: string;
 	rightElement?: ReactNode;
@@ -19,7 +22,10 @@ type MultiValueAutocompleteProps = {
 export const splitMultiValueText = splitPanelSelectText;
 
 export const MultiValueAutocomplete: FC<MultiValueAutocompleteProps> = ({
+	allowCustom = true,
 	emptyText,
+	isDisabled = false,
+	maxValues,
 	options = [],
 	placeholder,
 	rightElement,
@@ -28,14 +34,23 @@ export const MultiValueAutocomplete: FC<MultiValueAutocompleteProps> = ({
 }) => (
 	<PanelSelect
 		mode="multiple"
-		allowCustom
+		allowCustom={allowCustom}
+		isDisabled={isDisabled}
 		emptyText={emptyText}
 		options={options}
 		placeholder={placeholder}
 		rightElement={rightElement}
 		value={value}
-		onValueChange={(nextValue) =>
-			onChange(Array.isArray(nextValue) ? nextValue.join(", ") : nextValue)
-		}
+		onValueChange={(nextValue) => {
+			if (!Array.isArray(nextValue)) {
+				onChange(nextValue);
+				return;
+			}
+			const values =
+				maxValues && nextValue.length > maxValues
+					? nextValue.slice(-maxValues)
+					: nextValue;
+			onChange(values.join(", "));
+		}}
 	/>
 );

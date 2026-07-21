@@ -14,7 +14,6 @@ import {
 	ModalOverlay,
 	Switch,
 	Text,
-	Textarea,
 	useColorModeValue,
 	VStack,
 } from "@chakra-ui/react";
@@ -22,6 +21,8 @@ import { ArrowDownIcon, ArrowUpIcon } from "@heroicons/react/24/outline";
 import { type FC, useEffect, useMemo } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
+import { countrySelectOptions } from "../utils/countries";
+import { MultiValueAutocomplete } from "./common/MultiValueAutocomplete";
 import {
 	XrayDialogSection,
 	XrayFieldGrid,
@@ -70,7 +71,7 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 	onClose,
 	onSubmit,
 }) => {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
 	const borderColor = useColorModeValue("gray.200", "whiteAlpha.200");
 	const form = useForm<TorProxyFormValues>({ defaultValues: defaults });
 	const locationsValue = useWatch({ control: form.control, name: "locations" });
@@ -91,6 +92,10 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 			tag: `${(tagPrefix || "tor").trim()}-${country}`,
 		}));
 	}, [direction, locationsValue, portStep, startPort, tagPrefix]);
+	const locationOptions = useMemo(
+		() => countrySelectOptions(i18n.language),
+		[i18n.language],
+	);
 
 	useEffect(() => {
 		if (isOpen) form.reset(defaults);
@@ -141,11 +146,10 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 									<FormLabel>
 										{t("pages.xray.tor.locations", "Exit locations")}
 									</FormLabel>
-									<Textarea
-										minH="84px"
-										resize="vertical"
-										placeholder={"de\nnl\nus"}
-										{...form.register("locations", {
+									<Controller
+										name="locations"
+										control={form.control}
+										rules={{
 											validate: (value) => {
 												const locations = parseLocations(value);
 												if (locations.length === 0) {
@@ -174,12 +178,24 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 												}
 												return true;
 											},
-										})}
+										}}
+										render={({ field }) => (
+											<MultiValueAutocomplete
+												allowCustom={false}
+												options={locationOptions}
+												placeholder={t(
+													"pages.xray.tor.locationsPlaceholder",
+													"Select exit countries",
+												)}
+												value={field.value}
+												onChange={field.onChange}
+											/>
+										)}
 									/>
 									<FormHelperText>
 										{t(
 											"pages.xray.tor.locationsHint",
-											"Separate ISO country codes with commas, spaces, or new lines. Each location runs as a separate Tor instance.",
+											"Each selected country runs as a separate Tor instance.",
 										)}
 									</FormHelperText>
 									<FormErrorMessage>

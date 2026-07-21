@@ -2159,7 +2159,7 @@
           "Core"
         ],
         "summary": "Setup Tor SOCKS outbound",
-        "description": "Install and configure Tor on a selected node, expose a localhost-only SOCKS proxy, and return an Xray `socks` outbound object for the dashboard config. The target must be a node.\n\nAuthentication: send `Authorization: Bearer <api_key>` for bots and third-party integrations. Create personal admin API keys from My Account -> API Keys; each key inherits the owner admin permissions and limits.\n\nPermissions: Requires sudo/full_access for config/runtime/outbound helper mutations.\n\nRequest body: JSON with `target_id` or `node_id`, `port` between 1024 and 65535, optional two-letter `country`, optional `strict`, and optional outbound `tag`.",
+        "description": "Install and configure one independent localhost-only Tor SOCKS instance per selected exit country and return the matching Xray `socks` outbounds. A node target applies the setup to that node; the master target applies it to every active node.\n\nAuthentication: send `Authorization: Bearer <api_key>` for bots and third-party integrations. Create personal admin API keys from My Account -> API Keys; each key inherits the owner admin permissions and limits.\n\nPermissions: Requires sudo/full_access for config/runtime/outbound helper mutations.\n\nRequest body: JSON with `target_id`, `locations` containing up to 20 two-letter country codes, `start_port` between 1024 and 65535, optional `port_step`, `direction`, `tag_prefix`, and `strict`.",
         "requestBody": {
           "$ref": "#/components/requestBodies/JSON"
         },
@@ -2169,6 +2169,42 @@
           }
         },
         "operationId": "postPanelXrayTorSetup"
+      }
+    },
+    "/api/panel/xray/windscribe/locations": {
+      "post": {
+        "tags": [
+          "Core"
+        ],
+        "summary": "Login to Windscribe and list locations",
+        "description": "Install the official Windscribe CLI-only package on a selected node when needed, sign in without persisting the account password on the master, and return the account's available countries. The target must be a specific node.\n\nAuthentication: send `Authorization: Bearer <api_key>`.\n\nPermissions: Requires sudo/full_access for config/runtime/outbound helper mutations.\n\nRequest body: JSON with `target_id`, `username`, and `password`.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/JSON"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JSON"
+          }
+        },
+        "operationId": "postPanelXrayWindscribeLocations"
+      }
+    },
+    "/api/panel/xray/windscribe/setup": {
+      "post": {
+        "tags": [
+          "Core"
+        ],
+        "summary": "Setup Windscribe SOCKS outbound",
+        "description": "Connect the selected node's authenticated Windscribe session to one country, enable an authenticated Proxy Gateway with include-only split tunneling, expose it on localhost, and return an Xray `socks` outbound. Windscribe supports one active location per node.\n\nAuthentication: send `Authorization: Bearer <api_key>`.\n\nPermissions: Requires sudo/full_access for config/runtime/outbound helper mutations.\n\nRequest body: JSON with a node `target_id`, two-letter `location`, `port` between 1024 and 65535, and optional `tag`.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/JSON"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JSON"
+          }
+        },
+        "operationId": "postPanelXrayWindscribeSetup"
       }
     },
     "/api/panel/xray/routeTest": {

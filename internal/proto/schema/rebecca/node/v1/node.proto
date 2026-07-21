@@ -29,6 +29,7 @@ service NodeRuntimeService {
   rpc RebootHost(HostRebootRequest) returns (RuntimeActionResponse);
   rpc ApplyIPBlocks(IPBlockRequest) returns (RuntimeActionResponse);
   rpc ApplyTorProxy(TorProxyRequest) returns (RuntimeActionResponse);
+  rpc ConfigureWindscribe(WindscribeProxyRequest) returns (WindscribeProxyResponse);
 }
 
 service NodeUsageService {
@@ -229,6 +230,30 @@ message TorProxyRequest {
   uint32 socks_port = 2;
   string exit_country = 3;
   bool strict_exit = 4;
+}
+
+message WindscribeProxyRequest {
+  string operation_id = 1;
+  string action = 2;
+  string username = 3;
+  string password = 4;
+  string location = 5;
+  uint32 socks_port = 6;
+  string proxy_username = 7;
+  string proxy_password = 8;
+}
+
+message WindscribeLocation {
+  string name = 1;
+  bool available = 2;
+}
+
+message WindscribeProxyResponse {
+  string operation_id = 1;
+  bool accepted = 2;
+  RuntimeState runtime = 3;
+  string message = 4;
+  repeated WindscribeLocation locations = 5;
 }
 
 message SystemMetrics {

@@ -12,6 +12,11 @@ import {
 	HStack,
 	IconButton,
 	Input,
+	Menu,
+	MenuButton,
+	MenuItem,
+	MenuList,
+	Portal,
 	Radio,
 	RadioGroup,
 	Spinner,
@@ -46,6 +51,8 @@ import {
 	DocumentTextIcon,
 	PencilIcon as EditIcon,
 	GlobeAltIcon,
+	EllipsisHorizontalIcon,
+	SignalIcon,
 	ArrowPathIcon as ReloadIcon,
 	ScaleIcon,
 	WrenchScrewdriverIcon,
@@ -98,6 +105,10 @@ import {
 } from "../components/ReverseModal";
 import { type RoutingRule, RuleModal } from "../components/RuleModal";
 import { WarpModal } from "../components/WarpModal";
+import {
+	type WindscribeProxyFormValues,
+	WindscribeProxyModal,
+} from "../components/WindscribeProxyModal";
 import { SizeFormatter } from "../utils/outbound";
 import { computeOutboundIds } from "../utils/outboundId";
 import {
@@ -136,6 +147,8 @@ const AdvancedTabIcon = chakra(WrenchScrewdriverIcon, {
 const LogsTabIcon = chakra(DocumentTextIcon, { baseStyle: { w: 4, h: 4 } });
 const WarpIconStyled = chakra(CloudArrowUpIcon, { baseStyle: { w: 4, h: 4 } });
 const BoltIconStyled = chakra(BoltIcon, { baseStyle: { w: 4, h: 4 } });
+const MoreIconStyled = chakra(EllipsisHorizontalIcon, { baseStyle: { w: 4, h: 4 } });
+const WindscribeIconStyled = chakra(SignalIcon, { baseStyle: { w: 4, h: 4 } });
 const compactActionButtonProps = {
 	colorScheme: "primary",
 	size: "xs" as const,
@@ -652,6 +665,11 @@ export const CoreSettingsPage: FC = () => {
 		onOpen: onTorProxyOpen,
 		onClose: onTorProxyClose,
 	} = useDisclosure();
+	const {
+		isOpen: isWindscribeProxyOpen,
+		onOpen: onWindscribeProxyOpen,
+		onClose: onWindscribeProxyClose,
+	} = useDisclosure();
 
 	const form = useForm({
 		defaultValues: {
@@ -680,6 +698,7 @@ export const CoreSettingsPage: FC = () => {
 		useState<OutboundTestType>("latency");
 	const [testingAllOutbounds, setTestingAllOutbounds] = useState(false);
 	const [isApplyingTorProxy, setIsApplyingTorProxy] = useState(false);
+	const [isApplyingWindscribeProxy, setIsApplyingWindscribeProxy] = useState(false);
 	const [routingRuleData, setRoutingRuleData] = useState<any[]>([]);
 	const [routingRuleSearch, setRoutingRuleSearch] = useState("");
 	const [routeTestDestination, setRouteTestDestination] = useState("");
@@ -1388,6 +1407,68 @@ export const CoreSettingsPage: FC = () => {
 			});
 		} finally {
 			setIsApplyingTorProxy(false);
+		}
+	};
+
+	const addWindscribeOutbound = async (values: WindscribeProxyFormValues) => {
+		setIsApplyingWindscribeProxy(true);
+		try {
+			const location = values.location.split(",")[0]?.trim().toLowerCase();
+			const response = await apiFetch<{
+				success: boolean;
+				obj?: { outbound?: any; message?: string };
+				msg?: string;
+			}>("/panel/xray/windscribe/setup", {
+				method: "POST",
+				body: {
+					target_id: selectedTarget,
+					location,
+					port: values.port,
+					tag: values.tag.trim(),
+				},
+			});
+			const outbound = response?.obj?.outbound;
+			if (!response?.success || !outbound) {
+				throw new Error(
+					response?.msg ||
+						t("pages.xray.windscribe.failed", "Unable to set up Windscribe proxy"),
+				);
+			}
+			const outbounds = getOutbounds();
+			const existingIndex = outbounds.findIndex(
+				(item: any) => String(item?.tag ?? "") === String(outbound.tag ?? ""),
+			);
+			if (existingIndex >= 0) {
+				outbounds[existingIndex] = outbound;
+			} else {
+				outbounds.push(outbound);
+			}
+			commitOutbounds(outbounds);
+			onWindscribeProxyClose();
+			toast({
+				title:
+					response.obj?.message ||
+					t("pages.xray.windscribe.added", "Windscribe outbound added"),
+				status: "success",
+				isClosable: true,
+				position: "top",
+				duration: 4000,
+			});
+		} catch (error: any) {
+			const detail =
+				error?.response?._data?.detail ??
+				error?.data?.detail ??
+				error?.message ??
+				t("pages.xray.windscribe.failed", "Unable to set up Windscribe proxy");
+			toast({
+				title: typeof detail === "string" ? detail : JSON.stringify(detail),
+				status: "error",
+				isClosable: true,
+				position: "top",
+				duration: 5000,
+			});
+		} finally {
+			setIsApplyingWindscribeProxy(false);
 		}
 	};
 
@@ -4574,16 +4655,6 @@ export const CoreSettingsPage: FC = () => {
 											{t("pages.xray.outbound.addOutbound")}
 										</Button>
 										<Button
-											leftIcon={<WarpIconStyled />}
-											size="xs"
-											variant="ghost"
-											onClick={onWarpOpen}
-										>
-											{warpExists
-												? t("pages.xray.warp.manage", "Manage WARP")
-												: t("pages.xray.warp.create", "Create WARP")}
-										</Button>
-										<Button
 											leftIcon={<CloudArrowUpIcon width={14} />}
 											size="xs"
 											variant="ghost"
@@ -4594,23 +4665,42 @@ export const CoreSettingsPage: FC = () => {
 												"Outbound subscriptions",
 											)}
 										</Button>
-										<Button
-											leftIcon={<GlobeAltIcon width={14} />}
-											size="xs"
-											variant="ghost"
-											onClick={onNordOpen}
-										>
-											NordVPN
-										</Button>
-										<Button
-											leftIcon={<BoltIconStyled />}
-											size="xs"
-											variant="ghost"
-											isLoading={isApplyingTorProxy}
-											onClick={onTorProxyOpen}
-										>
-											{t("pages.xray.tor.setup", "Tor")}
-										</Button>
+										<Menu placement="bottom-end" isLazy>
+											<MenuButton
+												as={Button}
+												leftIcon={<MoreIconStyled />}
+												size="xs"
+												variant="ghost"
+											>
+												{t("more", "More")}
+											</MenuButton>
+											<Portal>
+												<MenuList zIndex="popover" minW="210px">
+													<MenuItem icon={<WarpIconStyled />} onClick={onWarpOpen}>
+														{warpExists
+															? t("pages.xray.warp.manage", "Manage WARP")
+															: t("pages.xray.warp.create", "Create WARP")}
+													</MenuItem>
+													<MenuItem icon={<GlobeAltIcon width={16} />} onClick={onNordOpen}>
+														NordVPN
+													</MenuItem>
+													<MenuItem
+														icon={<BoltIconStyled />}
+														isDisabled={isApplyingTorProxy}
+														onClick={onTorProxyOpen}
+													>
+														{t("pages.xray.tor.setup", "Tor")}
+													</MenuItem>
+													<MenuItem
+														icon={<WindscribeIconStyled />}
+														isDisabled={isApplyingWindscribeProxy}
+														onClick={onWindscribeProxyOpen}
+													>
+														Windscribe
+													</MenuItem>
+												</MenuList>
+											</Portal>
+										</Menu>
 									</HStack>
 								}
 								footerActions={
@@ -5307,6 +5397,14 @@ export const CoreSettingsPage: FC = () => {
 				isMasterTarget={isMasterTarget}
 				onClose={onTorProxyClose}
 				onSubmit={addTorOutbound}
+			/>
+			<WindscribeProxyModal
+				isOpen={isWindscribeProxyOpen}
+				isLoading={isApplyingWindscribeProxy}
+				isMasterTarget={isMasterTarget}
+				targetID={selectedTarget}
+				onClose={onWindscribeProxyClose}
+				onSubmit={addWindscribeOutbound}
 			/>
 			<BalancerModal
 				isOpen={isBalancerOpen}

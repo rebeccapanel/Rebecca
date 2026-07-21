@@ -197,24 +197,25 @@ var NodeControlService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	NodeRuntimeService_StartRuntime_FullMethodName   = "/rebecca.node.v1.NodeRuntimeService/StartRuntime"
-	NodeRuntimeService_RestartRuntime_FullMethodName = "/rebecca.node.v1.NodeRuntimeService/RestartRuntime"
-	NodeRuntimeService_StopRuntime_FullMethodName    = "/rebecca.node.v1.NodeRuntimeService/StopRuntime"
-	NodeRuntimeService_SyncConfig_FullMethodName     = "/rebecca.node.v1.NodeRuntimeService/SyncConfig"
-	NodeRuntimeService_AddUser_FullMethodName        = "/rebecca.node.v1.NodeRuntimeService/AddUser"
-	NodeRuntimeService_UpdateUser_FullMethodName     = "/rebecca.node.v1.NodeRuntimeService/UpdateUser"
-	NodeRuntimeService_RemoveUser_FullMethodName     = "/rebecca.node.v1.NodeRuntimeService/RemoveUser"
-	NodeRuntimeService_Metrics_FullMethodName        = "/rebecca.node.v1.NodeRuntimeService/Metrics"
-	NodeRuntimeService_PublicIPs_FullMethodName      = "/rebecca.node.v1.NodeRuntimeService/PublicIPs"
-	NodeRuntimeService_TestOutbound_FullMethodName   = "/rebecca.node.v1.NodeRuntimeService/TestOutbound"
-	NodeRuntimeService_TestRoute_FullMethodName      = "/rebecca.node.v1.NodeRuntimeService/TestRoute"
-	NodeRuntimeService_UpdateRuntime_FullMethodName  = "/rebecca.node.v1.NodeRuntimeService/UpdateRuntime"
-	NodeRuntimeService_UpdateGeo_FullMethodName      = "/rebecca.node.v1.NodeRuntimeService/UpdateGeo"
-	NodeRuntimeService_RestartService_FullMethodName = "/rebecca.node.v1.NodeRuntimeService/RestartService"
-	NodeRuntimeService_UpdateService_FullMethodName  = "/rebecca.node.v1.NodeRuntimeService/UpdateService"
-	NodeRuntimeService_RebootHost_FullMethodName     = "/rebecca.node.v1.NodeRuntimeService/RebootHost"
-	NodeRuntimeService_ApplyIPBlocks_FullMethodName  = "/rebecca.node.v1.NodeRuntimeService/ApplyIPBlocks"
-	NodeRuntimeService_ApplyTorProxy_FullMethodName  = "/rebecca.node.v1.NodeRuntimeService/ApplyTorProxy"
+	NodeRuntimeService_StartRuntime_FullMethodName        = "/rebecca.node.v1.NodeRuntimeService/StartRuntime"
+	NodeRuntimeService_RestartRuntime_FullMethodName      = "/rebecca.node.v1.NodeRuntimeService/RestartRuntime"
+	NodeRuntimeService_StopRuntime_FullMethodName         = "/rebecca.node.v1.NodeRuntimeService/StopRuntime"
+	NodeRuntimeService_SyncConfig_FullMethodName          = "/rebecca.node.v1.NodeRuntimeService/SyncConfig"
+	NodeRuntimeService_AddUser_FullMethodName             = "/rebecca.node.v1.NodeRuntimeService/AddUser"
+	NodeRuntimeService_UpdateUser_FullMethodName          = "/rebecca.node.v1.NodeRuntimeService/UpdateUser"
+	NodeRuntimeService_RemoveUser_FullMethodName          = "/rebecca.node.v1.NodeRuntimeService/RemoveUser"
+	NodeRuntimeService_Metrics_FullMethodName             = "/rebecca.node.v1.NodeRuntimeService/Metrics"
+	NodeRuntimeService_PublicIPs_FullMethodName           = "/rebecca.node.v1.NodeRuntimeService/PublicIPs"
+	NodeRuntimeService_TestOutbound_FullMethodName        = "/rebecca.node.v1.NodeRuntimeService/TestOutbound"
+	NodeRuntimeService_TestRoute_FullMethodName           = "/rebecca.node.v1.NodeRuntimeService/TestRoute"
+	NodeRuntimeService_UpdateRuntime_FullMethodName       = "/rebecca.node.v1.NodeRuntimeService/UpdateRuntime"
+	NodeRuntimeService_UpdateGeo_FullMethodName           = "/rebecca.node.v1.NodeRuntimeService/UpdateGeo"
+	NodeRuntimeService_RestartService_FullMethodName      = "/rebecca.node.v1.NodeRuntimeService/RestartService"
+	NodeRuntimeService_UpdateService_FullMethodName       = "/rebecca.node.v1.NodeRuntimeService/UpdateService"
+	NodeRuntimeService_RebootHost_FullMethodName          = "/rebecca.node.v1.NodeRuntimeService/RebootHost"
+	NodeRuntimeService_ApplyIPBlocks_FullMethodName       = "/rebecca.node.v1.NodeRuntimeService/ApplyIPBlocks"
+	NodeRuntimeService_ApplyTorProxy_FullMethodName       = "/rebecca.node.v1.NodeRuntimeService/ApplyTorProxy"
+	NodeRuntimeService_ConfigureWindscribe_FullMethodName = "/rebecca.node.v1.NodeRuntimeService/ConfigureWindscribe"
 )
 
 // NodeRuntimeServiceClient is the client API for NodeRuntimeService service.
@@ -239,6 +240,7 @@ type NodeRuntimeServiceClient interface {
 	RebootHost(ctx context.Context, in *HostRebootRequest, opts ...grpc.CallOption) (*RuntimeActionResponse, error)
 	ApplyIPBlocks(ctx context.Context, in *IPBlockRequest, opts ...grpc.CallOption) (*RuntimeActionResponse, error)
 	ApplyTorProxy(ctx context.Context, in *TorProxyRequest, opts ...grpc.CallOption) (*RuntimeActionResponse, error)
+	ConfigureWindscribe(ctx context.Context, in *WindscribeProxyRequest, opts ...grpc.CallOption) (*WindscribeProxyResponse, error)
 }
 
 type nodeRuntimeServiceClient struct {
@@ -429,6 +431,16 @@ func (c *nodeRuntimeServiceClient) ApplyTorProxy(ctx context.Context, in *TorPro
 	return out, nil
 }
 
+func (c *nodeRuntimeServiceClient) ConfigureWindscribe(ctx context.Context, in *WindscribeProxyRequest, opts ...grpc.CallOption) (*WindscribeProxyResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WindscribeProxyResponse)
+	err := c.cc.Invoke(ctx, NodeRuntimeService_ConfigureWindscribe_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // NodeRuntimeServiceServer is the server API for NodeRuntimeService service.
 // All implementations must embed UnimplementedNodeRuntimeServiceServer
 // for forward compatibility.
@@ -451,6 +463,7 @@ type NodeRuntimeServiceServer interface {
 	RebootHost(context.Context, *HostRebootRequest) (*RuntimeActionResponse, error)
 	ApplyIPBlocks(context.Context, *IPBlockRequest) (*RuntimeActionResponse, error)
 	ApplyTorProxy(context.Context, *TorProxyRequest) (*RuntimeActionResponse, error)
+	ConfigureWindscribe(context.Context, *WindscribeProxyRequest) (*WindscribeProxyResponse, error)
 	mustEmbedUnimplementedNodeRuntimeServiceServer()
 }
 
@@ -514,6 +527,9 @@ func (UnimplementedNodeRuntimeServiceServer) ApplyIPBlocks(context.Context, *IPB
 }
 func (UnimplementedNodeRuntimeServiceServer) ApplyTorProxy(context.Context, *TorProxyRequest) (*RuntimeActionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ApplyTorProxy not implemented")
+}
+func (UnimplementedNodeRuntimeServiceServer) ConfigureWindscribe(context.Context, *WindscribeProxyRequest) (*WindscribeProxyResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ConfigureWindscribe not implemented")
 }
 func (UnimplementedNodeRuntimeServiceServer) mustEmbedUnimplementedNodeRuntimeServiceServer() {}
 func (UnimplementedNodeRuntimeServiceServer) testEmbeddedByValue()                            {}
@@ -860,6 +876,24 @@ func _NodeRuntimeService_ApplyTorProxy_Handler(srv interface{}, ctx context.Cont
 	return interceptor(ctx, in, info, handler)
 }
 
+func _NodeRuntimeService_ConfigureWindscribe_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WindscribeProxyRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(NodeRuntimeServiceServer).ConfigureWindscribe(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: NodeRuntimeService_ConfigureWindscribe_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(NodeRuntimeServiceServer).ConfigureWindscribe(ctx, req.(*WindscribeProxyRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // NodeRuntimeService_ServiceDesc is the grpc.ServiceDesc for NodeRuntimeService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -938,6 +972,10 @@ var NodeRuntimeService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "ApplyTorProxy",
 			Handler:    _NodeRuntimeService_ApplyTorProxy_Handler,
+		},
+		{
+			MethodName: "ConfigureWindscribe",
+			Handler:    _NodeRuntimeService_ConfigureWindscribe_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
