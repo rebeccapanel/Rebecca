@@ -138,7 +138,7 @@ func TestXrayHelperRoutesGoNative(t *testing.T) {
 		t.Fatalf("unexpected AnyConnect cert payload: %#v", anyConnectCert)
 	}
 
-	for _, path := range []string{"/api/xray/mldsa65", "/api/xray/ech?sni=example.com"} {
+	for _, path := range []string{"/api/xray/ech?sni=example.com"} {
 		rec = adminJSONRequest(t, server, http.MethodGet, path, token, "")
 		if rec.Code != http.StatusGone {
 			t.Fatalf("%s status=%d body=%s", path, rec.Code, rec.Body.String())

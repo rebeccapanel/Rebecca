@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cloudflare/circl/sign/mldsa/mldsa65"
 	"golang.org/x/crypto/curve25519"
 )
 
@@ -41,12 +42,25 @@ func (s *Server) handleXrayHelperPath(w http.ResponseWriter, r *http.Request) {
 	case "/api/xray/wg-keypair", "/xray/wg-keypair":
 		s.handleWGKeypair(w)
 	case "/api/xray/mldsa65", "/xray/mldsa65":
-		writeError(w, http.StatusGone, "ML-DSA-65 generation is node-only and is not available on the master")
+		s.handleMLDSA65(w)
 	case "/api/xray/ech", "/xray/ech":
 		writeError(w, http.StatusGone, "ECH certificate generation is node-only and is not available on the master")
 	default:
 		writeError(w, http.StatusNotFound, "not found")
 	}
+}
+
+func (s *Server) handleMLDSA65(w http.ResponseWriter) {
+	var seed [mldsa65.SeedSize]byte
+	if _, err := rand.Read(seed[:]); err != nil {
+		writeError(w, http.StatusInternalServerError, "Failed to generate ML-DSA-65 key pair")
+		return
+	}
+	publicKey, _ := mldsa65.NewKeyFromSeed(&seed)
+	writeJSON(w, http.StatusOK, map[string]string{
+		"seed":   base64.RawURLEncoding.EncodeToString(seed[:]),
+		"verify": base64.RawURLEncoding.EncodeToString(publicKey.Bytes()),
+	})
 }
 
 func (s *Server) handleRealityKeypair(w http.ResponseWriter) {
