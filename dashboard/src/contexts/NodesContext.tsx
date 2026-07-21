@@ -281,11 +281,23 @@ const mergeLiveNodes = (
 			.filter((node) => node.id !== null && node.id !== undefined)
 			.map((node) => [node.id, node]),
 	);
-	return current.map((node) => {
+	const currentIDs = new Set(
+		current
+			.filter((node) => node.id !== null && node.id !== undefined)
+			.map((node) => node.id),
+	);
+	const merged = current.map((node) => {
 		const live =
 			node.id !== null && node.id !== undefined ? liveByID.get(node.id) : null;
 		return live ? { ...node, ...live } : node;
 	});
+	for (const node of liveNodes) {
+		if (node.id === null || node.id === undefined || currentIDs.has(node.id)) {
+			continue;
+		}
+		merged.push(node);
+	}
+	return merged;
 };
 
 export const useNodeMetricsStream = (enabled = true) => {

@@ -97,7 +97,7 @@ func (s *Server) sendNodesMetricsSnapshot(parent context.Context, conn *websocke
 	}
 	baseNodes := make([]map[string]any, 0, len(base.Nodes))
 	for _, node := range base.Nodes {
-		baseNodes = append(baseNodes, flattenNodeItem(node))
+		baseNodes = append(baseNodes, flattenNodeStaticItem(node))
 	}
 	if err := websocket.JSON.Send(conn, nodesMetricsMessage{
 		Type:  "nodes.metrics",
@@ -129,7 +129,7 @@ func (s *Server) sendNodesMetricsSnapshot(parent context.Context, conn *websocke
 				updates <- nodeUpdate{error: err.Error()}
 				return
 			}
-			updates <- nodeUpdate{node: flattenNodeItem(item)}
+			updates <- nodeUpdate{node: flattenNodeLiveItem(item)}
 		}(node.ID)
 	}
 	go func() {

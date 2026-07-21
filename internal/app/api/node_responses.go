@@ -46,6 +46,53 @@ func flattenNodeItem(node nodecontroller.NodeListItem) map[string]any {
 	}
 }
 
+func flattenNodeStaticItem(node nodecontroller.NodeListItem) map[string]any {
+	item := flattenNodeItem(node)
+	for _, key := range []string{
+		"node_service_version",
+		"node_install_mode",
+		"node_binary_tag",
+		"node_update_channel",
+		"cpu_cores",
+		"cpu_frequency_hz",
+		"cpu_usage_percent",
+		"memory_used",
+		"memory_total",
+		"memory_usage_percent",
+		"uptime_seconds",
+		"upload_speed",
+		"download_speed",
+	} {
+		delete(item, key)
+	}
+	return item
+}
+
+func flattenNodeLiveItem(node nodecontroller.NodeListItem) map[string]any {
+	item := flattenNodeItem(node)
+	delete(item, "node_binary_tag")
+	if node.NodeServiceVersion != nil {
+		return item
+	}
+	for _, key := range []string{
+		"node_service_version",
+		"node_install_mode",
+		"node_update_channel",
+		"cpu_cores",
+		"cpu_frequency_hz",
+		"cpu_usage_percent",
+		"memory_used",
+		"memory_total",
+		"memory_usage_percent",
+		"uptime_seconds",
+		"upload_speed",
+		"download_speed",
+	} {
+		delete(item, key)
+	}
+	return item
+}
+
 func flattenRuntimeResult(result nodecontroller.RuntimeResult) map[string]any {
 	return map[string]any{
 		"node_id":              result.NodeID,
