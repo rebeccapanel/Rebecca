@@ -169,6 +169,23 @@ func TestWGSubscriptionPathUsesHostTag(t *testing.T) {
 	}
 }
 
+func TestWGProfileFilenameIsAndroidCompatible(t *testing.T) {
+	filename := WGProfileFilename("alice", "slalwow-wireguard")
+	name := strings.TrimSuffix(filename, ".conf")
+	if len(name) > wgAndroidTunnelNameMaxLength {
+		t.Fatalf("WireGuard tunnel name is too long: %q", name)
+	}
+	if strings.ContainsAny(name, "-.+=~") {
+		t.Fatalf("WireGuard tunnel name contains a non-portable character: %q", name)
+	}
+	if filename != WGProfileFilename("another-user", "slalwow-wireguard") {
+		t.Fatalf("profile filename must not depend on username: %q", filename)
+	}
+	if filename == WGProfileFilename("alice", "slalwow-wireguard-two") {
+		t.Fatalf("long host names must keep distinct profile filenames: %q", filename)
+	}
+}
+
 func TestBuildWGProfileMaterialBuildsConfAndURI(t *testing.T) {
 	material, err := buildWGProfileMaterial(
 		ConfigLinkUser{ID: 42, Username: "alice", CredentialKey: "0123456789abcdef0123456789abcdef"},

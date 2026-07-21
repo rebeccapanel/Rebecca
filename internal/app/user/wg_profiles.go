@@ -2,6 +2,7 @@ package user
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"net"
@@ -12,7 +13,10 @@ import (
 	"golang.org/x/crypto/curve25519"
 )
 
-const defaultWGProfilePoolCIDR = "10.69.0.0/16"
+const (
+	defaultWGProfilePoolCIDR     = "10.69.0.0/16"
+	wgAndroidTunnelNameMaxLength = 15
+)
 
 type WGProfile struct {
 	HostTag         string `json:"host_tag"`
@@ -404,8 +408,27 @@ func WGHostTagMatches(host Host, remark string, address string, generated string
 	return false
 }
 
-func WGProfileFilename(username string, hostTag string) string {
-	return WGSafePathComponent(firstNonEmptyString(username, "user")) + "-" + WGSafePathComponent(hostTag) + ".conf"
+func WGProfileFilename(_ string, hostTag string) string {
+	return wgAndroidTunnelName(hostTag) + ".conf"
+}
+
+func wgAndroidTunnelName(value string) string {
+	var b strings.Builder
+	for _, r := range strings.TrimSpace(value) {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
+			b.WriteRune(r)
+		}
+	}
+	name := b.String()
+	if name == "" {
+		name = "wireguard"
+	}
+	if len(name) <= wgAndroidTunnelNameMaxLength {
+		return name
+	}
+	digest := sha256.Sum256([]byte(value))
+	suffix := fmt.Sprintf("%x", digest[:2])
+	return name[:wgAndroidTunnelNameMaxLength-len(suffix)] + suffix
 }
 
 func WGSafePathComponent(value string) string {

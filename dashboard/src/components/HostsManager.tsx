@@ -8,6 +8,7 @@ import {
 	Checkbox,
 	chakra,
 	FormControl,
+	FormErrorMessage,
 	FormLabel,
 	HStack,
 	Input,
@@ -223,6 +224,21 @@ type InboundOption = {
 	protocol: string;
 	network: string;
 	port?: number;
+};
+
+const profileHostNameError = (protocol: string | undefined, value: string) => {
+	const name = value.trim();
+	if (!name) return null;
+	if (protocol === "wireguard") {
+		if (name.length > 15) return "hostsPage.profileName.wireguardLength";
+		if (!/^[A-Za-z0-9_]+$/.test(name)) {
+			return "hostsPage.profileName.wireguardCharacters";
+		}
+	}
+	if (protocol === "openvpn" && !/^[A-Za-z0-9._-]+$/.test(name)) {
+		return "hostsPage.profileName.openvpnCharacters";
+	}
+	return null;
 };
 
 type CreateHostValues = {
@@ -826,6 +842,7 @@ const serializeHostData = (data: HostData) => ({
 const validateHostState = (
 	inboundTag: string,
 	data: HostData | CreateHostValues,
+	protocol?: string,
 ): string[] => {
 	const errors: string[] = [];
 	if (!inboundTag.trim()) {
@@ -833,6 +850,10 @@ const validateHostState = (
 	}
 	if (!data.remark.trim()) {
 		errors.push("Remark is required.");
+	}
+	const profileNameError = profileHostNameError(protocol, data.remark);
+	if (profileNameError) {
+		errors.push(profileNameError);
 	}
 	if (
 		!data.address.trim() &&
@@ -1046,10 +1067,17 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 		[inboundOptions, host],
 	);
 	const isWireGuardInbound = selectedInbound?.protocol === "wireguard";
+	const isProfileHostInbound =
+		isWireGuardInbound || selectedInbound?.protocol === "openvpn";
+	const remarkError = profileHostNameError(
+		selectedInbound?.protocol,
+		host?.data.remark ?? "",
+	);
 	const canSubmit = host
 		? Boolean(
 				host.inboundTag &&
 					host.data.remark.trim() &&
+					!remarkError &&
 					(host.data.address.trim() ||
 						rotationTextToOptions(host.data.address_options).length > 0) &&
 					(!isWireGuardInbound ||
@@ -1057,7 +1085,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 							host.data.dns_secondary.trim())),
 			)
 		: false;
-	const primaryDisabled = isCloneMode ? !canSubmit : !dirty;
+	const primaryDisabled = isCloneMode ? !canSubmit : !dirty || !canSubmit;
 	const primaryLabel = isCloneMode
 		? t("hostsPage.clone.submit")
 		: t("hostsPage.save");
@@ -1176,11 +1204,12 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 										</CardHeader>
 										<CardBody pt={0}>
 											<VStack align="stretch" spacing={4}>
-												<FormControl isRequired>
+												<FormControl isRequired isInvalid={Boolean(remarkError)}>
 													<FormLabel>{t("hostsDialog.remark")}</FormLabel>
 													<InputGroup>
 														<Input
 															value={host.data.remark}
+															maxLength={isWireGuardInbound ? 15 : undefined}
 															onChange={(event) =>
 																onChange(host.uid, "remark", event.target.value)
 															}
@@ -1190,9 +1219,12 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 															pr={2}
 															pointerEvents="auto"
 														>
-															<DynamicTokensPopover />
+															{!isProfileHostInbound && <DynamicTokensPopover />}
 														</InputRightElement>
 													</InputGroup>
+													{remarkError && (
+														<FormErrorMessage>{t(remarkError)}</FormErrorMessage>
+													)}
 												</FormControl>
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 													<FormControl isRequired>
@@ -1643,6 +1675,12 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 		selectedInbound?.protocol === "ikev2" ||
 		selectedInbound?.protocol === "anyconnect";
 	const isWireGuardInbound = selectedInbound?.protocol === "wireguard";
+	const isProfileHostInbound =
+		isWireGuardInbound || selectedInbound?.protocol === "openvpn";
+	const remarkError = profileHostNameError(
+		selectedInbound?.protocol,
+		formState.remark,
+	);
 
 	useEffect(() => {
 		if (isOpen) {
@@ -1674,6 +1712,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 		if (
 			!formState.inboundTag ||
 			!formState.remark.trim() ||
+			Boolean(remarkError) ||
 			(!formState.address.trim() &&
 				rotationTextToOptions(formState.address_options).length === 0) ||
 			(isWireGuardInbound &&
@@ -1717,12 +1756,13 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 								}
 							/>
 						</FormControl>
-						<FormControl isRequired>
+						<FormControl isRequired isInvalid={Boolean(remarkError)}>
 							<FormLabel>{t("hostsDialog.remark")}</FormLabel>
 							<InputGroup>
 								<Input
 									ref={initialRef}
 									value={formState.remark}
+									maxLength={isWireGuardInbound ? 15 : undefined}
 									onChange={(event) =>
 										setFormState((prev) => ({
 											...prev,
@@ -1731,9 +1771,12 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 									}
 								/>
 								<InputRightElement width="auto" pr={2} pointerEvents="auto">
-									<DynamicTokensPopover />
+									{!isProfileHostInbound && <DynamicTokensPopover />}
 								</InputRightElement>
 							</InputGroup>
+							{remarkError && (
+								<FormErrorMessage>{t(remarkError)}</FormErrorMessage>
+							)}
 						</FormControl>
 						<FormControl isRequired>
 							<FormLabel>{t("hostsDialog.address")}</FormLabel>
@@ -1923,6 +1966,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 						isDisabled={
 							!formState.inboundTag ||
 							!formState.remark.trim() ||
+							Boolean(remarkError) ||
 							!rotationTextToOptions(formState.address).length ||
 							(isWireGuardInbound &&
 								(!formState.dns_primary.trim() ||
@@ -1980,7 +2024,9 @@ export const HostsManager: FC = () => {
 			}
 			toast({
 				title: t("hostsPage.error.invalidHost", "Host config is invalid"),
-				description: errors[0],
+				description: errors[0].startsWith("hostsPage.")
+					? t(errors[0])
+					: errors[0],
 				status: "error",
 				isClosable: true,
 				position: "top",
@@ -2128,7 +2174,14 @@ export const HostsManager: FC = () => {
 		const host = hostItemsRef.current.find((item) => item.uid === uid);
 		if (!host) return;
 		if (
-			showHostValidationError(validateHostState(host.inboundTag, host.data))
+			showHostValidationError(
+				validateHostState(
+					host.inboundTag,
+					host.data,
+					inboundOptions.find((option) => option.value === host.inboundTag)
+						?.protocol,
+				),
+			)
 		) {
 			return;
 		}
@@ -2224,7 +2277,13 @@ export const HostsManager: FC = () => {
 		if (!cloneHost || cloneHost.uid !== uid) return;
 		if (
 			showHostValidationError(
-				validateHostState(cloneHost.inboundTag, cloneHost.data),
+				validateHostState(
+					cloneHost.inboundTag,
+					cloneHost.data,
+					inboundOptions.find(
+						(option) => option.value === cloneHost.inboundTag,
+					)?.protocol,
+				),
 			)
 		) {
 			return;
@@ -2443,7 +2502,16 @@ export const HostsManager: FC = () => {
 	};
 
 	const handleCreateHost = async (values: CreateHostValues) => {
-		if (showHostValidationError(validateHostState(values.inboundTag, values))) {
+		if (
+			showHostValidationError(
+				validateHostState(
+					values.inboundTag,
+					values,
+					inboundOptions.find((option) => option.value === values.inboundTag)
+						?.protocol,
+				),
+			)
+		) {
 			return;
 		}
 		setSavingHostUid("create");
