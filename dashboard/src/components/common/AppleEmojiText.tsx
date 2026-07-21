@@ -84,13 +84,16 @@ const AppleEmojiGlyph = memo(({ value }: { value: string }) => {
 
 export const AppleEmojiText = memo(({ children }: { children: string }) => {
 	const segments = useMemo(
-		() =>
-			Array.from(segmenter.segment(children), ({ index, segment }) => ({
+		() => {
+			if (!EMOJI_GRAPHEME.test(children)) return null;
+			return Array.from(segmenter.segment(children), ({ index, segment }) => ({
 				key: `${index}-${segment}`,
 				segment,
-			})),
+			}));
+		},
 		[children],
 	);
+	if (!segments) return <>{children}</>;
 
 	return (
 		<>

@@ -38,6 +38,7 @@ import {
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { AppleEmojiText } from "./AppleEmojiText";
 
 const Check = chakra(CheckIcon, { baseStyle: { w: 4, h: 4 } });
 const ChevronDown = chakra(ChevronDownIcon, { baseStyle: { w: 4, h: 4 } });
@@ -130,6 +131,9 @@ const optionText = (node: ReactNode): string => {
 	}
 	return "";
 };
+
+const renderLabel = (label: ReactNode) =>
+	typeof label === "string" ? <AppleEmojiText>{label}</AppleEmojiText> : label;
 
 const collectOptionsFromChildren = (children: ReactNode) => {
 	const options: NormalizedOption[] = [];
@@ -507,7 +511,9 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 					renderOptionRow(
 						`custom-${customTerm}`,
 						<Text as="span" noOfLines={1}>
-							{t("hostsDialog.addCustomValue", "Add")} "{customTerm}"
+							<AppleEmojiText>
+								{`${t("hostsDialog.addCustomValue", "Add")} "${customTerm}"`}
+							</AppleEmojiText>
 						</Text>,
 						() => commitCustomInput(customTerm),
 					)}
@@ -523,18 +529,18 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 						return renderOptionRow(
 							option.value || option.searchLabel,
 							<>
-									<HStack w="full" justifyContent="space-between" spacing={2}>
-										<HStack minW={0} spacing={2}>
-											<Text noOfLines={1} title={option.title}>
-												{option.label}
-											</Text>
-										</HStack>
-										{selected && mode === "single" && (
-											<Box color="primary.500" flexShrink={0}>
-												<Check />
-											</Box>
-										)}
-										{selected && mode === "multiple" && (
+								<HStack w="full" justifyContent="space-between" spacing={2}>
+									<HStack minW={0} spacing={2}>
+										<Text noOfLines={1} title={option.title}>
+											{renderLabel(option.label)}
+										</Text>
+									</HStack>
+									{selected && mode === "single" && (
+										<Box color="primary.500" flexShrink={0}>
+											<Check />
+										</Box>
+									)}
+									{selected && mode === "multiple" && (
 										<Box
 											as="span"
 											role="button"
@@ -628,7 +634,9 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 										color={tagColor}
 									>
 										<TagLabel maxW="150px" noOfLines={1} fontSize="xs">
-											{optionByValue.get(item.toLowerCase())?.label ?? item}
+											{renderLabel(
+												optionByValue.get(item.toLowerCase())?.label ?? item,
+											)}
 										</TagLabel>
 										<TagCloseButton
 											aria-label={`${removeLabel} ${item}`}
@@ -776,7 +784,7 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 							noOfLines={1}
 							color={selectedValues.length ? undefined : mutedColor}
 						>
-							{buttonText}
+							{renderLabel(buttonText)}
 						</Text>
 					</MenuButton>
 					<Portal>
