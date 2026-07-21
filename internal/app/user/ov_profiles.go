@@ -340,7 +340,11 @@ func formatOVRemote(address string) string {
 }
 
 func OVHostTag(host Host, remark string, address string) string {
-	return OVSafePathComponent(firstNonEmptyString(host.Remark, remark, host.Address, address, host.InboundTag, "host"))
+	base := OVSafePathComponent(firstNonEmptyString(host.Remark, remark, host.Address, address, host.InboundTag, "host"))
+	if host.ID > 0 {
+		return fmt.Sprintf("%s-%d", base, host.ID)
+	}
+	return base
 }
 
 func OVHostTagMatches(host Host, remark string, address string, generated string, requested string) bool {

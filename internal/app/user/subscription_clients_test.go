@@ -223,7 +223,7 @@ func TestSubscriptionInfoIncludesVPNDownloadMaterialAndProtocolEntries(t *testin
 		t.Fatalf("missing openvpn payload: %#v", info["openvpn"])
 	}
 	ovDownloads, ok := openvpn["downloads"].([]string)
-	if !ok || len(ovDownloads) != 1 || !strings.HasSuffix(ovDownloads[0], "/ov/ov-edge.ovpn") {
+	if !ok || len(ovDownloads) != 1 || !strings.HasSuffix(ovDownloads[0], "/ov/ov-edge-2.ovpn") {
 		t.Fatalf("unexpected OV downloads: %#v", openvpn["downloads"])
 	}
 	ovProfiles, ok := openvpn["profiles"].([]OVProfile)

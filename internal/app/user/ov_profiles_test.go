@@ -21,17 +21,25 @@ func TestOVSubscriptionPathUsesHostTag(t *testing.T) {
 	}
 }
 
-func TestOVHostTagUsesHostTagWithoutID(t *testing.T) {
+func TestOVHostTagUsesStableHostID(t *testing.T) {
 	host := Host{ID: 42, InboundTag: "openvpn-udp", Remark: "Germany Edge", Address: "vpn.example.com"}
-	if got := OVHostTag(host, "Germany Edge", "vpn.example.com"); got != "Germany-Edge" {
+	if got := OVHostTag(host, "Germany Edge", "vpn.example.com"); got != "Germany-Edge-42" {
 		t.Fatalf("host tag = %q", got)
 	}
 }
 
-func TestOVHostTagMatchesLegacyIDTag(t *testing.T) {
+func TestOVHostTagKeepsMatchingLegacyPath(t *testing.T) {
 	host := Host{ID: 42, InboundTag: "openvpn-udp", Remark: "Germany Edge", Address: "vpn.example.com"}
-	if !OVHostTagMatches(host, "Germany Edge", "vpn.example.com", OVHostTag(host, "Germany Edge", "vpn.example.com"), "Germany-Edge-42") {
-		t.Fatal("expected legacy id-suffixed host tag to match")
+	if !OVHostTagMatches(host, "Germany Edge", "vpn.example.com", OVHostTag(host, "Germany Edge", "vpn.example.com"), "Germany-Edge") {
+		t.Fatal("expected old host tag to remain valid")
+	}
+}
+
+func TestOVHostTagsAreUniqueForDuplicateRemarks(t *testing.T) {
+	first := OVHostTag(Host{ID: 41, Remark: "Germany", Address: "de-1.example.com"}, "Germany", "de-1.example.com")
+	second := OVHostTag(Host{ID: 42, Remark: "Germany", Address: "de-2.example.com"}, "Germany", "de-2.example.com")
+	if first == second {
+		t.Fatalf("duplicate OpenVPN host tags: %q", first)
 	}
 }
 
