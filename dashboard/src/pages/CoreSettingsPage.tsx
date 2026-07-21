@@ -1331,30 +1331,38 @@ export const CoreSettingsPage: FC = () => {
 		try {
 			const response = await apiFetch<{
 				success: boolean;
-				obj?: { outbound?: any; message?: string };
+				obj?: { outbound?: any; outbounds?: any[]; message?: string };
 				msg?: string;
 			}>("/panel/xray/tor/setup", {
 				method: "POST",
 				body: {
 					target_id: selectedTarget,
-					country: values.country.trim().toLowerCase(),
-					port: values.port,
-					tag: values.tag.trim(),
+					locations: values.locations,
+					start_port: values.startPort,
+					port_step: values.portStep,
+					direction: values.direction,
+					tag_prefix: values.tagPrefix.trim(),
 					strict: values.strict,
 				},
 			});
-			const outbound = response?.obj?.outbound;
-			if (!response?.success || !outbound) {
+			const generatedOutbounds = response?.obj?.outbounds?.length
+				? response.obj.outbounds
+				: response?.obj?.outbound
+					? [response.obj.outbound]
+					: [];
+			if (!response?.success || generatedOutbounds.length === 0) {
 				throw new Error(response?.msg || t("pages.xray.tor.failed", "Unable to setup Tor proxy"));
 			}
 			const outbounds = getOutbounds();
-			const existingIndex = outbounds.findIndex(
-				(item: any) => String(item?.tag ?? "") === String(outbound.tag ?? ""),
-			);
-			if (existingIndex >= 0) {
-				outbounds[existingIndex] = outbound;
-			} else {
-				outbounds.push(outbound);
+			for (const outbound of generatedOutbounds) {
+				const existingIndex = outbounds.findIndex(
+					(item: any) => String(item?.tag ?? "") === String(outbound.tag ?? ""),
+				);
+				if (existingIndex >= 0) {
+					outbounds[existingIndex] = outbound;
+				} else {
+					outbounds.push(outbound);
+				}
 			}
 			commitOutbounds(outbounds);
 			onTorProxyClose();

@@ -186,6 +186,47 @@ func TestTorProxySetupReturnsBeforeNodeInstallation(t *testing.T) {
 	}
 }
 
+func TestTorProfilesFromPayloadAssignsAscendingPorts(t *testing.T) {
+	profiles, err := torProfilesFromPayload(map[string]any{
+		"locations":  []any{"de", "nl", "us"},
+		"start_port": float64(9050),
+		"port_step":  float64(2),
+		"direction":  "up",
+		"tag_prefix": "exit",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(profiles) != 3 || profiles[0].Tag != "exit-de" || profiles[1].Port != 9052 || profiles[2].Port != 9054 {
+		t.Fatalf("unexpected profiles: %#v", profiles)
+	}
+}
+
+func TestTorProfilesFromPayloadAssignsDescendingPorts(t *testing.T) {
+	profiles, err := torProfilesFromPayload(map[string]any{
+		"locations":  "de, nl\nus",
+		"start_port": float64(9050),
+		"port_step":  float64(5),
+		"direction":  "down",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(profiles) != 3 || profiles[0].Port != 9050 || profiles[1].Port != 9045 || profiles[2].Port != 9040 {
+		t.Fatalf("unexpected profiles: %#v", profiles)
+	}
+}
+
+func TestTorProfilesFromPayloadRejectsDuplicateLocations(t *testing.T) {
+	_, err := torProfilesFromPayload(map[string]any{
+		"locations":  []any{"de", "DE"},
+		"start_port": float64(9050),
+	})
+	if err == nil || !strings.Contains(err.Error(), "duplicated") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestOutboundTestRejectsAddresslessTCPAndICMP(t *testing.T) {
 	server := &Server{}
 	for _, testType := range []string{"tcp", "icmp"} {
