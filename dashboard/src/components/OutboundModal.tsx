@@ -3,6 +3,7 @@ import {
 	Button,
 	chakra,
 	FormControl,
+	FormErrorMessage,
 	FormLabel,
 	HStack,
 	IconButton,
@@ -169,6 +170,7 @@ interface OutboundModalProps {
 	onClose: () => void;
 	mode: "create" | "edit";
 	initialOutbound?: Record<string, unknown> | null;
+	existingTags: string[];
 	onSubmitOutbound: (outboundJson: unknown) => Promise<void> | void;
 }
 
@@ -529,6 +531,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 	onClose,
 	mode,
 	initialOutbound,
+	existingTags,
 	onSubmitOutbound,
 }) => {
 	const { t } = useTranslation();
@@ -542,7 +545,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 		watch,
 		getValues,
 		setValue,
-		formState: { isValid },
+		formState: { errors, isValid },
 	} = useForm<OutboundFormValues>({
 		defaultValues,
 		mode: "onChange",
@@ -1304,13 +1307,28 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 											{t("pages.outbound.basicSettings", "Basic settings")}
 										</Text>
 										<VStack spacing={3} align="stretch">
-											<FormControl isRequired>
+											<FormControl isRequired isInvalid={Boolean(errors.tag)}>
 												<FormLabel>{t("pages.xray.outbound.tag")}</FormLabel>
 												<Input
 													size="sm"
 													placeholder="outbound-tag"
-													{...register("tag", { required: requiredMessage })}
+													{...register("tag", {
+														validate: (value) => {
+															const tag = value.trim();
+															if (!tag) return requiredMessage;
+															const originalTag = String(initialOutbound?.tag ?? "");
+															return (
+																!existingTags.includes(tag) ||
+																(mode === "edit" && tag === originalTag) ||
+																t(
+																	"pages.xray.outbound.tagExists",
+																	"An outbound with this tag already exists.",
+																)
+															);
+														},
+													})}
 												/>
+												<FormErrorMessage>{errors.tag?.message}</FormErrorMessage>
 											</FormControl>
 											<XrayFieldGrid>
 												<FormControl isRequired>

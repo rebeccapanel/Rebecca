@@ -1116,6 +1116,8 @@
 	"pages.xray.outbound.addOutbound": "افزودن خروجی",
 	"pages.xray.outbound.address": "آدرس",
 	"pages.xray.outbound.editOutbound": "ویرایش اوتباند",
+	"pages.xray.outbound.tagExists": "یک اوتباند با این تگ از قبل وجود دارد.",
+	"pages.xray.outbound.tagExistsNamed": "اوتباند {{tag}} از قبل وجود دارد.",
 	"pages.xray.outbound.moveDown": "انتقال به پایین",
 	"pages.xray.outbound.moveUp": "انتقال به بالا",
 	"pages.xray.outbound.resetTraffic": "بازنشانی ترافیک",

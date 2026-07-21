@@ -1125,6 +1125,8 @@
 	"pages.xray.outbound.addOutbound": "Add Outbound",
 	"pages.xray.outbound.address": "Address",
 	"pages.xray.outbound.editOutbound": "Edit Outbound",
+	"pages.xray.outbound.tagExists": "An outbound with this tag already exists.",
+	"pages.xray.outbound.tagExistsNamed": "Outbound {{tag}} already exists.",
 	"pages.xray.outbound.moveDown": "Move down",
 	"pages.xray.outbound.moveUp": "Move up",
 	"pages.xray.outbound.resetTraffic": "Reset traffic",

@@ -1399,15 +1399,22 @@ export const CoreSettingsPage: FC = () => {
 				throw new Error(response?.msg || t("pages.xray.tor.failed", "Unable to setup Tor proxy"));
 			}
 			const outbounds = getOutbounds();
-			for (const outbound of generatedOutbounds) {
-				const existingIndex = outbounds.findIndex(
+			const duplicate = generatedOutbounds.find((outbound) =>
+				outbounds.some(
 					(item: any) => String(item?.tag ?? "") === String(outbound.tag ?? ""),
+				),
+			);
+			if (duplicate) {
+				throw new Error(
+					t(
+						"pages.xray.outbound.tagExistsNamed",
+						"Outbound {{tag}} already exists.",
+						{ tag: String(duplicate.tag ?? "") },
+					),
 				);
-				if (existingIndex >= 0) {
-					outbounds[existingIndex] = outbound;
-				} else {
-					outbounds.push(outbound);
-				}
+			}
+			for (const outbound of generatedOutbounds) {
+				outbounds.push(outbound);
 			}
 			commitOutbounds(outbounds);
 			onTorProxyClose();
@@ -2795,6 +2802,19 @@ export const CoreSettingsPage: FC = () => {
 	const handleOutboundSave = (outboundJson: unknown) => {
 		const outbound = outboundJson as OutboundJson;
 		const outbounds = getOutbounds();
+		const tag = String(outbound.tag ?? "");
+		const duplicateIndex = outbounds.findIndex(
+			(item, index) => item?.tag === tag && index !== editingOutboundIndex,
+		);
+		if (duplicateIndex >= 0) {
+			throw new Error(
+				t(
+					"pages.xray.outbound.tagExistsNamed",
+					"Outbound {{tag}} already exists.",
+					{ tag },
+				),
+			);
+		}
 		if (
 			editingOutboundIndex !== null &&
 			editingOutboundIndex >= 0 &&
@@ -5367,6 +5387,7 @@ export const CoreSettingsPage: FC = () => {
 						? canonicalOutbounds[editingOutboundIndex]
 						: null
 				}
+				existingTags={availableOutboundTags}
 				onSubmitOutbound={handleOutboundSave}
 			/>
 			<RuleModal
@@ -5423,6 +5444,7 @@ export const CoreSettingsPage: FC = () => {
 				isOpen={isTorProxyOpen}
 				isLoading={isApplyingTorProxy}
 				isMasterTarget={isMasterTarget}
+				existingTags={availableOutboundTags}
 				onClose={onTorProxyClose}
 				onSubmit={addTorOutbound}
 			/>
@@ -5431,6 +5453,7 @@ export const CoreSettingsPage: FC = () => {
 				isLoading={isApplyingWindscribeProxy}
 				isMasterTarget={isMasterTarget}
 				targetID={selectedTarget}
+				existingTags={availableOutboundTags}
 				onClose={onWindscribeProxyClose}
 				onSubmit={addWindscribeOutbound}
 			/>

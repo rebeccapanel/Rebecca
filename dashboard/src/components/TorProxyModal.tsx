@@ -45,6 +45,7 @@ type TorProxyModalProps = {
 	isOpen: boolean;
 	isLoading: boolean;
 	isMasterTarget: boolean;
+	existingTags: string[];
 	onClose: () => void;
 	onSubmit: (values: TorProxyFormValues) => Promise<void>;
 };
@@ -68,6 +69,7 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 	isOpen,
 	isLoading,
 	isMasterTarget,
+	existingTags,
 	onClose,
 	onSubmit,
 }) => {
@@ -92,6 +94,7 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 			tag: `${(tagPrefix || "tor").trim()}-${country}`,
 		}));
 	}, [direction, locationsValue, portStep, startPort, tagPrefix]);
+	const duplicateTag = preview.find((item) => existingTags.includes(item.tag))?.tag;
 	const locationOptions = useMemo(
 		() => countrySelectOptions(i18n.language),
 		[i18n.language],
@@ -305,7 +308,9 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 										</FormErrorMessage>
 									</FormControl>
 									<FormControl
-										isInvalid={Boolean(form.formState.errors.tagPrefix)}
+										isInvalid={Boolean(
+											form.formState.errors.tagPrefix || duplicateTag,
+										)}
 									>
 										<FormLabel>{t("pages.xray.tor.tagPrefix", "Tag prefix")}</FormLabel>
 										<Input
@@ -321,7 +326,14 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 											{t("pages.xray.tor.tagPrefixHint", "The country code is appended automatically.")}
 										</FormHelperText>
 										<FormErrorMessage>
-											{form.formState.errors.tagPrefix?.message}
+											{form.formState.errors.tagPrefix?.message ||
+												(duplicateTag
+													? t(
+															"pages.xray.outbound.tagExistsNamed",
+															"Outbound {{tag}} already exists.",
+															{ tag: duplicateTag },
+														)
+													: undefined)}
 										</FormErrorMessage>
 									</FormControl>
 								</XrayFieldGrid>
@@ -377,6 +389,7 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 							type="submit"
 							colorScheme="primary"
 							isLoading={isLoading}
+							isDisabled={Boolean(duplicateTag)}
 							loadingText={t("pages.xray.tor.starting", "Starting")}
 						>
 							{t("pages.xray.tor.start", "Start setup")}

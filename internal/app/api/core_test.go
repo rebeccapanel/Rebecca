@@ -156,7 +156,8 @@ func TestTorProxySetupRejectsInvalidPort(t *testing.T) {
 }
 
 func TestTorProxySetupReturnsBeforeNodeInstallation(t *testing.T) {
-	server, _ := testAdminServer(t)
+	server, db := testAdminServer(t)
+	insertNodeConfig(t, db, 999, "default", nil)
 	payload := []byte(`{
 		"target_id": "node:999",
 		"port": 9050,
@@ -183,6 +184,31 @@ func TestTorProxySetupReturnsBeforeNodeInstallation(t *testing.T) {
 	}
 	if !body.Success || body.Obj.Outbound["tag"] != "tor-de" {
 		t.Fatalf("unexpected response: %#v", body)
+	}
+}
+
+func TestTorProxySetupRejectsExistingOutboundTag(t *testing.T) {
+	server, db := testAdminServer(t)
+	insertMasterConfig(t, db, map[string]any{
+		"outbounds": []any{map[string]any{"tag": "tor-de", "protocol": "socks"}},
+	})
+	payload := []byte(`{
+		"target_id": "master",
+		"port": 9050,
+		"country": "de",
+		"tag": "tor-de"
+	}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/panel/xray/tor/setup", bytes.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	server.handleTorProxySetup(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "outbound tag already exists: tor-de") {
+		t.Fatalf("unexpected body=%s", rec.Body.String())
 	}
 }
 

@@ -45,6 +45,19 @@ func (s *Server) handleTorProxySetup(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	configTarget := "master"
+	if isNode {
+		configTarget = fmt.Sprintf("node:%d", nodeID)
+	}
+	config, err := s.configRepo.GetTargetRawConfig(r.Context(), configTarget)
+	if err != nil {
+		writeConfigError(w, err)
+		return
+	}
+	if duplicateTag := duplicateTorOutboundTag(config, profiles); duplicateTag != "" {
+		writeError(w, http.StatusConflict, fmt.Sprintf("outbound tag already exists: %s", duplicateTag))
+		return
+	}
 
 	nodeIDs := []int64{nodeID}
 	if !isNode {
@@ -99,6 +112,19 @@ func (s *Server) handleTorProxySetup(w http.ResponseWriter, r *http.Request) {
 			"outbounds": outbounds,
 		},
 	})
+}
+
+func duplicateTorOutboundTag(config map[string]any, profiles []torProxyProfile) string {
+	existingTags := make(map[string]struct{})
+	for _, outbound := range outboundMaps(config["outbounds"]) {
+		existingTags[strings.TrimSpace(stringFromAny(outbound["tag"]))] = struct{}{}
+	}
+	for _, profile := range profiles {
+		if _, exists := existingTags[profile.Tag]; exists {
+			return profile.Tag
+		}
+	}
+	return ""
 }
 
 func torProfilesFromPayload(payload map[string]any) ([]torProxyProfile, error) {

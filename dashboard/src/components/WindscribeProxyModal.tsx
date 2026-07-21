@@ -50,6 +50,7 @@ type Props = {
 	isLoading: boolean;
 	isMasterTarget: boolean;
 	targetID: string;
+	existingTags: string[];
 	onClose: () => void;
 	onSubmit: (values: WindscribeProxyFormValues) => Promise<void>;
 };
@@ -76,6 +77,7 @@ export const WindscribeProxyModal: FC<Props> = ({
 	isLoading,
 	isMasterTarget,
 	targetID,
+	existingTags,
 	onClose,
 	onSubmit,
 }) => {
@@ -86,6 +88,7 @@ export const WindscribeProxyModal: FC<Props> = ({
 		MultiValueAutocompleteOption[]
 	>([]);
 	const [loadError, setLoadError] = useState("");
+	const duplicateTag = existingTags.includes(form.watch("tag").trim());
 
 	useEffect(() => {
 		if (!isOpen) return;
@@ -308,7 +311,9 @@ export const WindscribeProxyModal: FC<Props> = ({
 											{form.formState.errors.port?.message}
 										</FormErrorMessage>
 									</FormControl>
-									<FormControl isInvalid={Boolean(form.formState.errors.tag)}>
+									<FormControl
+										isInvalid={Boolean(form.formState.errors.tag || duplicateTag)}
+									>
 										<FormLabel>
 											{t("pages.xray.windscribe.tag", "Outbound tag")}
 										</FormLabel>
@@ -319,10 +324,22 @@ export const WindscribeProxyModal: FC<Props> = ({
 													value: /^[a-zA-Z0-9_.-]+$/,
 													message: t("pages.xray.windscribe.tagInvalid"),
 												},
+												validate: (value) =>
+													!existingTags.includes(value.trim()) ||
+													t(
+														"pages.xray.outbound.tagExists",
+														"An outbound with this tag already exists.",
+													),
 											})}
 										/>
 										<FormErrorMessage>
-											{form.formState.errors.tag?.message}
+											{form.formState.errors.tag?.message ||
+												(duplicateTag
+													? t(
+															"pages.xray.outbound.tagExists",
+															"An outbound with this tag already exists.",
+														)
+													: undefined)}
 										</FormErrorMessage>
 									</FormControl>
 								</XrayFieldGrid>
@@ -344,7 +361,8 @@ export const WindscribeProxyModal: FC<Props> = ({
 							isDisabled={
 								isMasterTarget ||
 								locationOptions.length === 0 ||
-								isLoadingLocations
+								isLoadingLocations ||
+								duplicateTag
 							}
 						>
 							{t("pages.xray.windscribe.start", "Set up outbound")}
