@@ -77,3 +77,47 @@ func TestOVProfileUsesTCPClientProto(t *testing.T) {
 		t.Fatalf("profile does not use tcp-client:\n%s", profile)
 	}
 }
+
+func TestOVProfileKeepsEmbeddedCredentialsForReconnect(t *testing.T) {
+	profile, err := buildOVProfile(
+		ConfigLinkUser{Username: "alice", CredentialKey: "0123456789abcdef0123456789abcdef"},
+		"OV UDP",
+		"vpn.example.com",
+		ResolvedInbound{
+			"protocol": "openvpn",
+			"port":     1194,
+			"settings": map[string]any{"auth_nocache": true, "embed_credentials": true},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(profile, "auth-nocache\n") {
+		t.Fatalf("embedded credentials must remain available for reconnect:\n%s", profile)
+	}
+	if !strings.Contains(profile, "<auth-user-pass>\nalice\n") {
+		t.Fatalf("profile is missing embedded credentials:\n%s", profile)
+	}
+}
+
+func TestOVProfileCanDisableExternalCredentialCaching(t *testing.T) {
+	profile, err := buildOVProfile(
+		ConfigLinkUser{Username: "alice", CredentialKey: "0123456789abcdef0123456789abcdef"},
+		"OV UDP",
+		"vpn.example.com",
+		ResolvedInbound{
+			"protocol": "openvpn",
+			"port":     1194,
+			"settings": map[string]any{"auth_nocache": true, "embed_credentials": false},
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(profile, "auth-nocache\n") {
+		t.Fatalf("external credentials should honor auth_nocache:\n%s", profile)
+	}
+	if strings.Contains(profile, "<auth-user-pass>") {
+		t.Fatalf("external credential profile must not embed credentials:\n%s", profile)
+	}
+}

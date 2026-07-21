@@ -264,7 +264,8 @@ func buildOVProfile(item ConfigLinkUser, remark string, address string, inbound 
 	writeOVLine(&b, "persist-key")
 	writeOVLine(&b, "persist-tun")
 	writeOVLine(&b, "remote-cert-tls server")
-	if boolSetting(settings, "auth_nocache", true) {
+	embedCredentials := boolSetting(settings, "embed_credentials", true)
+	if !embedCredentials && boolSetting(settings, "auth_nocache", true) {
 		writeOVLine(&b, "auth-nocache")
 	}
 	if boolSetting(settings, "set_client_cert_none", true) {
@@ -290,7 +291,7 @@ func buildOVProfile(item ConfigLinkUser, remark string, address string, inbound 
 		writeOVLine(&b, "dhcp-option DNS "+dns)
 	}
 	writeOVLine(&b, "auth-user-pass")
-	if boolSetting(settings, "embed_credentials", true) {
+	if embedCredentials {
 		writeOVInline(&b, "auth-user-pass", username+"\n"+password+"\n")
 	}
 	if ca := strings.TrimSpace(stringValue(settings["ca"])); ca != "" && boolSetting(settings, "inline_ca", true) {
