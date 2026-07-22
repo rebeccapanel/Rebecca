@@ -1,4 +1,5 @@
 import {
+	Box,
 	Button,
 	Checkbox,
 	CheckboxGroup,
@@ -138,11 +139,12 @@ const ruleToFormValues = (rule?: RoutingRule | null): RuleFormValues => {
 			}))
 		: [];
 
+	const balancerTag = toSingleTag(rule.balancerTag);
 	return {
 		type: rule.type ?? "field",
 		domainMatcher: rule.domainMatcher ?? "",
-		outboundTag: toSingleTag(rule.outboundTag),
-		balancerTag: rule.balancerTag ?? "",
+		outboundTag: balancerTag ? "" : toSingleTag(rule.outboundTag),
+		balancerTag,
 		inboundTags: Array.isArray(rule.inboundTag) ? rule.inboundTag : [],
 		networks: Array.isArray(rule.network) ? rule.network : [],
 		protocols: Array.isArray(rule.protocol) ? rule.protocol : [],
@@ -161,8 +163,11 @@ const formValuesToRule = (values: RuleFormValues): RoutingRule => {
 
 	if (values.type) rule.type = values.type;
 	if (values.domainMatcher) rule.domainMatcher = values.domainMatcher;
-	if (values.outboundTag) rule.outboundTag = values.outboundTag;
-	if (values.balancerTag) rule.balancerTag = values.balancerTag;
+	if (values.balancerTag) {
+		rule.balancerTag = values.balancerTag;
+	} else if (values.outboundTag) {
+		rule.outboundTag = values.outboundTag;
+	}
 	if (values.inboundTags.length) rule.inboundTag = values.inboundTags;
 	if (values.networks.length) rule.network = values.networks;
 	if (values.protocols.length) rule.protocol = values.protocols;
@@ -220,6 +225,7 @@ export const RuleModal: FC<RuleModalProps> = ({
 		register,
 		handleSubmit,
 		reset,
+		setValue,
 		formState: { isSubmitting },
 	} = useForm<RuleFormValues>({
 		defaultValues: defaultFormValues,
@@ -301,15 +307,33 @@ export const RuleModal: FC<RuleModalProps> = ({
 										control={control}
 										name="outboundTag"
 										render={({ field }) => (
-											<SearchableTagSelect
-												mode="single"
-												options={availableOutboundTags}
-												value={field.value ?? ""}
-												onChange={(value) => field.onChange(value as string)}
-												placeholder={t("userDialog.flow.none")}
-												searchPlaceholder={t("search")}
-												emptyText={t("pages.xray.outbound.empty")}
-											/>
+											<HStack align="start">
+												<Box flex="1" minW={0}>
+													<SearchableTagSelect
+														mode="single"
+														options={availableOutboundTags}
+														value={field.value ?? ""}
+														onChange={(value) => {
+															const nextValue = value as string;
+															field.onChange(nextValue);
+															if (nextValue) {
+																setValue("balancerTag", "", { shouldDirty: true });
+															}
+														}}
+														placeholder={t("userDialog.flow.none")}
+														searchPlaceholder={t("search")}
+														emptyText={t("pages.xray.outbound.empty")}
+													/>
+												</Box>
+												<IconButton
+													aria-label={t("remove")}
+													icon={<XMarkIcon />}
+													size="sm"
+													variant="ghost"
+													isDisabled={!field.value}
+													onClick={() => field.onChange("")}
+												/>
+											</HStack>
 										)}
 									/>
 								</FormControl>
@@ -322,15 +346,33 @@ export const RuleModal: FC<RuleModalProps> = ({
 										control={control}
 										name="balancerTag"
 										render={({ field }) => (
-											<SearchableTagSelect
-												mode="single"
-												options={availableBalancerTags}
-												value={field.value ?? ""}
-												onChange={(value) => field.onChange(value as string)}
-												placeholder={t("userDialog.flow.none")}
-												searchPlaceholder={t("search")}
-												emptyText={t("pages.xray.balancer.empty")}
-											/>
+											<HStack align="start">
+												<Box flex="1" minW={0}>
+													<SearchableTagSelect
+														mode="single"
+														options={availableBalancerTags}
+														value={field.value ?? ""}
+														onChange={(value) => {
+															const nextValue = value as string;
+															field.onChange(nextValue);
+															if (nextValue) {
+																setValue("outboundTag", "", { shouldDirty: true });
+															}
+														}}
+														placeholder={t("userDialog.flow.none")}
+														searchPlaceholder={t("search")}
+														emptyText={t("pages.xray.balancer.empty")}
+													/>
+												</Box>
+												<IconButton
+													aria-label={t("remove")}
+													icon={<XMarkIcon />}
+													size="sm"
+													variant="ghost"
+													isDisabled={!field.value}
+													onClick={() => field.onChange("")}
+												/>
+											</HStack>
 										)}
 									/>
 								</FormControl>
