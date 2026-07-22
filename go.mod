@@ -11,7 +11,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/pressly/goose/v3 v3.21.1
 	github.com/shirou/gopsutil/v4 v4.26.5
-	github.com/swaggest/swgui v1.8.8
+	github.com/swaggest/swgui v1.8.9
 	golang.org/x/crypto v0.31.0
 	golang.org/x/net v0.26.0
 	golang.org/x/term v0.27.0
