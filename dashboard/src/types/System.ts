@@ -34,6 +34,7 @@ export interface AdminOverviewStats {
 
 export interface SystemStats {
 	version: string;
+	channel?: string;
 	cpu_cores: number;
 	cpu_usage: number;
 	total_user: number;

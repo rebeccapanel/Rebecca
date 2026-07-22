@@ -44,6 +44,7 @@ type AdminOverviewStats = dashboardapp.AdminOverviewStats
 
 type SystemStats struct {
 	Version               string                `json:"version"`
+	Channel               string                `json:"channel"`
 	CPUCores              int                   `json:"cpu_cores"`
 	CPUUsage              float64               `json:"cpu_usage"`
 	TotalUser             int64                 `json:"total_user"`

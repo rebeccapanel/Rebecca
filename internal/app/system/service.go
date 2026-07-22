@@ -33,6 +33,7 @@ type Service struct {
 	dashboard dashboardapp.Repository
 	metrics   MetricsProvider
 	version   string
+	channel   string
 
 	mu                 sync.Mutex
 	cpuHistory         []HistoryEntry
@@ -59,6 +60,7 @@ func NewServiceWithProvider(db *sql.DB, dialect string, version string, provider
 		dashboard: dashboardapp.NewRepository(db, dialect),
 		metrics:   provider,
 		version:   version,
+		channel:   DefaultRuntimeDetector{}.Info().Channel,
 	}
 }
 
@@ -81,6 +83,7 @@ func (s *Service) Stats(ctx context.Context, admin dashboardapp.AdminContext) (S
 
 	return SystemStats{
 		Version:               s.version,
+		Channel:               s.channel,
 		CPUCores:              snapshot.CPUCores,
 		CPUUsage:              snapshot.CPUUsage,
 		TotalUser:             summary.TotalUser,

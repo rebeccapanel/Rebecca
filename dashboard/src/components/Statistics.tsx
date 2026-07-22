@@ -768,7 +768,7 @@ const SystemOverviewCard: FC<{
 		retry: false,
 	});
 	const panelTag = maintenanceInfo.data?.panel?.tag || data.version;
-	const panelChannel = maintenanceInfo.data?.panel?.channel || "";
+	const panelChannel = maintenanceInfo.data?.panel?.channel || data.channel || "";
 	const isDevPanel = isDevPanelVersion(panelTag, panelChannel);
 	const latestPanelRelease = useQuery({
 		queryKey: ["panel-latest-release"],
@@ -787,7 +787,9 @@ const SystemOverviewCard: FC<{
 	});
 	const maintenanceUpdate = maintenanceInfo.data?.panel?.update;
 	const latestPanelVersion = isDevPanel
-		? dashboardVersionLabel(maintenanceUpdate?.target, "dev")
+		? maintenanceUpdate?.target
+			? dashboardVersionLabel(maintenanceUpdate.target, "dev")
+			: ""
 		: latestPanelRelease.data?.tag_name || latestPanelRelease.data?.name || "";
 	const isPanelUpdateAvailable = isDevPanel
 		? Boolean(maintenanceUpdate?.available)
