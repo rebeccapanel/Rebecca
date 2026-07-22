@@ -131,6 +131,7 @@ type AppImportDeepLinkKey =
 	| "v2rayng"
 	| "singbox"
 	| "karing"
+	| "hiddify"
 	| "v2box"
 	| "streisand"
 	| "nekobox"
@@ -345,6 +346,7 @@ const APP_IMPORT_DEEPLINK_KEYS: AppImportDeepLinkKey[] = [
 	"v2rayng",
 	"singbox",
 	"karing",
+	"hiddify",
 	"v2box",
 	"streisand",
 	"nekobox",
@@ -364,6 +366,7 @@ const APP_IMPORT_DEEPLINK_LABELS: Record<AppImportDeepLinkKey, string> = {
 	v2rayng: "v2rayNG",
 	singbox: "sing-box",
 	karing: "Karing",
+	hiddify: "Hiddify",
 	v2box: "v2Box",
 	streisand: "Streisand",
 	nekobox: "NekoBox",
@@ -386,6 +389,7 @@ const APP_IMPORT_DEFAULT_APP_BY_KEY: Record<
 	v2rayng: { label: "v2rayNG", supportedOS: ["android"] },
 	singbox: { label: "sing-box", supportedOS: ["android", "ios", "macos", "windows", "linux"] },
 	karing: { label: "Karing", supportedOS: ["ios", "android", "windows"] },
+	hiddify: { label: "Hiddify", supportedOS: ["android", "ios", "macos", "windows", "linux"] },
 	v2box: { label: "v2Box", supportedOS: ["ios"] },
 	streisand: { label: "Streisand", supportedOS: ["ios"] },
 	nekobox: { label: "NekoBox", supportedOS: ["android"] },
@@ -432,6 +436,13 @@ const DEFAULT_APP_IMPORT_APPS: AppImportApp[] = [
 		recommended: true,
 		supportedOS: ["ios", "android", "windows"],
 		deepLinkKey: "karing",
+	},
+	{
+		id: "hiddify",
+		label: "Hiddify",
+		recommended: true,
+		supportedOS: ["android", "ios", "macos", "windows", "linux"],
+		deepLinkKey: "hiddify",
 	},
 	{
 		id: "v2box",
@@ -3202,6 +3213,7 @@ ${qrModal}
 		if (key === "v2rayng") return { label: "v2rayNG", supportedOS: ["android"] };
 		if (key === "singbox") return { label: "sing-box", supportedOS: ["android", "ios", "macos", "windows", "linux"] };
 		if (key === "karing") return { label: "Karing", supportedOS: ["ios", "android", "windows"] };
+		if (key === "hiddify") return { label: "Hiddify", supportedOS: ["android", "ios", "macos", "windows", "linux"] };
 		if (key === "v2box") return { label: "v2Box", supportedOS: ["ios"] };
 		if (key === "streisand") return { label: "Streisand", supportedOS: ["ios"] };
 		if (key === "nekobox") return { label: "NekoBox", supportedOS: ["android"] };
@@ -3241,6 +3253,7 @@ ${qrModal}
 			{ id: "v2rayng", label: "v2rayNG", recommended: true, supportedOS: ["android"], deepLinkKey: "v2rayng" },
 			{ id: "singbox", label: "sing-box", recommended: true, supportedOS: ["android", "ios", "macos", "windows", "linux"], deepLinkKey: "singbox" },
 			{ id: "karing", label: "Karing", recommended: true, supportedOS: ["ios", "android", "windows"], deepLinkKey: "karing" },
+			{ id: "hiddify", label: "Hiddify", recommended: true, supportedOS: ["android", "ios", "macos", "windows", "linux"], deepLinkKey: "hiddify" },
 			{ id: "v2box", label: "v2Box", recommended: true, supportedOS: ["ios"], deepLinkKey: "v2box" },
 			{ id: "streisand", label: "Streisand", recommended: true, supportedOS: ["ios"], deepLinkKey: "streisand" },
 			{ id: "nekobox", label: "NekoBox", recommended: false, supportedOS: ["android"], deepLinkKey: "nekobox" },
@@ -3261,7 +3274,7 @@ ${qrModal}
 		var apps = appSource
 			.map(function (candidate, index) {
 				if (!candidate || typeof candidate !== "object") return null;
-				var allowedKeys = ["happ", "v2raytun", "throne", "v2rayng", "singbox", "karing", "v2box", "streisand", "nekobox", "clash", "clashmi", "incy", "passwall", "shadowrocket", "foxray", "custom"];
+				var allowedKeys = ["happ", "v2raytun", "throne", "v2rayng", "singbox", "karing", "hiddify", "v2box", "streisand", "nekobox", "clash", "clashmi", "incy", "passwall", "shadowrocket", "foxray", "custom"];
 				var key = allowedKeys.indexOf(candidate.deepLinkKey) >= 0 ? candidate.deepLinkKey : "v2rayng";
 				var defaults = appImportDefaultMetaByKey(key);
 				var label = typeof candidate.label === "string" && candidate.label.trim() ? candidate.label.trim().slice(0, 80) : defaults.label;
@@ -3321,6 +3334,7 @@ ${qrModal}
 		if (appKey === "v2rayng") return "v2rayng://install-config?url=" + encodedUrl;
 		if (appKey === "singbox") return "sing-box://import-remote-profile?url=" + encodedUrl + "#" + profileName;
 		if (appKey === "karing") return "karing://install-config?url=" + encodedUrl + "&name=" + profileName;
+		if (appKey === "hiddify") return "hiddify://import?url=" + encodedUrl + "&name=" + profileName;
 		if (appKey === "nekobox") return "sn://subscription?url=" + encodedUrl + "&name=" + profileName;
 		if (appKey === "clash") return "clash://install-config?url=" + encodedUrl;
 		if (appKey === "clashmi") return "clash://install-config?url=" + encodedUrl + "&name=" + profileName;

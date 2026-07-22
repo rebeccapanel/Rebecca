@@ -67,7 +67,8 @@ var subscriptionClientConfigs = map[string]SubscriptionClientConfig{
 	"v2raytun":     {Format: "v2ray", Media: "text/plain", Base64: true},
 	"throne":       {Format: "v2ray", Media: "text/plain", Base64: true},
 	"shadowrocket": {Format: "v2ray", Media: "text/plain", Base64: true},
-	"karing":       {Format: "sing-box", Media: "application/json"},
+	"karing":       {Format: "v2ray", Media: "text/plain", Base64: true},
+	"hiddify":      {Format: "v2ray", Media: "text/plain", Base64: true},
 	"clash-mi":     {Format: "clash-meta", Media: "text/yaml"},
 	"incy":         {Format: "v2ray-json", Media: "application/json", TemplateKey: "incy_subscription_template"},
 	"passwall":     {Format: "v2ray", Media: "text/plain", Base64: true},
@@ -88,6 +89,8 @@ func NormalizeSubscriptionClientType(value string) (string, bool) {
 		value = "clash-mi"
 	case "singbox", "sing":
 		value = "sing-box"
+	case "hiddify-next", "hiddifynext", "hiddifynextx":
+		value = "hiddify"
 	case "v2ray-tun", "v2ray-tunnel", "v2raytun-plus":
 		value = "v2raytun"
 	case "thron", "throne-vpn", "thronevpn":
@@ -781,7 +784,10 @@ func selectSubscriptionClientType(userAgent string, settings SubscriptionSetting
 	if regexp.MustCompile(`(?i)^karing`).MatchString(ua) {
 		return "karing"
 	}
-	if regexp.MustCompile(`^(SFA|SFI|SFM|SFT|[Hh]iddify[Nn]ext)`).MatchString(ua) {
+	if regexp.MustCompile(`(?i)^hiddifynextx?`).MatchString(ua) {
+		return "hiddify"
+	}
+	if regexp.MustCompile(`^(SFA|SFI|SFM|SFT)`).MatchString(ua) {
 		return "sing-box"
 	}
 	if regexp.MustCompile(`(?i)^v2raytun`).MatchString(ua) {

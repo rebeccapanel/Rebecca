@@ -412,6 +412,7 @@ func TestSubscriptionClientAliasesAndAppUserAgents(t *testing.T) {
 		"passwall2":    "passwall",
 		"clashmi":      "clash-mi",
 		"wg":           "wireguard",
+		"hiddify-next": "hiddify",
 	}
 	for input, expected := range tests {
 		got, ok := NormalizeSubscriptionClientType(input)
@@ -425,14 +426,16 @@ func TestSubscriptionClientAliasesAndAppUserAgents(t *testing.T) {
 		UseCustomJSONForIncy: true,
 	}
 	for ua, expected := range map[string]string{
-		"v2RayTun/4.1":     "v2raytun",
-		"Shadowrocket/2.2": "shadowrocket",
-		"NekoBox/1.3":      "nekobox",
-		"PassWall/25":      "passwall",
-		"Throne/1.0":       "throne",
-		"ClashMi/1.2":      "clash-mi",
-		"Happ/1.63.1":      "happ",
-		"Incy/2.0":         "incy",
+		"v2RayTun/4.1":       "v2raytun",
+		"Shadowrocket/2.2":   "shadowrocket",
+		"NekoBox/1.3":        "nekobox",
+		"PassWall/25":        "passwall",
+		"Throne/1.0":         "throne",
+		"ClashMi/1.2":        "clash-mi",
+		"Happ/1.63.1":        "happ",
+		"Incy/2.0":           "incy",
+		"HiddifyNext/2.5.7":  "hiddify",
+		"HiddifyNextX/2.5.7": "hiddify",
 	} {
 		if got := selectSubscriptionClientType(ua, settings); got != expected {
 			t.Fatalf("selectSubscriptionClientType(%q) = %q, want %q", ua, got, expected)

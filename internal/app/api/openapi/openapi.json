@@ -3384,7 +3384,7 @@
           "Subscriptions"
         ],
         "summary": "Render two-part subscription path",
-        "description": "Render either identifier/client_type or username/credential_key subscription paths. Rebecca resolves the meaning from stored user credentials and known client types.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint. Do not send admin bearer tokens unless you are using a custom integration that deliberately does so.\n\nRoute details: Ambiguous two-part subscription paths are resolved by checking whether the second part is a known client type or a credential key. Known client types include `v2ray`, `v2ray-json`, `clash`, `clash-meta`, `sing-box`, `outline`, `openvpn`, `wireguard`/`wg`, `happ`, `v2raytun`, `throne`, `shadowrocket`, `karing`, `clash-mi`, `incy`, `passwall`, and `nekobox`.\n\nOutput notes: subscription responses set client/profile headers such as subscription-userinfo when available and may return plain text, base64, JSON, YAML, or HTML depending on format resolution.",
+        "description": "Render either identifier/client_type or username/credential_key subscription paths. Rebecca resolves the meaning from stored user credentials and known client types.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint. Do not send admin bearer tokens unless you are using a custom integration that deliberately does so.\n\nRoute details: Ambiguous two-part subscription paths are resolved by checking whether the second part is a known client type or a credential key. Known client types include `v2ray`, `v2ray-json`, `clash`, `clash-meta`, `sing-box`, `outline`, `openvpn`, `wireguard`/`wg`, `happ`, `v2raytun`, `throne`, `shadowrocket`, `karing`, `hiddify`, `clash-mi`, `incy`, `passwall`, and `nekobox`.\n\nOutput notes: subscription responses set client/profile headers such as subscription-userinfo when available and may return plain text, base64, JSON, YAML, or HTML depending on format resolution.",
         "security": [],
         "parameters": [
           {
@@ -3399,7 +3399,7 @@
             "name": "part2",
             "in": "path",
             "required": true,
-            "description": "Credential key, legacy subscription key, or known client type such as `v2raytun`, `karing`, `shadowrocket`, `wireguard`, `wg`, or `openvpn`.",
+            "description": "Credential key, legacy subscription key, or known client type such as `v2raytun`, `karing`, `hiddify`, `shadowrocket`, `wireguard`, `wg`, or `openvpn`.",
             "schema": {
               "type": "string"
             }
@@ -3491,7 +3491,7 @@
           "Subscriptions"
         ],
         "summary": "Username/key client subscription",
-        "description": "Render client-specific subscription output using explicit username and credential key.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint. Do not send admin bearer tokens unless you are using a custom integration that deliberately does so.\n\nRoute details: Use this form when your integration knows username, credential key, and desired client format explicitly. Known client types include `v2ray`, `v2ray-json`, `clash`, `clash-meta`, `sing-box`, `outline`, `openvpn`, `wireguard`/`wg`, `happ`, `v2raytun`, `throne`, `shadowrocket`, `karing`, `clash-mi`, `incy`, `passwall`, and `nekobox`.\n\nOutput notes: subscription responses set client/profile headers such as subscription-userinfo when available and may return plain text, base64, JSON, YAML, or HTML depending on format resolution.",
+        "description": "Render client-specific subscription output using explicit username and credential key.\n\nAuthentication: public route; no bearer token is required.\n\nPermissions: Public endpoint. Do not send admin bearer tokens unless you are using a custom integration that deliberately does so.\n\nRoute details: Use this form when your integration knows username, credential key, and desired client format explicitly. Known client types include `v2ray`, `v2ray-json`, `clash`, `clash-meta`, `sing-box`, `outline`, `openvpn`, `wireguard`/`wg`, `happ`, `v2raytun`, `throne`, `shadowrocket`, `karing`, `hiddify`, `clash-mi`, `incy`, `passwall`, and `nekobox`.\n\nOutput notes: subscription responses set client/profile headers such as subscription-userinfo when available and may return plain text, base64, JSON, YAML, or HTML depending on format resolution.",
         "security": [],
         "parameters": [
           {
@@ -3526,6 +3526,7 @@
                 "throne",
                 "shadowrocket",
                 "karing",
+                "hiddify",
                 "clash-mi",
                 "incy",
                 "passwall",

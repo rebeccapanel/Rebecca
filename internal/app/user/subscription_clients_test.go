@@ -79,10 +79,20 @@ func TestSubscriptionClientOutputsCoverExplicitFormatsAndAutoDetect(t *testing.T
 		{
 			name:      "karing explicit",
 			req:       SubscriptionRenderRequest{Identifier: key, ClientType: "karing"},
-			mediaType: "application/json",
+			mediaType: "text/plain",
 			assert: func(t *testing.T, body string) {
-				if !strings.Contains(body, "\"outbounds\"") || !strings.Contains(body, "selector") {
+				if !strings.Contains(decodeSubscriptionTestBody(body), "vless://") {
 					t.Fatalf("unexpected karing body: %s", body)
+				}
+			},
+		},
+		{
+			name:      "hiddify explicit",
+			req:       SubscriptionRenderRequest{Identifier: key, ClientType: "hiddify"},
+			mediaType: "text/plain",
+			assert: func(t *testing.T, body string) {
+				if !strings.Contains(decodeSubscriptionTestBody(body), "vless://") {
+					t.Fatalf("unexpected hiddify body: %s", body)
 				}
 			},
 		},
@@ -163,10 +173,20 @@ func TestSubscriptionClientOutputsCoverExplicitFormatsAndAutoDetect(t *testing.T
 		{
 			name:      "karing user-agent autodetect",
 			req:       SubscriptionRenderRequest{Identifier: key, UserAgent: "Karing/1.0"},
-			mediaType: "application/json",
+			mediaType: "text/plain",
 			assert: func(t *testing.T, body string) {
-				if !strings.Contains(body, "\"outbounds\"") {
+				if !strings.Contains(decodeSubscriptionTestBody(body), "vless://") {
 					t.Fatalf("unexpected karing autodetect body: %s", body)
+				}
+			},
+		},
+		{
+			name:      "hiddify user-agent autodetect",
+			req:       SubscriptionRenderRequest{Identifier: key, UserAgent: "HiddifyNext/2.5.7 (android)"},
+			mediaType: "text/plain",
+			assert: func(t *testing.T, body string) {
+				if !strings.Contains(decodeSubscriptionTestBody(body), "vless://") {
+					t.Fatalf("unexpected hiddify autodetect body: %s", body)
 				}
 			},
 		},
