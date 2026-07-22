@@ -461,6 +461,7 @@ type ServiceActionConfirm =
 				| "bulk-disable"
 				| "bulk-delete"
 				| "bulk-reset"
+				| "bulk-restart"
 				| "bulk-update"
 				| "bulk-reboot";
 			nodes: NodeType[];
@@ -1122,6 +1123,7 @@ export const NodesPage: FC = () => {
 			serviceActionConfirm.type === "bulk-disable" ||
 			serviceActionConfirm.type === "bulk-delete" ||
 			serviceActionConfirm.type === "bulk-reset" ||
+			serviceActionConfirm.type === "bulk-restart" ||
 			serviceActionConfirm.type === "bulk-update" ||
 			serviceActionConfirm.type === "bulk-reboot"
 		) {
@@ -1165,6 +1167,11 @@ export const NodesPage: FC = () => {
 							break;
 						case "bulk-reset":
 							await apiFetch(`/node/${node.id}/usage/reset`, {
+								method: "POST",
+							});
+							break;
+						case "bulk-restart":
+							await apiFetch(`/node/${node.id}/service/restart`, {
 								method: "POST",
 							});
 							break;
@@ -1597,9 +1604,21 @@ export const NodesPage: FC = () => {
 				.filter((id): id is number => id != null),
 		[filteredNodes],
 	);
+	const activeFilteredNodeIds = useMemo(
+		() =>
+			filteredNodes
+				.filter((node) => node.status === "connected")
+				.map((node) => node.id)
+				.filter((id): id is number => id != null),
+		[filteredNodes],
+	);
 	const allFilteredSelected =
 		filteredNodeIds.length > 0 &&
 		filteredNodeIds.every((id) => selectedNodeIdSet.has(id));
+	const onlyActiveFilteredSelected =
+		activeFilteredNodeIds.length > 0 &&
+		selectedNodeIds.length === activeFilteredNodeIds.length &&
+		activeFilteredNodeIds.every((id) => selectedNodeIdSet.has(id));
 
 	const handleSort = (key: NodeSortKey) => {
 		if (sortKey === key) {
@@ -1649,6 +1668,10 @@ export const NodesPage: FC = () => {
 		setSelectedNodeIds(filteredNodeIds);
 	};
 
+	const selectOnlyActiveNodes = () => {
+		setSelectedNodeIds(activeFilteredNodeIds);
+	};
+
 	const selectableSelectedNodes = () =>
 		selectedNodes.filter((node) => node.id != null);
 
@@ -1666,6 +1689,7 @@ export const NodesPage: FC = () => {
 			| "bulk-disable"
 			| "bulk-delete"
 			| "bulk-reset"
+			| "bulk-restart"
 			| "bulk-update"
 			| "bulk-reboot",
 		nodesForAction: NodeType[],
@@ -1771,10 +1795,12 @@ export const NodesPage: FC = () => {
 								? t("nodes.bulkDelete", "Delete selected nodes")
 								: serviceActionConfirm?.type === "bulk-reset"
 									? t("nodes.bulkResetTraffic", "Reset selected traffic")
-									: serviceActionConfirm?.type === "bulk-update"
-										? t("nodes.bulkUpdateService", "Update selected services")
-										: serviceActionConfirm?.type === "bulk-reboot"
-											? t("nodes.bulkRebootHost", "Reboot selected servers")
+									: serviceActionConfirm?.type === "bulk-restart"
+										? t("nodes.bulkRestartService", "Restart selected node services")
+										: serviceActionConfirm?.type === "bulk-update"
+											? t("nodes.bulkUpdateService", "Update selected services")
+											: serviceActionConfirm?.type === "bulk-reboot"
+												? t("nodes.bulkRebootHost", "Reboot selected servers")
 					: "";
 
 	const serviceActionConfirmMessage =
@@ -1839,18 +1865,24 @@ export const NodesPage: FC = () => {
 											"Reset traffic for {{count}} selected nodes?",
 											{ count: serviceActionConfirm.count },
 										)
-									: serviceActionConfirm?.type === "bulk-update"
+									: serviceActionConfirm?.type === "bulk-restart"
 										? t(
-												"nodes.bulkUpdateServiceConfirm",
-												"Update Rebecca-node service on {{count}} selected binary nodes?",
+												"nodes.bulkRestartServiceConfirm",
+												"Restart the service on {{count}} selected nodes? Connections may be interrupted briefly.",
 												{ count: serviceActionConfirm.count },
 											)
-										: serviceActionConfirm?.type === "bulk-reboot"
+										: serviceActionConfirm?.type === "bulk-update"
 											? t(
-													"nodes.bulkRebootHostConfirm",
-													"Reboot {{count}} selected node servers now? All active connections on those nodes will disconnect until the servers come back online.",
+													"nodes.bulkUpdateServiceConfirm",
+													"Update Rebecca-node service on {{count}} selected binary nodes?",
 													{ count: serviceActionConfirm.count },
 												)
+											: serviceActionConfirm?.type === "bulk-reboot"
+												? t(
+														"nodes.bulkRebootHostConfirm",
+														"Reboot {{count}} selected node servers now? All active connections on those nodes will disconnect until the servers come back online.",
+														{ count: serviceActionConfirm.count },
+													)
 					: "";
 
 	const serviceActionConfirmLabel =
@@ -1870,10 +1902,12 @@ export const NodesPage: FC = () => {
 							? t("delete", "Delete")
 							: serviceActionConfirm?.type === "bulk-reset"
 								? t("nodes.resetUsage", "Reset usage")
-								: serviceActionConfirm?.type === "bulk-update"
-									? t("nodes.updateServiceAction", "Update node service")
-									: serviceActionConfirm?.type === "bulk-reboot"
-										? t("nodes.rebootHostAction", "Reboot server")
+								: serviceActionConfirm?.type === "bulk-restart"
+									? t("nodes.restartServiceAction", "Restart node service")
+									: serviceActionConfirm?.type === "bulk-update"
+										? t("nodes.updateServiceAction", "Update node service")
+										: serviceActionConfirm?.type === "bulk-reboot"
+											? t("nodes.rebootHostAction", "Reboot server")
 				: t("nodes.updateServiceAction", "Update node service");
 
 	const serviceActionConfirmLoading =
@@ -2881,6 +2915,17 @@ export const NodesPage: FC = () => {
 							size="sm"
 							variant="outline"
 							leftIcon={<EnableIconStyled />}
+							onClick={selectOnlyActiveNodes}
+							isDisabled={
+								activeFilteredNodeIds.length === 0 || onlyActiveFilteredSelected
+							}
+						>
+							{t("nodes.selectOnlyActive", "Select only active")}
+						</Button>
+						<Button
+							size="sm"
+							variant="outline"
+							leftIcon={<EnableIconStyled />}
 							onClick={() =>
 								openBulkActionConfirm("bulk-enable", selectableSelectedNodes())
 							}
@@ -2909,6 +2954,23 @@ export const NodesPage: FC = () => {
 							isDisabled={Boolean(bulkNodeActionLoading)}
 						>
 							{t("nodes.resetUsage", "Reset usage")}
+						</Button>
+						<Button
+							size="sm"
+							variant="outline"
+							leftIcon={<ServiceIconStyled />}
+							onClick={() =>
+								openBulkActionConfirm(
+									"bulk-restart",
+									selectedConnectedBinaryNodes(),
+								)
+							}
+							isDisabled={
+								Boolean(bulkNodeActionLoading) ||
+								selectedConnectedBinaryNodes().length === 0
+							}
+						>
+							{t("nodes.restartServiceAction", "Restart node service")}
 						</Button>
 						<Button
 							size="sm"
