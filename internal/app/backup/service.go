@@ -160,6 +160,11 @@ func (s *Service) Import(ctx context.Context, archivePath string, scope string) 
 	if scope == ScopeFull && m.Scope != ScopeFull {
 		return ImportResult{}, Error{Message: "Selected full restore, but the uploaded backup is database-only"}
 	}
+	if scope == ScopeFull && (s.dialect == "mysql" || s.dialect == "mariadb") {
+		if err := s.preserveLocalDatabaseEnv(filepath.Join(extractDir, FilesPrefix)); err != nil {
+			return ImportResult{}, err
+		}
+	}
 
 	tables, rows, warnings, err := s.restoreDatabasePayload(ctx, extractDir, m)
 	if err != nil {
@@ -326,7 +331,7 @@ func (s *Service) exportMySQL(ctx context.Context, outputPath string) error {
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return Error{Message: "Failed to dump MySQL/MariaDB database: " + strings.TrimSpace(stderr.String())}
+		return mysqlBackupCommandError("dump", stderr.String())
 	}
 	return nil
 }
@@ -364,9 +369,21 @@ func (s *Service) restoreMySQL(ctx context.Context, payloadPath string) error {
 	restoreCmd := exec.CommandContext(ctx, command, "--defaults-extra-file="+defaultsFile, "--database="+databaseName)
 	restoreCmd.Stdin = input
 	if stderr, err := restoreCmd.CombinedOutput(); err != nil {
-		return Error{Message: "Failed to restore MySQL/MariaDB database: " + strings.TrimSpace(string(stderr))}
+		return mysqlBackupCommandError("restore", string(stderr))
 	}
 	return nil
+}
+
+func mysqlBackupCommandError(action string, stderr string) error {
+	detail := strings.TrimSpace(stderr)
+	lower := strings.ToLower(detail)
+	if strings.Contains(lower, "error 1045") || strings.Contains(lower, "access denied for user") {
+		return Error{Message: "MySQL/MariaDB rejected Rebecca's configured database credentials (error 1045). Check MYSQL_PASSWORD and SQLALCHEMY_DATABASE_URL."}
+	}
+	if detail == "" {
+		detail = "database command failed"
+	}
+	return Error{Message: "Failed to " + action + " MySQL/MariaDB database: " + detail}
 }
 
 func (s *Service) dropMySQLTables(ctx context.Context) error {
@@ -536,6 +553,103 @@ func (s *Service) restoreFileRoots(filesDir string) ([]string, []string, error) 
 		restored = append(restored, root.Path)
 	}
 	return restored, warnings, nil
+}
+
+func (s *Service) preserveLocalDatabaseEnv(filesDir string) error {
+	var targetPath, archiveName string
+	for _, root := range s.fileRoots {
+		if root.ArchiveName == "rebecca_env" {
+			targetPath, archiveName = root.Path, root.ArchiveName
+			break
+		}
+	}
+	if targetPath == "" {
+		return nil
+	}
+	sourcePath := filepath.Join(filesDir, archiveName)
+	if !isRegularFile(sourcePath) {
+		return nil
+	}
+
+	assignments := []string{}
+	if content, err := os.ReadFile(targetPath); err == nil {
+		for _, line := range strings.Split(strings.ReplaceAll(string(content), "\r\n", "\n"), "\n") {
+			if isDatabaseEnvKey(envAssignmentKey(line)) {
+				assignments = upsertEnvAssignment(assignments, line)
+			}
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+
+	parsed, err := url.Parse(s.databaseURL)
+	if err != nil {
+		return err
+	}
+	assignments = upsertEnvAssignment(assignments, dotenvAssignment("REBECCA_DATABASE_FLAVOR", s.dialect))
+	assignments = upsertEnvAssignment(assignments, dotenvAssignment("SQLALCHEMY_DATABASE_URL", s.databaseURL))
+	if parsed.User != nil {
+		if username := parsed.User.Username(); username != "" {
+			assignments = upsertEnvAssignment(assignments, dotenvAssignment("MYSQL_USER", username))
+		}
+		if password, ok := parsed.User.Password(); ok {
+			assignments = upsertEnvAssignment(assignments, dotenvAssignment("MYSQL_PASSWORD", password))
+		}
+	}
+	if databaseName := strings.TrimPrefix(parsed.Path, "/"); databaseName != "" {
+		assignments = upsertEnvAssignment(assignments, dotenvAssignment("MYSQL_DATABASE", databaseName))
+	}
+
+	content, err := os.ReadFile(sourcePath)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(strings.ReplaceAll(string(content), "\r\n", "\n"), "\n")
+	filtered := lines[:0]
+	for _, line := range lines {
+		if !isDatabaseEnvKey(envAssignmentKey(line)) {
+			filtered = append(filtered, line)
+		}
+	}
+	for len(filtered) > 0 && filtered[len(filtered)-1] == "" {
+		filtered = filtered[:len(filtered)-1]
+	}
+	filtered = append(filtered, assignments...)
+	return os.WriteFile(sourcePath, []byte(strings.Join(filtered, "\n")+"\n"), 0o600)
+}
+
+func envAssignmentKey(line string) string {
+	line = strings.TrimSpace(line)
+	if line == "" || strings.HasPrefix(line, "#") {
+		return ""
+	}
+	line = strings.TrimSpace(strings.TrimPrefix(line, "export "))
+	key, _, ok := strings.Cut(line, "=")
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(key)
+}
+
+func isDatabaseEnvKey(key string) bool {
+	return key == "REBECCA_DATABASE_FLAVOR" || key == "SQLALCHEMY_DATABASE_URL" || key == "DATABASE_URL" ||
+		strings.HasPrefix(key, "MYSQL_") || strings.HasPrefix(key, "MARIADB_")
+}
+
+func upsertEnvAssignment(assignments []string, assignment string) []string {
+	key := envAssignmentKey(assignment)
+	for index, existing := range assignments {
+		if envAssignmentKey(existing) == key {
+			assignments[index] = assignment
+			return assignments
+		}
+	}
+	return append(assignments, assignment)
+}
+
+func dotenvAssignment(key string, value string) string {
+	replacer := strings.NewReplacer(`\`, `\\`, `"`, `\"`, `$`, `\$`, "\n", `\n`, "\r", `\r`)
+	return key + `="` + replacer.Replace(value) + `"`
 }
 
 func (s *Service) restoreLegacyJSON(ctx context.Context, dumpPath string) (int, int, []string, error) {

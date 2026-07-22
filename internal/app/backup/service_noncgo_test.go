@@ -62,6 +62,64 @@ func TestMySQLMissingDumpTool(t *testing.T) {
 	}
 }
 
+func TestFullRestoreKeepsDestinationMySQLCredentials(t *testing.T) {
+	targetEnv := filepath.Join(t.TempDir(), "rebecca_env")
+	if err := os.WriteFile(targetEnv, []byte(strings.Join([]string{
+		`REBECCA_DATABASE_FLAVOR="mysql"`,
+		`MYSQL_DATABASE="rebecca"`,
+		`MYSQL_USER="rebecca"`,
+		`MYSQL_PASSWORD="destination-password"`,
+		`MYSQL_ROOT_PASSWORD="destination-root-password"`,
+		`SQLALCHEMY_DATABASE_URL="mysql+pymysql://rebecca:destination-password@127.0.0.1:3306/rebecca"`,
+	}, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	filesDir := t.TempDir()
+	sourceEnv := filepath.Join(filesDir, "rebecca_env")
+	if err := os.WriteFile(sourceEnv, []byte(strings.Join([]string{
+		`PANEL_DOMAIN="source.example.com"`,
+		`MYSQL_PASSWORD="source-password"`,
+		`MYSQL_ROOT_PASSWORD="source-root-password"`,
+		`SQLALCHEMY_DATABASE_URL="mysql+pymysql://rebecca:source-password@127.0.0.1:3306/rebecca"`,
+	}, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	service := NewService(nil, "mysql", "mysql+pymysql://rebecca:destination-password@127.0.0.1:3306/rebecca", WithFileRoots([]FileRoot{
+		{ArchiveName: "rebecca_env", Path: targetEnv},
+	}))
+	if err := service.preserveLocalDatabaseEnv(filesDir); err != nil {
+		t.Fatal(err)
+	}
+
+	content, err := os.ReadFile(sourceEnv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(content)
+	for _, expected := range []string{
+		`PANEL_DOMAIN="source.example.com"`,
+		`MYSQL_PASSWORD="destination-password"`,
+		`MYSQL_ROOT_PASSWORD="destination-root-password"`,
+		`SQLALCHEMY_DATABASE_URL="mysql+pymysql://rebecca:destination-password@127.0.0.1:3306/rebecca"`,
+	} {
+		if !strings.Contains(text, expected) {
+			t.Fatalf("restored env missing %q in %q", expected, text)
+		}
+	}
+	if strings.Contains(text, "source-password") {
+		t.Fatalf("restored env retained source database credentials: %q", text)
+	}
+}
+
+func TestMySQLAccessDeniedBackupError(t *testing.T) {
+	err := mysqlBackupCommandError("restore", "ERROR 1045 (28000): Access denied for user 'rebecca'@'localhost'")
+	if !strings.Contains(err.Error(), "configured database credentials") || !strings.Contains(err.Error(), "MYSQL_PASSWORD") {
+		t.Fatalf("expected actionable credential error, got %v", err)
+	}
+}
+
 func writeBackupArchiveForTest(t *testing.T, archivePath string, files map[string][]byte) {
 	t.Helper()
 	file, err := os.Create(archivePath)
