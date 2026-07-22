@@ -922,7 +922,7 @@ const SystemOverviewCard: FC<{
 								color="red.600"
 								_dark={{ color: "red.400" }}
 							>
-								{t("coreError", "Core Error")}:
+								{t("coreError")}:
 							</Text>
 						</HStack>
 						<Text
@@ -962,7 +962,7 @@ const SystemOverviewCard: FC<{
 								color="orange.600"
 								_dark={{ color: "orange.400" }}
 							>
-								{t("telegramError", "Telegram Error")}:
+								{t("telegramError")}:
 							</Text>
 							<Button
 								size="xs"
@@ -972,7 +972,7 @@ const SystemOverviewCard: FC<{
 									window.location.href = "/settings";
 								}}
 							>
-								{t("goToTelegramSettings", "Go to Telegram Settings")}
+								{t("goToTelegramSettings")}
 							</Button>
 						</HStack>
 						<Text
@@ -1065,7 +1065,7 @@ const UsersOverviewCard: FC<{
 	<ChartBox title={t("usersOverview")}>
 		<Stack spacing={4}>
 			<MetricBadge
-				label={t("totalUsersLabel")}
+				label={t("total")}
 				value={formatNumberValue(data.total_user)}
 				colorScheme="blue"
 			/>
@@ -1107,24 +1107,18 @@ const YourUsageCard: FC<{
 	if (!data) return null;
 	const usageLabel =
 		data.traffic_basis === "created_traffic"
-			? t("dashboard.currentCreatedTraffic", "Current created traffic")
-			: t("dashboard.currentUserUsage", "Current user usage");
+			? t("dashboard.currentCreatedTraffic")
+			: t("dashboard.currentUserUsage");
 	const usageHelper =
 		data.traffic_basis === "created_traffic"
-			? t(
-					"dashboard.currentCreatedTrafficHint",
-					"Traffic counted against your created-traffic limit.",
-				)
-			: t(
-					"dashboard.currentUserUsageHint",
-					"Traffic currently counted against your user data limit.",
-				);
+			? t("dashboard.currentCreatedTrafficHint")
+			: t("dashboard.currentUserUsageHint");
 	return (
 		<ChartBox title={t("yourUsage")}>
 			<Stack spacing={4}>
 				<SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
 					<MetricBadge
-						label={t("totalUsersLabel")}
+						label={t("total")}
 						value={formatNumberValue(data.total_users)}
 						colorScheme="blue"
 					/>

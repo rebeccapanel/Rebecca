@@ -146,7 +146,7 @@ export const ConfirmDialog = ({
 							px={3}
 							fontSize="sm"
 						>
-							{cancelLabel ?? t("cancel", "Cancel")}
+							{cancelLabel ?? t("cancel")}
 						</Button>
 						<Button
 							colorScheme={colorScheme}
@@ -160,7 +160,7 @@ export const ConfirmDialog = ({
 							px={3}
 							fontSize="sm"
 						>
-							{confirmLabel ?? t("confirm", "Confirm")}
+							{confirmLabel ?? t("confirm")}
 						</Button>
 					</AlertDialogFooter>
 				</AlertDialogContent>
@@ -199,7 +199,7 @@ export const DeleteConfirmDialog = ({
 	const confirmMessage =
 		typeof description === "string"
 			? stripHtmlTags(description)
-			: (description ?? t("common.confirmDelete", "Delete this item?"));
+			: (description ?? t("common.confirmDelete"));
 
 	const handleClose = () => {
 		if (busy) return;
@@ -240,10 +240,10 @@ export const DeleteConfirmDialog = ({
 				isOpen={isOpen}
 				onClose={handleClose}
 				onConfirm={handleConfirm}
-				title={t("common.confirmAction", "Confirm action")}
+				title={t("common.confirmAction")}
 				description={confirmMessage}
-				confirmLabel={confirmLabel ?? t("delete", "Delete")}
-				cancelLabel={cancelLabel ?? t("cancel", "Cancel")}
+				confirmLabel={confirmLabel ?? t("delete")}
+				cancelLabel={cancelLabel ?? t("cancel")}
 				colorScheme="red"
 				isLoading={busy}
 				isConfirmDisabled={Boolean(isDisabled)}

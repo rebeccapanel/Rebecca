@@ -239,15 +239,15 @@ const LoginThemeMenu: FC = () => {
 		label: string;
 		icon: ReactElement;
 	}> = [
-		{ key: "dark", label: t("theme.dark", "Dark"), icon: <Moon /> },
-		{ key: "light", label: t("theme.light", "Light"), icon: <Sun /> },
+		{ key: "dark", label: t("theme.dark"), icon: <Moon /> },
+		{ key: "light", label: t("theme.light"), icon: <Sun /> },
 	];
 
 	return (
 		<Menu placement="bottom-end" strategy="fixed" autoSelect={false}>
 			<MenuButton
 				as={IconButton}
-				aria-label={t("theme.title", "Theme")}
+				aria-label={t("header.theme")}
 				icon={activeTheme === "dark" ? <Moon /> : <Sun />}
 				size="sm"
 				variant="ghost"
@@ -440,8 +440,8 @@ export const Login: FC = () => {
 		<IconButton
 			aria-label={
 				showPassword
-					? t("admins.hidePassword", "Hide")
-					: t("admins.showPassword", "Show")
+					? t("admins.hidePassword")
+					: t("admins.showPassword")
 			}
 			color={mutedColor}
 			icon={showPassword ? <EyeSlash /> : <Eye />}
@@ -489,7 +489,7 @@ export const Login: FC = () => {
 								w={10}
 							>
 								<LogoIcon
-									alt={t("appName", "Rebecca")}
+									alt={t("menu")}
 									filter={logoFilter}
 									src={logoUrl}
 								/>
@@ -507,17 +507,17 @@ export const Login: FC = () => {
 					<VStack align="stretch" spacing={1} textAlign="center">
 						<Text color={textColor} fontSize="lg" fontWeight="800">
 							{step === "credentials"
-								? t("login.welcome", "Welcome Back")
+								? t("login.welcome")
 								: step === "otp"
-									? t("login.twoFactorTitle", "Two-factor authentication")
-									: t("login.setupTwoFactorTitle", "Secure your account")}
+									? t("login.twoFactorTitle")
+									: t("login.setupTwoFactorTitle")}
 						</Text>
 						<Text color={mutedColor} fontSize="sm">
 							{step === "credentials"
-								? t("login.welcomeBack", "Enter your credentials to access your account.")
+								? t("login.welcomeBack")
 								: step === "otp"
-									? t("login.twoFactorHint", "Enter the 6-digit code from your authenticator app.")
-									: t("login.setupTwoFactorHint", "Scan the QR code before continuing.")}
+									? t("login.twoFactorHint")
+									: t("login.setupTwoFactorHint")}
 						</Text>
 					</VStack>
 
@@ -581,7 +581,7 @@ export const Login: FC = () => {
 									_hover={{ bg: "var(--rb-panel-accent-hover)" }}
 									_active={{ transform: "translateY(1px)" }}
 								>
-									{t("login", "Login")}
+									{t("login")}
 								</Button>
 							</VStack>
 						</form>
@@ -598,7 +598,7 @@ export const Login: FC = () => {
 									</>
 								)}
 								<FormControl>
-									<FormLabel>{t("login.authenticationCode", "Authentication code")}</FormLabel>
+									<FormLabel>{t("login.authenticationCode")}</FormLabel>
 									<CInput
 										autoComplete="one-time-code"
 										inputMode="numeric"
@@ -623,10 +623,10 @@ export const Login: FC = () => {
 									onClick={step === "otp" ? submitOTP : confirmSetup}
 									w="full"
 								>
-									{t("continue", "Continue")}
+									{t("continue")}
 								</Button>
 								<Button onClick={cancelChallenge} variant="ghost" w="full">
-									{t("back", "Back")}
+									{t("back")}
 								</Button>
 							</VStack>
 						)}

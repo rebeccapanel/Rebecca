@@ -59,7 +59,7 @@ export const BulkActionBar: FC<BulkActionBarProps> = ({
 				<HStack spacing={4}>
 					<Text fontWeight="800" letterSpacing="0" textTransform="uppercase">
 						{selectedLabel ??
-								t("usersTable.selectedCount", "{{count}} selected", {
+								t("usersTable.selectedCount", {
 									count: selectedCount,
 								})}
 					</Text>
@@ -70,7 +70,7 @@ export const BulkActionBar: FC<BulkActionBarProps> = ({
 							color="panel.textMuted"
 							onClick={onClear}
 						>
-							{t("clear", "Clear")}
+							{t("clear")}
 						</Button>
 					)}
 				</HStack>

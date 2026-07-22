@@ -103,7 +103,7 @@ export const OperatorIdentity = ({
 }) => {
 	const { t } = useTranslation();
 	const label =
-		shortName || owner || t("usersTable.operatorUnknown", "Unknown operator");
+		shortName || owner || t("usersTable.operatorUnknown");
 	const brand = findOperatorBrand(shortName, owner);
 	const markSize = compact ? "24px" : "32px";
 	const palette = fallbackPalette(label);

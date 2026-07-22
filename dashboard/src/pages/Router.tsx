@@ -1,4 +1,5 @@
 import { Box, Button, Heading, Text, VStack } from "@chakra-ui/react";
+import { useTranslation } from "react-i18next";
 import {
 	createBrowserRouter,
 	isRouteErrorResponse,
@@ -40,14 +41,14 @@ const routeErrorMessage = (error: unknown) => {
 const RouteErrorPage = () => {
 	const error = useRouteError();
 	const navigate = useNavigate();
+	const { t } = useTranslation();
 
 	return (
 		<Box minH="100vh" bg="gray.950" color="white" px={6} py={10}>
 			<VStack align="start" spacing={4} maxW="720px" mx="auto">
-				<Heading size="lg">Something went wrong</Heading>
+				<Heading size="lg">{t("router.errorTitle")}</Heading>
 				<Text color="gray.300">
-					Rebecca kept your session active. You can retry the page or go back to
-					the dashboard.
+					{t("router.errorDescription")}
 				</Text>
 				<Text
 					bg="whiteAlpha.100"
@@ -64,7 +65,7 @@ const RouteErrorPage = () => {
 					{routeErrorMessage(error)}
 				</Text>
 				<Button colorScheme="blue" onClick={() => navigate("/")}>
-					Back to dashboard
+					{t("router.backToDashboard")}
 				</Button>
 			</VStack>
 		</Box>

@@ -321,7 +321,7 @@ export const InboundFormModal: FC<Props> = ({
 						boxSize={4}
 						color="gray.500"
 						cursor="help"
-						aria-label={t("common.info", "Info")}
+						aria-label={t("myaccount.info")}
 					/>
 				</Tooltip>
 			</HStack>
@@ -529,16 +529,10 @@ export const InboundFormModal: FC<Props> = ({
 			return null;
 		}
 		if (streamSecurity === "tls" && !canEnableTls) {
-			return t(
-				"inbounds.error.tlsUnsupported",
-				"TLS is not supported for the selected protocol/network.",
-			);
+			return t("inbounds.error.tlsUnsupported");
 		}
 		if (streamSecurity === "reality" && !canEnableReality) {
-			return t(
-				"inbounds.error.realityUnsupported",
-				"Reality is not supported for the selected protocol/network.",
-			);
+			return t("inbounds.error.realityUnsupported");
 		}
 		return null;
 	}, [
@@ -891,10 +885,7 @@ export const InboundFormModal: FC<Props> = ({
 		const numeric = Number(portValue);
 		if (Number.isFinite(numeric) && BLOCKED_PORTS.has(numeric)) {
 			setPortWarning(
-				t(
-					"inbounds.portWarningBlocked",
-					"This port is commonly blocked by servers/firewalls. Better to avoid it.",
-				),
+				t("inbounds.portWarningBlocked"),
 			);
 		} else {
 			setPortWarning(null);
@@ -915,7 +906,7 @@ export const InboundFormModal: FC<Props> = ({
 					(inb.tag || "").trim().toLowerCase() === trimmedTag.toLowerCase(),
 			)
 		) {
-			setTagError(t("inbounds.error.tagExists", "Inbound tag already exists"));
+			setTagError(t("inbounds.error.tagExists"));
 		} else {
 			setTagError(null);
 		}
@@ -938,7 +929,7 @@ export const InboundFormModal: FC<Props> = ({
 			})
 		) {
 			setPortError(
-				t("inbounds.error.portExists", "Inbound port already exists"),
+				t("inbounds.error.portExists"),
 			);
 		} else {
 			setPortError(null);
@@ -1025,7 +1016,7 @@ export const InboundFormModal: FC<Props> = ({
 		if (errors.length) {
 			setActiveTab(0);
 			toast({
-				title: t("inbounds.error.invalidConfig", "Inbound config is invalid"),
+				title: t("inbounds.error.invalidConfig"),
 				description: errors[0],
 				status: "error",
 				isClosable: true,
@@ -1051,7 +1042,7 @@ export const InboundFormModal: FC<Props> = ({
 			});
 			toast({
 				status: "success",
-				title: t("inbounds.reality.generateKeys", "Generate key pair"),
+				title: t("inbounds.reality.generateKeys"),
 				description: "Key pair generated successfully using Xray",
 				duration: 2000,
 				isClosable: true,
@@ -1059,10 +1050,7 @@ export const InboundFormModal: FC<Props> = ({
 		} catch (error) {
 			toast({
 				status: "error",
-				title: t(
-					"inbounds.reality.generateError",
-					"Unable to generate key pair",
-				),
+				title: t("inbounds.reality.generateError"),
 				description: error instanceof Error ? error.message : undefined,
 			});
 		}
@@ -1078,7 +1066,7 @@ export const InboundFormModal: FC<Props> = ({
 		if (!sni) {
 			toast({
 				status: "warning",
-				title: t("inbounds.tls.echMissingSni", "SNI is required"),
+				title: t("inbounds.tls.echMissingSni"),
 			});
 			return;
 		}
@@ -1092,14 +1080,14 @@ export const InboundFormModal: FC<Props> = ({
 			});
 			toast({
 				status: "success",
-				title: t("inbounds.tls.echGenerated", "ECH certificate generated"),
+				title: t("inbounds.tls.echGenerated"),
 				duration: 2000,
 				isClosable: true,
 			});
 		} catch (error) {
 			toast({
 				status: "error",
-				title: t("inbounds.tls.echError", "Unable to generate ECH certificate"),
+				title: t("inbounds.tls.echError"),
 				description: error instanceof Error ? error.message : undefined,
 			});
 		}
@@ -1128,20 +1116,14 @@ export const InboundFormModal: FC<Props> = ({
 			});
 			toast({
 				status: "success",
-				title: t(
-					"inbounds.openvpn.generateSelfSignedSuccess",
-					"Self-signed certificates generated",
-				),
+				title: t("inbounds.openvpn.generateSelfSignedSuccess"),
 				duration: 2500,
 				isClosable: true,
 			});
 		} catch (error) {
 			toast({
 				status: "error",
-				title: t(
-					"inbounds.openvpn.generateSelfSignedError",
-					"Unable to generate OpenVPN certificates",
-				),
+				title: t("inbounds.openvpn.generateSelfSignedError"),
 				description: error instanceof Error ? error.message : undefined,
 			});
 		} finally {
@@ -1158,10 +1140,7 @@ export const InboundFormModal: FC<Props> = ({
 		if (names.length === 0) {
 			form.setError("raCertificateNames", {
 				type: "required",
-				message: t(
-					"inbounds.anyconnect.certificateNamesRequired",
-					"Enter at least one domain or IP before generating certificates.",
-				),
+				message: t("inbounds.anyconnect.certificateNamesRequired"),
 			});
 			return;
 		}
@@ -1183,20 +1162,14 @@ export const InboundFormModal: FC<Props> = ({
 			});
 			toast({
 				status: "success",
-				title: t(
-					"inbounds.anyconnect.generateSelfSignedSuccess",
-					"AnyConnect certificates generated",
-				),
+				title: t("inbounds.anyconnect.generateSelfSignedSuccess"),
 				duration: 2500,
 				isClosable: true,
 			});
 		} catch (error) {
 			toast({
 				status: "error",
-				title: t(
-					"inbounds.anyconnect.generateSelfSignedError",
-					"Unable to generate AnyConnect certificates",
-				),
+				title: t("inbounds.anyconnect.generateSelfSignedError"),
 				description: error instanceof Error ? error.message : undefined,
 			});
 		} finally {
@@ -1218,20 +1191,14 @@ export const InboundFormModal: FC<Props> = ({
 			});
 			toast({
 				status: "success",
-				title: t(
-					"inbounds.wireguard.generateKeysSuccess",
-					"WireGuard key pair generated",
-				),
+				title: t("inbounds.wireguard.generateKeysSuccess"),
 				duration: 2500,
 				isClosable: true,
 			});
 		} catch (error) {
 			toast({
 				status: "error",
-				title: t(
-					"inbounds.wireguard.generateKeysError",
-					"Unable to generate WireGuard key pair",
-				),
+				title: t("inbounds.wireguard.generateKeysError"),
 				description: error instanceof Error ? error.message : undefined,
 			});
 		} finally {
@@ -1248,14 +1215,14 @@ export const InboundFormModal: FC<Props> = ({
 			});
 			toast({
 				status: "success",
-				title: t("inbounds.reality.mldsaGenerated", "ML-DSA-65 generated"),
+				title: t("inbounds.reality.mldsaGenerated"),
 				duration: 2000,
 				isClosable: true,
 			});
 		} catch (error) {
 			toast({
 				status: "error",
-				title: t("inbounds.reality.mldsaError", "Unable to generate ML-DSA-65"),
+				title: t("inbounds.reality.mldsaError"),
 				description: error instanceof Error ? error.message : undefined,
 			});
 		}
@@ -1303,7 +1270,7 @@ export const InboundFormModal: FC<Props> = ({
 			});
 			toast({
 				status: "success",
-				title: t("inbounds.reality.generateShortId", "Generate short ID"),
+				title: t("inbounds.reality.generateShortId"),
 				description: "Short ID generated successfully",
 				duration: 2000,
 				isClosable: true,
@@ -1311,10 +1278,7 @@ export const InboundFormModal: FC<Props> = ({
 		} catch (error) {
 			toast({
 				status: "error",
-				title: t(
-					"inbounds.reality.shortIdError",
-					"Unable to generate short ID",
-				),
+				title: t("inbounds.reality.shortIdError"),
 				description: error instanceof Error ? error.message : undefined,
 			});
 		}
@@ -1353,7 +1317,7 @@ export const InboundFormModal: FC<Props> = ({
 			console.error(error);
 			toast({
 				status: "error",
-				title: t("inbounds.vless.getKeysError", "Unable to fetch VLESS keys"),
+				title: t("inbounds.vless.getKeysError"),
 			});
 			return [];
 		} finally {
@@ -1374,10 +1338,7 @@ export const InboundFormModal: FC<Props> = ({
 			if (!match) {
 				toast({
 					status: "warning",
-					title: t(
-						"inbounds.vless.authNotFound",
-						"Authentication block not available",
-					),
+					title: t("inbounds.vless.authNotFound"),
 				});
 				return;
 			}
@@ -1411,10 +1372,7 @@ export const InboundFormModal: FC<Props> = ({
 		if (!label) {
 			toast({
 				status: "info",
-				title: t(
-					"inbounds.vless.selectAuthFirst",
-					"Select an authentication option first",
-				),
+				title: t("inbounds.vless.selectAuthFirst"),
 			});
 			return;
 		}
@@ -1440,7 +1398,7 @@ export const InboundFormModal: FC<Props> = ({
 		currentProtocol === "vless" ? (
 			<Stack className="xray-dialog-section" spacing={3}>
 				<Text fontSize="sm" fontWeight="semibold">
-					{t("inbounds.vless.authentication", "Authentication")}
+					{t("inbounds.vless.authentication")}
 				</Text>
 				<Controller
 					control={control}
@@ -1448,21 +1406,18 @@ export const InboundFormModal: FC<Props> = ({
 					render={({ field }) => (
 						<FormControl>
 							<FormLabel>
-								{t("inbounds.vless.authentication", "Authentication")}
+								{t("inbounds.vless.authentication")}
 							</FormLabel>
 							<SearchableTagSelect
 								value={field.value || ""}
 								options={[
-									{ value: "", label: t("common.none", "None") },
+									{ value: "", label: t("userDialog.flow.none") },
 									...computedVlessAuthOptions.map((option) => ({
 										value: option.value,
 										label: option.label,
 									})),
 								]}
-								placeholder={t(
-									"inbounds.vless.authPlaceholder",
-									"Select authentication",
-								)}
+								placeholder={t("inbounds.vless.authPlaceholder")}
 								onChange={async (selected) => {
 									const value = String(selected);
 									field.onChange(value);
@@ -1475,13 +1430,13 @@ export const InboundFormModal: FC<Props> = ({
 				<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 					<FormControl>
 						<FormLabel>
-							{t("inbounds.vless.decryption", "Decryption")}
+							{t("inbounds.vless.decryption")}
 						</FormLabel>
 						<Input {...register("vlessDecryption")} />
 					</FormControl>
 					<FormControl>
 						<FormLabel>
-							{t("inbounds.vless.encryption", "Encryption")}
+							{t("inbounds.vless.encryption")}
 						</FormLabel>
 						<Input {...register("vlessEncryption")} />
 					</FormControl>
@@ -1493,10 +1448,10 @@ export const InboundFormModal: FC<Props> = ({
 						isLoading={vlessAuthLoading}
 						isDisabled={!vlessSelectedAuth}
 					>
-						{t("inbounds.vless.getKeys", "Get new keys")}
+						{t("inbounds.vless.getKeys")}
 					</Button>
 					<Button size="sm" variant="ghost" onClick={handleClearAuth}>
-						{t("inbounds.vless.clearKeys", "Clear")}
+						{t("clear")}
 					</Button>
 				</HStack>
 			</Stack>
@@ -1517,10 +1472,10 @@ export const InboundFormModal: FC<Props> = ({
 			>
 				<XrayModalHeader>
 					{mode === "create"
-						? t("inbounds.add", "Add inbound")
+						? t("inbounds.add")
 						: mode === "clone"
-							? t("inbounds.cloneTitle", "Clone inbound")
-							: t("inbounds.edit", "Edit inbound")}
+							? t("inbounds.cloneTitle")
+							: t("inbounds.edit")}
 				</XrayModalHeader>
 				<ModalCloseButton />
 				<XrayModalBody>
@@ -1533,21 +1488,21 @@ export const InboundFormModal: FC<Props> = ({
 						<TabList>
 							<Tab>{t("form")}</Tab>
 							<Tab>{t("json")}</Tab>
-							<Tab>{t("inbounds.targets", "Targets")}</Tab>
+							<Tab>{t("inbounds.targets")}</Tab>
 						</TabList>
 						<TabPanels>
 							<TabPanel px={0}>
 								<VStack align="stretch" spacing={6}>
 									<Stack className="xray-dialog-section" spacing={3}>
 										<Text fontSize="sm" fontWeight="semibold">
-											{t("inbounds.basicSettings", "Basic settings")}
+											{t("pages.outbound.basicSettings")}
 										</Text>
 										<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 											<FormControl
 												isRequired
 												isInvalid={!!tagError || !!fieldValidationErrors.tag}
 											>
-												<FormLabel>{t("inbounds.tag", "Tag")}</FormLabel>
+												<FormLabel>{t("inbounds.tag")}</FormLabel>
 												<Input
 													{...register("tag", { required: true })}
 													isDisabled={isEditMode}
@@ -1560,7 +1515,7 @@ export const InboundFormModal: FC<Props> = ({
 											</FormControl>
 											<FormControl>
 												<FormLabel>
-													{t("inbounds.listen", "Listen address")}
+													{t("inbounds.listen")}
 												</FormLabel>
 												<Input placeholder="::" {...register("listen")} />
 											</FormControl>
@@ -1570,7 +1525,7 @@ export const InboundFormModal: FC<Props> = ({
 												isRequired
 												isInvalid={!!portError || !!fieldValidationErrors.port}
 											>
-												<FormLabel>{t("inbounds.port", "Port")}</FormLabel>
+												<FormLabel>{t("port")}</FormLabel>
 												<Input
 													placeholder="443"
 													{...register("port", { required: true })}
@@ -1603,7 +1558,7 @@ export const InboundFormModal: FC<Props> = ({
 															currentProtocol === "ikev2"
 														}
 													>
-														{t("inbounds.randomPort", "Random")}
+														{t("inbounds.randomPort")}
 													</Button>
 												</HStack>
 												{portWarning && (
@@ -1619,7 +1574,7 @@ export const InboundFormModal: FC<Props> = ({
 											</FormControl>
 											<FormControl isRequired>
 												<FormLabel>
-													{t("inbounds.protocol", "Protocol")}
+													{t("protocol")}
 												</FormLabel>
 												<SearchableTagSelect
 													value={currentProtocol}
@@ -1628,7 +1583,7 @@ export const InboundFormModal: FC<Props> = ({
 														value: option,
 														label: option.toUpperCase(),
 													}))}
-													placeholder={t("inbounds.protocol", "Protocol")}
+													placeholder={t("protocol")}
 													onChange={(value) => {
 														const nextProtocol = String(
 															value,
@@ -1779,10 +1734,7 @@ export const InboundFormModal: FC<Props> = ({
 										{currentProtocol === "vmess" && (
 											<FormControl display="flex" alignItems="center">
 												<FormLabel mb={0}>
-													{t(
-														"inbounds.vmess.disableInsecure",
-														"Disable insecure encryption",
-													)}
+													{t("inbounds.vmess.disableInsecure")}
 												</FormLabel>
 												<Switch {...register("disableInsecureEncryption")} />
 											</FormControl>
@@ -1791,7 +1743,7 @@ export const InboundFormModal: FC<Props> = ({
 											<Stack spacing={3}>
 												<FormControl>
 													<FormLabel>
-														{t("inbounds.shadowsocks.password", "Password")}
+														{t("password")}
 													</FormLabel>
 													<Input
 														type="text"
@@ -1802,18 +1754,12 @@ export const InboundFormModal: FC<Props> = ({
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 													<FormControl>
 														<FormLabel>
-															{t(
-																"inbounds.shadowsocks.method",
-																"Encryption method",
-															)}
+															{t("inbounds.shadowsocks.method")}
 														</FormLabel>
 														<SearchableTagSelect
 															value={formValues.shadowsocksMethod || ""}
 															options={shadowsocksMethods}
-															placeholder={t(
-																"inbounds.shadowsocks.method",
-																"Encryption method",
-															)}
+															placeholder={t("inbounds.shadowsocks.method")}
 															onChange={(value) =>
 																form.setValue(
 																	"shadowsocksMethod",
@@ -1828,18 +1774,12 @@ export const InboundFormModal: FC<Props> = ({
 													</FormControl>
 													<FormControl>
 														<FormLabel>
-															{t(
-																"inbounds.shadowsocks.network",
-																"Allowed networks",
-															)}
+															{t("inbounds.shadowsocks.network")}
 														</FormLabel>
 														<SearchableTagSelect
 															value={formValues.shadowsocksNetwork || ""}
 															options={shadowsocksNetworkOptions}
-															placeholder={t(
-																"inbounds.shadowsocks.network",
-																"Allowed networks",
-															)}
+															placeholder={t("inbounds.shadowsocks.network")}
 															onChange={(value) =>
 																form.setValue(
 																	"shadowsocksNetwork",
@@ -1857,7 +1797,7 @@ export const InboundFormModal: FC<Props> = ({
 												</SimpleGrid>
 												<FormControl display="flex" alignItems="center">
 													<FormLabel mb={0}>
-														{t("inbounds.shadowsocks.ivCheck", "IV check")}
+														{t("inbounds.shadowsocks.ivCheck")}
 													</FormLabel>
 													<Switch {...register("shadowsocksIvCheck")} />
 												</FormControl>
@@ -1867,7 +1807,7 @@ export const InboundFormModal: FC<Props> = ({
 											<Stack spacing={3}>
 												<Flex justify="space-between" align="center">
 													<Text fontWeight="medium">
-														{t("inbounds.http.accounts", "HTTP accounts")}
+														{t("inbounds.http.accounts")}
 													</Text>
 													<Button
 														size="xs"
@@ -1875,7 +1815,7 @@ export const InboundFormModal: FC<Props> = ({
 															appendHttpAccount({ user: "", pass: "" })
 														}
 													>
-														{t("inbounds.accounts.add", "Add account")}
+														{t("inbounds.accounts.add")}
 													</Button>
 												</Flex>
 												<Stack spacing={3}>
@@ -1893,7 +1833,7 @@ export const InboundFormModal: FC<Props> = ({
 																mb={3}
 															>
 																<Text fontWeight="semibold">
-																	{t("inbounds.accounts.label", "Account")} #
+																	{t("inbounds.accounts.label")} #
 																	{index + 1}
 																</Text>
 																<Button
@@ -1902,7 +1842,7 @@ export const InboundFormModal: FC<Props> = ({
 																	colorScheme="red"
 																	onClick={() => removeHttpAccount(index)}
 																>
-																	{t("hostsPage.delete", "Delete")}
+																	{t("delete")}
 																</Button>
 															</Flex>
 															<SimpleGrid
@@ -1911,7 +1851,7 @@ export const InboundFormModal: FC<Props> = ({
 															>
 																<FormControl>
 																	<FormLabel>
-																		{t("username", "Username")}
+																		{t("username")}
 																	</FormLabel>
 																	<Input
 																		{...register(
@@ -1921,7 +1861,7 @@ export const InboundFormModal: FC<Props> = ({
 																</FormControl>
 																<FormControl>
 																	<FormLabel>
-																		{t("password", "Password")}
+																		{t("password")}
 																	</FormLabel>
 																	<Input
 																		{...register(
@@ -1934,19 +1874,13 @@ export const InboundFormModal: FC<Props> = ({
 													))}
 													{!httpAccountFields.length && (
 														<Text fontSize="sm" color="gray.500">
-															{t(
-																"inbounds.http.noAccountsHint",
-																"Add at least one username/password pair.",
-															)}
+															{t("inbounds.http.noAccountsHint")}
 														</Text>
 													)}
 												</Stack>
 												<FormControl display="flex" alignItems="center">
 													<FormLabel mb={0}>
-														{t(
-															"inbounds.http.allowTransparent",
-															"Allow transparent proxy",
-														)}
+														{t("inbounds.http.allowTransparent")}
 													</FormLabel>
 													<Switch {...register("httpAllowTransparent")} />
 												</FormControl>
@@ -1956,14 +1890,14 @@ export const InboundFormModal: FC<Props> = ({
 											<Stack spacing={3}>
 												<FormControl display="flex" alignItems="center">
 													<FormLabel mb={0}>
-														{t("inbounds.socks.udp", "Enable UDP")}
+														{t("inbounds.socks.udp")}
 													</FormLabel>
 													<Switch {...register("socksUdpEnabled")} />
 												</FormControl>
 												{socksUdpEnabled && (
 													<FormControl>
 														<FormLabel>
-															{t("inbounds.socks.udpIp", "UDP bind IP")}
+															{t("inbounds.socks.udpIp")}
 														</FormLabel>
 														<Input
 															{...register("socksUdpIp")}
@@ -1973,7 +1907,7 @@ export const InboundFormModal: FC<Props> = ({
 												)}
 												<FormControl display="flex" alignItems="center">
 													<FormLabel mb={0}>
-														{t("inbounds.socks.auth", "Require authentication")}
+														{t("inbounds.socks.auth")}
 													</FormLabel>
 													<Controller
 														control={control}
@@ -1996,7 +1930,7 @@ export const InboundFormModal: FC<Props> = ({
 													<Stack spacing={3}>
 														<Flex justify="space-between" align="center">
 															<Text fontWeight="medium">
-																{t("inbounds.socks.accounts", "SOCKS accounts")}
+																{t("inbounds.socks.accounts")}
 															</Text>
 															<Button
 																size="xs"
@@ -2004,7 +1938,7 @@ export const InboundFormModal: FC<Props> = ({
 																	appendSocksAccount({ user: "", pass: "" })
 																}
 															>
-																{t("inbounds.accounts.add", "Add account")}
+																{t("inbounds.accounts.add")}
 															</Button>
 														</Flex>
 														{socksAccountFields.map((field, index) => (
@@ -2021,7 +1955,7 @@ export const InboundFormModal: FC<Props> = ({
 																	mb={3}
 																>
 																	<Text fontWeight="semibold">
-																		{t("inbounds.accounts.label", "Account")} #
+																		{t("inbounds.accounts.label")} #
 																		{index + 1}
 																	</Text>
 																	<Button
@@ -2030,7 +1964,7 @@ export const InboundFormModal: FC<Props> = ({
 																		colorScheme="red"
 																		onClick={() => removeSocksAccount(index)}
 																	>
-																		{t("hostsPage.delete", "Delete")}
+																		{t("delete")}
 																	</Button>
 																</Flex>
 																<SimpleGrid
@@ -2039,7 +1973,7 @@ export const InboundFormModal: FC<Props> = ({
 																>
 																	<FormControl>
 																		<FormLabel>
-																			{t("username", "Username")}
+																			{t("username")}
 																		</FormLabel>
 																		<Input
 																			{...register(
@@ -2049,7 +1983,7 @@ export const InboundFormModal: FC<Props> = ({
 																	</FormControl>
 																	<FormControl>
 																		<FormLabel>
-																			{t("password", "Password")}
+																			{t("password")}
 																		</FormLabel>
 																		<Input
 																			{...register(
@@ -2062,10 +1996,7 @@ export const InboundFormModal: FC<Props> = ({
 														))}
 														{!socksAccountFields.length && (
 															<Text fontSize="sm" color="gray.500">
-																{t(
-																	"inbounds.socks.noAccountsHint",
-																	"Add at least one account for password mode.",
-																)}
+																{t("inbounds.socks.noAccountsHint")}
 															</Text>
 														)}
 													</Stack>
@@ -2085,10 +2016,7 @@ export const InboundFormModal: FC<Props> = ({
 														<SearchableTagSelect
 															value={formValues.ovTransport || "udp"}
 															options={["udp", "tcp"]}
-															placeholder={t(
-																"inbounds.openvpn.transport",
-																"Transport",
-															)}
+															placeholder={t("inbounds.openvpn.transport")}
 															onChange={(value) =>
 																form.setValue(
 																	"ovTransport",
@@ -2329,10 +2257,7 @@ export const InboundFormModal: FC<Props> = ({
 														onClick={handleGenerateOVSelfSigned}
 														isLoading={ovCertLoading}
 													>
-														{t(
-															"inbounds.openvpn.generateSelfSigned",
-															"Generate self-signed certs",
-														)}
+														{t("inbounds.openvpn.generateSelfSigned")}
 													</Button>
 												</Box>
 												<FormControl
@@ -2577,10 +2502,7 @@ export const InboundFormModal: FC<Props> = ({
 														onClick={handleGenerateWGKeypair}
 														isLoading={wgKeyLoading}
 													>
-														{t(
-															"inbounds.wireguard.generateKeys",
-															"Generate key pair",
-														)}
+														{t("inbounds.wireguard.generateKeys")}
 													</Button>
 												</Box>
 												<FormControl
@@ -2620,14 +2542,8 @@ export const InboundFormModal: FC<Props> = ({
 													<AlertIcon />
 													<AlertDescription fontSize="sm">
 														{currentProtocol === "ikev2"
-															? t(
-																	"inbounds.ikev2.ports",
-																	"IKEv2 uses the node-wide UDP 500 and UDP 4500 ports.",
-																)
-															: t(
-																	"inbounds.anyconnect.ports",
-																	"AnyConnect uses the selected TCP port and the same UDP port for DTLS when enabled.",
-																)}
+															? t("inbounds.ikev2.ports")
+															: t("inbounds.anyconnect.ports")}
 													</AlertDescription>
 												</Alert>
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
@@ -2645,31 +2561,19 @@ export const InboundFormModal: FC<Props> = ({
 																<SearchableTagSelect
 																	value={field.value}
 																	onChange={field.onChange}
-																	placeholder={t(
-																		"inbounds.remoteAccess.authMode",
-																		"Authentication",
-																	)}
+																	placeholder={t("inbounds.remoteAccess.authMode")}
 																	options={[
 																		{
 																			value: "password",
-																			label: t(
-																				"inbounds.remoteAccess.password",
-																				"Username / password",
-																			),
+																			label: t("inbounds.remoteAccess.password"),
 																		},
 																		{
 																			value: "certificate",
-																			label: t(
-																				"inbounds.remoteAccess.certificate",
-																				"Client certificate",
-																			),
+																			label: t("inbounds.remoteAccess.certificate"),
 																		},
 																		{
 																			value: "password+certificate",
-																			label: t(
-																				"inbounds.remoteAccess.passwordCertificate",
-																				"Password + certificate",
-																			),
+																			label: t("inbounds.remoteAccess.passwordCertificate"),
 																		},
 																	]}
 																/>
@@ -2814,10 +2718,7 @@ export const InboundFormModal: FC<Props> = ({
 																onClick={handleGenerateAnyConnectSelfSigned}
 																isLoading={anyConnectCertLoading}
 															>
-																{t(
-																	"inbounds.anyconnect.generateSelfSigned",
-																	"Generate self-signed certificates",
-																)}
+																{t("inbounds.anyconnect.generateSelfSigned")}
 															</Button>
 														</Box>
 													</Stack>
@@ -3032,25 +2933,19 @@ export const InboundFormModal: FC<Props> = ({
 																	<SearchableTagSelect
 																		value={field.value}
 																		onChange={field.onChange}
-																		placeholder={t(
-																			"inbounds.ikev2.fragmentation",
-																			"Fragmentation",
-																		)}
+																		placeholder={t("inbounds.ikev2.fragmentation")}
 																		options={[
 																			{
 																				value: "yes",
-																				label: t("common.enabled", "Enabled"),
+																				label: t("nodes.enabled"),
 																			},
 																			{
 																				value: "accept",
-																				label: t(
-																					"inbounds.ikev2.acceptFragments",
-																					"Accept only",
-																				),
+																				label: t("inbounds.ikev2.acceptFragments"),
 																			},
 																			{
 																				value: "no",
-																				label: t("common.disabled", "Disabled"),
+																				label: t("nodes.disabled"),
 																			},
 																		]}
 																	/>
@@ -3061,10 +2956,7 @@ export const InboundFormModal: FC<Props> = ({
 												) : (
 													<Stack spacing={3}>
 														<Text fontSize="sm" fontWeight="semibold">
-															{t(
-																"inbounds.anyconnect.connection",
-																"Connection",
-															)}
+															{t("inbounds.anyconnect.connection")}
 														</Text>
 														<SimpleGrid
 															columns={{ base: 1, md: 2 }}
@@ -3083,27 +2975,18 @@ export const InboundFormModal: FC<Props> = ({
 																	render={({ field }) => (
 																		<SearchableTagSelect
 																			value={field.value ? "tcp-udp" : "tcp"}
-																			placeholder={t(
-																				"inbounds.anyconnect.transport",
-																				"Transport",
-																			)}
+																			placeholder={t("inbounds.anyconnect.transport")}
 																			onChange={(value) =>
 																				field.onChange(value === "tcp-udp")
 																			}
 																			options={[
 																				{
 																					value: "tcp-udp",
-																					label: t(
-																						"inbounds.anyconnect.tcpUdp",
-																						"TCP + UDP/DTLS",
-																					),
+																					label: t("inbounds.anyconnect.tcpUdp"),
 																				},
 																				{
 																					value: "tcp",
-																					label: t(
-																						"inbounds.anyconnect.tcpOnly",
-																						"TCP only",
-																					),
+																					label: t("inbounds.anyconnect.tcpOnly"),
 																				},
 																			]}
 																		/>
@@ -3166,10 +3049,7 @@ export const InboundFormModal: FC<Props> = ({
 														</FormControl>
 														<Divider />
 														<Text fontSize="sm" fontWeight="semibold">
-															{t(
-																"inbounds.anyconnect.sessions",
-																"Sessions and health",
-															)}
+															{t("inbounds.anyconnect.sessions")}
 														</Text>
 														<SimpleGrid
 															columns={{ base: 1, md: 3 }}
@@ -3327,19 +3207,13 @@ export const InboundFormModal: FC<Props> = ({
 																render={({ field }) => (
 																	<SearchableTagSelect
 																		value={field.value}
-																		placeholder={t(
-																			"inbounds.anyconnect.rekeyMethod",
-																			"Rekey method",
-																		)}
+																		placeholder={t("inbounds.anyconnect.rekeyMethod")}
 																		onChange={field.onChange}
 																		options={[
 																			{ value: "ssl", label: "SSL" },
 																			{
 																				value: "new-tunnel",
-																				label: t(
-																					"inbounds.anyconnect.newTunnel",
-																					"New tunnel",
-																				),
+																				label: t("inbounds.anyconnect.newTunnel"),
 																			},
 																		]}
 																	/>
@@ -3348,10 +3222,7 @@ export const InboundFormModal: FC<Props> = ({
 														</FormControl>
 														<Divider />
 														<Text fontSize="sm" fontWeight="semibold">
-															{t(
-																"inbounds.anyconnect.networking",
-																"Networking and DNS",
-															)}
+															{t("inbounds.anyconnect.networking")}
 														</Text>
 														<FormControl>
 															{ovLabel(
@@ -3492,10 +3363,7 @@ export const InboundFormModal: FC<Props> = ({
 														</SimpleGrid>
 														<Divider />
 														<Text fontSize="sm" fontWeight="semibold">
-															{t(
-																"inbounds.anyconnect.tlsCompatibility",
-																"TLS and compatibility",
-															)}
+															{t("inbounds.anyconnect.tlsCompatibility")}
 														</Text>
 														<SimpleGrid
 															columns={{ base: 1, md: 2 }}
@@ -3666,16 +3534,10 @@ export const InboundFormModal: FC<Props> = ({
 														<AlertIcon />
 														<Box>
 															<AlertTitle fontSize="sm">
-																{t(
-																	"inbounds.l2tp.fixedPortsTitle",
-																	"L2TP/IPsec uses fixed ports",
-																)}
+																{t("inbounds.l2tp.fixedPortsTitle")}
 															</AlertTitle>
 															<AlertDescription fontSize="sm">
-																{t(
-																	"inbounds.l2tp.fixedPortsDescription",
-																	"UDP 500 for IPsec/IKE, UDP 4500 for IPsec NAT-T, and UDP 1701 for L2TP are fixed. Local Xray tunnel port 1702 is used only when Route through Xray is enabled.",
-																)}
+																{t("inbounds.l2tp.fixedPortsDescription")}
 															</AlertDescription>
 														</Box>
 													</Alert>
@@ -3889,28 +3751,25 @@ export const InboundFormModal: FC<Props> = ({
 									{supportsStreamSettings && (
 										<Stack className="xray-dialog-section" spacing={3}>
 											<Text fontSize="sm" fontWeight="semibold">
-												{t("inbounds.streamSettings", "Stream settings")}
+												{t("inbounds.streamSettings")}
 											</Text>
 											{currentProtocol === "hysteria" ? (
 												<Alert status="info" borderRadius="md">
 													<AlertIcon />
 													<AlertDescription fontSize="sm">
-														{t(
-															"inbounds.hysteria.fixedTransport",
-															"Hysteria2 always uses the Hysteria transport with TLS.",
-														)}
+														{t("inbounds.hysteria.fixedTransport")}
 													</AlertDescription>
 												</Alert>
 											) : (
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 													<FormControl>
 														<FormLabel>
-															{t("inbounds.network", "Network")}
+															{t("inbounds.network")}
 														</FormLabel>
 														<SearchableTagSelect
 															value={streamNetwork}
 															options={ALL_NETWORK_OPTIONS}
-															placeholder={t("inbounds.network", "Network")}
+															placeholder={t("inbounds.network")}
 															onChange={(value) =>
 																form.setValue(
 																	"streamNetwork",
@@ -3927,7 +3786,7 @@ export const InboundFormModal: FC<Props> = ({
 													</FormControl>
 													<FormControl>
 														<FormLabel>
-															{t("inbounds.security", "Security")}
+															{t("inbounds.security")}
 														</FormLabel>
 														<Controller
 															control={control}
@@ -3951,10 +3810,7 @@ export const InboundFormModal: FC<Props> = ({
 																						: false,
 																		}),
 																	)}
-																	placeholder={t(
-																		"inbounds.security",
-																		"Security",
-																	)}
+																	placeholder={t("inbounds.security")}
 																	onChange={(value) =>
 																		field.onChange(String(value))
 																	}
@@ -3978,16 +3834,10 @@ export const InboundFormModal: FC<Props> = ({
 													<AlertIcon />
 													<Box>
 														<AlertTitle fontSize="sm">
-															{t(
-																"inbounds.wsDeprecatedTitle",
-																"WebSocket transport is deprecated in Xray",
-															)}
+															{t("inbounds.wsDeprecatedTitle")}
 														</AlertTitle>
 														<AlertDescription fontSize="xs">
-															{t(
-																"inbounds.wsDeprecatedDescription",
-																"Xray recommends migrating WebSocket (ws) configs to XHTTP (H2/H3). Consider using xhttp instead of ws for new inbounds.",
-															)}
+															{t("inbounds.wsDeprecatedDescription")}
 														</AlertDescription>
 													</Box>
 												</Alert>
@@ -4000,7 +3850,7 @@ export const InboundFormModal: FC<Props> = ({
 															isInvalid={!!fieldValidationErrors.wsPath}
 														>
 															<FormLabel>
-																{t("inbounds.ws.path", "WebSocket path")}
+																{t("inbounds.ws.path")}
 															</FormLabel>
 															<Input
 																{...register("wsPath")}
@@ -4014,7 +3864,7 @@ export const InboundFormModal: FC<Props> = ({
 														</FormControl>
 														<FormControl>
 															<FormLabel>
-																{t("inbounds.ws.host", "Host")}
+																{t("inbounds.ws.host")}
 															</FormLabel>
 															<Input
 																{...register("wsHost")}
@@ -4025,7 +3875,7 @@ export const InboundFormModal: FC<Props> = ({
 													<Stack spacing={2}>
 														<Flex justify="space-between" align="center">
 															<Text fontWeight="medium">
-																{t("inbounds.ws.headers", "Custom headers")}
+																{t("inbounds.ws.headers")}
 															</Text>
 															<Button
 																size="xs"
@@ -4033,7 +3883,7 @@ export const InboundFormModal: FC<Props> = ({
 																	appendWsHeader({ name: "", value: "" })
 																}
 															>
-																{t("inbounds.accounts.add", "Add")}
+																{t("inbounds.accounts.add")}
 															</Button>
 														</Flex>
 														{wsHeaderFields.map((field, index) => (
@@ -4047,10 +3897,7 @@ export const InboundFormModal: FC<Props> = ({
 																		{...register(
 																			`wsHeaders.${index}.name` as const,
 																		)}
-																		placeholder={t(
-																			"inbounds.ws.headerName",
-																			"Header name",
-																		)}
+																		placeholder={t("inbounds.ws.headerName")}
 																	/>
 																</FormControl>
 																<FormControl>
@@ -4058,10 +3905,7 @@ export const InboundFormModal: FC<Props> = ({
 																		{...register(
 																			`wsHeaders.${index}.value` as const,
 																		)}
-																		placeholder={t(
-																			"inbounds.ws.headerValue",
-																			"Header value",
-																		)}
+																		placeholder={t("inbounds.ws.headerValue")}
 																	/>
 																</FormControl>
 																<Button
@@ -4070,7 +3914,7 @@ export const InboundFormModal: FC<Props> = ({
 																	colorScheme="red"
 																	onClick={() => removeWsHeader(index)}
 																>
-																	{t("hostsPage.delete", "Delete")}
+																	{t("delete")}
 																</Button>
 															</HStack>
 														))}
@@ -4082,15 +3926,12 @@ export const InboundFormModal: FC<Props> = ({
 												<Stack spacing={3}>
 													<FormControl>
 														<FormLabel>
-															{t("inbounds.tcp.headerType", "TCP header type")}
+															{t("inbounds.tcp.headerType")}
 														</FormLabel>
 														<SearchableTagSelect
 															value={tcpHeaderType}
 															options={["none", "http"]}
-															placeholder={t(
-																"inbounds.tcp.headerType",
-																"TCP header type",
-															)}
+															placeholder={t("inbounds.tcp.headerType")}
 															onChange={(value) =>
 																form.setValue(
 																	"tcpHeaderType",
@@ -4112,7 +3953,7 @@ export const InboundFormModal: FC<Props> = ({
 														>
 															<FormControl>
 																<FormLabel>
-																	{t("inbounds.tcp.host", "HTTP host list")}
+																	{t("inbounds.tcp.host")}
 																</FormLabel>
 																<Textarea
 																	{...register("tcpHttpHosts")}
@@ -4121,7 +3962,7 @@ export const InboundFormModal: FC<Props> = ({
 															</FormControl>
 															<FormControl>
 																<FormLabel>
-																	{t("inbounds.tcp.path", "HTTP path")}
+																	{t("inbounds.tcp.path")}
 																</FormLabel>
 																<Input {...register("tcpHttpPath")} />
 															</FormControl>
@@ -4134,19 +3975,19 @@ export const InboundFormModal: FC<Props> = ({
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 													<FormControl>
 														<FormLabel>
-															{t("inbounds.grpc.serviceName", "Service name")}
+															{t("serviceName")}
 														</FormLabel>
 														<Input {...register("grpcServiceName")} />
 													</FormControl>
 													<FormControl>
 														<FormLabel>
-															{t("inbounds.grpc.authority", "Authority")}
+															{t("inbounds.grpc.authority")}
 														</FormLabel>
 														<Input {...register("grpcAuthority")} />
 													</FormControl>
 													<FormControl display="flex" alignItems="center">
 														<FormLabel mb={0}>
-															{t("inbounds.grpc.multiMode", "Multi mode")}
+															{t("inbounds.grpc.multiMode")}
 														</FormLabel>
 														<Switch {...register("grpcMultiMode")} />
 													</FormControl>
@@ -4157,13 +3998,13 @@ export const InboundFormModal: FC<Props> = ({
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 													<FormControl>
 														<FormLabel>
-															{t("inbounds.kcp.headerType", "mKCP header")}
+															{t("inbounds.kcp.headerType")}
 														</FormLabel>
 														<Input {...register("kcpHeaderType")} />
 													</FormControl>
 													<FormControl>
 														<FormLabel>
-															{t("inbounds.kcp.seed", "mKCP seed")}
+															{t("inbounds.kcp.seed")}
 														</FormLabel>
 														<Input {...register("kcpSeed")} />
 													</FormControl>
@@ -4174,22 +4015,19 @@ export const InboundFormModal: FC<Props> = ({
 												<SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
 													<FormControl>
 														<FormLabel>
-															{t("inbounds.quic.security", "QUIC security")}
+															{t("inbounds.quic.security")}
 														</FormLabel>
 														<Input {...register("quicSecurity")} />
 													</FormControl>
 													<FormControl>
 														<FormLabel>
-															{t("inbounds.quic.key", "QUIC key")}
+															{t("inbounds.quic.key")}
 														</FormLabel>
 														<Input {...register("quicKey")} />
 													</FormControl>
 													<FormControl>
 														<FormLabel>
-															{t(
-																"inbounds.quic.headerType",
-																"QUIC header type",
-															)}
+															{t("inbounds.quic.headerType")}
 														</FormLabel>
 														<Input {...register("quicHeaderType")} />
 													</FormControl>
@@ -4202,7 +4040,7 @@ export const InboundFormModal: FC<Props> = ({
 														isInvalid={!!fieldValidationErrors.httpupgradePath}
 													>
 														<FormLabel>
-															{t("inbounds.httpUpgrade.path", "Path")}
+															{t("inbounds.httpUpgrade.path")}
 														</FormLabel>
 														<Input {...register("httpupgradePath")} />
 														{fieldValidationErrors.httpupgradePath && (
@@ -4213,7 +4051,7 @@ export const InboundFormModal: FC<Props> = ({
 													</FormControl>
 													<FormControl>
 														<FormLabel>
-															{t("inbounds.httpUpgrade.host", "Host")}
+															{t("inbounds.httpUpgrade.host")}
 														</FormLabel>
 														<Input {...register("httpupgradeHost")} />
 													</FormControl>
@@ -4226,7 +4064,7 @@ export const InboundFormModal: FC<Props> = ({
 														isInvalid={!!fieldValidationErrors.splithttpPath}
 													>
 														<FormLabel>
-															{t("inbounds.splitHttp.path", "Path")}
+															{t("inbounds.splitHttp.path")}
 														</FormLabel>
 														<Input {...register("splithttpPath")} />
 														{fieldValidationErrors.splithttpPath && (
@@ -4237,7 +4075,7 @@ export const InboundFormModal: FC<Props> = ({
 													</FormControl>
 													<FormControl>
 														<FormLabel>
-															{t("inbounds.splitHttp.host", "Host")}
+															{t("inbounds.splitHttp.host")}
 														</FormLabel>
 														<Input {...register("splithttpHost")} />
 													</FormControl>
@@ -4249,7 +4087,7 @@ export const InboundFormModal: FC<Props> = ({
 													<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 														<FormControl>
 															<FormLabel>
-																{t("inbounds.xhttp.host", "Host")}
+																{t("hostsPage.host")}
 															</FormLabel>
 															<Input
 																{...register("xhttpHost")}
@@ -4260,7 +4098,7 @@ export const InboundFormModal: FC<Props> = ({
 															isInvalid={!!fieldValidationErrors.xhttpPath}
 														>
 															<FormLabel>
-																{t("inbounds.xhttp.path", "Path")}
+																{t("path")}
 															</FormLabel>
 															<Input
 																{...register("xhttpPath")}
@@ -4276,7 +4114,7 @@ export const InboundFormModal: FC<Props> = ({
 													<Stack spacing={2}>
 														<Flex justify="space-between" align="center">
 															<Text fontWeight="medium">
-																{t("inbounds.xhttp.headers", "Custom headers")}
+																{t("inbounds.ws.headers")}
 															</Text>
 															<Button
 																size="xs"
@@ -4284,7 +4122,7 @@ export const InboundFormModal: FC<Props> = ({
 																	appendXhttpHeader({ name: "", value: "" })
 																}
 															>
-																{t("inbounds.accounts.add", "Add")}
+																{t("inbounds.accounts.add")}
 															</Button>
 														</Flex>
 														{xhttpHeaderFields.map((field, index) => (
@@ -4298,10 +4136,7 @@ export const InboundFormModal: FC<Props> = ({
 																		{...register(
 																			`xhttpHeaders.${index}.name` as const,
 																		)}
-																		placeholder={t(
-																			"inbounds.xhttp.headerName",
-																			"Header name",
-																		)}
+																		placeholder={t("inbounds.ws.headerName")}
 																	/>
 																</FormControl>
 																<FormControl>
@@ -4309,10 +4144,7 @@ export const InboundFormModal: FC<Props> = ({
 																		{...register(
 																			`xhttpHeaders.${index}.value` as const,
 																		)}
-																		placeholder={t(
-																			"inbounds.xhttp.headerValue",
-																			"Header value",
-																		)}
+																		placeholder={t("inbounds.ws.headerValue")}
 																	/>
 																</FormControl>
 																<Button
@@ -4321,7 +4153,7 @@ export const InboundFormModal: FC<Props> = ({
 																	colorScheme="red"
 																	onClick={() => removeXhttpHeader(index)}
 																>
-																	{t("hostsPage.delete", "Delete")}
+																	{t("delete")}
 																</Button>
 															</HStack>
 														))}
@@ -4329,18 +4161,18 @@ export const InboundFormModal: FC<Props> = ({
 													<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 														<FormControl>
 															<FormLabel>
-																{t("inbounds.xhttp.mode", "Mode")}
+																{t("inbounds.xhttp.mode")}
 															</FormLabel>
 															<SearchableTagSelect
 																value={formValues.xhttpMode || ""}
 																options={[
 																	{
 																		value: "",
-																		label: t("common.default", "Default"),
+																		label: t("common.default"),
 																	},
 																	...XHTTP_MODE_OPTIONS,
 																]}
-																placeholder={t("inbounds.xhttp.mode", "Mode")}
+																placeholder={t("inbounds.xhttp.mode")}
 																onChange={(value) =>
 																	form.setValue(
 																		"xhttpMode",
@@ -4361,10 +4193,7 @@ export const InboundFormModal: FC<Props> = ({
 															}
 														>
 															<FormLabel>
-																{t(
-																	"inbounds.xhttp.paddingBytes",
-																	"Padding bytes",
-																)}
+																{t("inbounds.xhttp.paddingBytes")}
 															</FormLabel>
 															<Input
 																{...register("xhttpPaddingBytes")}
@@ -4384,10 +4213,7 @@ export const InboundFormModal: FC<Props> = ({
 														>
 															<FormControl>
 																<FormLabel>
-																	{t(
-																		"inbounds.xhttp.maxBuffered",
-																		"Max buffered upload",
-																	)}
+																	{t("inbounds.xhttp.maxBuffered")}
 																</FormLabel>
 																<Input
 																	{...register("xhttpScMaxBufferedPosts")}
@@ -4396,10 +4222,7 @@ export const InboundFormModal: FC<Props> = ({
 															</FormControl>
 															<FormControl>
 																<FormLabel>
-																	{t(
-																		"inbounds.xhttp.maxUploadBytes",
-																		"Max upload size (bytes)",
-																	)}
+																	{t("inbounds.xhttp.maxUploadBytes")}
 																</FormLabel>
 																<Input
 																	{...register("xhttpScMaxEachPostBytes")}
@@ -4411,10 +4234,7 @@ export const InboundFormModal: FC<Props> = ({
 													{xhttpMode === "stream-up" && (
 														<FormControl>
 															<FormLabel>
-																{t(
-																	"inbounds.xhttp.streamUp",
-																	"Stream-up server seconds",
-																)}
+																{t("inbounds.xhttp.streamUp")}
 															</FormLabel>
 															<Input
 																{...register("xhttpScStreamUpServerSecs")}
@@ -4424,7 +4244,7 @@ export const InboundFormModal: FC<Props> = ({
 													)}
 													<FormControl display="flex" alignItems="center">
 														<FormLabel mb={0}>
-															{t("inbounds.xhttp.noSSE", "Disable SSE header")}
+															{t("inbounds.xhttp.noSSE")}
 														</FormLabel>
 														<Switch {...register("xhttpNoSSEHeader")} />
 													</FormControl>
@@ -4436,10 +4256,7 @@ export const InboundFormModal: FC<Props> = ({
 													<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 														<FormControl>
 															<FormLabel>
-																{t(
-																	"inbounds.hysteria.version",
-																	"Hysteria version",
-																)}
+																{t("inbounds.hysteria.version")}
 															</FormLabel>
 															<Input
 																{...register("hysteriaVersion")}
@@ -4453,10 +4270,7 @@ export const InboundFormModal: FC<Props> = ({
 															}
 														>
 															<FormLabel>
-																{t(
-																	"inbounds.hysteria.udpIdleTimeout",
-																	"UDP idle timeout",
-																)}
+																{t("inbounds.hysteria.udpIdleTimeout")}
 															</FormLabel>
 															<Input
 																{...register("hysteriaUdpIdleTimeout")}
@@ -4472,10 +4286,7 @@ export const InboundFormModal: FC<Props> = ({
 
 													<FormControl display="flex" alignItems="center">
 														<FormLabel mb={0}>
-															{t(
-																"inbounds.hysteria.enableMasquerade",
-																"Enable masquerade",
-															)}
+															{t("inbounds.hysteria.enableMasquerade")}
 														</FormLabel>
 														<Switch
 															{...register("hysteriaMasqueradeEnabled")}
@@ -4496,20 +4307,14 @@ export const InboundFormModal: FC<Props> = ({
 																	}
 																>
 																	<FormLabel>
-																		{t(
-																			"inbounds.hysteria.masqueradeType",
-																			"Masquerade type",
-																		)}
+																		{t("inbounds.hysteria.masqueradeType")}
 																	</FormLabel>
 																	<SearchableTagSelect
 																		value={hysteriaMasqueradeType}
 																		options={[
 																			{
 																				value: "",
-																				label: t(
-																					"inbounds.hysteria.defaultMasquerade",
-																					"default (404 page)",
-																				),
+																				label: t("inbounds.hysteria.defaultMasquerade"),
 																			},
 																			{
 																				value: "proxy",
@@ -4524,10 +4329,7 @@ export const InboundFormModal: FC<Props> = ({
 																				label: "string (fixed body)",
 																			},
 																		]}
-																		placeholder={t(
-																			"inbounds.hysteria.masqueradeType",
-																			"Masquerade type",
-																		)}
+																		placeholder={t("inbounds.hysteria.masqueradeType")}
 																		onChange={(value) =>
 																			form.setValue(
 																				"hysteriaMasqueradeType",
@@ -4552,10 +4354,7 @@ export const InboundFormModal: FC<Props> = ({
 																{hysteriaMasqueradeType === "string" && (
 																	<FormControl>
 																		<FormLabel>
-																			{t(
-																				"inbounds.hysteria.statusCode",
-																				"Status code",
-																			)}
+																			{t("inbounds.hysteria.statusCode")}
 																		</FormLabel>
 																		<Input
 																			{...register(
@@ -4575,10 +4374,7 @@ export const InboundFormModal: FC<Props> = ({
 																		}
 																	>
 																		<FormLabel>
-																			{t(
-																				"inbounds.hysteria.proxyUrl",
-																				"Proxy URL",
-																			)}
+																			{t("settings.telegram.proxyUrl")}
 																		</FormLabel>
 																		<Input
 																			{...register("hysteriaMasqueradeUrl")}
@@ -4603,10 +4399,7 @@ export const InboundFormModal: FC<Props> = ({
 																			w="auto"
 																		>
 																			<FormLabel mb={0}>
-																				{t(
-																					"inbounds.hysteria.rewriteHost",
-																					"Rewrite host",
-																				)}
+																				{t("inbounds.hysteria.rewriteHost")}
 																			</FormLabel>
 																			<Switch
 																				{...register(
@@ -4620,10 +4413,7 @@ export const InboundFormModal: FC<Props> = ({
 																			w="auto"
 																		>
 																			<FormLabel mb={0}>
-																				{t(
-																					"inbounds.hysteria.insecure",
-																					"Insecure upstream",
-																				)}
+																				{t("inbounds.hysteria.insecure")}
 																			</FormLabel>
 																			<Switch
 																				{...register(
@@ -4642,10 +4432,7 @@ export const InboundFormModal: FC<Props> = ({
 																	}
 																>
 																	<FormLabel>
-																		{t(
-																			"inbounds.hysteria.fileDir",
-																			"File directory",
-																		)}
+																		{t("inbounds.hysteria.fileDir")}
 																	</FormLabel>
 																	<Input
 																		{...register("hysteriaMasqueradeDir")}
@@ -4664,10 +4451,7 @@ export const InboundFormModal: FC<Props> = ({
 															{hysteriaMasqueradeType === "string" && (
 																<FormControl>
 																	<FormLabel>
-																		{t(
-																			"inbounds.hysteria.content",
-																			"Response content",
-																		)}
+																		{t("inbounds.hysteria.content")}
 																	</FormLabel>
 																	<Textarea
 																		{...register("hysteriaMasqueradeContent")}
@@ -4679,10 +4463,7 @@ export const InboundFormModal: FC<Props> = ({
 															<Stack spacing={2}>
 																<Flex justify="space-between" align="center">
 																	<Text fontWeight="medium">
-																		{t(
-																			"inbounds.hysteria.headers",
-																			"Masquerade headers",
-																		)}
+																		{t("inbounds.hysteria.headers")}
 																	</Text>
 																	<Button
 																		size="xs"
@@ -4693,7 +4474,7 @@ export const InboundFormModal: FC<Props> = ({
 																			})
 																		}
 																	>
-																		{t("inbounds.accounts.add", "Add")}
+																		{t("inbounds.accounts.add")}
 																	</Button>
 																</Flex>
 																{hysteriaMasqueradeHeaderFields.map(
@@ -4708,10 +4489,7 @@ export const InboundFormModal: FC<Props> = ({
 																					{...register(
 																						`hysteriaMasqueradeHeaders.${index}.name` as const,
 																					)}
-																					placeholder={t(
-																						"inbounds.hysteria.headerName",
-																						"Header name",
-																					)}
+																					placeholder={t("inbounds.ws.headerName")}
 																				/>
 																			</FormControl>
 																			<FormControl>
@@ -4719,10 +4497,7 @@ export const InboundFormModal: FC<Props> = ({
 																					{...register(
 																						`hysteriaMasqueradeHeaders.${index}.value` as const,
 																					)}
-																					placeholder={t(
-																						"inbounds.hysteria.headerValue",
-																						"Header value",
-																					)}
+																					placeholder={t("inbounds.ws.headerValue")}
 																				/>
 																			</FormControl>
 																			<Button
@@ -4733,7 +4508,7 @@ export const InboundFormModal: FC<Props> = ({
 																					removeHysteriaMasqueradeHeader(index)
 																				}
 																			>
-																				{t("hostsPage.delete", "Delete")}
+																				{t("delete")}
 																			</Button>
 																		</HStack>
 																	),
@@ -4750,13 +4525,10 @@ export const InboundFormModal: FC<Props> = ({
 														>
 															<Box>
 																<Text fontSize="sm" fontWeight="semibold">
-																	{t("inbounds.hysteria.udpMasks", "UDP Masks")}
+																	{t("inbounds.hysteria.udpMasks")}
 																</Text>
 																<Text fontSize="xs" color="gray.500">
-																	{t(
-																		"inbounds.hysteria.udpMasksHint",
-																		"Hysteria2 supports Salamander obfuscation. Gecko stores a packet size range on the same Salamander mask.",
-																	)}
+																	{t("inbounds.hysteria.udpMasksHint")}
 																</Text>
 															</Box>
 															<Button
@@ -4770,7 +4542,7 @@ export const InboundFormModal: FC<Props> = ({
 																	)
 																}
 															>
-																{t("inbounds.hysteria.addUdpMask", "Add mask")}
+																{t("inbounds.hysteria.addUdpMask")}
 															</Button>
 														</Flex>
 														{fieldValidationErrors.hysteriaUdpMasks && (
@@ -4780,10 +4552,7 @@ export const InboundFormModal: FC<Props> = ({
 														)}
 														{hysteriaUdpMaskFields.length === 0 && (
 															<Text fontSize="xs" color="gray.500">
-																{t(
-																	"inbounds.hysteria.noUdpMasks",
-																	"No UDP mask will be emitted.",
-																)}
+																{t("inbounds.hysteria.noUdpMasks")}
 															</Text>
 														)}
 														{hysteriaUdpMaskFields.map((field, index) => {
@@ -4801,11 +4570,7 @@ export const InboundFormModal: FC<Props> = ({
 																>
 																	<Flex justify="space-between" align="center">
 																		<Text fontSize="sm" fontWeight="semibold">
-																			{t(
-																				"inbounds.hysteria.udpMaskTitle",
-																				"UDP Mask {{index}}",
-																				{ index: index + 1 },
-																			)}
+																			{t("inbounds.hysteria.udpMaskTitle", { index: index + 1 })}
 																		</Text>
 																		<Button
 																			size="xs"
@@ -4815,7 +4580,7 @@ export const InboundFormModal: FC<Props> = ({
 																				removeHysteriaUdpMask(index)
 																			}
 																		>
-																			{t("hostsPage.delete", "Delete")}
+																			{t("delete")}
 																		</Button>
 																	</Flex>
 																	<SimpleGrid
@@ -4824,10 +4589,7 @@ export const InboundFormModal: FC<Props> = ({
 																	>
 																		<FormControl>
 																			<FormLabel>
-																				{t(
-																					"inbounds.hysteria.maskType",
-																					"Type",
-																				)}
+																				{t("inbounds.fallbacks.type")}
 																			</FormLabel>
 																			<SearchableTagSelect
 																				value="salamander"
@@ -4844,10 +4606,7 @@ export const InboundFormModal: FC<Props> = ({
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t(
-																					"inbounds.hysteria.maskMode",
-																					"Mode",
-																				)}
+																				{t("inbounds.xhttp.mode")}
 																			</FormLabel>
 																			<Controller
 																				control={control}
@@ -4869,10 +4628,7 @@ export const InboundFormModal: FC<Props> = ({
 																								label: "Gecko experimental",
 																							},
 																						]}
-																						placeholder={t(
-																							"inbounds.hysteria.maskMode",
-																							"Mode",
-																						)}
+																						placeholder={t("inbounds.xhttp.mode")}
 																						onChange={(value) =>
 																							modeField.onChange(String(value))
 																						}
@@ -4885,22 +4641,13 @@ export const InboundFormModal: FC<Props> = ({
 																				mt={1}
 																			>
 																				{maskMode === "gecko"
-																					? t(
-																							"inbounds.hysteria.geckoHint",
-																							"Gecko splits packets into random-padded fragments.",
-																						)
-																					: t(
-																							"inbounds.hysteria.salamanderHint",
-																							"Scrambles each packet into random-looking bytes.",
-																						)}
+																					? t("inbounds.hysteria.geckoHint")
+																					: t("inbounds.hysteria.salamanderHint")}
 																			</Text>
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t(
-																					"inbounds.hysteria.maskPassword",
-																					"Password",
-																				)}
+																				{t("password")}
 																			</FormLabel>
 																			<HStack>
 																				<Input
@@ -4910,10 +4657,7 @@ export const InboundFormModal: FC<Props> = ({
 																					placeholder="Obfuscation password"
 																				/>
 																				<IconButton
-																					aria-label={t(
-																						"inbounds.hysteria.generatePassword",
-																						"Generate password",
-																					)}
+																					aria-label={t("inbounds.hysteria.generatePassword")}
 																					icon={
 																						<ArrowPathIcon
 																							width={16}
@@ -4938,10 +4682,7 @@ export const InboundFormModal: FC<Props> = ({
 																		{maskMode === "gecko" && (
 																			<FormControl>
 																				<FormLabel>
-																					{t(
-																						"inbounds.hysteria.packetSize",
-																						"Packet size",
-																					)}
+																					{t("inbounds.hysteria.packetSize")}
 																				</FormLabel>
 																				<Input
 																					{...register(
@@ -4954,10 +4695,7 @@ export const InboundFormModal: FC<Props> = ({
 																					color="gray.500"
 																					mt={1}
 																				>
-																					{t(
-																						"inbounds.hysteria.packetSizeHint",
-																						"Serialized as a string range, for example 512-1200.",
-																					)}
+																					{t("inbounds.hysteria.packetSizeHint")}
 																				</Text>
 																			</FormControl>
 																		)}
@@ -4970,10 +4708,7 @@ export const InboundFormModal: FC<Props> = ({
 													<Stack spacing={3} className="xray-dialog-section">
 														<FormControl display="flex" alignItems="center">
 															<FormLabel mb={0}>
-																{t(
-																	"inbounds.hysteria.quicParams",
-																	"QUIC Params",
-																)}
+																{t("inbounds.hysteria.quicParams")}
 															</FormLabel>
 															<Switch
 																{...register("hysteriaQuicParams.enabled")}
@@ -4992,10 +4727,7 @@ export const InboundFormModal: FC<Props> = ({
 																>
 																	<FormControl>
 																		<FormLabel>
-																			{t(
-																				"inbounds.hysteria.congestion",
-																				"Congestion",
-																			)}
+																			{t("inbounds.hysteria.congestion")}
 																		</FormLabel>
 																		<Controller
 																			control={control}
@@ -5009,10 +4741,7 @@ export const InboundFormModal: FC<Props> = ({
 																						"brutal",
 																						"force-brutal",
 																					]}
-																					placeholder={t(
-																						"inbounds.hysteria.congestion",
-																						"Congestion",
-																					)}
+																					placeholder={t("inbounds.hysteria.congestion")}
 																					onChange={(value) =>
 																						field.onChange(String(value))
 																					}
@@ -5024,10 +4753,7 @@ export const InboundFormModal: FC<Props> = ({
 																		"bbr" && (
 																		<FormControl>
 																			<FormLabel>
-																				{t(
-																					"inbounds.hysteria.bbrProfile",
-																					"BBR Profile",
-																				)}
+																				{t("inbounds.hysteria.bbrProfile")}
 																			</FormLabel>
 																			<Controller
 																				control={control}
@@ -5038,7 +4764,7 @@ export const InboundFormModal: FC<Props> = ({
 																						options={[
 																							{
 																								value: "",
-																								label: t("common.auto", "Auto"),
+																								label: t("common.auto"),
 																							},
 																							"conservative",
 																							"standard",
@@ -5089,7 +4815,7 @@ export const InboundFormModal: FC<Props> = ({
 																		w="auto"
 																	>
 																		<FormLabel mb={0}>
-																			{t("common.debug", "Debug")}
+																			{t("common.debug")}
 																		</FormLabel>
 																		<Switch
 																			{...register("hysteriaQuicParams.debug")}
@@ -5101,7 +4827,7 @@ export const InboundFormModal: FC<Props> = ({
 																		w="auto"
 																	>
 																		<FormLabel mb={0}>
-																			{t("inbounds.hysteria.udpHop", "UDP Hop")}
+																			{t("inbounds.hysteria.udpHop")}
 																		</FormLabel>
 																		<Switch
 																			{...register(
@@ -5118,10 +4844,7 @@ export const InboundFormModal: FC<Props> = ({
 																	>
 																		<FormControl>
 																			<FormLabel>
-																				{t(
-																					"inbounds.hysteria.hopPorts",
-																					"Hop ports",
-																				)}
+																				{t("inbounds.hysteria.hopPorts")}
 																			</FormLabel>
 																			<Input
 																				{...register(
@@ -5132,10 +4855,7 @@ export const InboundFormModal: FC<Props> = ({
 																		</FormControl>
 																		<FormControl>
 																			<FormLabel>
-																				{t(
-																					"inbounds.hysteria.hopInterval",
-																					"Hop interval",
-																				)}
+																				{t("inbounds.hysteria.hopInterval")}
 																			</FormLabel>
 																			<Input
 																				{...register(
@@ -5166,10 +4886,7 @@ export const InboundFormModal: FC<Props> = ({
 																</SimpleGrid>
 																<FormControl display="flex" alignItems="center">
 																	<FormLabel mb={0}>
-																		{t(
-																			"inbounds.hysteria.disablePathMtu",
-																			"Disable path MTU discovery",
-																		)}
+																		{t("inbounds.hysteria.disablePathMtu")}
 																	</FormLabel>
 																	<Switch
 																		{...register(
@@ -5184,7 +4901,7 @@ export const InboundFormModal: FC<Props> = ({
 											)}
 											<FormControl display="flex" alignItems="center">
 												<FormLabel mb={0}>
-													{t("inbounds.sockopt.enable", "Enable sockopt")}
+													{t("inbounds.sockopt.enable")}
 												</FormLabel>
 												<Controller
 													control={control}
@@ -5206,70 +4923,49 @@ export const InboundFormModal: FC<Props> = ({
 													mt={2}
 												>
 													<Text fontSize="sm" fontWeight="semibold">
-														{t("inbounds.sockopt.title", "Sockopt")}
+														{t("hostsDialog.sockopt")}
 													</Text>
 													<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 														{renderSockoptNumberInput(
 															"mark",
-															t("inbounds.sockopt.routeMark", "Route mark"),
+															t("inbounds.sockopt.routeMark"),
 														)}
 														{renderSockoptNumberInput(
 															"tcpKeepAliveInterval",
-															t(
-																"inbounds.sockopt.tcpKeepAliveInterval",
-																"TCP keep alive interval",
-															),
+															t("inbounds.sockopt.tcpKeepAliveInterval"),
 														)}
 														{renderSockoptNumberInput(
 															"tcpKeepAliveIdle",
-															t(
-																"inbounds.sockopt.tcpKeepAliveIdle",
-																"TCP keep alive idle",
-															),
+															t("inbounds.sockopt.tcpKeepAliveIdle"),
 														)}
 														{renderSockoptNumberInput(
 															"tcpMaxSeg",
-															t(
-																"inbounds.sockopt.tcpMaxSeg",
-																"TCP max segment",
-															),
+															t("inbounds.sockopt.tcpMaxSeg"),
 														)}
 														{renderSockoptNumberInput(
 															"tcpUserTimeout",
-															t(
-																"inbounds.sockopt.tcpUserTimeout",
-																"TCP user timeout",
-															),
+															t("inbounds.sockopt.tcpUserTimeout"),
 														)}
 														{renderSockoptNumberInput(
 															"tcpWindowClamp",
-															t(
-																"inbounds.sockopt.tcpWindowClamp",
-																"TCP window clamp",
-															),
+															t("inbounds.sockopt.tcpWindowClamp"),
 														)}
 													</SimpleGrid>
 													<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 														{renderSockoptTextInput(
 															"dialerProxy",
-															t("inbounds.sockopt.dialerProxy", "Dialer proxy"),
+															t("inbounds.sockopt.dialerProxy"),
 															"proxy",
 														)}
 														{renderSockoptTextInput(
 															"interfaceName",
-															t(
-																"inbounds.sockopt.interfaceName",
-																"Interface name",
-															),
+															t("inbounds.sockopt.interfaceName"),
 														)}
 													</SimpleGrid>
 													<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 														<FormControl>
 															<FormLabel>
-																{t(
-																	"inbounds.sockopt.domainStrategy",
-																	"Domain strategy",
-																)}
+																{t("inbounds.sockopt.domainStrategy")}
 															</FormLabel>
 															<Controller
 																control={control}
@@ -5280,14 +4976,11 @@ export const InboundFormModal: FC<Props> = ({
 																		options={[
 																			{
 																				value: "",
-																				label: t("common.none", "None"),
+																				label: t("userDialog.flow.none"),
 																			},
 																			...DOMAIN_STRATEGY_OPTIONS,
 																		]}
-																		placeholder={t(
-																			"inbounds.sockopt.domainStrategy",
-																			"Domain strategy",
-																		)}
+																		placeholder={t("inbounds.sockopt.domainStrategy")}
 																		onChange={(value) =>
 																			field.onChange(String(value))
 																		}
@@ -5297,10 +4990,7 @@ export const InboundFormModal: FC<Props> = ({
 														</FormControl>
 														<FormControl>
 															<FormLabel>
-																{t(
-																	"inbounds.sockopt.tcpCongestion",
-																	"TCP congestion",
-																)}
+																{t("inbounds.sockopt.tcpCongestion")}
 															</FormLabel>
 															<Controller
 																control={control}
@@ -5311,14 +5001,11 @@ export const InboundFormModal: FC<Props> = ({
 																		options={[
 																			{
 																				value: "",
-																				label: t("common.none", "None"),
+																				label: t("userDialog.flow.none"),
 																			},
 																			...TCP_CONGESTION_OPTIONS,
 																		]}
-																		placeholder={t(
-																			"inbounds.sockopt.tcpCongestion",
-																			"TCP congestion",
-																		)}
+																		placeholder={t("inbounds.sockopt.tcpCongestion")}
 																		onChange={(value) =>
 																			field.onChange(String(value))
 																		}
@@ -5328,7 +5015,7 @@ export const InboundFormModal: FC<Props> = ({
 														</FormControl>
 														<FormControl>
 															<FormLabel>
-																{t("inbounds.sockopt.tproxy", "TProxy")}
+																{t("inbounds.sockopt.tproxy")}
 															</FormLabel>
 															<Controller
 																control={control}
@@ -5338,12 +5025,9 @@ export const InboundFormModal: FC<Props> = ({
 																		value={field.value || ""}
 																		options={TPROXY_OPTIONS.map((option) => ({
 																			value: option,
-																			label: option || t("common.none", "None"),
+																			label: option || t("userDialog.flow.none"),
 																		}))}
-																		placeholder={t(
-																			"inbounds.sockopt.tproxy",
-																			"TProxy",
-																		)}
+																		placeholder={t("inbounds.sockopt.tproxy")}
 																		onChange={(value) =>
 																			field.onChange(String(value))
 																		}
@@ -5355,29 +5039,23 @@ export const InboundFormModal: FC<Props> = ({
 													<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 														{renderSockoptSwitch(
 															"acceptProxyProtocol",
-															t(
-																"inbounds.sockopt.acceptProxyProtocol",
-																"Accept proxy protocol",
-															),
+															t("inbounds.sockopt.acceptProxyProtocol"),
 														)}
 														{renderSockoptSwitch(
 															"tcpFastOpen",
-															t(
-																"inbounds.sockopt.tcpFastOpen",
-																"TCP fast open",
-															),
+															t("inbounds.sockopt.tcpFastOpen"),
 														)}
 														{renderSockoptSwitch(
 															"tcpMptcp",
-															t("inbounds.sockopt.tcpMptcp", "Multipath TCP"),
+															t("inbounds.sockopt.tcpMptcp"),
 														)}
 														{renderSockoptSwitch(
 															"penetrate",
-															t("inbounds.sockopt.penetrate", "Penetrate"),
+															t("inbounds.sockopt.penetrate"),
 														)}
 														{renderSockoptSwitch(
 															"V6Only",
-															t("inbounds.sockopt.v6Only", "IPv6 only"),
+															t("inbounds.sockopt.v6Only"),
 														)}
 													</SimpleGrid>
 												</Stack>
@@ -5392,12 +5070,12 @@ export const InboundFormModal: FC<Props> = ({
 									{streamSecurity === "tls" && (
 										<Stack className="xray-dialog-section" spacing={3}>
 											<Text fontSize="sm" fontWeight="semibold">
-												{t("inbounds.tls.title", "TLS settings")}
+												{t("inbounds.tls.title")}
 											</Text>
 											<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 												<FormControl>
 													<FormLabel>
-														{t("inbounds.tls.serverName", "Server name (SNI)")}
+														{t("inbounds.tls.serverName")}
 													</FormLabel>
 													<Input
 														{...register("tlsServerName")}
@@ -5406,18 +5084,15 @@ export const InboundFormModal: FC<Props> = ({
 												</FormControl>
 												<FormControl>
 													<FormLabel>
-														{t("inbounds.tls.cipherSuites", "Cipher suites")}
+														{t("inbounds.tls.cipherSuites")}
 													</FormLabel>
 													<SearchableTagSelect
 														value={formValues.tlsCipherSuites || ""}
 														options={[
-															{ value: "", label: t("common.auto", "Auto") },
+															{ value: "", label: t("common.auto") },
 															...tlsCipherOptions,
 														]}
-														placeholder={t(
-															"inbounds.tls.cipherSuites",
-															"Cipher suites",
-														)}
+														placeholder={t("inbounds.tls.cipherSuites")}
 														onChange={(value) =>
 															form.setValue("tlsCipherSuites", String(value), {
 																shouldDirty: true,
@@ -5430,15 +5105,12 @@ export const InboundFormModal: FC<Props> = ({
 											<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 												<FormControl>
 													<FormLabel>
-														{t("inbounds.tls.minVersion", "Min version")}
+														{t("inbounds.tls.minVersion")}
 													</FormLabel>
 													<SearchableTagSelect
 														value={formValues.tlsMinVersion || ""}
 														options={tlsVersionOptions}
-														placeholder={t(
-															"inbounds.tls.minVersion",
-															"Min version",
-														)}
+														placeholder={t("inbounds.tls.minVersion")}
 														onChange={(value) =>
 															form.setValue("tlsMinVersion", String(value), {
 																shouldDirty: true,
@@ -5449,15 +5121,12 @@ export const InboundFormModal: FC<Props> = ({
 												</FormControl>
 												<FormControl>
 													<FormLabel>
-														{t("inbounds.tls.maxVersion", "Max version")}
+														{t("inbounds.tls.maxVersion")}
 													</FormLabel>
 													<SearchableTagSelect
 														value={formValues.tlsMaxVersion || ""}
 														options={tlsVersionOptions}
-														placeholder={t(
-															"inbounds.tls.maxVersion",
-															"Max version",
-														)}
+														placeholder={t("inbounds.tls.maxVersion")}
 														onChange={(value) =>
 															form.setValue("tlsMaxVersion", String(value), {
 																shouldDirty: true,
@@ -5469,18 +5138,15 @@ export const InboundFormModal: FC<Props> = ({
 											</SimpleGrid>
 											<FormControl>
 												<FormLabel>
-													{t("inbounds.tls.fingerprint", "uTLS fingerprint")}
+													{t("inbounds.tls.fingerprint")}
 												</FormLabel>
 												<SearchableTagSelect
 													value={formValues.tlsFingerprint || ""}
 													options={[
-														{ value: "", label: t("common.none", "None") },
+														{ value: "", label: t("userDialog.flow.none") },
 														...tlsFingerprintOptions,
 													]}
-													placeholder={t(
-														"inbounds.tls.fingerprint",
-														"uTLS fingerprint",
-													)}
+													placeholder={t("inbounds.tls.fingerprint")}
 													onChange={(value) =>
 														form.setValue("tlsFingerprint", String(value), {
 															shouldDirty: true,
@@ -5490,7 +5156,7 @@ export const InboundFormModal: FC<Props> = ({
 												/>
 											</FormControl>
 											<FormControl>
-												<FormLabel>{t("inbounds.tls.alpn", "ALPN")}</FormLabel>
+												<FormLabel>{t("inbounds.tls.alpn")}</FormLabel>
 												<Controller
 													control={control}
 													name="tlsAlpn"
@@ -5499,14 +5165,8 @@ export const InboundFormModal: FC<Props> = ({
 															mode="multiple"
 															value={field.value ?? []}
 															options={tlsAlpnOptions}
-															placeholder={t(
-																"inbounds.tls.selectAlpn",
-																"Select ALPN values",
-															)}
-															searchPlaceholder={t(
-																"inbounds.tls.searchAlpn",
-																"Search ALPN",
-															)}
+															placeholder={t("inbounds.tls.selectAlpn")}
+															searchPlaceholder={t("inbounds.tls.searchAlpn")}
 															onChange={(value) =>
 																field.onChange(
 																	Array.isArray(value)
@@ -5523,44 +5183,32 @@ export const InboundFormModal: FC<Props> = ({
 											<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 												<FormControl display="flex" alignItems="center">
 													<FormLabel mb={0}>
-														{t("inbounds.tls.allowInsecure", "Allow insecure")}
+														{t("inbounds.tls.allowInsecure")}
 													</FormLabel>
 													<Switch {...register("tlsAllowInsecure")} />
 												</FormControl>
 												<FormControl display="flex" alignItems="center">
 													<FormLabel mb={0}>
-														{t(
-															"inbounds.tls.rejectUnknownSni",
-															"Reject unknown SNI",
-														)}
+														{t("inbounds.tls.rejectUnknownSni")}
 													</FormLabel>
 													<Switch {...register("tlsRejectUnknownSni")} />
 												</FormControl>
 												<FormControl display="flex" alignItems="center">
 													<FormLabel mb={0}>
-														{t(
-															"inbounds.tls.disableSystemRoot",
-															"Disable system root",
-														)}
+														{t("inbounds.tls.disableSystemRoot")}
 													</FormLabel>
 													<Switch {...register("tlsDisableSystemRoot")} />
 												</FormControl>
 												<FormControl display="flex" alignItems="center">
 													<FormLabel mb={0}>
-														{t(
-															"inbounds.tls.enableSessionResumption",
-															"Session resumption",
-														)}
+														{t("inbounds.tls.enableSessionResumption")}
 													</FormLabel>
 													<Switch {...register("tlsEnableSessionResumption")} />
 												</FormControl>
 											</SimpleGrid>
 											<FormControl>
 												<FormLabel>
-													{t(
-														"inbounds.tls.verifyPeerCertByName",
-														"Verify peer cert by name",
-													)}
+													{t("inbounds.tls.verifyPeerCertByName")}
 												</FormLabel>
 												<Input {...register("tlsVerifyPeerCertByName")} />
 											</FormControl>
@@ -5568,13 +5216,10 @@ export const InboundFormModal: FC<Props> = ({
 											<Stack spacing={3}>
 												<Flex align="center" justify="space-between">
 													<Box fontWeight="medium">
-														{t("inbounds.tls.certificates", "Certificates")}
+														{t("settings.subscriptions.certificateTitle")}
 													</Box>
 													<Button size="xs" onClick={handleAddTlsCertificate}>
-														{t(
-															"inbounds.tls.addCertificate",
-															"Add certificate",
-														)}
+														{t("inbounds.tls.addCertificate")}
 													</Button>
 												</Flex>
 												{tlsCertificateFields.map((field, index) => {
@@ -5597,7 +5242,7 @@ export const InboundFormModal: FC<Props> = ({
 																mb={3}
 															>
 																<Text fontWeight="semibold">
-																	{t("inbounds.tls.certificate", "Certificate")}{" "}
+																	{t("nodes.certificate")}{" "}
 																	#{index + 1}
 																</Text>
 																{tlsCertificateFields.length > 1 && (
@@ -5607,16 +5252,13 @@ export const InboundFormModal: FC<Props> = ({
 																		colorScheme="red"
 																		onClick={() => removeTlsCertificate(index)}
 																	>
-																		{t("hostsPage.delete", "Delete")}
+																		{t("delete")}
 																	</Button>
 																)}
 															</Flex>
 															<FormControl>
 																<FormLabel>
-																	{t(
-																		"inbounds.tls.certificateSource",
-																		"Certificate source",
-																	)}
+																	{t("inbounds.tls.certificateSource")}
 																</FormLabel>
 																<Controller
 																	control={control}
@@ -5632,16 +5274,10 @@ export const InboundFormModal: FC<Props> = ({
 																		>
 																			<HStack spacing={4}>
 																				<Radio value="file">
-																					{t(
-																						"inbounds.tls.certificatePath",
-																						"Path",
-																					)}
+																					{t("path")}
 																				</Radio>
 																				<Radio value="content">
-																					{t(
-																						"inbounds.tls.certificateContent",
-																						"Content",
-																					)}
+																					{t("inbounds.tls.certificateContent")}
 																				</Radio>
 																			</HStack>
 																		</RadioGroup>
@@ -5655,10 +5291,7 @@ export const InboundFormModal: FC<Props> = ({
 																>
 																	<FormControl>
 																		<FormLabel>
-																			{t(
-																				"inbounds.tls.certFile",
-																				"Certificate file",
-																			)}
+																			{t("inbounds.tls.certFile")}
 																		</FormLabel>
 																		<Input
 																			{...register(
@@ -5668,7 +5301,7 @@ export const InboundFormModal: FC<Props> = ({
 																	</FormControl>
 																	<FormControl>
 																		<FormLabel>
-																			{t("inbounds.tls.keyFile", "Key file")}
+																			{t("inbounds.tls.keyFile")}
 																		</FormLabel>
 																		<Input
 																			{...register(
@@ -5684,7 +5317,7 @@ export const InboundFormModal: FC<Props> = ({
 																>
 																	<FormControl>
 																		<FormLabel>
-																			{t("inbounds.tls.cert", "Certificate")}
+																			{t("nodes.certificate")}
 																		</FormLabel>
 																		<Textarea
 																			rows={3}
@@ -5695,7 +5328,7 @@ export const InboundFormModal: FC<Props> = ({
 																	</FormControl>
 																	<FormControl>
 																		<FormLabel>
-																			{t("inbounds.tls.key", "Key")}
+																			{t("myaccount.apiKeyMasked")}
 																		</FormLabel>
 																		<Textarea
 																			rows={3}
@@ -5712,10 +5345,7 @@ export const InboundFormModal: FC<Props> = ({
 															>
 																<FormControl display="flex" alignItems="center">
 																	<FormLabel mb={0}>
-																		{t(
-																			"inbounds.tls.oneTimeLoading",
-																			"One time loading",
-																		)}
+																		{t("inbounds.tls.oneTimeLoading")}
 																	</FormLabel>
 																	<Switch
 																		{...register(
@@ -5725,15 +5355,12 @@ export const InboundFormModal: FC<Props> = ({
 																</FormControl>
 																<FormControl>
 																	<FormLabel>
-																		{t("inbounds.tls.usage", "Usage option")}
+																		{t("inbounds.tls.usage")}
 																	</FormLabel>
 																	<SearchableTagSelect
 																		value={usage}
 																		options={tlsUsageOptions}
-																		placeholder={t(
-																			"inbounds.tls.usage",
-																			"Usage option",
-																		)}
+																		placeholder={t("inbounds.tls.usage")}
 																		onChange={(value) =>
 																			form.setValue(
 																				`tlsCertificates.${index}.usage` as const,
@@ -5750,10 +5377,7 @@ export const InboundFormModal: FC<Props> = ({
 															{usage === "issue" && (
 																<FormControl display="flex" alignItems="center">
 																	<FormLabel mb={0}>
-																		{t(
-																			"inbounds.tls.buildChain",
-																			"Build chain",
-																		)}
+																		{t("inbounds.tls.buildChain")}
 																	</FormLabel>
 																	<Switch
 																		{...register(
@@ -5770,26 +5394,26 @@ export const InboundFormModal: FC<Props> = ({
 											<Stack spacing={3}>
 												<FormControl>
 													<FormLabel>
-														{t("inbounds.tls.echKey", "ECH key")}
+														{t("inbounds.tls.echKey")}
 													</FormLabel>
 													<Input {...register("tlsEchServerKeys")} />
 												</FormControl>
 												<FormControl>
 													<FormLabel>
-														{t("inbounds.tls.echConfig", "ECH config")}
+														{t("inbounds.tls.echConfig")}
 													</FormLabel>
 													<Input {...register("tlsEchConfigList")} />
 												</FormControl>
 												<HStack spacing={3}>
 													<Button size="xs" onClick={handleGenerateEchCert}>
-														{t("inbounds.tls.echGenerate", "Get new ECH cert")}
+														{t("inbounds.tls.echGenerate")}
 													</Button>
 													<Button
 														size="xs"
 														variant="ghost"
 														onClick={handleClearEchCert}
 													>
-														{t("common.clear", "Clear")}
+														{t("clear")}
 													</Button>
 												</HStack>
 											</Stack>
@@ -5801,17 +5425,17 @@ export const InboundFormModal: FC<Props> = ({
 									{streamSecurity === "reality" && (
 										<Stack className="xray-dialog-section" spacing={3}>
 											<Text fontSize="sm" fontWeight="semibold">
-												{t("inbounds.reality.title", "Reality settings")}
+												{t("inbounds.reality.title")}
 											</Text>
 											<FormControl display="flex" alignItems="center">
 												<FormLabel mb={0}>
-													{t("inbounds.reality.show", "Show")}
+													{t("show")}
 												</FormLabel>
 												<Switch {...register("realityShow")} />
 											</FormControl>
 											<FormControl>
 												<FormLabel>
-													{t("inbounds.reality.xver", "Xver")}
+													{t("inbounds.reality.xver")}
 												</FormLabel>
 												<Controller
 													control={control}
@@ -5827,18 +5451,12 @@ export const InboundFormModal: FC<Props> = ({
 											</FormControl>
 											<FormControl>
 												<FormLabel>
-													{t(
-														"inbounds.reality.fingerprint",
-														"uTLS fingerprint",
-													)}
+													{t("inbounds.tls.fingerprint")}
 												</FormLabel>
 												<SearchableTagSelect
 													value={formValues.realityFingerprint || ""}
 													options={tlsFingerprintOptions}
-													placeholder={t(
-														"inbounds.reality.fingerprint",
-														"uTLS fingerprint",
-													)}
+													placeholder={t("inbounds.tls.fingerprint")}
 													onChange={(value) =>
 														form.setValue("realityFingerprint", String(value), {
 															shouldDirty: true,
@@ -5857,11 +5475,11 @@ export const InboundFormModal: FC<Props> = ({
 												<FormLabel>
 													<HStack spacing={2}>
 														<Text>
-															{t("inbounds.reality.target", "Target")}
+															{t("pages.xray.routeTester.target")}
 														</Text>
-														<Tooltip label={t("common.randomize", "Randomize")}>
+														<Tooltip label={t("common.randomize")}>
 															<IconButton
-																aria-label={t("common.randomize", "Randomize")}
+																aria-label={t("common.randomize")}
 																variant="ghost"
 																size="xs"
 																icon={<ArrowPathIcon width={14} height={14} />}
@@ -5878,10 +5496,7 @@ export const InboundFormModal: FC<Props> = ({
 													fieldValidationErrors.realityTarget) && (
 													<Text fontSize="xs" color="red.500" mt={1}>
 														{fieldValidationErrors.realityTarget ||
-															t(
-																"validation.required",
-																"This field is required",
-															)}
+															t("validation.required")}
 													</Text>
 												)}
 											</FormControl>
@@ -5895,14 +5510,11 @@ export const InboundFormModal: FC<Props> = ({
 												<FormLabel>
 													<HStack spacing={2}>
 														<Text>
-															{t(
-																"inbounds.reality.serverNames",
-																"Server names",
-															)}
+															{t("inbounds.reality.serverNames")}
 														</Text>
-														<Tooltip label={t("common.randomize", "Randomize")}>
+														<Tooltip label={t("common.randomize")}>
 															<IconButton
-																aria-label={t("common.randomize", "Randomize")}
+																aria-label={t("common.randomize")}
 																variant="ghost"
 																size="xs"
 																icon={<ArrowPathIcon width={14} height={14} />}
@@ -5918,28 +5530,19 @@ export const InboundFormModal: FC<Props> = ({
 													placeholder="domain.com"
 												/>
 												<Box fontSize="sm" color="gray.500">
-													{t(
-														"inbounds.serverNamesHint",
-														"Separate entries with commas.",
-													)}
+													{t("inbounds.serverNamesHint")}
 												</Box>
 												{(errors.realityServerNames ||
 													fieldValidationErrors.realityServerNames) && (
 													<Text fontSize="xs" color="red.500" mt={1}>
 														{fieldValidationErrors.realityServerNames ||
-															t(
-																"validation.required",
-																"This field is required",
-															)}
+															t("validation.required")}
 													</Text>
 												)}
 											</FormControl>
 											<FormControl>
 												<FormLabel>
-													{t(
-														"inbounds.reality.maxTimediff",
-														"Max time diff (ms)",
-													)}
+													{t("inbounds.reality.maxTimediff")}
 												</FormLabel>
 												<Controller
 													control={control}
@@ -5956,10 +5559,7 @@ export const InboundFormModal: FC<Props> = ({
 											<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 												<FormControl>
 													<FormLabel>
-														{t(
-															"inbounds.reality.minClientVer",
-															"Min client ver",
-														)}
+														{t("inbounds.reality.minClientVer")}
 													</FormLabel>
 													<Input
 														{...register("realityMinClientVer")}
@@ -5968,10 +5568,7 @@ export const InboundFormModal: FC<Props> = ({
 												</FormControl>
 												<FormControl>
 													<FormLabel>
-														{t(
-															"inbounds.reality.maxClientVer",
-															"Max client ver",
-														)}
+														{t("inbounds.reality.maxClientVer")}
 													</FormLabel>
 													<Input
 														{...register("realityMaxClientVer")}
@@ -5989,11 +5586,11 @@ export const InboundFormModal: FC<Props> = ({
 												<FormLabel>
 													<HStack spacing={2}>
 														<Text>
-															{t("inbounds.reality.shortIds", "Short IDs")}
+															{t("inbounds.reality.shortIds")}
 														</Text>
-														<Tooltip label={t("common.randomize", "Randomize")}>
+														<Tooltip label={t("common.randomize")}>
 															<IconButton
-																aria-label={t("common.randomize", "Randomize")}
+																aria-label={t("common.randomize")}
 																variant="ghost"
 																size="xs"
 																icon={<ArrowPathIcon width={14} height={14} />}
@@ -6010,40 +5607,28 @@ export const InboundFormModal: FC<Props> = ({
 													onClick={handleGenerateShortId}
 													alignSelf="flex-start"
 												>
-													{t(
-														"inbounds.reality.generateShortId",
-														"Generate short ID",
-													)}
+													{t("inbounds.reality.generateShortId")}
 												</Button>
 												<Box fontSize="sm" color="gray.500">
-													{t(
-														"inbounds.shortIdsHint",
-														"Separate entries with commas.",
-													)}
+													{t("inbounds.shortIdsHint")}
 												</Box>
 												{(errors.realityShortIds ||
 													fieldValidationErrors.realityShortIds) && (
 													<Text fontSize="xs" color="red.500" mt={1}>
 														{fieldValidationErrors.realityShortIds ||
-															t(
-																"validation.required",
-																"This field is required",
-															)}
+															t("validation.required")}
 													</Text>
 												)}
 											</FormControl>
 											<FormControl>
 												<FormLabel>
-													{t("inbounds.reality.spiderX", "SpiderX")}
+													{t("inbounds.reality.spiderX")}
 												</FormLabel>
 												<Input {...register("realitySpiderX")} />
 											</FormControl>
 											<FormControl>
 												<FormLabel>
-													{t(
-														"inbounds.reality.publicKey",
-														"Reality public key",
-													)}
+													{t("inbounds.reality.publicKey")}
 												</FormLabel>
 												<Input {...register("realityPublicKey")} />
 											</FormControl>
@@ -6055,10 +5640,7 @@ export const InboundFormModal: FC<Props> = ({
 												)}
 											>
 												<FormLabel>
-													{t(
-														"inbounds.reality.privateKey",
-														"Reality private key",
-													)}
+													{t("inbounds.reality.privateKey")}
 												</FormLabel>
 												<Input
 													{...register("realityPrivateKey", { required: true })}
@@ -6067,10 +5649,7 @@ export const InboundFormModal: FC<Props> = ({
 													fieldValidationErrors.realityPrivateKey) && (
 													<Text fontSize="xs" color="red.500" mt={1}>
 														{fieldValidationErrors.realityPrivateKey ||
-															t(
-																"validation.required",
-																"This field is required",
-															)}
+															t("validation.required")}
 													</Text>
 												)}
 											</FormControl>
@@ -6079,44 +5658,38 @@ export const InboundFormModal: FC<Props> = ({
 													size="xs"
 													onClick={handleGenerateRealityKeypair}
 												>
-													{t("inbounds.reality.generateKeys", "Get new cert")}
+													{t("inbounds.reality.generateKeys")}
 												</Button>
 												<Button
 													size="xs"
 													variant="ghost"
 													onClick={handleClearRealityKeypair}
 												>
-													{t("common.clear", "Clear")}
+													{t("clear")}
 												</Button>
 											</HStack>
 											<FormControl>
 												<FormLabel>
-													{t("inbounds.reality.mldsa65Seed", "ML-DSA-65 seed")}
+													{t("inbounds.reality.mldsa65Seed")}
 												</FormLabel>
 												<Input {...register("realityMldsa65Seed")} />
 											</FormControl>
 											<FormControl>
 												<FormLabel>
-													{t(
-														"inbounds.reality.mldsa65Verify",
-														"ML-DSA-65 verify",
-													)}
+													{t("inbounds.reality.mldsa65Verify")}
 												</FormLabel>
 												<Input {...register("realityMldsa65Verify")} />
 											</FormControl>
 											<HStack spacing={3}>
 												<Button size="xs" onClick={handleGenerateMldsa65}>
-													{t(
-														"inbounds.reality.mldsa65Generate",
-														"Get new seed",
-													)}
+													{t("inbounds.reality.mldsa65Generate")}
 												</Button>
 												<Button
 													size="xs"
 													variant="ghost"
 													onClick={handleClearMldsa65}
 												>
-													{t("common.clear", "Clear")}
+													{t("clear")}
 												</Button>
 											</HStack>
 										</Stack>
@@ -6128,18 +5701,15 @@ export const InboundFormModal: FC<Props> = ({
 										<Stack className="xray-dialog-section" spacing={3}>
 											<Flex align="center" justify="space-between">
 												<Box fontWeight="medium">
-													{t("inbounds.fallbacks", "Fallbacks")}
+													{t("inbounds.fallbacks")}
 												</Box>
 												<Button size="xs" onClick={handleAddFallback}>
-													{t("inbounds.fallbacks.add", "Add fallback")}
+													{t("inbounds.fallbacks.add")}
 												</Button>
 											</Flex>
 											{fallbackFields.length === 0 ? (
 												<Text fontSize="sm" color="gray.500">
-													{t(
-														"inbounds.fallbacks.empty",
-														"No fallbacks configured yet.",
-													)}
+													{t("inbounds.fallbacks.empty")}
 												</Text>
 											) : (
 												fallbackFields.map((field, index) => (
@@ -6152,7 +5722,7 @@ export const InboundFormModal: FC<Props> = ({
 													>
 														<Flex justify="space-between" align="center" mb={3}>
 															<Text fontWeight="semibold">
-																{t("inbounds.fallbacks.type", "Fallback")} #
+																{t("inbounds.fallbacks.type")} #
 																{index + 1}
 															</Text>
 															<Button
@@ -6161,7 +5731,7 @@ export const InboundFormModal: FC<Props> = ({
 																colorScheme="red"
 																onClick={() => removeFallback(index)}
 															>
-																{t("hostsPage.delete", "Delete")}
+																{t("delete")}
 															</Button>
 														</Flex>
 														<SimpleGrid
@@ -6170,10 +5740,7 @@ export const InboundFormModal: FC<Props> = ({
 														>
 															<FormControl>
 																<FormLabel>
-																	{t(
-																		"inbounds.fallbacks.dest",
-																		"Destination (host:port)",
-																	)}
+																	{t("inbounds.fallbacks.dest")}
 																</FormLabel>
 																<Input
 																	placeholder="example.com:443"
@@ -6184,7 +5751,7 @@ export const InboundFormModal: FC<Props> = ({
 															</FormControl>
 															<FormControl>
 																<FormLabel>
-																	{t("inbounds.fallbacks.path", "Path")}
+																	{t("path")}
 																</FormLabel>
 																<Input
 																	{...register(
@@ -6195,7 +5762,7 @@ export const InboundFormModal: FC<Props> = ({
 															</FormControl>
 															<FormControl>
 																<FormLabel>
-																	{t("inbounds.fallbacks.type", "Type")}
+																	{t("inbounds.fallbacks.type")}
 																</FormLabel>
 																<Input
 																	{...register(
@@ -6206,7 +5773,7 @@ export const InboundFormModal: FC<Props> = ({
 															</FormControl>
 															<FormControl>
 																<FormLabel>
-																	{t("inbounds.fallbacks.alpn", "ALPN")}
+																	{t("inbounds.fallbacks.alpn")}
 																</FormLabel>
 																<Input
 																	{...register(
@@ -6241,13 +5808,10 @@ export const InboundFormModal: FC<Props> = ({
 												<Flex align="center" justify="space-between">
 													<HStack spacing={2}>
 														<Box fontWeight="medium">
-															{t("inbounds.sniffing", "Sniffing")}
+															{t("inbounds.sniffing")}
 														</Box>
 														<Tooltip
-															label={t(
-																"inbounds.sniffingHint",
-																"It is recommended to keep the default.",
-															)}
+															label={t("inbounds.sniffingHint")}
 														>
 															<QuestionMarkCircleIcon width={16} height={16} />
 														</Tooltip>
@@ -6258,10 +5822,7 @@ export const InboundFormModal: FC<Props> = ({
 													<Stack spacing={3}>
 														<FormControl>
 															<FormLabel>
-																{t(
-																	"inbounds.sniffingDestinations",
-																	"Protocols to sniff",
-																)}
+																{t("inbounds.sniffingDestinations")}
 															</FormLabel>
 															<Controller
 																control={control}
@@ -6287,16 +5848,13 @@ export const InboundFormModal: FC<Props> = ({
 														</FormControl>
 														<FormControl display="flex" alignItems="center">
 															<FormLabel mb={0}>
-																{t("inbounds.sniffingRouteOnly", "Route only")}
+																{t("inbounds.sniffingRouteOnly")}
 															</FormLabel>
 															<Switch {...register("sniffingRouteOnly")} />
 														</FormControl>
 														<FormControl display="flex" alignItems="center">
 															<FormLabel mb={0}>
-																{t(
-																	"inbounds.sniffingMetadataOnly",
-																	"Metadata only",
-																)}
+																{t("inbounds.sniffingMetadataOnly")}
 															</FormLabel>
 															<Switch {...register("sniffingMetadataOnly")} />
 														</FormControl>
@@ -6330,7 +5888,7 @@ export const InboundFormModal: FC<Props> = ({
 									rules={{
 										validate: (value) =>
 											Boolean(value?.length) ||
-											t("inbounds.error.targetsRequired", "Select a target"),
+											t("inbounds.error.targetsRequired"),
 									}}
 									render={({ field }) => (
 										<CheckboxGroup
@@ -6377,10 +5935,7 @@ export const InboundFormModal: FC<Props> = ({
 					{isEditMode && onDelete && (
 						<HStack spacing={3}>
 							<DeleteConfirmDialog
-								description={t(
-									"inbounds.confirmDelete",
-									"Are you sure you want to delete this inbound?",
-								)}
+								description={t("inbounds.confirmDelete")}
 								isLoading={isDeleting}
 								isDisabled={isSubmitting}
 								onConfirm={onDelete}
@@ -6390,7 +5945,7 @@ export const InboundFormModal: FC<Props> = ({
 									colorScheme="red"
 									isDisabled={isSubmitting}
 								>
-									{t("common.delete", "Delete")}
+									{t("delete")}
 								</Button>
 							</DeleteConfirmDialog>
 							{onClone && (
@@ -6399,7 +5954,7 @@ export const InboundFormModal: FC<Props> = ({
 									onClick={onClone}
 									isDisabled={isSubmitting}
 								>
-									{t("inbounds.clone", "Clone")}
+									{t("hostsPage.clone")}
 								</Button>
 							)}
 						</HStack>
@@ -6408,7 +5963,7 @@ export const InboundFormModal: FC<Props> = ({
 						{isEditMode ? (
 							<>
 								<Button variant="ghost" onClick={onClose}>
-									{t("hostsPage.cancel", "Cancel")}
+									{t("hostsPage.cancel")}
 								</Button>
 								<Button
 									colorScheme="primary"
@@ -6416,13 +5971,13 @@ export const InboundFormModal: FC<Props> = ({
 									isDisabled={hasBlockingErrorsWithJson}
 									onClick={handleSubmit(submitForm)}
 								>
-									{t("common.save", "Save")}
+									{t("save")}
 								</Button>
 							</>
 						) : (
 							<>
 								<Button variant="ghost" onClick={onClose}>
-									{t("hostsPage.cancel", "Cancel")}
+									{t("hostsPage.cancel")}
 								</Button>
 								<Button
 									colorScheme="primary"
@@ -6431,8 +5986,8 @@ export const InboundFormModal: FC<Props> = ({
 									onClick={handleSubmit(submitForm)}
 								>
 									{isCloneMode
-										? t("inbounds.cloneSubmit", "Create clone")
-										: t("common.create", "Create")}
+										? t("inbounds.cloneSubmit")
+										: t("create")}
 								</Button>
 							</>
 						)}

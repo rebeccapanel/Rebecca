@@ -251,7 +251,7 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 				void copyTextToClipboard(text).then(() => {
 					toast({
 						status: "success",
-						title: t("jsonEditor.copied", "Copied"),
+						title: t("copied"),
 						duration: 1400,
 						isClosable: true,
 					});
@@ -261,16 +261,12 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 
 		const validationLabel = useMemo(() => {
 			if (validation.valid) {
-				return t("jsonEditor.valid", "Valid JSON");
+				return t("jsonEditor.valid");
 			}
 			if (validation.line && validation.column) {
-				return t("jsonEditor.invalidAt", {
-					defaultValue: "Invalid JSON at line {{line}}, column {{column}}",
-					line: validation.line,
-					column: validation.column,
-				});
+				return t("jsonEditor.invalidAt", { line: validation.line, column: validation.column });
 			}
-			return t("jsonEditor.invalid", "Invalid JSON");
+			return t("jsonEditor.invalid");
 		}, [t, validation]);
 
 		// biome-ignore lint/correctness/useExhaustiveDependencies: create editor once
@@ -593,13 +589,13 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 								</Badge>
 							</Tooltip>
 							<Button flexShrink={0} size="xs" variant="outline" onClick={formatJson}>
-								{t("jsonEditor.format", "Format")}
+								{t("jsonEditor.format")}
 							</Button>
 							<Button flexShrink={0} size="xs" variant="outline" onClick={compactJson}>
-								{t("jsonEditor.compact", "Compact")}
+								{t("jsonEditor.compact")}
 							</Button>
 							<Button flexShrink={0} size="xs" variant="ghost" onClick={copyJson}>
-								{t("jsonEditor.copy", "Copy")}
+								{t("copy")}
 							</Button>
 							{toolbarActions}
 						</HStack>

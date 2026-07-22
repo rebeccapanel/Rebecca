@@ -333,14 +333,11 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
 			<VStack spacing={4} align="stretch">
 				{showTitle && (
 					<Text as="h1" fontWeight="semibold" fontSize="2xl">
-						{t("xrayLogs.title", "Xray logs")}
+						{t("xrayLogs.title")}
 					</Text>
 				)}
 				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-					{t(
-						"xrayLogs.noPermission",
-						"You do not have permission to view Xray logs.",
-					)}
+					{t("xrayLogs.noPermission")}
 				</Text>
 			</VStack>
 		);
@@ -361,24 +358,21 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
 						{t("header.xrayLogs")}
 					</Text>
 					<Text color="panel.textSecondary" fontSize="sm" mt={1}>
-						{t(
-							"xrayLogs.subtitle",
-							"Inspect live Xray logs from a selected node and narrow them by inbound or text.",
-						)}
+						{t("xrayLogs.subtitle")}
 					</Text>
 				</Box>
 			)}
 			<ResourceListCard
-				title={t("xrayLogs.stream", "Log stream")}
+				title={t("xrayLogs.stream")}
 				summaryItems={[
-					{ label: t("total", "Total"), value: logs.length },
+					{ label: t("total"), value: logs.length },
 					{
-						label: t("xrayLogs.visible", "Visible"),
+						label: t("xrayLogs.visible"),
 						value: filteredLogs.length,
 						colorScheme: searchFilter || selectedInbound ? "blue" : "gray",
 					},
 					{
-						label: t("xrayLogs.socket", "Socket"),
+						label: t("xrayLogs.socket"),
 						value: socketStatusLabel,
 						colorScheme: socketColorScheme,
 					},
@@ -391,8 +385,8 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
 							variant="subtle"
 						>
 							{autoScroll
-								? t("core.autoScrollOn", "Auto-scroll: On")
-								: t("core.autoScrollOff", "Auto-scroll: Off")}
+								? t("core.autoScrollOn")
+								: t("core.autoScrollOff")}
 						</Tag>
 						<Button
 							size="sm"
@@ -402,7 +396,7 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
 							isDisabled={logs.length === 0}
 							onClick={() => setLogs([])}
 						>
-							{t("clear", "Clear")}
+							{t("clear")}
 						</Button>
 					</HStack>
 				}
@@ -426,7 +420,7 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
 								</option>
 							))
 						) : (
-							<option value="">{t("nodes.noNodes", "No nodes")}</option>
+							<option value="">{t("nodes.noNodes")}</option>
 						)}
 					</CompactLogSelect>
 					<CompactLogSelect
@@ -435,7 +429,7 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
 						value={selectedInbound}
 						isDisabled={inboundsLoading || inbounds.length === 0}
 					>
-						<option value="">{t("xrayLogs.allInbounds", "All Inbounds")}</option>
+						<option value="">{t("xrayLogs.allInbounds")}</option>
 						{inbounds.map((inbound) => (
 							<option key={inbound.tag} value={inbound.tag}>
 								{inbound.tag} ({inbound.protocol})
@@ -456,17 +450,14 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
 							borderRadius="4px"
 							borderColor="panel.border"
 							bg="panel.input"
-							placeholder={t(
-								"xrayLogs.searchPlaceholder",
-								"Search logs (UUID, username, email, inbound tag...)",
-							)}
+							placeholder={t("xrayLogs.searchPlaceholder")}
 							value={searchFilter}
 							onChange={(e) => setSearchFilter(e.target.value)}
 						/>
 						{(searchFilter || selectedInbound) && (
 							<InputRightElement h="36px">
 								<IconButton
-									aria-label={t("clear", "Clear")}
+									aria-label={t("clear")}
 									size="xs"
 									variant="ghost"
 									onClick={() => {
@@ -497,11 +488,8 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
 					{filteredLogs.length === 0 ? (
 						<Box textAlign="center" py={8} color={badgeColor} fontSize="sm">
 							{searchFilter
-								? t(
-										"xrayLogs.noMatchingLogs",
-										"No logs match your search filter",
-									)
-								: t("xrayLogs.noLogs", "No logs available")}
+								? t("xrayLogs.noMatchingLogs")
+								: t("xrayLogs.noLogs")}
 						</Box>
 					) : (
 						logEntries.map(({ message, key }) => {

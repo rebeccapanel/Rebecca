@@ -147,14 +147,10 @@ const Results = ({ results }: { results: BatchResult[] }) => {
 			<HStack justify="space-between" align="flex-start" mb={3}>
 				<Box>
 					<Text fontWeight="semibold">
-						{t("bulkActions.results.title", "Operation results")}
+						{t("bulkActions.results.title")}
 					</Text>
 					<Text color="panel.textSecondary" fontSize="sm">
-						{t("bulkActions.results.summary", {
-							success: succeeded,
-							failed: results.length - succeeded,
-							defaultValue: "{{success}} completed, {{failed}} failed",
-						})}
+						{t("bulkActions.results.summary", { success: succeeded, failed: results.length - succeeded })}
 					</Text>
 				</Box>
 				<Badge colorScheme={succeeded === results.length ? "green" : "orange"}>
@@ -290,12 +286,8 @@ const BulkCreatePanel = () => {
 		void refetchUsers(true);
 		const succeeded = batchResults.filter((result) => result.ok).length;
 		toast({
-			title: t("bulkActions.create.completed", "Bulk creation completed"),
-			description: t("bulkActions.results.summary", {
-				success: succeeded,
-				failed: batchResults.length - succeeded,
-				defaultValue: "{{success}} completed, {{failed}} failed",
-			}),
+			title: t("bulkActions.create.completed"),
+			description: t("bulkActions.results.summary", { success: succeeded, failed: batchResults.length - succeeded }),
 			status: succeeded === batchResults.length ? "success" : "warning",
 			isClosable: true,
 		});
@@ -307,13 +299,10 @@ const BulkCreatePanel = () => {
 				<Stack spacing={5}>
 					<Box>
 						<Text fontWeight="semibold">
-							{t("bulkActions.create.usernames", "Usernames")}
+							{t("bulkActions.create.usernames")}
 						</Text>
 						<Text color="panel.textSecondary" fontSize="sm" mt={1}>
-							{t(
-								"bulkActions.create.usernamesHelp",
-								"Generate a numbered sequence or enter exact usernames. Duplicates are removed before submission.",
-							)}
+							{t("bulkActions.create.usernamesHelp")}
 						</Text>
 					</Box>
 					<PageTabs
@@ -321,13 +310,13 @@ const BulkCreatePanel = () => {
 						tabs={[
 							{
 								value: "sequence",
-								label: t("bulkActions.create.sequence", "Numbered sequence"),
+								label: t("bulkActions.create.sequence"),
 								isActive: mode === "sequence",
 								onClick: () => setMode("sequence"),
 							},
 							{
 								value: "list",
-								label: t("bulkActions.create.list", "Username list"),
+								label: t("bulkActions.create.list"),
 								isActive: mode === "list",
 								onClick: () => setMode("list"),
 							},
@@ -341,7 +330,7 @@ const BulkCreatePanel = () => {
 							<GridItem colSpan={{ base: 1, md: 2 }}>
 								<FormControl>
 									<FormLabel>
-										{t("bulkActions.create.prefix", "Prefix")}
+										{t("bulkActions.create.prefix")}
 									</FormLabel>
 									<Input
 										value={prefix}
@@ -352,7 +341,7 @@ const BulkCreatePanel = () => {
 							<GridItem colSpan={{ base: 1, md: 2 }}>
 								<FormControl>
 									<FormLabel>
-										{t("bulkActions.create.suffix", "Suffix")}
+										{t("bulkActions.create.suffix")}
 									</FormLabel>
 									<Input
 										value={suffix}
@@ -363,7 +352,7 @@ const BulkCreatePanel = () => {
 							<GridItem colSpan={{ base: 1, md: 2 }}>
 								<FormControl>
 									<FormLabel>
-										{t("bulkActions.create.start", "Starts at")}
+										{t("bulkActions.create.start")}
 									</FormLabel>
 									<Input
 										type="number"
@@ -376,7 +365,7 @@ const BulkCreatePanel = () => {
 							<GridItem colSpan={{ base: 1, md: 2 }}>
 								<FormControl>
 									<FormLabel>
-										{t("bulkActions.create.count", "Count")}
+										{t("bulkActions.create.count")}
 									</FormLabel>
 									<Input
 										type="number"
@@ -390,7 +379,7 @@ const BulkCreatePanel = () => {
 							<GridItem colSpan={{ base: 1, md: 2 }}>
 								<FormControl>
 									<FormLabel>
-										{t("bulkActions.create.padding", "Number width")}
+										{t("bulkActions.create.padding")}
 									</FormLabel>
 									<Input
 										type="number"
@@ -405,23 +394,17 @@ const BulkCreatePanel = () => {
 					) : (
 						<FormControl>
 							<FormLabel>
-								{t("bulkActions.create.listLabel", "Usernames")}
+								{t("bulkActions.create.listLabel")}
 							</FormLabel>
 							<Textarea
 								value={list}
 								onChange={(event) => setList(event.target.value)}
-								placeholder={t(
-									"bulkActions.create.listPlaceholder",
-									"alice\nbob\ncustomer-003",
-								)}
+								placeholder={t("bulkActions.create.listPlaceholder")}
 								rows={7}
 								fontFamily="mono"
 							/>
 							<FormHelperText>
-								{t(
-									"bulkActions.create.listHelp",
-									"Use one username per line or separate names with commas. Maximum 500 users per run.",
-								)}
+								{t("bulkActions.create.listHelp")}
 							</FormHelperText>
 						</FormControl>
 					)}
@@ -432,19 +415,16 @@ const BulkCreatePanel = () => {
 				<Stack spacing={4}>
 					<Box>
 						<Text fontWeight="semibold">
-							{t("bulkActions.create.defaults", "Shared user settings")}
+							{t("bulkActions.create.defaults")}
 						</Text>
 						<Text color="panel.textSecondary" fontSize="sm" mt={1}>
-							{t(
-								"bulkActions.create.defaultsHelp",
-								"These values are applied to every username in this run.",
-							)}
+							{t("bulkActions.create.defaultsHelp")}
 						</Text>
 					</Box>
 					<SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} spacing={4}>
 						<FormControl isRequired>
 							<FormLabel>
-								{t("bulkActions.create.service", "Service")}
+								{t("bulkActions.create.service")}
 							</FormLabel>
 							<Select
 								value={serviceID}
@@ -452,7 +432,7 @@ const BulkCreatePanel = () => {
 								isDisabled={isOptionsLoading}
 							>
 								<option value="">
-									{t("bulkActions.create.selectService", "Select a service")}
+									{t("bulkActions.create.selectService")}
 								</option>
 								{serviceOptions
 									.filter((service) => service.has_hosts && !service.broken)
@@ -465,7 +445,7 @@ const BulkCreatePanel = () => {
 						</FormControl>
 						<FormControl>
 							<FormLabel>
-								{t("bulkActions.create.status", "Initial status")}
+								{t("bulkActions.create.status")}
 							</FormLabel>
 							<Select
 								value={status}
@@ -473,13 +453,13 @@ const BulkCreatePanel = () => {
 									setStatus(event.target.value as "active" | "on_hold")
 								}
 							>
-								<option value="active">{t("active", "Active")}</option>
-								<option value="on_hold">{t("onHold", "On hold")}</option>
+								<option value="active">{t("active")}</option>
+								<option value="on_hold">{t("userDialog.onHoldActive")}</option>
 							</Select>
 						</FormControl>
 						<FormControl>
 							<FormLabel>
-								{t("bulkActions.create.dataLimit", "Data limit")}
+								{t("bulkActions.create.dataLimit")}
 							</FormLabel>
 							<Input
 								type="number"
@@ -489,12 +469,12 @@ const BulkCreatePanel = () => {
 								onChange={(event) => setDataLimit(event.target.value)}
 							/>
 							<FormHelperText>
-								{t("bulkActions.create.gbZero", "GB; use 0 for unlimited")}
+								{t("bulkActions.create.gbZero")}
 							</FormHelperText>
 						</FormControl>
 						<FormControl>
 							<FormLabel>
-								{t("bulkActions.create.validity", "Validity")}
+								{t("bulkActions.create.validity")}
 							</FormLabel>
 							<Input
 								type="number"
@@ -504,19 +484,13 @@ const BulkCreatePanel = () => {
 							/>
 							<FormHelperText>
 								{status === "on_hold"
-									? t(
-											"bulkActions.create.onHoldDays",
-											"Days after first connection",
-										)
-									: t(
-											"bulkActions.create.daysZero",
-											"Days from now; use 0 for unlimited",
-										)}
+									? t("bulkActions.create.onHoldDays")
+									: t("bulkActions.create.daysZero")}
 							</FormHelperText>
 						</FormControl>
 						<FormControl>
 							<FormLabel>
-								{t("bulkActions.create.ipLimit", "IP limit")}
+								{t("bulkActions.create.ipLimit")}
 							</FormLabel>
 							<Input
 								type="number"
@@ -525,12 +499,12 @@ const BulkCreatePanel = () => {
 								onChange={(event) => setIPLimit(event.target.value)}
 							/>
 							<FormHelperText>
-								{t("bulkActions.create.zeroUnlimited", "Use 0 for unlimited")}
+								{t("bulkActions.create.zeroUnlimited")}
 							</FormHelperText>
 						</FormControl>
 						<FormControl>
 							<FormLabel>
-								{t("bulkActions.create.reset", "Traffic reset")}
+								{t("bulkActions.create.reset")}
 							</FormLabel>
 							<Select
 								value={resetStrategy}
@@ -539,16 +513,16 @@ const BulkCreatePanel = () => {
 								}
 								isDisabled={Number(dataLimit) <= 0}
 							>
-								<option value="no_reset">{t("noReset", "No reset")}</option>
-								<option value="day">{t("daily", "Daily")}</option>
-								<option value="week">{t("weekly", "Weekly")}</option>
-								<option value="month">{t("monthly", "Monthly")}</option>
-								<option value="year">{t("yearly", "Yearly")}</option>
+								<option value="no_reset">{t("noReset")}</option>
+								<option value="day">{t("userDialog.resetStrategyDaily")}</option>
+								<option value="week">{t("userDialog.resetStrategyWeekly")}</option>
+								<option value="month">{t("userDialog.resetStrategyMonthly")}</option>
+								<option value="year">{t("yearly")}</option>
 							</Select>
 						</FormControl>
 						<FormControl>
 							<FormLabel>
-								{t("bulkActions.create.autoDelete", "Auto-delete after")}
+								{t("bulkActions.create.autoDelete")}
 							</FormLabel>
 							<Input
 								type="number"
@@ -557,30 +531,21 @@ const BulkCreatePanel = () => {
 								onChange={(event) => setAutoDeleteDays(event.target.value)}
 							/>
 							<FormHelperText>
-								{t(
-									"bulkActions.create.autoDeleteHelp",
-									"Days after expiry or limitation; use 0 to disable",
-								)}
+								{t("bulkActions.create.autoDeleteHelp")}
 							</FormHelperText>
 						</FormControl>
 					</SimpleGrid>
 					<FormControl>
 						<FormLabel>
-							{t("bulkActions.create.note", "Note template")}
+							{t("bulkActions.create.note")}
 						</FormLabel>
 						<Input
 							value={note}
 							onChange={(event) => setNote(event.target.value)}
-							placeholder={t(
-								"bulkActions.create.notePlaceholder",
-								"Batch {username}",
-							)}
+							placeholder={t("bulkActions.create.notePlaceholder")}
 						/>
 						<FormHelperText>
-							{t(
-								"bulkActions.create.noteHelp",
-								"Use {username} to insert each generated username.",
-							)}
+							{t("bulkActions.create.noteHelp")}
 						</FormHelperText>
 					</FormControl>
 				</Stack>
@@ -595,7 +560,7 @@ const BulkCreatePanel = () => {
 				>
 					<Box minW={0}>
 						<Text fontWeight="semibold">
-							{t("bulkActions.preview", "Preview")} ({usernames.length})
+							{t("bulkActions.preview")} ({usernames.length})
 						</Text>
 						<HStack mt={2} spacing={2} flexWrap="wrap">
 							{usernames.slice(0, 12).map((username) => (
@@ -614,10 +579,7 @@ const BulkCreatePanel = () => {
 						</HStack>
 						{invalidNames.length > 0 && (
 							<Text color="red.400" fontSize="sm" mt={2}>
-								{t("bulkActions.invalidUsernames", {
-									count: invalidNames.length,
-									defaultValue: "{{count}} usernames are invalid.",
-								})}
+								{t("bulkActions.invalidUsernames", { count: invalidNames.length })}
 							</Text>
 						)}
 					</Box>
@@ -628,10 +590,7 @@ const BulkCreatePanel = () => {
 						isLoading={isRunning}
 						isDisabled={!canSubmit}
 					>
-						{t("bulkActions.create.submit", {
-							count: usernames.length,
-							defaultValue: "Create {{count}} users",
-						})}
+						{t("bulkActions.create.submit", { count: usernames.length })}
 					</Button>
 				</HStack>
 			</Surface>
@@ -724,7 +683,7 @@ const BulkDeletePanel = () => {
 			setConfirmed(false);
 		} catch (error) {
 			toast({
-				title: t("bulkActions.delete.previewFailed", "Unable to preview users"),
+				title: t("bulkActions.delete.previewFailed"),
 				description: errorDetail(error),
 				status: "error",
 				isClosable: true,
@@ -740,11 +699,8 @@ const BulkDeletePanel = () => {
 		try {
 			const result = await performBulkUserAction(payload);
 			toast({
-				title: t("bulkActions.delete.completed", "Bulk deletion completed"),
-				description: t("bulkActions.delete.completedDescription", {
-					count: result.count,
-					defaultValue: "Deleted {{count}} users.",
-				}),
+				title: t("bulkActions.delete.completed"),
+				description: t("bulkActions.delete.completedDescription", { count: result.count }),
 				status: "success",
 				isClosable: true,
 			});
@@ -753,7 +709,7 @@ const BulkDeletePanel = () => {
 			void refetchUsers(true);
 		} catch (error) {
 			toast({
-				title: t("bulkActions.delete.failed", "Bulk deletion failed"),
+				title: t("bulkActions.delete.failed"),
 				description: errorDetail(error),
 				status: "error",
 				isClosable: true,
@@ -767,10 +723,7 @@ const BulkDeletePanel = () => {
 		<VStack spacing={4} align="stretch" maxW="860px">
 			<Alert status="error" variant="subtle" borderRadius="8px">
 				<AlertIcon />
-				{t(
-					"bulkActions.delete.warning",
-					"Deleted users cannot be restored. Preview the exact target set before confirming.",
-				)}
+				{t("bulkActions.delete.warning")}
 			</Alert>
 			<Surface>
 				<Stack spacing={4}>
@@ -779,7 +732,7 @@ const BulkDeletePanel = () => {
 						tabs={[
 							{
 								value: "list",
-								label: t("bulkActions.delete.byUsernames", "Exact usernames"),
+								label: t("bulkActions.delete.byUsernames"),
 								isActive: mode === "list",
 								onClick: () => {
 									setMode("list");
@@ -788,7 +741,7 @@ const BulkDeletePanel = () => {
 							},
 							{
 								value: "conditions",
-								label: t("bulkActions.delete.byConditions", "Conditions"),
+								label: t("bulkActions.delete.byConditions"),
 								isActive: mode === "conditions",
 								onClick: () => {
 									setMode("conditions");
@@ -801,7 +754,7 @@ const BulkDeletePanel = () => {
 						<>
 							<FormControl>
 								<FormLabel>
-									{t("bulkActions.delete.usernames", "Usernames to delete")}
+									{t("bulkActions.delete.usernames")}
 								</FormLabel>
 								<Textarea
 									value={list}
@@ -811,24 +764,15 @@ const BulkDeletePanel = () => {
 									}}
 									rows={8}
 									fontFamily="mono"
-									placeholder={t(
-										"bulkActions.create.listPlaceholder",
-										"alice\nbob\ncustomer-003",
-									)}
+									placeholder={t("bulkActions.create.listPlaceholder")}
 								/>
 								<FormHelperText>
-									{t(
-										"bulkActions.create.listHelp",
-										"Use one username per line or separate names with commas. Maximum 500 users per run.",
-									)}
+									{t("bulkActions.create.listHelp")}
 								</FormHelperText>
 							</FormControl>
 							{invalidNames.length > 0 && (
 								<Text color="red.400" fontSize="sm">
-									{t("bulkActions.invalidUsernames", {
-										count: invalidNames.length,
-										defaultValue: "{{count}} usernames are invalid.",
-									})}
+									{t("bulkActions.invalidUsernames", { count: invalidNames.length })}
 								</Text>
 							)}
 						</>
@@ -836,13 +780,10 @@ const BulkDeletePanel = () => {
 						<Stack spacing={4}>
 							<Box>
 								<Text fontWeight="semibold">
-									{t("bulkActions.delete.conditionsTitle", "Match users by conditions")}
+									{t("bulkActions.delete.conditionsTitle")}
 								</Text>
 								<Text color="panel.textSecondary" fontSize="sm" mt={1}>
-									{t(
-										"bulkActions.delete.conditionsHelp",
-										"Every selected condition must match. This keeps destructive actions predictable.",
-									)}
+									{t("bulkActions.delete.conditionsHelp")}
 								</Text>
 							</Box>
 							{conditions.map((condition) => (
@@ -857,10 +798,10 @@ const BulkDeletePanel = () => {
 										<HStack justify="space-between">
 											<Text fontWeight="medium">
 												{condition === "last_online"
-													? t("bulkActions.delete.lastOnline", "Last connection")
+													? t("bulkActions.delete.lastOnline")
 													: condition === "status_age"
-														? t("bulkActions.delete.statusAge", "Status age")
-														: t("bulkActions.delete.createdBefore", "Account age")}
+														? t("bulkActions.delete.statusAge")
+														: t("bulkActions.delete.createdBefore")}
 											</Text>
 											<Button
 												size="xs"
@@ -868,16 +809,16 @@ const BulkDeletePanel = () => {
 												leftIcon={<TrashIcon width={14} />}
 												onClick={() => toggleCondition(condition)}
 											>
-												{t("remove", "Remove")}
+												{t("remove")}
 											</Button>
 										</HStack>
 										<FormControl>
 											<FormLabel fontSize="sm">
 												{condition === "last_online"
-													? t("bulkActions.delete.lastOnlineLabel", "No connection for at least (days)")
+													? t("bulkActions.delete.lastOnlineLabel")
 													: condition === "status_age"
-														? t("bulkActions.delete.statusAgeLabel", "In this status for at least (days)")
-														: t("bulkActions.delete.createdBeforeLabel", "Created at least (days) ago")}
+														? t("bulkActions.delete.statusAgeLabel")
+														: t("bulkActions.delete.createdBeforeLabel")}
 											</FormLabel>
 											<Input
 												type="number"
@@ -900,7 +841,7 @@ const BulkDeletePanel = () => {
 										{condition === "status_age" && (
 											<Box>
 												<Text fontSize="sm" fontWeight="medium" mb={2}>
-													{t("bulkActions.delete.statuses", "Statuses")}
+													{t("bulkActions.delete.statuses")}
 												</Text>
 												<HStack spacing={3} flexWrap="wrap">
 													{deleteStatusOptions.map((status) => (
@@ -927,17 +868,17 @@ const BulkDeletePanel = () => {
 									}}
 								>
 									<option value="">
-										{t("bulkActions.delete.addCondition", "Add a condition")}
+										{t("bulkActions.delete.addCondition")}
 									</option>
 									{deleteConditionOptions
 										.filter((condition) => !conditions.includes(condition))
 										.map((condition) => (
 											<option key={condition} value={condition}>
 												{condition === "last_online"
-													? t("bulkActions.delete.lastOnline", "Last connection")
+													? t("bulkActions.delete.lastOnline")
 													: condition === "status_age"
-														? t("bulkActions.delete.statusAge", "Status age")
-														: t("bulkActions.delete.createdBefore", "Account age")}
+														? t("bulkActions.delete.statusAge")
+														: t("bulkActions.delete.createdBefore")}
 											</option>
 										))}
 								</Select>
@@ -957,16 +898,8 @@ const BulkDeletePanel = () => {
 						>
 							<AlertIcon />
 							{previewCount > MAX_BATCH_SIZE
-								? t("bulkActions.delete.tooMany", {
-										count: previewCount,
-										max: MAX_BATCH_SIZE,
-										defaultValue:
-											"{{count}} users match. Narrow the conditions to {{max}} or fewer users.",
-									})
-								: t("bulkActions.delete.preview", {
-										count: previewCount,
-										defaultValue: "{{count}} users match the current target.",
-									})}
+								? t("bulkActions.delete.tooMany", { count: previewCount, max: MAX_BATCH_SIZE })
+								: t("bulkActions.delete.preview", { count: previewCount })}
 						</Alert>
 					)}
 					<HStack spacing={3} flexWrap="wrap">
@@ -976,7 +909,7 @@ const BulkDeletePanel = () => {
 							isLoading={isRunning}
 							isDisabled={!payload}
 						>
-							{t("bulkActions.delete.previewAction", "Preview matching users")}
+							{t("bulkActions.delete.previewAction")}
 						</Button>
 						{previewCount !== null &&
 							previewCount > 0 &&
@@ -985,10 +918,7 @@ const BulkDeletePanel = () => {
 								isChecked={confirmed}
 								onChange={(event) => setConfirmed(event.target.checked)}
 							>
-								{t("bulkActions.delete.confirm", {
-									count: previewCount,
-									defaultValue: "I understand that {{count}} users will be deleted.",
-								})}
+								{t("bulkActions.delete.confirm", { count: previewCount })}
 							</Checkbox>
 						)}
 					</HStack>
@@ -1006,10 +936,7 @@ const BulkDeletePanel = () => {
 						}
 						onClick={handleDelete}
 					>
-						{t("bulkActions.delete.submit", {
-							count: previewCount ?? 0,
-							defaultValue: "Delete {{count}} users",
-						})}
+						{t("bulkActions.delete.submit", { count: previewCount ?? 0 })}
 					</Button>
 				</Stack>
 			</Surface>
@@ -1032,17 +959,17 @@ const BulkPermissionsPanel = () => {
 	const [isRunning, setIsRunning] = useState(false);
 	const options = useMemo(
 		() => [
-			{ key: UserPermissionToggle.Create, label: t("admins.bulkPermissions.create", "Create users") },
-			{ key: UserPermissionToggle.Delete, label: t("admins.bulkPermissions.delete", "Delete users") },
-			{ key: UserPermissionToggle.ResetUsage, label: t("admins.bulkPermissions.resetUsage", "Reset usage") },
-			{ key: UserPermissionToggle.Revoke, label: t("admins.bulkPermissions.revoke", "Revoke subscriptions") },
-			{ key: UserPermissionToggle.CreateOnHold, label: t("admins.bulkPermissions.createOnHold", "Create on hold") },
-			{ key: UserPermissionToggle.AllowUnlimitedData, label: t("admins.bulkPermissions.allowUnlimitedData", "Unlimited data") },
-			{ key: UserPermissionToggle.AllowUnlimitedExpire, label: t("admins.bulkPermissions.allowUnlimitedExpire", "Unlimited expire") },
-			{ key: UserPermissionToggle.AllowNextPlan, label: t("admins.bulkPermissions.allowNextPlan", "Next plan") },
-			{ key: UserPermissionToggle.AdvancedActions, label: t("admins.bulkPermissions.advancedActions", "Advanced actions") },
-			{ key: UserPermissionToggle.SetFlow, label: t("admins.bulkPermissions.setFlow", "Set flow") },
-			{ key: UserPermissionToggle.AllowCustomKey, label: t("admins.bulkPermissions.allowCustomKey", "Custom key") },
+			{ key: UserPermissionToggle.Create, label: t("admins.bulkPermissions.create") },
+			{ key: UserPermissionToggle.Delete, label: t("admins.bulkPermissions.delete") },
+			{ key: UserPermissionToggle.ResetUsage, label: t("admins.bulkPermissions.resetUsage") },
+			{ key: UserPermissionToggle.Revoke, label: t("admins.bulkPermissions.revoke") },
+			{ key: UserPermissionToggle.CreateOnHold, label: t("admins.bulkPermissions.createOnHold") },
+			{ key: UserPermissionToggle.AllowUnlimitedData, label: t("admins.bulkPermissions.allowUnlimitedData") },
+			{ key: UserPermissionToggle.AllowUnlimitedExpire, label: t("admins.bulkPermissions.allowUnlimitedExpire") },
+			{ key: UserPermissionToggle.AllowNextPlan, label: t("admins.bulkPermissions.allowNextPlan") },
+			{ key: UserPermissionToggle.AdvancedActions, label: t("admins.bulkPermissions.advancedActions") },
+			{ key: UserPermissionToggle.SetFlow, label: t("admins.bulkPermissions.setFlow") },
+			{ key: UserPermissionToggle.AllowCustomKey, label: t("admins.bulkPermissions.allowCustomKey") },
 		],
 		[t],
 	);
@@ -1053,17 +980,14 @@ const BulkPermissionsPanel = () => {
 		try {
 			const result = await bulkUpdateStandardPermissions({ mode, permissions });
 			toast({
-				title: t("admins.bulkPermissions.success", "Updated standard admin permissions"),
-				description: t("admins.bulkPermissions.successDescription", {
-					count: result.updated ?? 0,
-					defaultValue: "Updated {{count}} standard admins.",
-				}),
+				title: t("admins.bulkPermissions.success"),
+				description: t("admins.bulkPermissions.successDescription", { count: result.updated ?? 0 }),
 				status: "success",
 				isClosable: true,
 			});
 		} catch (error) {
 			toast({
-				title: t("admins.bulkPermissions.error", "Failed to update standard admins."),
+				title: t("admins.bulkPermissions.error"),
 				description: errorDetail(error),
 				status: "error",
 				isClosable: true,
@@ -1077,22 +1001,16 @@ const BulkPermissionsPanel = () => {
 		<VStack spacing={4} align="stretch" maxW="1080px">
 			<Alert status="warning" borderRadius="8px">
 				<AlertIcon />
-				{t(
-					"admins.bulkPermissions.subtitle",
-					"Apply a permission change to every standard admin. Review the selection before continuing.",
-				)}
+				{t("admins.bulkPermissions.subtitle")}
 			</Alert>
 			<Surface>
 				<Stack spacing={5}>
 					<Box>
 						<Text fontWeight="semibold">
-							{t("admins.bulkPermissions.title", "Standard admin permissions")}
+							{t("admins.bulkPermissions.title")}
 						</Text>
 						<Text color="panel.textSecondary" fontSize="sm" mt={1}>
-							{t(
-								"admins.bulkPermissions.help",
-								"Select the permissions to change for all standard admins.",
-							)}
+							{t("admins.bulkPermissions.help")}
 						</Text>
 					</Box>
 					<CheckboxGroup
@@ -1114,7 +1032,7 @@ const BulkPermissionsPanel = () => {
 							isLoading={isRunning}
 							isDisabled={!permissions.length}
 						>
-							{t("admins.bulkPermissions.disable", "Disable selected")}
+							{t("admins.bulkPermissions.disable")}
 						</Button>
 						<Button
 							variant="outline"
@@ -1122,7 +1040,7 @@ const BulkPermissionsPanel = () => {
 							isLoading={isRunning}
 							isDisabled={!permissions.length}
 						>
-							{t("admins.bulkPermissions.restore", "Restore defaults")}
+							{t("admins.bulkPermissions.restore")}
 						</Button>
 					</HStack>
 				</Stack>
@@ -1168,11 +1086,8 @@ export const BulkActionsPage = () => {
 	return (
 		<VStack spacing={4} align="stretch" dir={i18n.dir(i18n.language)}>
 			<PageHeader
-				title={t("bulkActions.title", "Bulk Actions")}
-				description={t(
-					"bulkActions.subtitle",
-					"Create, update, or delete multiple users in one controlled run.",
-				)}
+				title={t("bulkActions.title")}
+				description={t("bulkActions.subtitle")}
 			/>
 			{allowedTabs.length > 0 && (
 				<PageTabs
@@ -1190,10 +1105,7 @@ export const BulkActionsPage = () => {
 			{locked && activeTab !== "permissions" ? (
 				<Alert status="warning" borderRadius="8px">
 					<AlertIcon />
-					{t(
-						"bulkActions.locked",
-						"User management is currently unavailable for this account.",
-					)}
+					{t("bulkActions.locked")}
 				</Alert>
 			) : activeTab === "create" ? (
 				<BulkCreatePanel />
@@ -1208,10 +1120,7 @@ export const BulkActionsPage = () => {
 			) : (
 				<Alert status="info" borderRadius="8px">
 					<AlertIcon />
-					{t(
-						"bulkActions.noPermission",
-						"You do not have permission to use bulk actions.",
-					)}
+					{t("bulkActions.noPermission")}
 				</Alert>
 			)}
 		</VStack>

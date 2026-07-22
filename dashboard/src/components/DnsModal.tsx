@@ -202,7 +202,7 @@ export const DnsModal: FC<DnsModalProps> = ({
 										/>
 									</FormControl>
 									<FormControl>
-										<FormLabel>{t("pages.xray.dns.port")}</FormLabel>
+										<FormLabel>{t("port")}</FormLabel>
 										<Controller
 											control={modalForm.control}
 											name="port"
@@ -230,7 +230,7 @@ export const DnsModal: FC<DnsModalProps> = ({
 													value={field.value ?? ""}
 													onChange={(value) => field.onChange(value as string)}
 													placeholder={t("pages.xray.dns.strategy")}
-													searchPlaceholder={t("search", "Search")}
+													searchPlaceholder={t("search")}
 													width="240px"
 												/>
 											)}

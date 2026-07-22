@@ -61,12 +61,9 @@ export const HostsPage: FC = () => {
 	if (!canManageHosts) {
 		return (
 			<VStack spacing={4} align="stretch">
-				<PageHeader title={t("header.hostSettings", "Inbounds & Hosts")} />
+				<PageHeader title={t("header.hostSettings")} />
 				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-					{t(
-						"hostsPage.noPermission",
-						"You do not have permission to manage host or inbound settings.",
-					)}
+					{t("hostsPage.noPermission")}
 				</Text>
 			</VStack>
 		);
@@ -74,7 +71,7 @@ export const HostsPage: FC = () => {
 
 	return (
 		<VStack spacing={4} align="stretch">
-			<PageHeader title={t("header.hostSettings", "Inbounds & Hosts")} />
+			<PageHeader title={t("header.hostSettings")} />
 			<TabSystem
 				tabs={[
 					{
@@ -84,7 +81,7 @@ export const HostsPage: FC = () => {
 						label: (
 							<HStack spacing={2}>
 								<Icon as={LinkIcon} w={4} h={4} />
-								<span>{t("hostsPage.tabInbounds", "Inbounds")}</span>
+								<span>{t("hostsPage.tabInbounds")}</span>
 							</HStack>
 						),
 					},
@@ -95,7 +92,7 @@ export const HostsPage: FC = () => {
 						label: (
 							<HStack spacing={2}>
 								<Icon as={Squares2X2Icon} w={4} h={4} />
-								<span>{t("hostsPage.tabHosts", "Hosts")}</span>
+								<span>{t("hostsPage.tabHosts")}</span>
 							</HStack>
 						),
 					},

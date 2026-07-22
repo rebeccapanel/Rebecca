@@ -197,13 +197,13 @@ export function AppLayout() {
 	const roleLabel = useMemo(() => {
 		switch (userData.role) {
 			case AdminRole.FullAccess:
-				return t("admins.roles.fullAccess", "Full access");
+				return t("admins.roles.fullAccess");
 			case AdminRole.Sudo:
-				return t("admins.roles.sudo", "Sudo");
+				return t("admins.roles.sudo");
 			case AdminRole.Reseller:
-				return t("admins.roles.reseller", "Reseller");
+				return t("admins.roles.reseller");
 			default:
-				return t("admins.roles.standard", "Standard");
+				return t("admins.roles.standard");
 		}
 	}, [t, userData.role]);
 
@@ -222,7 +222,7 @@ export function AppLayout() {
 			isPrivilegedAdmin && sectionAccess?.[AdminSection.Services]
 				? {
 						key: "services",
-						label: t("services.menu", "Services"),
+						label: t("services.title"),
 						to: "/services",
 						icon: ServicesIcon,
 					}
@@ -230,7 +230,7 @@ export function AppLayout() {
 			isPrivilegedAdmin && sectionAccess?.[AdminSection.Hosts]
 				? {
 						key: "hosts",
-						label: t("header.hostSettings", "Host settings"),
+						label: t("header.hostSettings"),
 						to: "/hosts",
 						icon: HostsIcon,
 					}
@@ -238,7 +238,7 @@ export function AppLayout() {
 			isPrivilegedAdmin && sectionAccess?.[AdminSection.Nodes]
 				? {
 						key: "node-settings",
-						label: t("header.nodeSettings", "Node settings"),
+						label: t("header.nodeSettings"),
 						to: "/node-settings",
 						icon: NodesIcon,
 					}
@@ -246,7 +246,7 @@ export function AppLayout() {
 			isPrivilegedAdmin && sectionAccess?.[AdminSection.Integrations]
 				? {
 						key: "settings",
-						label: t("header.integrationSettings", "Settings"),
+						label: t("header.integrationSettings"),
 						to: "/settings",
 						icon: MasterSettingsIcon,
 					}
@@ -254,7 +254,7 @@ export function AppLayout() {
 			isPrivilegedAdmin && sectionAccess?.[AdminSection.Xray]
 				? {
 						key: "xray-settings",
-						label: t("header.xraySettings", "Xray settings"),
+						label: t("header.xraySettings"),
 						to: "/xray-settings",
 						icon: XraySettingsIcon,
 					}
@@ -262,7 +262,7 @@ export function AppLayout() {
 			isPrivilegedAdmin && sectionAccess?.[AdminSection.Xray]
 				? {
 						key: "access-insights",
-						label: t("header.accessInsights", "Access insights"),
+						label: t("header.accessInsights"),
 						to: "/access-insights",
 						icon: InsightsIcon,
 					}
@@ -270,7 +270,7 @@ export function AppLayout() {
 			isPrivilegedAdmin
 				? {
 						key: "api-docs",
-						label: t("apiDocs.menu", "API Docs"),
+						label: t("apiDocs.menu"),
 						to: "/api-docs",
 						icon: DocsIcon,
 					}
@@ -278,14 +278,14 @@ export function AppLayout() {
 			isPrivilegedAdmin
 				? {
 						key: "phpmyadmin",
-						label: t("phpmyadmin.menu", "phpMyAdmin"),
+						label: t("phpmyadmin.menu"),
 						to: "/phpmyadmin",
 						icon: PHPMyAdminIcon,
 					}
 				: null,
 			{
 				key: "tutorials",
-				label: t("tutorials.menu", "Tutorials"),
+				label: t("tutorials.menu"),
 				to: tutorialsUrl,
 				icon: TutorialIcon,
 			},
@@ -395,28 +395,28 @@ export function AppLayout() {
 	const bottomNavItems = useMemo<BottomNavItem[]>(() => {
 		const items: BottomNavItem[] = [];
 		const canSeeAdmins = Boolean(sectionAccess?.[AdminSection.Admins]);
-		items.push({ key: "users", label: t("nav.users", "Users"), to: "/users" });
+		items.push({ key: "users", label: t("nav.users"), to: "/users" });
 		if (canSeeAdmins) {
 			items.push({
 				key: "admins",
-				label: t("nav.admins", "Admins"),
+				label: t("nav.admins"),
 				to: "/admins",
 			});
 		}
 		items.push({
 			key: "dashboard",
-			label: t("nav.dashboard", "Dashboard"),
+			label: t("dashboard"),
 			to: "/",
 		});
 		items.push({
 			key: "myaccount",
-			label: t("nav.myaccount", "My account"),
+			label: t("nav.myaccount"),
 			to: "/myaccount",
 		});
 		if (hasSettingsMenu) {
 			items.push({
 				key: "settings",
-				label: t("header.settings", "Settings"),
+				label: t("header.settings"),
 				kind: "menu",
 			});
 		}
@@ -758,7 +758,7 @@ export function AppLayout() {
 							<IconButton
 								size="sm"
 								variant="outline"
-								aria-label="toggle sidebar"
+								aria-label={t("a11y.toggleSidebar")}
 								onClick={() => {
 									if (isMobile) sidebarDrawer.onOpen();
 									else setSidebarCollapsed(!sidebarCollapsed);
@@ -790,7 +790,7 @@ export function AppLayout() {
 										size="sm"
 										variant="outline"
 										leftIcon={<UserIcon />}
-										aria-label="user menu"
+										aria-label={t("a11y.userMenu")}
 										fontSize="sm"
 										fontWeight="medium"
 										bg={headerButtonBg}
@@ -893,7 +893,7 @@ export function AppLayout() {
 												}}
 											>
 												<HStack justify="space-between" w="full" minW={0}>
-													<Text>{t("header.language", "Language")}</Text>
+													<Text>{t("header.language")}</Text>
 													<Text fontSize="xs" color={secondaryTextColor}>
 														{languageItems.find(
 															(item) => item.code === i18n.language,
@@ -968,7 +968,7 @@ export function AppLayout() {
 										{/* Theme Selector */}
 										<ThemeSelector
 											trigger="menuItem"
-											triggerLabel={t("header.theme", "Theme")}
+											triggerLabel={t("header.theme")}
 											portalContainer={userMenuContentRef}
 											onModalOpen={handleThemeModalOpen}
 											onModalClose={handleThemeModalClose}
@@ -998,7 +998,7 @@ export function AppLayout() {
 											}
 											}}
 										>
-											{t("header.logout", "Log out")}
+											{t("header.logout")}
 										</MenuItem>
 									</MenuList>
 								</Menu>
@@ -1075,17 +1075,14 @@ export function AppLayout() {
 									</Box>
 									<Box flex="1">
 										<Text fontWeight="semibold" fontSize="sm">
-											{t("pwa.ios.title", "Add to Home Screen")}
+											{t("pwa.ios.title")}
 										</Text>
 										<Text
 											fontSize="xs"
 											color="gray.600"
 											_dark={{ color: "gray.300" }}
 										>
-											{t(
-												"pwa.ios.body",
-												"Tap Share and then Add to Home Screen for a faster app-like experience.",
-											)}
+											{t("pwa.ios.body")}
 										</Text>
 									</Box>
 									<Button
@@ -1096,7 +1093,7 @@ export function AppLayout() {
 											localStorage.setItem("ios-pwa-tip-shown", "1");
 										}}
 									>
-										{t("pwa.ios.dismiss", "Got it")}
+										{t("pwa.ios.dismiss")}
 									</Button>
 								</Box>
 							</Box>
@@ -1464,7 +1461,7 @@ export function AppLayout() {
 																	}
 																	}}
 																>
-																	{t("header.logout", "Log out")}
+																	{t("header.logout")}
 																</Button>
 															</PopoverBody>
 														</PopoverContent>

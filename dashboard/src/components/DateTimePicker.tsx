@@ -26,6 +26,7 @@ import {
 import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
 import dayjs from "dayjs";
 import { type FC, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { NumericInput } from "./common/NumericInput";
 
 interface DateTimePickerProps {
@@ -43,11 +44,13 @@ interface DateTimePickerProps {
 export const DateTimePicker: FC<DateTimePickerProps> = ({
 	value,
 	onChange,
-	placeholder = "Select date",
+	placeholder,
 	disabled = false,
 	minDate,
 	quickSelects = [],
 }) => {
+	const { t } = useTranslation();
+	const inputPlaceholder = placeholder ?? t("dateTimePicker.selectDate");
 	const { isOpen, onOpen, onClose } = useDisclosure();
 	const isMobile = useBreakpointValue({ base: true, md: false }) ?? false;
 	const [displayMonth, setDisplayMonth] = useState(() =>
@@ -141,12 +144,12 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
 	};
 
 	const builtInQuickSelects = [
-		{ label: "+1 Day", onClick: () => handleQuickSelect(1) },
-		{ label: "+1 Month", onClick: () => handleQuickSelect(30) },
-		{ label: "+3 Months", onClick: () => handleQuickSelect(90) },
-		{ label: "+6 Months", onClick: () => handleQuickSelect(180) },
-		{ label: "+1 Year", onClick: () => handleQuickSelect(365) },
-		{ label: "+3 Years", onClick: () => handleQuickSelect(1095) },
+		{ label: t("dateTimePicker.addDay"), onClick: () => handleQuickSelect(1) },
+		{ label: t("dateTimePicker.addMonth"), onClick: () => handleQuickSelect(30) },
+		{ label: t("dateTimePicker.addThreeMonths"), onClick: () => handleQuickSelect(90) },
+		{ label: t("dateTimePicker.addSixMonths"), onClick: () => handleQuickSelect(180) },
+		{ label: t("dateTimePicker.addYear"), onClick: () => handleQuickSelect(365) },
+		{ label: t("dateTimePicker.addThreeYears"), onClick: () => handleQuickSelect(1095) },
 	];
 
 	const effectiveQuickSelects =
@@ -223,7 +226,7 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
 				noOfLines={1}
 				color={displayValue ? "inherit" : "gray.500"}
 			>
-				{displayValue || placeholder}
+				{displayValue || inputPlaceholder}
 			</Text>
 		</Button>
 	);
@@ -270,7 +273,7 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
 				<Flex justify="space-between" align="center" mb={2}>
 					<HStack spacing={1}>
 						<IconButton
-							aria-label="Previous month"
+							aria-label={t("dateTimePicker.previousMonth")}
 							size="xs"
 							variant="ghost"
 							icon={<ChevronLeftIcon width={14} height={14} />}
@@ -278,7 +281,7 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
 							_hover={{ bg: quickSelectHoverBg }}
 						/>
 						<IconButton
-							aria-label="Next month"
+							aria-label={t("dateTimePicker.nextMonth")}
 							size="xs"
 							variant="ghost"
 							icon={<ChevronRightIcon width={14} height={14} />}
@@ -293,7 +296,9 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
 
 				{/* Day Names */}
 				<Grid templateColumns="repeat(7, 1fr)" gap={0.5} mb={1}>
-					{["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => (
+					{Array.from({ length: 7 }, (_, index) =>
+						displayMonth.startOf("week").add(index, "day").format("dd"),
+					).map((day) => (
 						<GridItem key={day}>
 							<Text
 								fontSize="2xs"
@@ -321,7 +326,7 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
 					borderColor={timeDividerColor}
 				>
 					<Text fontSize="2xs" color={timeLabelColor}>
-						Time:
+						{t("dateTimePicker.time")}
 					</Text>
 					<NumericInput
 						size="xs"
@@ -353,10 +358,10 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
 				{/* Actions */}
 				<HStack spacing={2} justify="flex-end" mt={2}>
 					<Button size="xs" variant="ghost" onClick={handleClear}>
-						Clear
+						{t("clear")}
 					</Button>
 					<Button size="xs" colorScheme="primary" onClick={handleClose}>
-						Done
+						{t("dateTimePicker.done")}
 					</Button>
 				</HStack>
 			</Box>
@@ -382,7 +387,7 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
 						borderRadius={0}
 					>
 						<ModalHeader fontSize="sm" py={3} pe={12}>
-							{placeholder}
+							{inputPlaceholder}
 						</ModalHeader>
 						<ModalCloseButton />
 						<ModalBody p={0} overflowY="auto">
@@ -415,7 +420,7 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
 			<PopoverTrigger>
 				<Input
 					value={displayValue}
-					placeholder={placeholder}
+					placeholder={inputPlaceholder}
 					size="sm"
 					isReadOnly
 					cursor="pointer"

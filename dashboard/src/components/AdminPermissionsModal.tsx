@@ -75,7 +75,7 @@ export const AdminPermissionsModal = ({
 				...(canManage2FA ? { require_2fa: require2FA } : {}),
 			});
 			generateSuccessMessage(
-				t("admins.permissions.updateSuccess", "Permissions updated"),
+				t("admins.permissions.updateSuccess"),
 				toast,
 			);
 			onClose();
@@ -149,7 +149,7 @@ export const AdminPermissionsModal = ({
 						isReadOnly={isFullAccess}
 					/>
 					<HStack borderWidth="1px" borderRadius="md" justify="space-between" mt={5} p={3}>
-						<Text>{t("admins.security.require2FA", "Require two-factor authentication")}</Text>
+						<Text>{t("admins.security.require2FA")}</Text>
 						<Switch isChecked={require2FA} isDisabled={!canManage2FA} onChange={(event) => setRequire2FA(event.target.checked)} />
 					</HStack>
 		</AppDialog>

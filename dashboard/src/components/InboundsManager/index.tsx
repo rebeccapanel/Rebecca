@@ -107,7 +107,7 @@ export const InboundsManager: FC = () => {
 				setConfigTargets(targetsResponse?.targets || []);
 			})
 			.catch(() => {
-				setError(t("inbounds.error.load", "Unable to load inbounds"));
+				setError(t("inbounds.error.load"));
 			})
 			.finally(() => setIsLoading(false));
 	}, [t]);
@@ -186,12 +186,12 @@ export const InboundsManager: FC = () => {
 			});
 			if (tagExists) {
 				throw new Error(
-					t("inbounds.error.tagExists", "Inbound tag already exists"),
+					t("inbounds.error.tagExists"),
 				);
 			}
 			if (portExists) {
 				throw new Error(
-					t("inbounds.error.portExists", "Inbound port already exists"),
+					t("inbounds.error.portExists"),
 				);
 			}
 
@@ -211,8 +211,8 @@ export const InboundsManager: FC = () => {
 				status: "success",
 				title:
 					mode === "create"
-						? t("inbounds.success.created", "Inbound created")
-						: t("inbounds.success.updated", "Inbound updated"),
+						? t("inbounds.success.created")
+						: t("inbounds.success.updated"),
 			});
 			refreshInboundsStore();
 			await loadInbounds();
@@ -237,7 +237,7 @@ export const InboundsManager: FC = () => {
 			}
 			toast({
 				status: "error",
-				title: t("inbounds.error.submit", "Unable to save inbound"),
+				title: t("inbounds.error.submit"),
 				description,
 			});
 		} finally {
@@ -275,7 +275,7 @@ export const InboundsManager: FC = () => {
 			});
 			toast({
 				status: "success",
-				title: t("inbounds.success.deleted", "Inbound deleted"),
+				title: t("inbounds.success.deleted"),
 			});
 			refreshInboundsStore();
 			await loadInbounds();
@@ -310,7 +310,7 @@ export const InboundsManager: FC = () => {
 			}
 			toast({
 				status: "error",
-				title: t("inbounds.error.submit", "Unable to save inbound"),
+				title: t("inbounds.error.submit"),
 				description,
 			});
 		} finally {
@@ -332,12 +332,8 @@ export const InboundsManager: FC = () => {
 			}
 			toast({
 				status: "success",
-				title: t("inbounds.success.bulkDeleted", "Inbounds deleted"),
-				description: t(
-					"inbounds.success.bulkDeletedDescription",
-					"Deleted {{count}} inbound(s).",
-					{ count: items.length },
-				),
+				title: t("inbounds.success.bulkDeleted"),
+				description: t("inbounds.success.bulkDeletedDescription", { count: items.length }),
 			});
 			refreshInboundsStore();
 			await loadInbounds();
@@ -370,7 +366,7 @@ export const InboundsManager: FC = () => {
 			}
 			toast({
 				status: "error",
-				title: t("inbounds.error.bulkDelete", "Unable to delete inbounds"),
+				title: t("inbounds.error.bulkDelete"),
 				description,
 			});
 		} finally {
@@ -429,12 +425,12 @@ export const InboundsManager: FC = () => {
 
 		return [
 			{
-				label: t("inbounds.summary.total", "Total"),
+				label: t("total"),
 				value: inbounds.length,
 				colorScheme: "gray",
 			},
 			{
-				label: t("inbounds.summary.protocols", "Protocols"),
+				label: t("userDialog.protocols"),
 				value: Object.keys(protocolCounts).length,
 				colorScheme: "purple",
 				helper: mostUsedProtocol
@@ -442,17 +438,17 @@ export const InboundsManager: FC = () => {
 					: undefined,
 			},
 			{
-				label: t("inbounds.summary.multiTarget", "Multi-target"),
+				label: t("inbounds.summary.multiTarget"),
 				value: multiTargetCount,
 				colorScheme: "blue",
 			},
 			{
-				label: t("inbounds.summary.sniffing", "Sniffing"),
+				label: t("inbounds.sniffing"),
 				value: sniffingCount,
 				colorScheme: "green",
 			},
 			{
-				label: t("inbounds.summary.filtered", "Filtered"),
+				label: t("usersPage.filtered"),
 				value: filtered.length,
 				colorScheme: "teal",
 			},
@@ -463,7 +459,7 @@ export const InboundsManager: FC = () => {
 		() => [
 			{
 				id: "tag",
-				header: t("inbounds.tag", "Tag"),
+				header: t("inbounds.tag"),
 				accessor: "tag",
 				isPrimary: true,
 				priority: "primary",
@@ -473,7 +469,7 @@ export const InboundsManager: FC = () => {
 				truncate: true,
 				tooltip: true,
 				mobilePriority: 0,
-				mobileMetaLabel: t("inbounds.tag", "Tag"),
+				mobileMetaLabel: t("inbounds.tag"),
 				cell: (inbound) => (
 					<Stack spacing={0.5} minW={0}>
 						<Text fontWeight="semibold" noOfLines={1}>
@@ -489,13 +485,13 @@ export const InboundsManager: FC = () => {
 			},
 			{
 				id: "protocol",
-				header: t("inbounds.protocol", "Protocol"),
+				header: t("protocol"),
 				accessor: "protocol",
 				priority: "high",
 				width: "120px",
 				maxWidth: "140px",
 				mobilePriority: 1,
-				mobileMetaLabel: t("inbounds.protocol", "Protocol"),
+				mobileMetaLabel: t("protocol"),
 				cell: (inbound) => (
 					<Tag size="sm" colorScheme="purple" textTransform="uppercase">
 						{inbound.protocol}
@@ -504,13 +500,13 @@ export const InboundsManager: FC = () => {
 			},
 			{
 				id: "port",
-				header: t("inbounds.portLabel", "Port"),
+				header: t("port"),
 				accessor: "port",
 				priority: "high",
 				width: "92px",
 				maxWidth: "110px",
 				mobilePriority: 2,
-				mobileMetaLabel: t("inbounds.portLabel", "Port"),
+				mobileMetaLabel: t("port"),
 				cell: (inbound) => (
 					<Text fontWeight="semibold" dir="ltr" sx={{ unicodeBidi: "isolate" }}>
 						{inbound.port}
@@ -519,22 +515,22 @@ export const InboundsManager: FC = () => {
 			},
 			{
 				id: "network",
-				header: t("inbounds.network", "Network"),
+				header: t("inbounds.network"),
 				priority: "medium",
 				width: "110px",
 				maxWidth: "130px",
 				mobilePriority: 3,
-				mobileMetaLabel: t("inbounds.network", "Network"),
+				mobileMetaLabel: t("inbounds.network"),
 				cell: (inbound) => inbound.streamSettings?.network || "-",
 			},
 			{
 				id: "security",
-				header: t("inbounds.security", "Security"),
+				header: t("inbounds.security"),
 				priority: "medium",
 				width: "120px",
 				maxWidth: "140px",
 				mobilePriority: 4,
-				mobileMetaLabel: t("inbounds.security", "Security"),
+				mobileMetaLabel: t("inbounds.security"),
 				cell: (inbound) => {
 					const security = inbound.streamSettings?.security;
 					return security && security !== "none" ? (
@@ -548,33 +544,33 @@ export const InboundsManager: FC = () => {
 			},
 			{
 				id: "sniffing",
-				header: t("inbounds.sniffing", "Sniffing"),
+				header: t("inbounds.sniffing"),
 				priority: "low",
 				hideBelow: "xl",
 				width: "150px",
 				maxWidth: "170px",
 				mobilePriority: 5,
-				mobileMetaLabel: t("inbounds.sniffing", "Sniffing"),
+				mobileMetaLabel: t("inbounds.sniffing"),
 				cell: (inbound) =>
 					inbound.sniffing?.enabled ? (
 						<Tag size="sm" colorScheme="green">
-							{t("inbounds.sniffingEnabled", "Sniffing enabled")}
+							{t("inbounds.sniffingEnabled")}
 						</Tag>
 					) : (
 						<Tag size="sm" colorScheme="gray">
-							{t("inbounds.sniffingDisabled", "Sniffing disabled")}
+							{t("inbounds.sniffingDisabled")}
 						</Tag>
 					),
 			},
 			{
 				id: "targets",
-				header: t("inbounds.targets", "Targets"),
+				header: t("inbounds.targets"),
 				priority: "low",
 				hideBelow: "lg",
 				width: "210px",
 				maxWidth: "260px",
 				mobilePriority: 6,
-				mobileMetaLabel: t("inbounds.targets", "Targets"),
+				mobileMetaLabel: t("inbounds.targets"),
 				cell: (inbound) => {
 					const targetIds = getInboundTargetIds(inbound);
 					const targetLabels = targetIds.map(
@@ -617,13 +613,13 @@ export const InboundsManager: FC = () => {
 	): DataTableRowAction<RawInbound>[] => [
 		{
 			id: "edit",
-			label: t("common.edit", "Edit"),
+			label: t("edit"),
 			icon: <PencilIcon width={16} />,
 			onClick: () => openEdit(inbound),
 		},
 		{
 			id: "delete",
-			label: t("common.delete", "Delete"),
+			label: t("delete"),
 			icon: <TrashIcon width={16} />,
 			isDanger: true,
 			render: (_row, onMenuClose) => (
@@ -643,7 +639,7 @@ export const InboundsManager: FC = () => {
 						isDisabled={isMutating}
 						onClick={(event) => event.stopPropagation()}
 					>
-						{t("common.delete", "Delete")}
+						{t("delete")}
 					</MenuItem>
 				</DeleteConfirmDialog>
 			),
@@ -653,7 +649,7 @@ export const InboundsManager: FC = () => {
 	return (
 		<Stack spacing={4}>
 			<ResourceListCard
-				title={t("inbounds.listHeader", "Inbound list")}
+				title={t("inbounds.listHeader")}
 				summaryItems={inboundSummaryItems}
 				actions={
 					<Button
@@ -665,13 +661,13 @@ export const InboundsManager: FC = () => {
 						px={3}
 						borderRadius="4px"
 					>
-						{t("inbounds.add", "Add inbound")}
+						{t("inbounds.add")}
 					</Button>
 				}
 				footerActions={
 					<ResourceRefreshButton
-						aria-label={t("inbounds.refresh", "Refresh inbounds")}
-						label={t("inbounds.refresh", "Refresh inbounds")}
+						aria-label={t("inbounds.refresh")}
+						label={t("inbounds.refresh")}
 						icon={<ArrowPathIcon width={16} />}
 						isLoading={isLoading}
 						onClick={loadInbounds}
@@ -687,7 +683,7 @@ export const InboundsManager: FC = () => {
 					<Input
 						size="sm"
 						w={{ base: "full", md: "280px" }}
-						placeholder={t("inbounds.searchPlaceholder", "Search by tag or port")}
+						placeholder={t("inbounds.searchPlaceholder")}
 						value={filter.search}
 						onChange={(event) =>
 							setFilter((prev) => ({ ...prev, search: event.target.value }))
@@ -700,14 +696,14 @@ export const InboundsManager: FC = () => {
 						options={[
 							{
 								value: "all",
-								label: t("inbounds.filterProtocol", "All protocols"),
+								label: t("inbounds.filterProtocol"),
 							},
 							...protocolOptions.map((option) => ({
 								value: option,
 								label: option.toUpperCase(),
 							})),
 						]}
-						placeholder={t("inbounds.filterProtocol", "All protocols")}
+						placeholder={t("inbounds.filterProtocol")}
 						onChange={(value) =>
 							setFilter((prev) => ({ ...prev, protocol: String(value) }))
 						}
@@ -723,7 +719,7 @@ export const InboundsManager: FC = () => {
 			)}
 
 			<DataTable
-				ariaLabel={t("hostsPage.tabInbounds", "Inbounds")}
+				ariaLabel={t("hostsPage.tabInbounds")}
 				data={filtered}
 				columns={inboundColumns}
 				getRowId={(inbound) => inbound.tag}
@@ -731,7 +727,7 @@ export const InboundsManager: FC = () => {
 				loadingRows={5}
 				emptyState={
 					<Box textAlign="center" color="panel.textMuted">
-						{t("inbounds.emptyState", "No inbounds configured yet.")}
+						{t("inbounds.emptyState")}
 					</Box>
 				}
 				rowActions={inboundRowActions}
@@ -743,17 +739,10 @@ export const InboundsManager: FC = () => {
 				selectedRowIds={selectedInboundTags}
 				selectedCount={selectedInboundTags.length}
 				onSelectionChange={(rowIds) => setSelectedInboundTags(rowIds)}
-				selectedLabel={t("inbounds.selectedCount", {
-					defaultValue: "{{count}} inbounds selected",
-					count: selectedInboundTags.length,
-				})}
+				selectedLabel={t("inbounds.selectedCount", { count: selectedInboundTags.length })}
 				renderBulkActions={(selectedRows) => (
 					<DeleteConfirmDialog
-						description={t(
-							"inbounds.confirmBulkDelete",
-							"Delete {{count}} selected inbound(s)?",
-							{ count: selectedRows.length },
-						)}
+						description={t("inbounds.confirmBulkDelete", { count: selectedRows.length })}
 						isLoading={isMutating}
 						isDisabled={selectedRows.length === 0}
 						onConfirm={() => handleBulkDelete(selectedRows)}
@@ -766,7 +755,7 @@ export const InboundsManager: FC = () => {
 							isLoading={isMutating}
 							isDisabled={selectedRows.length === 0}
 						>
-							{t("common.delete", "Delete")}
+							{t("delete")}
 						</Button>
 					</DeleteConfirmDialog>
 				)}

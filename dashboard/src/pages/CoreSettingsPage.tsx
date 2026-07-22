@@ -782,18 +782,12 @@ export const CoreSettingsPage: FC = () => {
 	);
 	const isMasterTarget =
 		selectedTarget === "master" || selectedTargetInfo?.type === "master";
-	const outboundNodeTargetRequiredMessage = t(
-		"pages.xray.outbound.testNodeTargetRequired",
-		"Change the target to a node before testing this outbound.",
-	);
-	const outboundAddressRequiredMessage = t(
-		"pages.xray.outbound.testAddressRequired",
-		"TCP and ICMP tests require an outbound address. Use latency test or configure an address for this outbound.",
-	);
+	const outboundNodeTargetRequiredMessage = t("pages.xray.outbound.testNodeTargetRequired");
+	const outboundAddressRequiredMessage = t("pages.xray.outbound.testAddressRequired");
 	const outboundTestTypeLabels: Record<OutboundTestType, string> = {
-		latency: t("pages.xray.outbound.testTypeLatency", "Latency"),
-		tcp: t("pages.xray.outbound.testTypeTcp", "TCP"),
-		icmp: t("pages.xray.outbound.testTypeIcmp", "ICMP"),
+		latency: t("pages.xray.outbound.testTypeLatency"),
+		tcp: t("pages.xray.outbound.testTypeTcp"),
+		icmp: t("pages.xray.outbound.testTypeIcmp"),
 	};
 	const routeInboundTags = useMemo(() => {
 		const inbounds = Array.isArray(watchedConfig?.inbounds)
@@ -1211,7 +1205,7 @@ export const CoreSettingsPage: FC = () => {
 		const outbound = outbounds[index];
 		if (!outbound) {
 			toast({
-				title: t("pages.xray.outbound.testError", "Unable to test outbound"),
+				title: t("pages.xray.outbound.testError"),
 				status: "error",
 				isClosable: true,
 				position: "top",
@@ -1237,10 +1231,7 @@ export const CoreSettingsPage: FC = () => {
 			.toLowerCase();
 		if (protocol === "blackhole" || outboundTag.toLowerCase() === "blocked") {
 			toast({
-				title: t(
-					"pages.xray.outbound.testBlocked",
-					"Blocked/blackhole outbound cannot be tested",
-				),
+				title: t("pages.xray.outbound.testBlocked"),
 				status: "warning",
 				isClosable: true,
 				position: "top",
@@ -1291,7 +1282,7 @@ export const CoreSettingsPage: FC = () => {
 
 				if (result.success) {
 					toast({
-						title: `${t("pages.xray.outbound.testSuccess", "Outbound test successful")}: ${outboundTestResultLabel(result)}`,
+						title: `${t("pages.xray.outbound.testSuccess")}: ${outboundTestResultLabel(result)}`,
 						status: "success",
 						isClosable: true,
 						position: "top",
@@ -1300,9 +1291,9 @@ export const CoreSettingsPage: FC = () => {
 				} else {
 					const errorMessage =
 						result.error ||
-						t("pages.xray.outbound.testFailed", "Outbound test failed");
+						t("pages.xray.outbound.testFailed");
 					toast({
-						title: `${t("pages.xray.outbound.testFailed", "Outbound test failed")}: ${errorMessage}`,
+						title: `${t("pages.xray.outbound.testFailed")}: ${errorMessage}`,
 						status: "error",
 						isClosable: true,
 						position: "top",
@@ -1314,7 +1305,7 @@ export const CoreSettingsPage: FC = () => {
 
 			const message =
 				response?.msg ||
-				t("pages.xray.outbound.testError", "Unable to test outbound");
+				t("pages.xray.outbound.testError");
 			const failureResult: OutboundTestResult = {
 				success: false,
 				error: message,
@@ -1335,7 +1326,7 @@ export const CoreSettingsPage: FC = () => {
 				error?.response?._data?.detail ??
 				error?.data?.detail ??
 				error?.message ??
-				t("pages.xray.outbound.testError", "Unable to test outbound");
+				t("pages.xray.outbound.testError");
 			const detailText =
 				typeof detail === "string"
 					? detail
@@ -1352,7 +1343,7 @@ export const CoreSettingsPage: FC = () => {
 				},
 			}));
 			toast({
-				title: `${t("pages.xray.outbound.testError", "Unable to test outbound")}: ${detailText}`,
+				title: `${t("pages.xray.outbound.testError")}: ${detailText}`,
 				status: "error",
 				isClosable: true,
 				position: "top",
@@ -1396,7 +1387,7 @@ export const CoreSettingsPage: FC = () => {
 					? [response.obj.outbound]
 					: [];
 			if (!response?.success || generatedOutbounds.length === 0) {
-				throw new Error(response?.msg || t("pages.xray.tor.failed", "Unable to setup Tor proxy"));
+				throw new Error(response?.msg || t("pages.xray.tor.failed"));
 			}
 			const outbounds = getOutbounds();
 			const duplicate = generatedOutbounds.find((outbound) =>
@@ -1406,11 +1397,7 @@ export const CoreSettingsPage: FC = () => {
 			);
 			if (duplicate) {
 				throw new Error(
-					t(
-						"pages.xray.outbound.tagExistsNamed",
-						"Outbound {{tag}} already exists.",
-						{ tag: String(duplicate.tag ?? "") },
-					),
+					t("pages.xray.outbound.tagExistsNamed", { tag: String(duplicate.tag ?? "") }),
 				);
 			}
 			for (const outbound of generatedOutbounds) {
@@ -1419,7 +1406,7 @@ export const CoreSettingsPage: FC = () => {
 			commitOutbounds(outbounds);
 			onTorProxyClose();
 			toast({
-				title: response.obj?.message || t("pages.xray.tor.added", "Tor outbound added"),
+				title: response.obj?.message || t("pages.xray.tor.added"),
 				status: "success",
 				isClosable: true,
 				position: "top",
@@ -1430,7 +1417,7 @@ export const CoreSettingsPage: FC = () => {
 				error?.response?._data?.detail ??
 				error?.data?.detail ??
 				error?.message ??
-				t("pages.xray.tor.failed", "Unable to setup Tor proxy");
+				t("pages.xray.tor.failed");
 			toast({
 				title: typeof detail === "string" ? detail : JSON.stringify(detail),
 				status: "error",
@@ -1464,7 +1451,7 @@ export const CoreSettingsPage: FC = () => {
 			if (!response?.success || !outbound) {
 				throw new Error(
 					response?.msg ||
-						t("pages.xray.windscribe.failed", "Unable to set up Windscribe proxy"),
+						t("pages.xray.windscribe.failed"),
 				);
 			}
 			const outbounds = getOutbounds();
@@ -1481,7 +1468,7 @@ export const CoreSettingsPage: FC = () => {
 			toast({
 				title:
 					response.obj?.message ||
-					t("pages.xray.windscribe.added", "Windscribe outbound added"),
+					t("pages.xray.windscribe.added"),
 				status: "success",
 				isClosable: true,
 				position: "top",
@@ -1492,7 +1479,7 @@ export const CoreSettingsPage: FC = () => {
 				error?.response?._data?.detail ??
 				error?.data?.detail ??
 				error?.message ??
-				t("pages.xray.windscribe.failed", "Unable to set up Windscribe proxy");
+				t("pages.xray.windscribe.failed");
 			toast({
 				title: typeof detail === "string" ? detail : JSON.stringify(detail),
 				status: "error",
@@ -1886,10 +1873,7 @@ export const CoreSettingsPage: FC = () => {
 			const account = readVlessOutboundAccount(outbound);
 			if (!outbound || !account.address || !account.port || !account.id) {
 				toast({
-					title: t(
-						"pages.xray.reverse.vlessOutboundInvalid",
-						"The VLESS connection is incomplete",
-					),
+					title: t("pages.xray.reverse.vlessOutboundInvalid"),
 					status: "error",
 					isClosable: true,
 					position: "top",
@@ -1899,10 +1883,7 @@ export const CoreSettingsPage: FC = () => {
 			}
 			if (!isSecureVlessConnection(outbound, account)) {
 				toast({
-					title: t(
-						"pages.xray.reverse.transportSecurityRequired",
-						"Public VLESS connections require TLS or VLESS Encryption",
-					),
+					title: t("pages.xray.reverse.transportSecurityRequired"),
 					status: "error",
 					isClosable: true,
 					position: "top",
@@ -1936,10 +1917,7 @@ export const CoreSettingsPage: FC = () => {
 			);
 			if (!inbound) {
 				toast({
-					title: t(
-						"pages.xray.reverse.vlessInboundInvalid",
-						"The VLESS connection is unavailable",
-					),
+					title: t("pages.xray.reverse.vlessInboundInvalid"),
 					status: "error",
 					isClosable: true,
 					position: "top",
@@ -2116,10 +2094,7 @@ export const CoreSettingsPage: FC = () => {
 			.toLowerCase();
 		if (protocol === "blackhole" || outboundTag.toLowerCase() === "blocked") {
 			toast({
-				title: t(
-					"pages.xray.outbound.testBlocked",
-					"Blocked/blackhole outbound cannot be tested",
-				),
+				title: t("pages.xray.outbound.testBlocked"),
 				status: "warning",
 				isClosable: true,
 				position: "top",
@@ -2175,7 +2150,7 @@ export const CoreSettingsPage: FC = () => {
 						success: false,
 						error:
 							response?.msg ||
-							t("pages.xray.outbound.testError", "Unable to test outbound"),
+							t("pages.xray.outbound.testError"),
 					},
 				},
 			}));
@@ -2184,7 +2159,7 @@ export const CoreSettingsPage: FC = () => {
 				error?.response?._data?.detail ??
 				error?.data?.detail ??
 				error?.message ??
-				t("pages.xray.outbound.testError", "Unable to test outbound");
+				t("pages.xray.outbound.testError");
 			setSubscriptionOutboundTestStates((prev) => ({
 				...prev,
 				[stateKey]: {
@@ -2246,7 +2221,7 @@ export const CoreSettingsPage: FC = () => {
 				title:
 					outboundTestType === "tcp" || outboundTestType === "icmp"
 						? outboundAddressRequiredMessage
-						: t("pages.xray.outbound.testNothing", "No outbound can be tested"),
+						: t("pages.xray.outbound.testNothing"),
 				status: "warning",
 				isClosable: true,
 				position: "top",
@@ -2297,7 +2272,7 @@ export const CoreSettingsPage: FC = () => {
 							testing: false,
 							result: results[index] ?? {
 								success: false,
-								error: response?.msg || t("pages.xray.outbound.testError", "Unable to test outbound"),
+								error: response?.msg || t("pages.xray.outbound.testError"),
 							},
 						};
 					}
@@ -2312,7 +2287,7 @@ export const CoreSettingsPage: FC = () => {
 							testing: false,
 							result: results[index] ?? {
 								success: false,
-								error: response?.msg || t("pages.xray.outbound.testError", "Unable to test outbound"),
+								error: response?.msg || t("pages.xray.outbound.testError"),
 							},
 						};
 					}
@@ -2324,7 +2299,7 @@ export const CoreSettingsPage: FC = () => {
 				error?.response?._data?.detail ??
 				error?.data?.detail ??
 				error?.message ??
-				t("pages.xray.outbound.testError", "Unable to test outbound");
+				t("pages.xray.outbound.testError");
 			const detailText =
 				typeof detail === "string"
 					? detail
@@ -2349,7 +2324,7 @@ export const CoreSettingsPage: FC = () => {
 				return next;
 			});
 			toast({
-				title: `${t("pages.xray.outbound.testError", "Unable to test outbound")}: ${detailText}`,
+				title: `${t("pages.xray.outbound.testError")}: ${detailText}`,
 				status: "error",
 				isClosable: true,
 				position: "top",
@@ -2711,10 +2686,7 @@ export const CoreSettingsPage: FC = () => {
 		if (!trimmed) return;
 		if (warpDomains.includes(trimmed)) {
 			toast({
-				title: t(
-					"pages.xray.warp.domainExists",
-					"This domain already exists in the list.",
-				),
+				title: t("pages.xray.warp.domainExists"),
 				status: "warning",
 				duration: 3000,
 				isClosable: true,
@@ -2808,11 +2780,7 @@ export const CoreSettingsPage: FC = () => {
 		);
 		if (duplicateIndex >= 0) {
 			throw new Error(
-				t(
-					"pages.xray.outbound.tagExistsNamed",
-					"Outbound {{tag}} already exists.",
-					{ tag },
-				),
+				t("pages.xray.outbound.tagExistsNamed", { tag }),
 			);
 		}
 		if (
@@ -3073,7 +3041,7 @@ export const CoreSettingsPage: FC = () => {
 				hasArrow
 				label={result.success
 					? result.output || outboundTestResultLabel(result)
-					: result.error || t("pages.xray.outbound.testFailed", "Outbound test failed")}
+					: result.error || t("pages.xray.outbound.testFailed")}
 				whiteSpace="pre-wrap"
 			>
 				<Tag colorScheme={result.success ? "green" : "red"} size="sm" borderRadius="full" gap={1} sx={{ fontVariantNumeric: "tabular-nums" }}>
@@ -3082,7 +3050,7 @@ export const CoreSettingsPage: FC = () => {
 						? typeof result.delay === "number" && result.delay < 1
 							? "<1 ms"
 							: `${result.delay ?? "-"} ms`
-						: t("pages.xray.outbound.testFailedBadge", "Failed")}
+						: t("pages.xray.outbound.testFailedBadge")}
 				</Tag>
 			</Tooltip>
 		);
@@ -3106,7 +3074,7 @@ export const CoreSettingsPage: FC = () => {
 			String(outbound.protocol ?? "").toLowerCase().trim() === "blackhole" ||
 			String(outbound.tag ?? "").toLowerCase().trim() === "blocked";
 
-		const testLabel = `${t("pages.xray.outbound.test", "Test")} · ${outboundTestTypeLabels[outboundTestType]}`;
+		const testLabel = `${t("pages.xray.routeTester.test")} · ${outboundTestTypeLabels[outboundTestType]}`;
 		return (
 			<Tooltip hasArrow label={disabledReason || testLabel} shouldWrapChildren>
 				<IconButton
@@ -3141,7 +3109,7 @@ export const CoreSettingsPage: FC = () => {
 							#{originalIndex + 1}
 						</Tag>
 						<Text fontWeight="semibold" noOfLines={1}>
-							{rule.outboundTag || rule.balancerTag || t("pages.xray.rules.any", "Any route")}
+							{rule.outboundTag || rule.balancerTag || t("pages.xray.rules.any")}
 						</Text>
 					</HStack>
 					<Text fontSize="xs" color="panel.textMuted" noOfLines={1}>
@@ -3201,7 +3169,7 @@ export const CoreSettingsPage: FC = () => {
 		},
 		{
 			id: "inbound",
-			header: t("pages.xray.rules.inboundGroup"),
+			header: t("inbound"),
 			priority: "medium",
 			hideBelow: "lg",
 			cell: ({ rule }) => (
@@ -3210,7 +3178,7 @@ export const CoreSettingsPage: FC = () => {
 					{renderChipList(rule.user, "cyan")}
 				</VStack>
 			),
-			mobileMetaLabel: t("pages.xray.rules.inboundGroup"),
+			mobileMetaLabel: t("inbound"),
 		},
 		{
 			id: "target",
@@ -3238,14 +3206,14 @@ export const CoreSettingsPage: FC = () => {
 		},
 		{
 			id: "move-up",
-			label: t("pages.xray.rules.up", "Move up"),
+			label: t("pages.xray.rules.up"),
 			icon: <ArrowUpIconStyled />,
 			isDisabled: routingRuleSearch.trim().length > 0 || row.originalIndex === 0,
 			onClick: () => replaceRule(row.originalIndex, row.originalIndex - 1),
 		},
 		{
 			id: "move-down",
-			label: t("pages.xray.rules.down", "Move down"),
+			label: t("pages.xray.rules.down"),
 			icon: <ArrowDownIconStyled />,
 			isDisabled:
 				routingRuleSearch.trim().length > 0 ||
@@ -3295,14 +3263,14 @@ export const CoreSettingsPage: FC = () => {
 		},
 		{
 			id: "latency",
-			header: t("pages.nodes.latency", "Latency"),
+			header: t("pages.xray.outbound.testTypeLatency"),
 			priority: "high",
 			cell: ({ originalIndex }) => renderOutboundTestResult(outboundTestStates[originalIndex]),
-			mobileMetaLabel: t("pages.nodes.latency", "Latency"),
+			mobileMetaLabel: t("pages.xray.outbound.testTypeLatency"),
 		},
 		{
 			id: "test",
-			header: t("pages.xray.outbound.test", "Test"),
+			header: t("pages.xray.routeTester.test"),
 			priority: "medium",
 			hideBelow: "lg",
 			cell: ({ outbound, originalIndex }) =>
@@ -3311,7 +3279,7 @@ export const CoreSettingsPage: FC = () => {
 					outboundTestStates[originalIndex],
 					() => testOutbound(originalIndex),
 				),
-			mobileMetaLabel: t("pages.xray.outbound.test", "Test"),
+			mobileMetaLabel: t("pages.xray.routeTester.test"),
 		},
 	];
 
@@ -3326,14 +3294,14 @@ export const CoreSettingsPage: FC = () => {
 		},
 		{
 			id: "move-up",
-			label: t("pages.xray.outbound.moveUp", "Move up"),
+			label: t("pages.xray.outbound.moveUp"),
 			icon: <ArrowUpIconStyled />,
 			isDisabled: outboundSearch.trim().length > 0 || row.originalIndex === 0,
 			onClick: () => moveOutboundUp(row.originalIndex),
 		},
 		{
 			id: "move-down",
-			label: t("pages.xray.outbound.moveDown", "Move down"),
+			label: t("pages.xray.outbound.moveDown"),
 			icon: <ArrowDownIconStyled />,
 			isDisabled:
 				outboundSearch.trim().length > 0 ||
@@ -3342,7 +3310,7 @@ export const CoreSettingsPage: FC = () => {
 		},
 		{
 			id: "reset",
-			label: t("pages.inbounds.resetTraffic", "Reset traffic"),
+			label: t("pages.xray.outbound.resetTraffic"),
 			icon: <ReloadIconStyled />,
 			onClick: () =>
 				setOutboundReset({ index: row.originalIndex, scope: "target" }),
@@ -3388,7 +3356,7 @@ export const CoreSettingsPage: FC = () => {
 						{String(outbound.tag ?? "-")}
 					</Text>
 					<Tag size="sm" colorScheme="green">
-						{t("pages.xray.outboundSub.sourceBadge", "subscription")}
+						{t("pages.xray.outboundSub.sourceBadge")}
 					</Tag>
 				</VStack>
 			),
@@ -3422,14 +3390,14 @@ export const CoreSettingsPage: FC = () => {
 		},
 		{
 			id: "latency",
-			header: t("pages.nodes.latency", "Latency"),
+			header: t("pages.xray.outbound.testTypeLatency"),
 			priority: "high",
 			cell: ({ stateKey }) => renderOutboundTestResult(subscriptionOutboundTestStates[stateKey]),
-			mobileMetaLabel: t("pages.nodes.latency", "Latency"),
+			mobileMetaLabel: t("pages.xray.outbound.testTypeLatency"),
 		},
 		{
 			id: "test",
-			header: t("pages.xray.outbound.test", "Test"),
+			header: t("pages.xray.routeTester.test"),
 			priority: "medium",
 			hideBelow: "lg",
 			cell: ({ outbound, index, stateKey }) =>
@@ -3438,40 +3406,40 @@ export const CoreSettingsPage: FC = () => {
 					subscriptionOutboundTestStates[stateKey],
 					() => testSubscriptionOutbound(outbound, index),
 				),
-			mobileMetaLabel: t("pages.xray.outbound.test", "Test"),
+			mobileMetaLabel: t("pages.xray.routeTester.test"),
 		},
 	];
 
 	const reverseColumns: DataTableColumn<ReverseRow>[] = [
 		{
 			id: "type",
-			header: t("pages.xray.reverse.type", "Type"),
+			header: t("pages.xray.reverse.type"),
 			isPrimary: true,
 			priority: "primary",
 			cell: (reverse) => (
 				<Tag colorScheme={reverse.type === "internal" ? "blue" : "purple"} size="sm">
 					{reverse.type === "internal"
-						? t("pages.xray.reverse.internal", "Internal device")
-						: t("pages.xray.reverse.public", "Public server")}
+						? t("pages.xray.reverse.internal")
+						: t("pages.xray.reverse.public")}
 				</Tag>
 			),
 		},
 		{
 			id: "tag",
-			header: t("pages.xray.reverse.tag", "Tag"),
+			header: t("pages.xray.reverse.tag"),
 			priority: "high",
 			cell: (reverse) => renderTextValue(reverse.tag),
 			mobileSummary: true,
 		},
 		{
 			id: "connection",
-			header: t("pages.xray.reverse.connection", "Connection"),
+			header: t("pages.xray.reverse.connection"),
 			priority: "high",
 			cell: (reverse) => renderTextValue(reverse.connectionTag),
 		},
 		{
 			id: "target",
-			header: t("pages.xray.reverse.target", "Target"),
+			header: t("pages.xray.reverse.target"),
 			priority: "medium",
 			hideBelow: "lg",
 			cell: (reverse) =>
@@ -3644,13 +3612,10 @@ export const CoreSettingsPage: FC = () => {
 		return (
 			<VStack spacing={4} align="stretch">
 				<Text as="h1" fontWeight="semibold" fontSize="2xl">
-					{t("header.xraySettings", "Xray settings")}
+					{t("header.xraySettings")}
 				</Text>
 				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-					{t(
-						"xraySettings.noPermission",
-						"You do not have permission to manage Xray settings.",
-					)}
+					{t("xraySettings.noPermission")}
 				</Text>
 			</VStack>
 		);
@@ -3662,34 +3627,22 @@ export const CoreSettingsPage: FC = () => {
 		{
 			value: "xraySetting",
 			label: t("pages.xray.completeTemplate"),
-			description: t(
-				"pages.xray.completeTemplateDesc",
-				"Edit the complete Xray config object.",
-			),
+			description: t("pages.xray.completeTemplateDesc"),
 		},
 		{
 			value: "inboundSettings",
 			label: t("pages.xray.Inbounds"),
-			description: t(
-				"pages.xray.inboundsJsonDesc",
-				"Edit only the config.inbounds array.",
-			),
+			description: t("pages.xray.inboundsJsonDesc"),
 		},
 		{
 			value: "outboundSettings",
 			label: t("pages.xray.Outbounds"),
-			description: t(
-				"pages.xray.outboundsJsonDesc",
-				"Edit only the config.outbounds array.",
-			),
+			description: t("pages.xray.outboundsJsonDesc"),
 		},
 		{
 			value: "routingRuleSettings",
 			label: t("pages.xray.Routings"),
-			description: t(
-				"pages.xray.routingRulesJsonDesc",
-				"Edit only the routing.rules array.",
-			),
+			description: t("pages.xray.routingRulesJsonDesc"),
 		},
 	];
 	const activeAdvancedJsonMode =
@@ -3714,7 +3667,7 @@ export const CoreSettingsPage: FC = () => {
 		const destination = routeTestDestination.trim();
 		if (!destination) {
 			toast({
-				title: t("pages.xray.routeTester.destRequired", "Destination is required"),
+				title: t("pages.xray.routeTester.destRequired"),
 				status: "warning",
 				isClosable: true,
 				position: "top",
@@ -3724,10 +3677,7 @@ export const CoreSettingsPage: FC = () => {
 		}
 		if (isMasterTarget) {
 			toast({
-				title: t(
-					"pages.xray.routeTester.nodeTargetRequired",
-					"Change the target to a node before testing this route.",
-				),
+				title: t("pages.xray.routeTester.nodeTargetRequired"),
 				status: "warning",
 				isClosable: true,
 				position: "top",
@@ -3738,7 +3688,7 @@ export const CoreSettingsPage: FC = () => {
 		const port = Number.parseInt(routeTestPort || "0", 10);
 		if (!Number.isFinite(port) || port < 0 || port > 65535) {
 			toast({
-				title: t("pages.xray.routeTester.portInvalid", "Port must be between 0 and 65535"),
+				title: t("pages.xray.routeTester.portInvalid"),
 				status: "warning",
 				isClosable: true,
 				position: "top",
@@ -3776,21 +3726,21 @@ export const CoreSettingsPage: FC = () => {
 			}
 			throw new Error(
 				response?.msg ||
-					t("pages.xray.routeTester.failed", "Unable to test route"),
+					t("pages.xray.routeTester.failed"),
 			);
 		} catch (error: any) {
 			const detail =
 				error?.response?._data?.detail ??
 				error?.data?.detail ??
 				error?.message ??
-				t("pages.xray.routeTester.failed", "Unable to test route");
+				t("pages.xray.routeTester.failed");
 			const detailText =
 				typeof detail === "string"
 					? detail
 					: JSON.stringify(detail ?? "Unknown error");
 			setRouteTestResult({ matched: false, error: detailText });
 			toast({
-				title: `${t("pages.xray.routeTester.failed", "Unable to test route")}: ${detailText}`,
+				title: `${t("pages.xray.routeTester.failed")}: ${detailText}`,
 				status: "error",
 				isClosable: true,
 				position: "top",
@@ -3837,7 +3787,7 @@ export const CoreSettingsPage: FC = () => {
 							onClick={handleOnSave}
 							w={{ base: "full", sm: "auto" }}
 						>
-							{t("core.save")}
+							{t("save")}
 						</Button>
 						<Button
 							size="sm"
@@ -3864,7 +3814,7 @@ export const CoreSettingsPage: FC = () => {
 					>
 						<FormControl w={{ base: "full", sm: "260px" }}>
 							<FormLabel mb={1} fontSize="xs" color={pageHintColor}>
-								{t("core.configTarget", "Target")}
+								{t("pages.xray.routeTester.target")}
 							</FormLabel>
 							<Select
 								size="sm"
@@ -3889,7 +3839,7 @@ export const CoreSettingsPage: FC = () => {
 								minH="32px"
 							>
 								<FormLabel mb={0} fontSize="sm">
-									{t("core.customNodeConfig", "Custom config")}
+									{t("core.customNodeConfig")}
 								</FormLabel>
 								<Switch
 									size="sm"
@@ -3955,7 +3905,7 @@ export const CoreSettingsPage: FC = () => {
 						label: (
 							<HStack spacing={2} align="center">
 								<ReloadIconStyled />
-								<Text as="span">{t("pages.xray.reverse.title", "Reverse")}</Text>
+								<Text as="span">{t("pages.xray.reverse.title")}</Text>
 							</HStack>
 						),
 					},
@@ -4010,7 +3960,7 @@ export const CoreSettingsPage: FC = () => {
 						<VStack spacing={4} align="stretch">
 							<VStack spacing={3} align="stretch">
 								<SettingsSection
-									title={t("pages.xray.serverIPs", "Server IPs")}
+									title={t("pages.xray.serverIPs")}
 									defaultOpen
 								>
 									<SettingRow label="IPv4" controlId="server-ipv4">
@@ -4044,7 +3994,7 @@ export const CoreSettingsPage: FC = () => {
 												}
 												isDisabled={freedomOutboundIndex === -1}
 											>
-												<option value="">{t("core.default", "Default")}</option>
+												<option value="">{t("common.default")}</option>
 												{[
 													"AsIs",
 													"UseIP",
@@ -4096,15 +4046,15 @@ export const CoreSettingsPage: FC = () => {
 													flexShrink={0}
 												>
 													{warpExists
-														? t("pages.xray.warp.manage", "Manage WARP")
-														: t("pages.xray.warp.create", "Create WARP")}
+														? t("pages.xray.warp.manage")
+														: t("pages.xray.warp.create")}
 												</Button>
 											</HStack>
 											<Wrap>
 												{warpDomains.length === 0 && (
 													<WrapItem>
 														<Tag colorScheme="gray" variant="subtle">
-															<TagLabel>{t("core.empty", "Empty")}</TagLabel>
+															<TagLabel>{t("core.empty")}</TagLabel>
 														</Tag>
 													</WrapItem>
 												)}
@@ -4113,7 +4063,7 @@ export const CoreSettingsPage: FC = () => {
 														<Tag colorScheme="primary" borderRadius="full">
 															<TagLabel>{domain}</TagLabel>
 															<TagCloseButton
-																aria-label={t("core.remove")}
+																aria-label={t("remove")}
 																onClick={() => handleWarpDomainRemove(domain)}
 															/>
 														</Tag>
@@ -4122,7 +4072,7 @@ export const CoreSettingsPage: FC = () => {
 											</Wrap>
 											<HStack spacing={3} flexWrap="wrap">
 												<Select
-													placeholder={t("core.select", "Select...")}
+													placeholder={t("core.select")}
 													size="sm"
 													maxW="240px"
 													value={warpOptionValue}
@@ -4159,7 +4109,7 @@ export const CoreSettingsPage: FC = () => {
 														}}
 														isDisabled={!warpCustomDomain.trim()}
 													>
-														{t("core.add")}
+														{t("add")}
 													</Button>
 												</HStack>
 											</HStack>
@@ -4278,7 +4228,7 @@ export const CoreSettingsPage: FC = () => {
 													control={form.control}
 													render={({ field }) => (
 														<Select {...field} id={id} size="sm" maxW="220px">
-															<option value="">Empty</option>
+															<option value="">{t("common.empty")}</option>
 															{["none", DEFAULT_ACCESS_LOG_PATH].map((s) => (
 																<option key={s} value={s}>
 																	{s}
@@ -4331,7 +4281,7 @@ export const CoreSettingsPage: FC = () => {
 													control={form.control}
 													render={({ field }) => (
 														<Select {...field} id={id} size="sm" maxW="220px">
-															<option value="">Empty</option>
+															<option value="">{t("common.empty")}</option>
 															{["none", DEFAULT_ERROR_LOG_PATH].map((s) => (
 																<option key={s} value={s}>
 																	{s}
@@ -4383,7 +4333,7 @@ export const CoreSettingsPage: FC = () => {
 												control={form.control}
 												render={({ field }) => (
 													<Select {...field} id={id} size="sm" maxW="220px">
-														<option value="">Empty</option>
+														<option value="">{t("common.empty")}</option>
 														{["quarter", "half", "full"].map((s) => (
 															<option key={s} value={s}>
 																{s}
@@ -4419,10 +4369,10 @@ export const CoreSettingsPage: FC = () => {
 				<Box p={0} mt={3} display={activeTab === 1 ? "block" : "none"}>
 						<VStack spacing={4} align="stretch">
 							<ResourceListCard
-								title={t("pages.xray.routeTester.title", "Test route")}
+								title={t("pages.xray.routeTester.title")}
 								summaryItems={[
 									{
-										label: t("pages.xray.routeTester.target", "Target"),
+										label: t("pages.xray.routeTester.target"),
 										value: selectedTargetInfo?.name || selectedTarget || "master",
 										colorScheme: isMasterTarget ? "orange" : "green",
 									},
@@ -4434,21 +4384,15 @@ export const CoreSettingsPage: FC = () => {
 										isDisabled={isRouteTesting || isMasterTarget}
 										onClick={runRouteTest}
 									>
-										{t("pages.xray.routeTester.test", "Test")}
+										{t("pages.xray.routeTester.test")}
 									</Button>
 								}
 							>
 								<VStack align="stretch" spacing={3}>
 									<Text color="panel.textMuted" fontSize="xs">
 										{isMasterTarget
-											? t(
-													"pages.xray.routeTester.nodeTargetRequired",
-													"Change the target to a node before testing this route.",
-												)
-											: t(
-													"pages.xray.routeTester.desc",
-													"Ask the selected node which outbound Xray would choose for this synthetic connection.",
-												)}
+											? t("pages.xray.routeTester.nodeTargetRequired")
+											: t("pages.xray.routeTester.desc")}
 									</Text>
 									<Stack
 										direction={{ base: "column", lg: "row" }}
@@ -4457,7 +4401,7 @@ export const CoreSettingsPage: FC = () => {
 									>
 										<FormControl maxW={{ base: "full", lg: "280px" }}>
 											<FormLabel fontSize="xs">
-												{t("pages.xray.routeTester.destination", "Destination")}
+												{t("pages.xray.routeTester.destination")}
 											</FormLabel>
 											<Input
 												size="sm"
@@ -4471,7 +4415,7 @@ export const CoreSettingsPage: FC = () => {
 										</FormControl>
 										<FormControl maxW={{ base: "full", lg: "100px" }}>
 											<FormLabel fontSize="xs">
-												{t("pages.xray.routeTester.port", "Port")}
+												{t("port")}
 											</FormLabel>
 											<Input
 												size="sm"
@@ -4482,7 +4426,7 @@ export const CoreSettingsPage: FC = () => {
 										</FormControl>
 										<FormControl maxW={{ base: "full", lg: "120px" }}>
 											<FormLabel fontSize="xs">
-												{t("pages.xray.routeTester.network", "Network")}
+												{t("pages.xray.routeTester.network")}
 											</FormLabel>
 											<Select
 												size="sm"
@@ -4495,7 +4439,7 @@ export const CoreSettingsPage: FC = () => {
 										</FormControl>
 										<FormControl maxW={{ base: "full", lg: "180px" }}>
 											<FormLabel fontSize="xs">
-												{t("pages.xray.routeTester.inbound", "Inbound")}
+												{t("inbound")}
 											</FormLabel>
 											<Select
 												size="sm"
@@ -4503,7 +4447,7 @@ export const CoreSettingsPage: FC = () => {
 												onChange={(e) => setRouteTestInbound(e.target.value)}
 											>
 												<option value="">
-													{t("pages.xray.routeTester.anyInbound", "Any inbound")}
+													{t("pages.xray.routeTester.anyInbound")}
 												</option>
 												{routeInboundTags.map((tag: string) => (
 													<option key={tag} value={tag}>
@@ -4514,7 +4458,7 @@ export const CoreSettingsPage: FC = () => {
 										</FormControl>
 										<FormControl maxW={{ base: "full", lg: "160px" }}>
 											<FormLabel fontSize="xs">
-												{t("pages.xray.routeTester.protocol", "Protocol")}
+												{t("protocol")}
 											</FormLabel>
 											<Select
 												size="sm"
@@ -4522,7 +4466,7 @@ export const CoreSettingsPage: FC = () => {
 												onChange={(e) => setRouteTestProtocol(e.target.value)}
 											>
 												<option value="">
-													{t("pages.xray.routeTester.anyProtocol", "Any protocol")}
+													{t("pages.xray.routeTester.anyProtocol")}
 												</option>
 												{["http", "tls", "quic", "bittorrent"].map((protocol) => (
 													<option key={protocol} value={protocol}>
@@ -4533,12 +4477,12 @@ export const CoreSettingsPage: FC = () => {
 										</FormControl>
 										<FormControl maxW={{ base: "full", lg: "180px" }}>
 											<FormLabel fontSize="xs">
-												{t("pages.xray.routeTester.email", "User email")}
+												{t("pages.xray.routeTester.email")}
 											</FormLabel>
 											<Input
 												size="sm"
 												value={routeTestEmail}
-												placeholder={t("optional", "Optional")}
+												placeholder={t("optional")}
 												onChange={(e) => setRouteTestEmail(e.target.value)}
 											/>
 										</FormControl>
@@ -4560,10 +4504,7 @@ export const CoreSettingsPage: FC = () => {
 												) : routeTestResult.matched ? (
 													<>
 														<Text fontSize="sm">
-															{t(
-																"pages.xray.routeTester.matchedOutbound",
-																"Matched outbound",
-															)}
+															{t("pages.xray.routeTester.matchedOutbound")}
 														</Text>
 														<Tag size="sm" colorScheme="blue">
 															{routeTestResult.outboundTag ||
@@ -4582,10 +4523,7 @@ export const CoreSettingsPage: FC = () => {
 													</>
 												) : (
 													<Text fontSize="sm" color="panel.textMuted">
-														{t(
-															"pages.xray.routeTester.defaultOutbound",
-															"No routing rule matched; Xray will use the default outbound.",
-														)}
+														{t("pages.xray.routeTester.defaultOutbound")}
 													</Text>
 												)}
 											</HStack>
@@ -4597,11 +4535,11 @@ export const CoreSettingsPage: FC = () => {
 								title={t("pages.xray.Routings")}
 								summaryItems={[
 									{
-										label: t("total", "Total"),
+										label: t("total"),
 										value: routingRuleData.length,
 									},
 									{
-										label: t("listed", "Listed"),
+										label: t("listed"),
 										value: filteredRoutingRules.length,
 										colorScheme: "green",
 									},
@@ -4622,7 +4560,7 @@ export const CoreSettingsPage: FC = () => {
 								<Input
 									size="sm"
 									maxW={{ base: "full", md: "280px" }}
-									placeholder={t("search", "Search")}
+									placeholder={t("search")}
 									value={routingRuleSearch}
 									onChange={(e) => setRoutingRuleSearch(e.target.value)}
 								/>
@@ -4640,23 +4578,17 @@ export const CoreSettingsPage: FC = () => {
 							{subscriptionOutbounds.length > 0 && (
 								<VStack align="stretch" spacing={3}>
 									<ResourceListCard
-										title={t(
-											"pages.xray.outboundSub.fromSubsTitle",
-											"Subscription outbounds",
-										)}
+										title={t("pages.xray.outboundSub.fromSubsTitle")}
 										summaryItems={[
 											{
-												label: t("total", "Total"),
+												label: t("total"),
 												value: subscriptionOutbounds.length,
 												colorScheme: "green",
 											},
 										]}
 									>
 										<Text color="panel.textMuted" fontSize="xs">
-											{t(
-												"pages.xray.outboundSub.fromSubsDesc",
-												"These outbounds are fetched from outbound subscriptions and merged into node runtime config.",
-											)}
+											{t("pages.xray.outboundSub.fromSubsDesc")}
 										</Text>
 									</ResourceListCard>
 									<DataTable
@@ -4664,11 +4596,8 @@ export const CoreSettingsPage: FC = () => {
 										columns={subscriptionOutboundColumns}
 										getRowId={(row) => `${row.stateKey}-${row.index}`}
 										actionsDisplay="none"
-										emptyState={t("pages.xray.outbound.empty", "No outbound found")}
-										ariaLabel={t(
-											"pages.xray.outboundSub.fromSubsTitle",
-											"Subscription outbounds",
-										)}
+										emptyState={t("pages.xray.outbound.empty")}
+										ariaLabel={t("pages.xray.outboundSub.fromSubsTitle")}
 									/>
 								</VStack>
 							)}
@@ -4680,16 +4609,16 @@ export const CoreSettingsPage: FC = () => {
 								title={t("pages.xray.Outbounds")}
 								summaryItems={[
 									{
-										label: t("total", "Total"),
+										label: t("total"),
 										value: outboundData.length,
 									},
 									{
-										label: t("listed", "Listed"),
+										label: t("listed"),
 										value: filteredOutboundData.length,
 										colorScheme: "green",
 									},
 									{
-										label: t("selected", "Selected"),
+										label: t("services.selected"),
 										value: selectedOutboundIds.length,
 										colorScheme: "blue",
 									},
@@ -4709,10 +4638,7 @@ export const CoreSettingsPage: FC = () => {
 											variant="ghost"
 											onClick={onOutboundSubsOpen}
 										>
-											{t(
-												"pages.xray.outboundSub.manage",
-												"Outbound subscriptions",
-											)}
+											{t("pages.xray.outboundSub.title")}
 										</Button>
 										<Menu placement="bottom-end" isLazy>
 											<MenuButton
@@ -4721,14 +4647,14 @@ export const CoreSettingsPage: FC = () => {
 												size="xs"
 												variant="ghost"
 											>
-												{t("more", "More")}
+												{t("more")}
 											</MenuButton>
 											<Portal>
 												<MenuList zIndex="popover" minW="210px">
 													<MenuItem icon={<WarpIconStyled />} onClick={onWarpOpen}>
 														{warpExists
-															? t("pages.xray.warp.manage", "Manage WARP")
-															: t("pages.xray.warp.create", "Create WARP")}
+															? t("pages.xray.warp.manage")
+															: t("pages.xray.warp.create")}
 													</MenuItem>
 													<MenuItem icon={<NordVPNIconStyled />} onClick={onNordOpen}>
 														NordVPN
@@ -4738,7 +4664,7 @@ export const CoreSettingsPage: FC = () => {
 														isDisabled={isApplyingTorProxy}
 														onClick={onTorProxyOpen}
 													>
-														{t("pages.xray.tor.setup", "Tor")}
+														{t("pages.xray.tor.setup")}
 													</MenuItem>
 													<MenuItem
 														icon={<WindscribeIconStyled />}
@@ -4769,7 +4695,7 @@ export const CoreSettingsPage: FC = () => {
 												setOutboundReset({ index: -1, scope: "target" })
 											}
 										>
-											{t("pages.xray.outbound.resetTarget", "Reset target")}
+											{t("pages.xray.outbound.resetTarget")}
 										</Button>
 										<Button
 											size="xs"
@@ -4779,7 +4705,7 @@ export const CoreSettingsPage: FC = () => {
 												setOutboundReset({ index: -1, scope: "all" })
 											}
 										>
-											{t("pages.xray.outbound.resetAll", "Reset all")}
+											{t("pages.xray.outbound.resetAll")}
 										</Button>
 										<Button
 											leftIcon={<BoltIconStyled />}
@@ -4788,7 +4714,7 @@ export const CoreSettingsPage: FC = () => {
 											isDisabled={isMasterTarget}
 											onClick={testAllOutbounds}
 										>
-											{t("pages.xray.outbound.testAll", "Test all")}
+											{t("pages.xray.outbound.testAll")}
 										</Button>
 									</>
 								}
@@ -4801,7 +4727,7 @@ export const CoreSettingsPage: FC = () => {
 									<Input
 										size="sm"
 										maxW={{ base: "full", md: "280px" }}
-										placeholder={t("search", "Search")}
+										placeholder={t("search")}
 										value={outboundSearch}
 										onChange={(e) => setOutboundSearch(e.target.value)}
 									/>
@@ -4842,7 +4768,7 @@ export const CoreSettingsPage: FC = () => {
 								rowActions={outboundActions}
 								actionsDisplay="menu"
 								actionsColumnWidth="52px"
-								emptyState={t("pages.xray.outbound.empty", "No outbound found")}
+								emptyState={t("pages.xray.outbound.empty")}
 								ariaLabel={t("pages.xray.Outbounds")}
 							/>
 						</VStack>
@@ -4850,20 +4776,20 @@ export const CoreSettingsPage: FC = () => {
 				<Box p={0} mt={3} display={activeTab === 3 ? "block" : "none"}>
 						<VStack spacing={4} align="stretch">
 							<ResourceListCard
-								title={t("pages.xray.reverse.title", "Reverse")}
+								title={t("pages.xray.reverse.title")}
 								summaryItems={[
 									{
-										label: t("total", "Total"),
+										label: t("total"),
 										value: reverseData.length,
 									},
 									{
-										label: t("pages.xray.reverse.internal", "Internal device"),
+										label: t("pages.xray.reverse.internal"),
 										value: reverseData.filter((reverse) => reverse.type === "internal")
 											.length,
 										colorScheme: "blue",
 									},
 									{
-										label: t("pages.xray.reverse.public", "Public server"),
+										label: t("pages.xray.reverse.public"),
 										value: reverseData.filter((reverse) => reverse.type === "public")
 											.length,
 										colorScheme: "purple",
@@ -4875,7 +4801,7 @@ export const CoreSettingsPage: FC = () => {
 										{...compactActionButtonProps}
 										onClick={addReverse}
 									>
-										{t("pages.xray.reverse.add", "Add Reverse")}
+										{t("pages.xray.reverse.add")}
 									</Button>
 								}
 							/>
@@ -4886,18 +4812,18 @@ export const CoreSettingsPage: FC = () => {
 								rowActions={reverseActions}
 								actionsDisplay="menu"
 								actionsColumnWidth="52px"
-								emptyState={t("pages.xray.reverse.empty", "No added reverse proxies.")}
-								ariaLabel={t("pages.xray.reverse.title", "Reverse")}
+								emptyState={t("pages.xray.reverse.empty")}
+								ariaLabel={t("pages.xray.reverse.title")}
 							/>
 						</VStack>
 				</Box>
 				<Box p={0} mt={3} display={activeTab === 4 ? "block" : "none"}>
 						<VStack spacing={4} align="stretch">
 							<ResourceListCard
-								title={t("pages.xray.balancer.title", "Balancers")}
+								title={t("pages.xray.Balancers")}
 								summaryItems={[
 									{
-										label: t("total", "Total"),
+										label: t("total"),
 										value: balancersData.length,
 									},
 									{
@@ -4927,7 +4853,7 @@ export const CoreSettingsPage: FC = () => {
 								actionsDisplay="menu"
 								actionsColumnWidth="52px"
 								emptyState={t("emptyBalancersDesc")}
-								ariaLabel={t("pages.xray.balancer.title", "Balancers")}
+								ariaLabel={t("pages.xray.Balancers")}
 							/>
 							{/* Observatory / Burst Observatory editor (if present in config) */}
 							{(form.getValues("config")?.observatory ||
@@ -5195,7 +5121,7 @@ export const CoreSettingsPage: FC = () => {
 										title={t("DNS")}
 										summaryItems={[
 											{
-												label: t("total", "Total"),
+												label: t("total"),
 												value: dnsServers.length,
 											},
 											{
@@ -5241,10 +5167,10 @@ export const CoreSettingsPage: FC = () => {
 							{dnsEnabled && (
 								<VStack align="stretch" spacing={3}>
 									<ResourceListCard
-										title={t("pages.xray.fakedns.title", "Fake DNS")}
+										title={t("pages.xray.fakedns.title")}
 										summaryItems={[
 											{
-												label: t("total", "Total"),
+												label: t("total"),
 												value: fakeDns.length,
 											},
 										]}
@@ -5266,7 +5192,7 @@ export const CoreSettingsPage: FC = () => {
 										actionsDisplay="menu"
 										actionsColumnWidth="52px"
 										emptyState={t("emptyFakeDnsDesc")}
-										ariaLabel={t("pages.xray.fakedns.title", "Fake DNS")}
+										ariaLabel={t("pages.xray.fakedns.title")}
 									/>
 								</VStack>
 							)}
@@ -5275,18 +5201,18 @@ export const CoreSettingsPage: FC = () => {
 				<Box p={0} mt={3} display={activeTab === 6 ? "block" : "none"}>
 						<VStack spacing={4} align="stretch">
 							<ResourceListCard
-								title={t("pages.xray.advancedJsonEditor", "JSON editor")}
+								title={t("pages.xray.advancedJsonEditor")}
 								summaryItems={[
 									{
-										label: t("pages.xray.advancedTemplate", "Template"),
+										label: t("pages.xray.advancedTemplate"),
 										value: activeAdvancedJsonMode.label,
 										colorScheme: "blue",
 									},
 									{
-										label: t("pages.xray.jsonStatus", "Status"),
+										label: t("status"),
 										value: advancedJsonValid
-											? t("jsonEditor.valid", "Valid JSON")
-											: t("jsonEditor.invalid", "Invalid JSON"),
+											? t("jsonEditor.valid")
+											: t("jsonEditor.invalid"),
 										colorScheme: advancedJsonValid ? "green" : "red",
 									},
 								]}
@@ -5366,7 +5292,7 @@ export const CoreSettingsPage: FC = () => {
 										colorScheme="primary"
 										onClick={toggleFullScreen}
 									>
-										{t("pages.xray.exitFullscreen", "Exit full screen")}
+										{t("pages.xray.exitFullscreen")}
 									</Button>
 								)}
 							</Box>
@@ -5516,20 +5442,13 @@ export const CoreSettingsPage: FC = () => {
 				isOpen={Boolean(outboundReset)}
 				onClose={() => setOutboundReset(null)}
 				onConfirm={confirmOutboundTrafficReset}
-				title={t("pages.xray.outbound.resetTraffic", "Reset traffic")}
+				title={t("pages.xray.outbound.resetTraffic")}
 				description={
 					outboundReset?.index === -1
-						? t(
-								"pages.xray.outbound.resetTrafficScopeConfirm",
-								"Reset traffic for the selected scope?",
-							)
-						: t(
-								"pages.xray.outbound.resetTrafficConfirm",
-								"Reset traffic for {{tag}}?",
-								{ tag: outboundData[outboundReset?.index ?? -1]?.tag ?? "" },
-							)
+						? t("pages.xray.outbound.resetTrafficScopeConfirm")
+						: t("pages.xray.outbound.resetTrafficConfirm", { tag: outboundData[outboundReset?.index ?? -1]?.tag ?? "" })
 				}
-				confirmLabel={t("reset", "Reset")}
+				confirmLabel={t("reset")}
 			/>
 		</VStack>
 	);

@@ -142,10 +142,7 @@ export const WindscribeProxyModal: FC<Props> = ({
 			setLoadError(
 				errorDetail(
 					error,
-					t(
-						"pages.xray.windscribe.locationsFailed",
-						"Unable to load Windscribe locations",
-					),
+					t("pages.xray.windscribe.locationsFailed"),
 				),
 			);
 		} finally {
@@ -174,7 +171,7 @@ export const WindscribeProxyModal: FC<Props> = ({
 					onSubmit={form.handleSubmit(onSubmit)}
 				>
 					<XrayModalHeader subtitle={t("pages.xray.windscribe.description")}>
-						{t("pages.xray.windscribe.title", "Set up Windscribe outbound")}
+						{t("pages.xray.windscribe.title")}
 					</XrayModalHeader>
 					<ModalCloseButton isDisabled={isLoading || isLoadingLocations} />
 					<XrayModalBody flex="1" minH={0} overflowY="auto">
@@ -186,7 +183,7 @@ export const WindscribeProxyModal: FC<Props> = ({
 								</Alert>
 							)}
 							<XrayDialogSection
-								title={t("pages.xray.windscribe.account", "Windscribe account")}
+								title={t("pages.xray.windscribe.account")}
 							>
 								<XrayFieldGrid>
 									<FormControl
@@ -238,10 +235,7 @@ export const WindscribeProxyModal: FC<Props> = ({
 									isDisabled={isMasterTarget || isLoading}
 									onClick={loadLocations}
 								>
-									{t(
-										"pages.xray.windscribe.loadLocations",
-										"Login and load locations",
-									)}
+									{t("pages.xray.windscribe.loadLocations")}
 								</Button>
 								{loadError && (
 									<Alert mt={3} status="error" borderRadius="sm" fontSize="sm">
@@ -252,13 +246,13 @@ export const WindscribeProxyModal: FC<Props> = ({
 							</XrayDialogSection>
 
 							<XrayDialogSection
-								title={t("pages.xray.windscribe.proxy", "Proxy outbound")}
+								title={t("pages.xray.windscribe.proxy")}
 							>
 								<FormControl
 									isInvalid={Boolean(form.formState.errors.location)}
 								>
 									<FormLabel>
-										{t("pages.xray.windscribe.location", "Location")}
+										{t("pages.xray.windscribe.location")}
 									</FormLabel>
 									<Controller
 										name="location"
@@ -290,7 +284,7 @@ export const WindscribeProxyModal: FC<Props> = ({
 								<XrayFieldGrid mt={3}>
 									<FormControl isInvalid={Boolean(form.formState.errors.port)}>
 										<FormLabel>
-											{t("pages.xray.windscribe.port", "SOCKS port")}
+											{t("pages.xray.windscribe.port")}
 										</FormLabel>
 										<Input
 											type="number"
@@ -315,7 +309,7 @@ export const WindscribeProxyModal: FC<Props> = ({
 										isInvalid={Boolean(form.formState.errors.tag || duplicateTag)}
 									>
 										<FormLabel>
-											{t("pages.xray.windscribe.tag", "Outbound tag")}
+											{t("pages.xray.windscribe.tag")}
 										</FormLabel>
 										<Input
 											{...form.register("tag", {
@@ -326,19 +320,13 @@ export const WindscribeProxyModal: FC<Props> = ({
 												},
 												validate: (value) =>
 													!existingTags.includes(value.trim()) ||
-													t(
-														"pages.xray.outbound.tagExists",
-														"An outbound with this tag already exists.",
-													),
+													t("pages.xray.outbound.tagExists"),
 											})}
 										/>
 										<FormErrorMessage>
 											{form.formState.errors.tag?.message ||
 												(duplicateTag
-													? t(
-															"pages.xray.outbound.tagExists",
-															"An outbound with this tag already exists.",
-														)
+													? t("pages.xray.outbound.tagExists")
 													: undefined)}
 										</FormErrorMessage>
 									</FormControl>
@@ -365,7 +353,7 @@ export const WindscribeProxyModal: FC<Props> = ({
 								duplicateTag
 							}
 						>
-							{t("pages.xray.windscribe.start", "Set up outbound")}
+							{t("pages.xray.windscribe.start")}
 						</Button>
 					</XrayModalFooter>
 				</Box>

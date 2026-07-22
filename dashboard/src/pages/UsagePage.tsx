@@ -95,13 +95,10 @@ export const UsagePage: FC = () => {
 		return (
 			<VStack spacing={4} align="stretch">
 				<Text as="h1" fontWeight="semibold" fontSize="2xl">
-					{t("usage.title", "Usage Analytics")}
+					{t("usage.title")}
 				</Text>
 				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-					{t(
-						"usage.noPermission",
-						"You do not have permission to view usage analytics.",
-					)}
+					{t("usage.noPermission")}
 				</Text>
 			</VStack>
 		);
@@ -119,13 +116,10 @@ export const UsagePage: FC = () => {
 		return (
 			<VStack spacing={4} align="stretch">
 				<Text as="h1" fontWeight="semibold" fontSize="2xl">
-					{t("usage.title", "Usage Analytics")}
+					{t("usage.title")}
 				</Text>
 				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-					{t(
-						"usage.recordingDisabled",
-						"Usage recording is disabled from Settings.",
-					)}
+					{t("usage.recordingDisabled")}
 				</Text>
 			</VStack>
 		);
@@ -136,11 +130,8 @@ export const UsagePage: FC = () => {
 			<ResourceListCard
 				title={
 					<PageHeader
-						title={t("usage.title", "Usage Analytics")}
-						description={t(
-							"usage.description",
-							"Track usage trends across services, admins, and nodes from a single place.",
-						)}
+						title={t("usage.title")}
+						description={t("usage.description")}
 					/>
 				}
 			/>
@@ -162,13 +153,13 @@ export const UsagePage: FC = () => {
 									value: "services",
 									isActive: activeTab === 0,
 									onClick: () => handleTabChange(0),
-									label: t("usage.tabs.services", "Services"),
+									label: t("usage.tabs.services"),
 								},
 								{
 									value: "admins",
 									isActive: activeTab === 1,
 									onClick: () => handleTabChange(1),
-									label: t("usage.tabs.admins", "Admins"),
+									label: t("usage.tabs.admins"),
 								},
 							]
 						: []),
@@ -178,7 +169,7 @@ export const UsagePage: FC = () => {
 									value: "nodes",
 									isActive: activeTab === 2,
 									onClick: () => handleTabChange(2),
-									label: t("usage.tabs.nodes", "Nodes"),
+									label: t("usage.tabs.nodes"),
 								},
 							]
 						: []),

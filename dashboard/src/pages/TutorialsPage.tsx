@@ -27,7 +27,7 @@ export const TutorialsPage = () => {
 		>
 			<Box
 				as="iframe"
-				title={t("tutorials.menu", "Tutorials")}
+				title={t("tutorials.menu")}
 				src={frameSrc}
 				w="100%"
 				h="100%"

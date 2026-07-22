@@ -240,9 +240,9 @@ export const GeoUpdateDialog = ({
 						</FormControl>
 					</SimpleGrid>
 					<HStack justify="flex-end" mt={3}>
-						<Tooltip label={t("nodes.geoDialog.removeFile")}>
+						<Tooltip label={t("remove")}>
 							<IconButton
-								aria-label="remove file"
+											aria-label={t("a11y.removeFile")}
 								icon={<IconMinus />}
 								variant="ghost"
 								size="sm"
@@ -348,7 +348,7 @@ export const GeoUpdateDialog = ({
 										</Select>
 										<Tooltip label={t("nodes.geoDialog.refreshTemplates")}>
 											<IconButton
-												aria-label="refresh templates"
+												aria-label={t("a11y.refreshTemplates")}
 												icon={<IconRefresh />}
 												size="sm"
 												variant="outline"

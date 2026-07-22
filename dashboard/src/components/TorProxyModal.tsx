@@ -127,17 +127,11 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 					<XrayModalHeader
 						subtitle={
 							isMasterTarget
-								? t(
-										"pages.xray.tor.descriptionAll",
-										"Create the selected Tor exits on every active node.",
-									)
-								: t(
-										"pages.xray.tor.description",
-										"Create one independent Tor SOCKS instance per exit location on the selected node.",
-									)
+								? t("pages.xray.tor.descriptionAll")
+								: t("pages.xray.tor.description")
 						}
 					>
-						{t("pages.xray.tor.title", "Set up Tor outbounds")}
+						{t("pages.xray.tor.title")}
 					</XrayModalHeader>
 					<ModalCloseButton isDisabled={isLoading} />
 					<XrayModalBody flex="1" minH={0} overflowY="auto">
@@ -147,7 +141,7 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 									isInvalid={Boolean(form.formState.errors.locations)}
 								>
 									<FormLabel>
-										{t("pages.xray.tor.locations", "Exit locations")}
+										{t("pages.xray.tor.locations")}
 									</FormLabel>
 									<Controller
 										name="locations"
@@ -156,28 +150,16 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 											validate: (value) => {
 												const locations = parseLocations(value);
 												if (locations.length === 0) {
-													return t(
-														"pages.xray.tor.locationsRequired",
-														"Enter at least one location.",
-													);
+													return t("pages.xray.tor.locationsRequired");
 												}
 												if (locations.length > 20) {
-													return t(
-														"pages.xray.tor.locationsLimit",
-														"Up to 20 locations can be added at once.",
-													);
+													return t("pages.xray.tor.locationsLimit");
 												}
 												if (locations.some((item) => !/^[a-z]{2}$/i.test(item))) {
-													return t(
-														"pages.xray.tor.countryInvalid",
-														"Each location must be a two-letter country code.",
-													);
+													return t("pages.xray.tor.countryInvalid");
 												}
 												if (new Set(locations).size !== locations.length) {
-													return t(
-														"pages.xray.tor.locationsDuplicate",
-														"Each location can only be added once.",
-													);
+													return t("pages.xray.tor.locationsDuplicate");
 												}
 												return true;
 											},
@@ -186,20 +168,14 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 											<MultiValueAutocomplete
 												allowCustom={false}
 												options={locationOptions}
-												placeholder={t(
-													"pages.xray.tor.locationsPlaceholder",
-													"Select exit countries",
-												)}
+												placeholder={t("pages.xray.tor.locationsPlaceholder")}
 												value={field.value}
 												onChange={field.onChange}
 											/>
 										)}
 									/>
 									<FormHelperText>
-										{t(
-											"pages.xray.tor.locationsHint",
-											"Each selected country runs as a separate Tor instance.",
-										)}
+										{t("pages.xray.tor.locationsHint")}
 									</FormHelperText>
 									<FormErrorMessage>
 										{form.formState.errors.locations?.message}
@@ -211,17 +187,14 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 										isInvalid={Boolean(form.formState.errors.startPort)}
 									>
 										<FormLabel>
-											{t("pages.xray.tor.startPort", "Starting SOCKS port")}
+											{t("pages.xray.tor.startPort")}
 										</FormLabel>
 										<Input
 											type="number"
 											inputMode="numeric"
 											{...form.register("startPort", {
 												valueAsNumber: true,
-												required: t(
-													"pages.xray.tor.portRequired",
-													"Port is required.",
-												),
+												required: t("pages.xray.tor.portRequired"),
 												validate: (value) => {
 													const count = Math.max(
 														1,
@@ -234,10 +207,7 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 															: value + (count - 1) * step;
 													return (
 														(value >= 1024 && value <= 65535 && end >= 1024 && end <= 65535) ||
-														t(
-															"pages.xray.tor.generatedPortInvalid",
-															"The generated port range must stay between 1024 and 65535.",
-														)
+														t("pages.xray.tor.generatedPortInvalid")
 													);
 												},
 											})}
@@ -248,7 +218,7 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 									</FormControl>
 									<FormControl>
 										<FormLabel>
-											{t("pages.xray.tor.direction", "Port direction")}
+											{t("pages.xray.tor.direction")}
 										</FormLabel>
 										<Controller
 											name="direction"
@@ -264,7 +234,7 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 														aria-pressed={field.value === "up"}
 														onClick={() => field.onChange("up")}
 													>
-														{t("pages.xray.tor.directionUp", "Increase")}
+														{t("pages.xray.tor.directionUp")}
 													</Button>
 													<Button
 														type="button"
@@ -275,7 +245,7 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 														aria-pressed={field.value === "down"}
 														onClick={() => field.onChange("down")}
 													>
-														{t("pages.xray.tor.directionDown", "Decrease")}
+														{t("pages.xray.tor.directionDown")}
 													</Button>
 												</ButtonGroup>
 											)}
@@ -287,7 +257,7 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 									<FormControl
 										isInvalid={Boolean(form.formState.errors.portStep)}
 									>
-										<FormLabel>{t("pages.xray.tor.portStep", "Port step")}</FormLabel>
+										<FormLabel>{t("pages.xray.tor.portStep")}</FormLabel>
 										<Input
 											type="number"
 											inputMode="numeric"
@@ -295,11 +265,11 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 												valueAsNumber: true,
 												min: {
 													value: 1,
-													message: t("pages.xray.tor.portStepInvalid", "Step must be between 1 and 1000."),
+													message: t("pages.xray.tor.portStepInvalid"),
 												},
 												max: {
 													value: 1000,
-													message: t("pages.xray.tor.portStepInvalid", "Step must be between 1 and 1000."),
+													message: t("pages.xray.tor.portStepInvalid"),
 												},
 											})}
 										/>
@@ -312,27 +282,23 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 											form.formState.errors.tagPrefix || duplicateTag,
 										)}
 									>
-										<FormLabel>{t("pages.xray.tor.tagPrefix", "Tag prefix")}</FormLabel>
+										<FormLabel>{t("pages.xray.tor.tagPrefix")}</FormLabel>
 										<Input
 											placeholder="tor"
 											{...form.register("tagPrefix", {
-												required: t("pages.xray.tor.tagRequired", "Tag prefix is required."),
+												required: t("pages.xray.tor.tagRequired"),
 												validate: (value) =>
 													Boolean(value.trim()) ||
-													t("pages.xray.tor.tagRequired", "Tag prefix is required."),
+													t("pages.xray.tor.tagRequired"),
 											})}
 										/>
 										<FormHelperText>
-											{t("pages.xray.tor.tagPrefixHint", "The country code is appended automatically.")}
+											{t("pages.xray.tor.tagPrefixHint")}
 										</FormHelperText>
 										<FormErrorMessage>
 											{form.formState.errors.tagPrefix?.message ||
 												(duplicateTag
-													? t(
-															"pages.xray.outbound.tagExistsNamed",
-															"Outbound {{tag}} already exists.",
-															{ tag: duplicateTag },
-														)
+													? t("pages.xray.outbound.tagExistsNamed", { tag: duplicateTag })
 													: undefined)}
 										</FormErrorMessage>
 									</FormControl>
@@ -341,7 +307,7 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 								<Box mt={4} pt={3} borderTopWidth="1px" borderColor={borderColor}>
 									<HStack justify="space-between" mb={2}>
 										<Text fontSize="xs" fontWeight="semibold">
-											{t("pages.xray.tor.preview", "Generated outbounds")}
+											{t("pages.xray.tor.preview")}
 										</Text>
 										<Badge variant="subtle">{preview.length}</Badge>
 									</HStack>
@@ -366,7 +332,7 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 							</XrayDialogSection>
 							<FormControl className="rb-dialog-switch-row">
 								<FormLabel>
-									{t("pages.xray.tor.strict", "Require selected exit countries")}
+									{t("pages.xray.tor.strict")}
 								</FormLabel>
 								<Controller
 									name="strict"
@@ -390,9 +356,9 @@ export const TorProxyModal: FC<TorProxyModalProps> = ({
 							colorScheme="primary"
 							isLoading={isLoading}
 							isDisabled={Boolean(duplicateTag)}
-							loadingText={t("pages.xray.tor.starting", "Starting")}
+							loadingText={t("pages.xray.tor.starting")}
 						>
-							{t("pages.xray.tor.start", "Start setup")}
+							{t("pages.xray.tor.start")}
 						</Button>
 					</XrayModalFooter>
 				</Box>

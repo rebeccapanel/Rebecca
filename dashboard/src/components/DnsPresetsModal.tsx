@@ -95,7 +95,7 @@ export const DnsPresetsModal: FC<DnsPresetsModalProps> = ({
 			<ModalOverlay bg="blackAlpha.400" backdropFilter="blur(8px)" />
 			<XrayModalContent mx="3">
 				<XrayModalHeader>
-					{t("pages.xray.dns.dnsPresetTitle", "DNS Presets")}
+					{t("pages.xray.dns.dnsPresetTitle")}
 				</XrayModalHeader>
 				<ModalCloseButton />
 				<XrayModalBody pb={6}>
@@ -114,8 +114,8 @@ export const DnsPresetsModal: FC<DnsPresetsModalProps> = ({
 										size="sm"
 									>
 										{preset.family
-											? t("pages.xray.dns.dnsPresetFamily", "Family")
-											: t("DNS", "DNS")}
+											? t("pages.xray.dns.dnsPresetFamily")
+											: t("DNS")}
 									</Tag>
 									<Text fontWeight="semibold">{preset.name}</Text>
 									<Spacer />

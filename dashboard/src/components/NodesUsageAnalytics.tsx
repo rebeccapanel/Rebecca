@@ -160,25 +160,25 @@ const NodesUsageAnalytics: FC = () => {
 		() => [
 			{
 				key: "24h",
-				label: t("nodes.range24h", "Last 24 hours"),
+				label: t("nodes.range24h"),
 				amount: 24,
 				unit: "hour",
 			},
 			{
 				key: "7d",
-				label: t("nodes.range7d", "Last 7 days"),
+				label: t("nodes.range7d"),
 				amount: 7,
 				unit: "day",
 			},
 			{
 				key: "30d",
-				label: t("nodes.range30d", "Last 30 days"),
+				label: t("nodes.range30d"),
 				amount: 30,
 				unit: "day",
 			},
 			{
 				key: "90d",
-				label: t("nodes.range90d", "Last 90 days"),
+				label: t("nodes.range90d"),
 				amount: 90,
 				unit: "day",
 			},
@@ -248,7 +248,7 @@ const NodesUsageAnalytics: FC = () => {
 			const values = Array.isArray(raw) ? raw : Object.values(raw);
 			return values.map((entry: any) => ({
 				nodeId: Number(entry?.node_id ?? 0),
-				nodeName: entry?.node_name ?? t("nodes.unknownNode", "Unknown"),
+				nodeName: entry?.node_name ?? t("nodes.unknownNode"),
 				total: Number(entry?.uplink ?? 0) + Number(entry?.downlink ?? 0),
 			}));
 		},
@@ -298,7 +298,7 @@ const NodesUsageAnalytics: FC = () => {
 	const nodeDailySeries = useMemo(
 		() => [
 			{
-				name: t("nodes.usedTrafficSeries", "Used traffic"),
+				name: t("nodes.usedTrafficSeries"),
 				data: nodeDailyPoints.map((point) => point.used_traffic),
 			},
 		],
@@ -342,7 +342,7 @@ const NodesUsageAnalytics: FC = () => {
 	const adminDailySeries = useMemo(
 		() => [
 			{
-				name: t("nodes.usedTrafficSeries", "Used traffic"),
+				name: t("nodes.usedTrafficSeries"),
 				data: adminDailyPoints.map((point) => point.used_traffic),
 			},
 		],
@@ -681,7 +681,7 @@ const NodesUsageAnalytics: FC = () => {
 				const fallbackName =
 					data?.node_name ??
 					nodesById.get(nodeDailySelectedNodeId) ??
-					t("nodes.unknownNode", "Unknown");
+					t("nodes.unknownNode");
 				setNodeDailyMeta({
 					nodeName: fallbackName,
 					nodeId: data?.node_id ?? nodeDailySelectedNodeId,
@@ -807,16 +807,13 @@ const NodesUsageAnalytics: FC = () => {
 			<ChartBox
 				title={
 					<Tooltip
-						label={t(
-							"nodes.trafficOverviewTooltip",
-							"Total usage per node over the chosen range.",
-						)}
+						label={t("nodes.trafficOverviewTooltip")}
 						placement="top"
 						fontSize="sm"
 					>
 						<HStack spacing={2} align="center">
 							<Text fontWeight="semibold">
-								{t("nodes.trafficOverview", "Traffic overview")}
+								{t("nodes.trafficOverview")}
 							</Text>
 							<InfoIcon
 								color="gray.500"
@@ -838,7 +835,7 @@ const NodesUsageAnalytics: FC = () => {
 			>
 				<VStack align="start" spacing={1} mb={4}>
 					<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-						{t("usage.selectedRangeTotal", "Selected range total")}:{" "}
+						{t("usage.selectedRangeTotal")}:{" "}
 						<chakra.span fontWeight="medium">
 							{formatBytes(totalNodeUsage || 0, 2)}
 						</chakra.span>
@@ -872,16 +869,13 @@ const NodesUsageAnalytics: FC = () => {
 			<ChartBox
 				title={
 					<Tooltip
-						label={t(
-							"nodes.perDayUsageTooltip",
-							"Daily traffic aggregated for the selected node within the chosen range.",
-						)}
+						label={t("nodes.perDayUsageTooltip")}
 						placement="top"
 						fontSize="sm"
 					>
 						<HStack spacing={2} align="center">
 							<Text fontWeight="semibold">
-								{t("nodes.perDayUsage", "Per day usage")}
+								{t("nodes.perDayUsage")}
 							</Text>
 							<InfoIcon
 								color="gray.500"
@@ -916,7 +910,7 @@ const NodesUsageAnalytics: FC = () => {
 									Number.isFinite(parsed) && parsed > 0 ? parsed : null,
 								);
 							}}
-							placeholder={t("nodes.selectNode", "Select node")}
+							placeholder={t("nodes.selectNode")}
 						>
 							{nodeDailyOptions.map((option) => (
 								<option key={option.value} value={option.value}>
@@ -935,11 +929,11 @@ const NodesUsageAnalytics: FC = () => {
 			>
 				<VStack align="start" spacing={1} mb={4}>
 					<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-						{t("nodes.selectedNode", "Node")}:{" "}
+						{t("nodes.selectedNode")}:{" "}
 						<chakra.span fontWeight="medium">
-							{nodeDailyMeta?.nodeName ?? t("nodes.unknownNode", "Unknown")}
+							{nodeDailyMeta?.nodeName ?? t("nodes.unknownNode")}
 						</chakra.span>{" "}
-						{t("nodes.totalLabel", "Total")}:{" "}
+						{t("nodes.totalLabel")}:{" "}
 						<chakra.span fontWeight="medium">
 							{formatBytes(nodeDailyTotal || 0, 2)}
 						</chakra.span>
@@ -973,16 +967,13 @@ const NodesUsageAnalytics: FC = () => {
 			<ChartBox
 				title={
 					<Tooltip
-						label={t(
-							"nodes.adminUsageChartTooltip",
-							"Usage trend for the selected admin and node.",
-						)}
+						label={t("nodes.adminUsageChartTooltip")}
 						placement="top"
 						fontSize="sm"
 					>
 						<HStack spacing={2} align="center">
 							<Text fontWeight="semibold">
-								{t("nodes.adminUsageChart", "Admin usage chart")}
+								{t("nodes.adminUsageChart")}
 							</Text>
 							<InfoIcon
 								color="gray.500"
@@ -1031,7 +1022,7 @@ const NodesUsageAnalytics: FC = () => {
 								const parsed = Number(value);
 								setSelectedAdminNodeId(Number.isNaN(parsed) ? null : parsed);
 							}}
-							placeholder={t("nodes.selectNode", "Select node")}
+							placeholder={t("nodes.selectNode")}
 						>
 							{adminNodeOptions.map((option) => (
 								<option key={option.value} value={option.value}>
@@ -1050,15 +1041,15 @@ const NodesUsageAnalytics: FC = () => {
 			>
 				<VStack align="start" spacing={1} mb={4}>
 					<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-						{t("nodes.selectedAdmin", "Admin")}:{" "}
+						{t("nodes.selectedAdmin")}:{" "}
 						<chakra.span fontWeight="medium">
 							{selectedAdminDaily ?? "-"}
 						</chakra.span>{" "}
-						{t("nodes.selectedNode", "Node")}:{" "}
+						{t("nodes.selectedNode")}:{" "}
 						<chakra.span fontWeight="medium">
-							{adminDailyMeta?.nodeName ?? t("nodes.unknownNode", "Unknown")}
+							{adminDailyMeta?.nodeName ?? t("nodes.unknownNode")}
 						</chakra.span>{" "}
-						{t("nodes.totalLabel", "Total")}:{" "}
+						{t("nodes.totalLabel")}:{" "}
 						<chakra.span fontWeight="medium">
 							{formatBytes(adminDailyTotal || 0, 2)}
 						</chakra.span>
@@ -1092,16 +1083,13 @@ const NodesUsageAnalytics: FC = () => {
 			<ChartBox
 				title={
 					<Tooltip
-						label={t(
-							"nodes.perAdminUsageTooltip",
-							"Total usage by node for the selected admin.",
-						)}
+						label={t("nodes.perAdminUsageTooltip")}
 						placement="top"
 						fontSize="sm"
 					>
 						<HStack spacing={2} align="center">
 							<Text fontWeight="semibold">
-								{t("nodes.perAdminUsage", "Per admin usages")}
+								{t("nodes.perAdminUsage")}
 							</Text>
 							<InfoIcon
 								color="gray.500"
@@ -1147,11 +1135,11 @@ const NodesUsageAnalytics: FC = () => {
 			>
 				<VStack align="start" spacing={1} mb={4}>
 					<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-						{t("nodes.selectedAdmin", "Admin")}:{" "}
+						{t("nodes.selectedAdmin")}:{" "}
 						<chakra.span fontWeight="medium">
 							{selectedAdminTotals ?? "-"}
 						</chakra.span>{" "}
-						{t("nodes.totalLabel", "Total")}:{" "}
+						{t("nodes.totalLabel")}:{" "}
 						<chakra.span fontWeight="medium">
 							{formatBytes(totalAdminUsage || 0, 2)}
 						</chakra.span>

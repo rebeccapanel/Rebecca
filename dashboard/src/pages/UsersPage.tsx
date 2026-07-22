@@ -182,14 +182,11 @@ export const UsersPage: FC = () => {
 				>
 					<DisabledIcon color="red.400" mb={5} />
 					<Text fontSize="xl" fontWeight="bold" mb={2}>
-						{t("usersTable.adminDisabledTitle", "Your account is disabled")}
+						{t("usersTable.adminDisabledTitle")}
 					</Text>
 					<Text color="panel.textSecondary" maxW="520px">
 						{userData.disabled_reason ||
-							t(
-								"usersTable.adminDisabledDescription",
-								"Please contact the sudo admin to regain access.",
-							)}
+							t("usersTable.adminDisabledDescription")}
 					</Text>
 				</Flex>
 			</VStack>
@@ -208,8 +205,8 @@ export const UsersPage: FC = () => {
 				toolbar={<UsersFilterBar />}
 				headerActions={
 					<ResourceRefreshButton
-						aria-label={t("refresh", "Refresh")}
-						label={t("refresh", "Refresh")}
+						aria-label={t("refresh")}
+						label={t("refresh")}
 						icon={<ReloadIcon />}
 						onClick={() => refetchUsers(true)}
 						isLoading={loading}

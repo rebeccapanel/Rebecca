@@ -16,6 +16,7 @@ import {
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import { type FC, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 dayjs.extend(utc);
 
@@ -40,7 +41,7 @@ type TimeRangePickerProps = {
 
 const RELATIVE_GROUPS = [
 	{
-		label: "Hours",
+		label: "timeRange.hours",
 		options: [
 			{ key: "1h", label: "1h", amount: 1 },
 			{ key: "2h", label: "2h", amount: 2 },
@@ -52,7 +53,7 @@ const RELATIVE_GROUPS = [
 		unit: "hour" as const,
 	},
 	{
-		label: "Days",
+		label: "timeRange.days",
 		options: [
 			{ key: "1d", label: "1d", amount: 1 },
 			{ key: "2d", label: "2d", amount: 2 },
@@ -64,7 +65,7 @@ const RELATIVE_GROUPS = [
 		unit: "day" as const,
 	},
 	{
-		label: "Weeks",
+		label: "timeRange.weeks",
 		options: [
 			{ key: "1w", label: "1w", amount: 7 },
 			{ key: "2w", label: "2w", amount: 14 },
@@ -74,7 +75,7 @@ const RELATIVE_GROUPS = [
 		unit: "day" as const,
 	},
 	{
-		label: "Months",
+		label: "timeRange.months",
 		options: [
 			{ key: "1m", label: "1m", amount: 30 },
 			{ key: "2m", label: "2m", amount: 60 },
@@ -103,6 +104,7 @@ const TimeRangePicker: FC<TimeRangePickerProps> = ({
 	value,
 	onChange,
 }) => {
+	const { t } = useTranslation();
 	const [tabIndex, setTabIndex] = useState(0);
 
 	const topPresets = useMemo(() => presets, [presets]);
@@ -158,7 +160,7 @@ const TimeRangePicker: FC<TimeRangePickerProps> = ({
 					variant={activePreset === "custom" ? "solid" : "outline"}
 					colorScheme={activePreset === "custom" ? "primary" : undefined}
 				>
-					Custom
+					{t("timeRange.custom")}
 				</Button>
 			</ButtonGroup>
 
@@ -170,8 +172,8 @@ const TimeRangePicker: FC<TimeRangePickerProps> = ({
 					variant="enclosed"
 				>
 					<TabList>
-						<Tab>Relative</Tab>
-						<Tab>Absolute</Tab>
+						<Tab>{t("timeRange.relative")}</Tab>
+						<Tab>{t("timeRange.absolute")}</Tab>
 					</TabList>
 					<TabPanels>
 						<TabPanel>
@@ -179,7 +181,7 @@ const TimeRangePicker: FC<TimeRangePickerProps> = ({
 								{RELATIVE_GROUPS.map((group) => (
 									<Box key={group.label}>
 										<Text fontSize="sm" mb={2} fontWeight="semibold">
-											{group.label}
+											{t(group.label)}
 										</Text>
 										<SimpleGrid columns={{ base: 3, sm: 6 }} spacing={2}>
 											{group.options.map((opt) => (
@@ -208,7 +210,7 @@ const TimeRangePicker: FC<TimeRangePickerProps> = ({
 							<VStack align="stretch" spacing={3}>
 								<HStack>
 									<Text fontSize="sm" minW="60px">
-										Start
+										{t("timeRange.start")}
 									</Text>
 									<Input
 										type="datetime-local"
@@ -219,7 +221,7 @@ const TimeRangePicker: FC<TimeRangePickerProps> = ({
 								</HStack>
 								<HStack>
 									<Text fontSize="sm" minW="60px">
-										End
+										{t("timeRange.end")}
 									</Text>
 									<Input
 										type="datetime-local"

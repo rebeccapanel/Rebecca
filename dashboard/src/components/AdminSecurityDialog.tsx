@@ -99,23 +99,20 @@ export const AdminSecurityDialog = ({
 		<AppDialog
 			isOpen={isOpen}
 			onClose={onClose}
-			title={t("admins.security.title", {
-				defaultValue: "Security for {{username}}",
-				username: admin?.username ?? "",
-			})}
-			footer={<Button onClick={onClose}>{t("close", "Close")}</Button>}
+			title={t("admins.security.title", { username: admin?.username ?? "" })}
+			footer={<Button onClick={onClose}>{t("close")}</Button>}
 		>
 			<Stack spacing={5}>
 				{canManage2FA && (
 					<Box>
 						<HStack justify="space-between" mb={3}>
 							<Text fontWeight="semibold">
-								{t("myaccount.twoFactor", "Two-factor authentication")}
+								{t("myaccount.twoFactor")}
 							</Text>
 							<Badge colorScheme={admin?.totp_enabled ? "green" : "gray"}>
 								{admin?.totp_enabled
-									? t("enabled", "Enabled")
-									: t("disabled", "Disabled")}
+									? t("nodes.enabled")
+									: t("disabled")}
 							</Badge>
 						</HStack>
 						<Button
@@ -125,8 +122,8 @@ export const AdminSecurityDialog = ({
 							size="sm"
 						>
 							{admin?.totp_enabled
-								? t("admins.security.remove2FA", "Remove 2FA")
-								: t("admins.security.setup2FA", "Set up 2FA")}
+								? t("admins.security.remove2FA")
+								: t("admins.security.setup2FA")}
 						</Button>
 						{setup && (
 							<Stack align="center" mt={4} spacing={3}>
@@ -137,10 +134,7 @@ export const AdminSecurityDialog = ({
 									{setup.secret}
 								</Text>
 								<Text color="orange.500" fontSize="xs">
-									{t(
-										"admins.security.shareSecret",
-										"This secret is shown once. Give it to the admin securely.",
-									)}
+									{t("admins.security.shareSecret")}
 								</Text>
 							</Stack>
 						)}
@@ -149,7 +143,7 @@ export const AdminSecurityDialog = ({
 				{canManageSessions && (
 					<Box>
 						<Text fontWeight="semibold" mb={3}>
-							{t("myaccount.sessions", "Login sessions")}
+							{t("myaccount.sessions")}
 						</Text>
 						<Stack spacing={2}>
 							{sessions.map((session) => (
@@ -178,13 +172,13 @@ export const AdminSecurityDialog = ({
 										size="xs"
 										variant="ghost"
 									>
-										{t("logout", "Log out")}
+										{t("header.logout")}
 									</Button>
 								</HStack>
 							))}
 							{!sessions.length && (
 								<Text color="gray.500" fontSize="sm">
-									{t("noData", "No data")}
+									{t("noData")}
 								</Text>
 							)}
 						</Stack>

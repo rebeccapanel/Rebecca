@@ -413,7 +413,7 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 						textTransform="uppercase"
 						mb={2}
 					>
-						{t("theme.mode", "Theme")}
+						{t("header.theme")}
 					</Text>
 					<SimpleGrid columns={2} spacing={2}>
 						{THEME_OPTIONS.map(renderThemeCard)}
@@ -430,7 +430,7 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 						textTransform="uppercase"
 						mb={2}
 					>
-						{t("theme.accent", "Accent color")}
+						{t("theme.accent")}
 					</Text>
 					<SimpleGrid columns={{ base: 5 }} spacing={2}>
 						{ACCENT_OPTIONS.map((accent) => {
@@ -507,7 +507,7 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 					<HStack justify="flex-start" spacing={3} w="full" minW={0}>
 						<SwatchIconChakra flexShrink={0} />
 						<Text noOfLines={1}>
-							{triggerLabel || t("theme.triggerLabel", "Theme")}
+							{triggerLabel || t("header.theme")}
 						</Text>
 					</HStack>
 				</MenuButton>
@@ -527,7 +527,7 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 				size="sm"
 				variant="outline"
 				icon={<SwatchIconChakra />}
-				aria-label={t("theme.triggerLabel", "Theme")}
+				aria-label={t("header.theme")}
 				position="relative"
 				type="button"
 			/>
@@ -540,7 +540,7 @@ export const ThemeSelector: FC<ThemeSelectorProps> = ({
 				rightIcon={<SwatchIconChakra />}
 				type="button"
 			>
-				{triggerLabel || t("theme.triggerLabel", "Theme")}
+				{triggerLabel || t("header.theme")}
 			</MenuButton>
 		);
 

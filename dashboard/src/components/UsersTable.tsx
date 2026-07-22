@@ -613,7 +613,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 		setContextAction("revoke");
 		try {
 			await revokeSubscription(user);
-			notify(t("usersTable.revokeSub", "Subscription revoked"), "success");
+			notify(t("usersTable.revokeSub"), "success");
 		} catch (error: any) {
 			notify(error?.data?.detail || error?.message || t("error"), "error");
 		} finally {
@@ -635,7 +635,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 				method: "PUT",
 				body: { data_limit: nextLimit },
 			});
-			notify(t("usersTable.addTrafficSuccess", "Traffic updated"), "success");
+			notify(t("usersTable.addTrafficSuccess"), "success");
 			refetchUsers(true);
 		} catch (error: any) {
 			notify(error?.data?.detail || error?.message || t("error"), "error");
@@ -657,7 +657,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 				body: { expire: nextExpire },
 			});
 			notify(
-				t("usersTable.extendExpireSuccess", "Expiration extended"),
+				t("usersTable.extendExpireSuccess"),
 				"success",
 			);
 			refetchUsers(true);
@@ -677,7 +677,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 				method: "PUT",
 				body: { status: "disabled" },
 			});
-			notify(t("usersTable.disableUser", "Disable user"), "success");
+			notify(t("usersTable.disableUser"), "success");
 			refetchUsers(true);
 		} catch (error: any) {
 			notify(error?.data?.detail || error?.message || t("error"), "error");
@@ -695,7 +695,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 				method: "PUT",
 				body: { status: "active" },
 			});
-			notify(t("usersTable.enableUser", "Enable user"), "success");
+			notify(t("usersTable.enableUser"), "success");
 			refetchUsers(true);
 		} catch (error: any) {
 			notify(error?.data?.detail || error?.message || t("error"), "error");
@@ -707,7 +707,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 
 	const formatUserIPRecords = (records: UserIPRecord[]) => {
 		if (records.length === 0) {
-			return t("usersTable.noOnlineIps", "No online IPs found.");
+			return t("usersTable.noOnlineIps");
 		}
 		return records
 			.map((record) => {
@@ -754,7 +754,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 			const message =
 				error?.data?.detail ||
 				error?.message ||
-				t("usersTable.getIpsFailed", "Unable to get IPs");
+				t("usersTable.getIpsFailed");
 			setIPDialog((current) =>
 				current?.username === user.username
 					? { ...current, error: message }
@@ -769,11 +769,11 @@ export const UsersTable: FC<UsersTableProps> = ({
 		if (!ipDialog?.records.length) return;
 		try {
 			await copyTextToClipboard(formatUserIPRecords(ipDialog.records));
-			notify(t("usersTable.ipsCopied", "IP addresses copied"), "success", {
+			notify(t("usersTable.ipsCopied"), "success", {
 				duration: 1200,
 			});
 		} catch {
-			notify(t("usersTable.copyFailed", "Copy failed"), "error", {
+			notify(t("usersTable.copyFailed"), "error", {
 				duration: 1600,
 			});
 		}
@@ -811,13 +811,9 @@ export const UsersTable: FC<UsersTableProps> = ({
 		try {
 			await Promise.all(users.map((user) => handler(user)));
 			notify(successLabel, "success", {
-				description: t(
-					"usersTable.bulkActionCount",
-					"{{count}} users updated",
-					{
+				description: t("usersTable.bulkActionCount", {
 						count: users.length,
-					},
-				),
+					}),
 			});
 			clearSelectedUsers();
 			refetchUsers(true);
@@ -847,7 +843,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 					method: "PUT",
 					body: { status: "disabled" },
 				}),
-			t("usersTable.disableUser", "Disable user"),
+			t("usersTable.disableUser"),
 		);
 
 	const handleBulkEnable = () =>
@@ -859,7 +855,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 					method: "PUT",
 					body: { status: "active" },
 				}),
-			t("usersTable.enableUser", "Enable user"),
+			t("usersTable.enableUser"),
 		);
 
 	const handleBulkReset = async () => {
@@ -867,7 +863,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 			"reset",
 			selectedUsers,
 			(user) => resetDataUsage(user),
-			t("usersTable.resetUsage", "Usage reset"),
+			t("usersTable.resetUsage"),
 		);
 		setIsBulkResetOpen(false);
 	};
@@ -877,7 +873,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 			"revoke",
 			selectedUsers,
 			(user) => revokeSubscription(user),
-			t("usersTable.revokeSub", "Subscription revoked"),
+			t("usersTable.revokeSub"),
 		);
 
 	const handleBulkDelete = () =>
@@ -885,7 +881,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 			"delete",
 			bulkDeleteTargets,
 			(user) => deleteUser(user),
-			t("deleteUser.title", "Delete user"),
+			t("deleteUser.title"),
 		);
 
 	const userColumns = useMemo<DataTableColumn<UserListItem>[]>(() => {
@@ -1000,9 +996,9 @@ export const UsersTable: FC<UsersTableProps> = ({
 			},
 			{
 				id: "service",
-				header: t("usersTable.service", "Service"),
+				header: t("usersTable.service"),
 				accessor: (user) =>
-					user.service_name ?? t("usersTable.defaultService", "Default"),
+					user.service_name ?? t("usersTable.defaultService"),
 				priority: "medium",
 				hideBelow: "xl",
 				width: "118px",
@@ -1012,7 +1008,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 				tooltip: true,
 				mobilePriority: 3,
 				mobileVisible: true,
-				mobileMetaLabel: t("usersTable.service", "Service"),
+				mobileMetaLabel: t("usersTable.service"),
 				cell: (user) => (
 					<Text
 						fontSize="sm"
@@ -1020,7 +1016,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 						noOfLines={1}
 						maxW="full"
 					>
-						{user.service_name ?? t("usersTable.defaultService", "Default")}
+						{user.service_name ?? t("usersTable.defaultService")}
 					</Text>
 				),
 			},
@@ -1077,11 +1073,11 @@ export const UsersTable: FC<UsersTableProps> = ({
 		if (hasPrivilegedRole) {
 			columns.push({
 				id: "admin",
-				header: t("usersTable.admin", "Admin"),
+				header: t("usersTable.admin"),
 				desktopVisible: false,
 				mobileVisible: true,
 				mobilePriority: 6,
-				mobileMetaLabel: t("usersTable.admin", "Admin"),
+				mobileMetaLabel: t("usersTable.admin"),
 				cell: (user) => <UserAdminChip adminUsername={user.admin_username} />,
 			});
 		}
@@ -1121,7 +1117,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 			notify(successLabel, "success", { duration: 1200 });
 			return true;
 		} catch {
-			notify(t("usersTable.copyFailed", "Copy failed"), "error", {
+			notify(t("usersTable.copyFailed"), "error", {
 				duration: 1600,
 			});
 			return false;
@@ -1137,23 +1133,23 @@ export const UsersTable: FC<UsersTableProps> = ({
 		const actions: DataTableRowAction<UserListItem>[] = [
 			{
 				id: "copy-subscription",
-				label: t("usersTable.copyLink", "Copy link"),
+				label: t("usersTable.copyLink"),
 				icon: <SubscriptionLinkIcon />,
 				isDisabled: !subscriptionLink,
 				onClick: () =>
-					copyUserText(subscriptionLink, t("usersTable.copied", "Copied")),
+					copyUserText(subscriptionLink, t("copied")),
 			},
 			{
 				id: "copy-configs",
-				label: t("usersTable.copyConfigs", "Copy configs"),
+				label: t("usersTable.copyConfigs"),
 				icon: <CopyIcon />,
 				isDisabled: configLinks.length === 0,
 				onClick: () =>
-					copyUserText(configLinksText, t("usersTable.copied", "Copied")),
+					copyUserText(configLinksText, t("copied")),
 			},
 			{
 				id: "qr",
-				label: t("usersTable.qrCode", "QR Code"),
+				label: t("usersTable.qrCode"),
 				icon: <QRIcon />,
 				onClick: () => {
 					setQRCode(configLinks, user.username);
@@ -1162,7 +1158,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 			},
 			{
 				id: "get-ips",
-				label: t("usersTable.getIps", "View IP addresses"),
+				label: t("usersTable.getIps"),
 				icon: <IPsIcon />,
 				isDisabled: contextAction === "ips",
 				onClick: () => handleGetIPs(user),
@@ -1172,7 +1168,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 		if (canOpenUserDialog) {
 			actions.push({
 				id: "edit",
-				label: t("userDialog.editUser", "Edit user"),
+				label: t("userDialog.editUser"),
 				icon: <EditIcon />,
 				onClick: () => onEditingUser(user),
 			});
@@ -1182,7 +1178,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 		if (canViewTraffic) {
 			actions.push({
 				id: "usage-history",
-				label: t("usersTable.usageHistory", "Usage history"),
+				label: t("usersTable.usageHistory"),
 				icon: <UsageHistoryIcon />,
 				onClick: () => onEditingUser(user, 1),
 			});
@@ -1191,7 +1187,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 		if (canToggleUserStatus && user.status !== "disabled") {
 			actions.push({
 				id: "disable",
-				label: t("usersTable.disableUser", "Disable user"),
+				label: t("usersTable.disableUser"),
 				icon: <RevokeIcon />,
 				isDisabled: contextAction === "disable",
 				onClick: () => handleDisableUser(user),
@@ -1201,7 +1197,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 		if (canToggleUserStatus && user.status === "disabled") {
 			actions.push({
 				id: "enable",
-				label: t("usersTable.enableUser", "Enable user"),
+				label: t("usersTable.enableUser"),
 				icon: <CheckIcon width={16} />,
 				isDisabled: contextAction === "enable",
 				onClick: () => handleEnableUser(user),
@@ -1211,7 +1207,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 		if (canResetUsageActions) {
 			actions.push({
 				id: "reset",
-				label: t("usersTable.resetUsage", "Reset usage"),
+				label: t("usersTable.resetUsage"),
 				icon: <ResetIcon />,
 				isDisabled: contextAction === "reset",
 				onClick: () => handleResetUsage(user),
@@ -1221,7 +1217,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 		if (canRevokeSubActions) {
 			actions.push({
 				id: "revoke",
-				label: t("usersTable.revokeSub", "Revoke subscription"),
+				label: t("usersTable.revokeSub"),
 				icon: <RevokeIcon />,
 				isDisabled: contextAction === "revoke",
 				onClick: () => handleRevokeSub(user),
@@ -1231,17 +1227,17 @@ export const UsersTable: FC<UsersTableProps> = ({
 		if (canMutateUsers && user.data_limit !== null && user.data_limit !== 0) {
 			actions.push({
 				id: "add-traffic",
-				label: t("usersTable.addTraffic", "Add traffic"),
+				label: t("services.userActions.traffic.add"),
 				icon: <TrafficIcon />,
 				render: (_row, onClose) => (
 					<TrafficSubmenu
-						label={t("usersTable.addTraffic", "Add traffic")}
+						label={t("services.userActions.traffic.add")}
 						isRTL={isRTL}
 						activeAction={contextAction}
 						onClose={onClose}
 						onSelect={(gigabytes) => handleAdjustTraffic(user, gigabytes)}
 						getOptionLabel={(gigabytes) =>
-							t("usersTable.addGb", "Add {{count}} GB", {
+							t("usersTable.addGb", {
 								count: gigabytes,
 							})
 						}
@@ -1255,7 +1251,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 		if (canMutateUsers) {
 			actions.push({
 				id: "set-data-limit",
-				label: t("usersTable.setDataLimit", "Set data limit"),
+				label: t("usersTable.setDataLimit"),
 				icon: <DataLimitIcon />,
 				onClick: () =>
 					useDashboard.setState({
@@ -1272,7 +1268,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 		) {
 			actions.push({
 				id: "extend-expire",
-				label: t("usersTable.add30Days", "Add 30 days"),
+				label: t("usersTable.add30Days"),
 				icon: <ExtendIcon />,
 				isDisabled: contextAction === "expire",
 				onClick: () => handleExtendExpire(user, 30),
@@ -1283,7 +1279,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 		if (canMutateUsers) {
 			actions.push({
 				id: "set-expiry",
-				label: t("usersTable.setExpiry", "Set custom expiry"),
+				label: t("usersTable.setExpiry"),
 				icon: <ExpiryIcon />,
 				onClick: () =>
 					useDashboard.setState({
@@ -1295,7 +1291,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 		if (canDeleteUserActions && canDeleteUserByTrafficCap(userData, user)) {
 			actions.push({
 				id: "delete",
-				label: t("deleteUser.title", "Delete user"),
+				label: t("deleteUser.title"),
 				icon: <DeleteIcon />,
 				isDanger: true,
 				render: (_row, onClose) => (
@@ -1311,7 +1307,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 							color="red.400"
 							onClick={(event) => event.stopPropagation()}
 						>
-							{t("deleteUser.title", "Delete user")}
+							{t("deleteUser.title")}
 						</MenuItem>
 					</DeleteConfirmDialog>
 				),
@@ -1351,7 +1347,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 			colorScheme: "red",
 		},
 		{
-			label: t("status.online", "Online"),
+			label: t("onlineStatus.online"),
 			value: formatCount(usersResponse.online_total ?? 0, locale),
 			colorScheme: "teal",
 		},
@@ -1362,19 +1358,13 @@ export const UsersTable: FC<UsersTableProps> = ({
 	if (usageForSummary !== null) {
 		summaryItems.push({
 			label: hasUsageScopeFilter
-				? t("usersTable.filteredUsage", "Filtered usage")
-				: t("usersTable.listUsage", "Listed users usage"),
+				? t("usersTable.filteredUsage")
+				: t("usersTable.listUsage"),
 			value: formatBytes(usageForSummary),
 			colorScheme: "blue",
 			helper: hasUsageScopeFilter
-				? t(
-						"usersTable.filteredUsageHelper",
-						"Sum of user traffic in the current filters.",
-					)
-				: t(
-						"usersTable.listUsageHelper",
-						"Sum of user traffic in the current visible scope.",
-					),
+				? t("usersTable.filteredUsageHelper")
+				: t("usersTable.listUsageHelper"),
 		});
 	}
 
@@ -1389,7 +1379,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 		>
 			{/* One unified header card: stats on top, search + quick filters below. */}
 			<ResourceListCard
-				title={t("usersTable.listHeader", "User list")}
+				title={t("usersTable.listHeader")}
 				summaryItems={summaryItems}
 				actions={headerActions}
 			>
@@ -1404,7 +1394,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 					aria-hidden={isAdminDisabled ? true : undefined}
 				>
 					<DataTable
-						ariaLabel={t("users", "Users")}
+						ariaLabel={t("users")}
 						data={usersResponse.users}
 						columns={userColumns}
 						getRowId={(user) => user.username}
@@ -1451,10 +1441,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 						onSortingChange={handleUserTableSorting}
 						manualSorting
 						dir={isRTL ? "rtl" : "ltr"}
-						selectedLabel={t("usersTable.selectedCount", {
-							defaultValue: "{{count}} selected",
-							count: selectedUsers.length,
-						})}
+						selectedLabel={t("usersTable.selectedCount", { count: selectedUsers.length })}
 						renderBulkActions={() => (
 							<>
 								{canToggleUserStatus && (
@@ -1468,7 +1455,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 											Boolean(bulkAction) || bulkDisableTargets.length === 0
 										}
 									>
-										{t("usersTable.disableUser", "Disable user")}
+										{t("usersTable.disableUser")}
 									</Button>
 								)}
 								{canToggleUserStatus && (
@@ -1482,7 +1469,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 											Boolean(bulkAction) || bulkEnableTargets.length === 0
 										}
 									>
-										{t("usersTable.enableUser", "Enable user")}
+										{t("usersTable.enableUser")}
 									</Button>
 								)}
 								{canResetUsageActions && (
@@ -1496,7 +1483,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 											Boolean(bulkAction) || selectedUsers.length === 0
 										}
 									>
-										{t("usersTable.resetUsage", "Reset usage")}
+										{t("usersTable.resetUsage")}
 									</Button>
 								)}
 								{canRevokeSubActions && (
@@ -1510,15 +1497,12 @@ export const UsersTable: FC<UsersTableProps> = ({
 											Boolean(bulkAction) || selectedUsers.length === 0
 										}
 									>
-										{t("usersTable.revokeSub", "Revoke subscription")}
+										{t("usersTable.revokeSub")}
 									</Button>
 								)}
 								{canDeleteUserActions && (
 									<DeleteConfirmDialog
-										description={t(
-											"usersTable.bulkDeletePrompt",
-											"Delete selected users? This cannot be undone.",
-										)}
+										description={t("usersTable.bulkDeletePrompt")}
 										onConfirm={handleBulkDelete}
 									>
 										<Button
@@ -1531,7 +1515,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 												Boolean(bulkAction) || bulkDeleteTargets.length === 0
 											}
 										>
-											{t("delete", "Delete")}
+											{t("delete")}
 										</Button>
 									</DeleteConfirmDialog>
 								)}
@@ -1565,14 +1549,11 @@ export const UsersTable: FC<UsersTableProps> = ({
 					>
 						<LockOverlayIcon color="red.400" mb={6} />
 						<Text fontSize="xl" fontWeight="bold" mb={3}>
-							{t("usersTable.adminDisabledTitle", "Your account is disabled")}
+							{t("usersTable.adminDisabledTitle")}
 						</Text>
 						<Text maxW="480px" color="gray.600" _dark={{ color: "gray.200" }}>
 							{disabledReason ||
-								t(
-									"usersTable.adminDisabledDescription",
-									"Please contact the sudo admin to regain access.",
-								)}
+								t("usersTable.adminDisabledDescription")}
 						</Text>
 					</Flex>
 				)}
@@ -1580,7 +1561,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 			<AppDialog
 				isOpen={ipDialog !== null}
 				onClose={() => setIPDialog(null)}
-				title={t("usersTable.ipsDialogTitle", "IP addresses")}
+				title={t("usersTable.ipsDialogTitle")}
 				isCentered
 				size="lg"
 				scrollBehavior="inside"
@@ -1595,7 +1576,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 				footer={
 					<HStack w="full" justify="flex-end" spacing={2}>
 						<Button size="sm" onClick={() => setIPDialog(null)}>
-							{t("close", "Close")}
+							{t("close")}
 						</Button>
 						<Button
 							size="sm"
@@ -1608,7 +1589,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 								!ipDialog?.records.length
 							}
 						>
-							{t("usersTable.copyIps", "Copy all IPs")}
+							{t("usersTable.copyIps")}
 						</Button>
 					</HStack>
 				}
@@ -1621,17 +1602,14 @@ export const UsersTable: FC<UsersTableProps> = ({
 							</Text>
 							{contextAction !== "ips" && !ipDialog?.error && (
 								<Text fontSize="xs" color="panel.textMuted" flexShrink={0}>
-									{t("usersTable.ipsDialogCount", "{{count}} IP records", {
+									{t("usersTable.ipsDialogCount", {
 										count: ipDialog?.records.length ?? 0,
 									})}
 								</Text>
 							)}
 						</HStack>
 						<Text mt={1} fontSize="sm" color="panel.textMuted">
-							{t(
-								"usersTable.ipsDialogDescription",
-								"Current IP records reported for this user.",
-							)}
+							{t("usersTable.ipsDialogDescription")}
 						</Text>
 					</Box>
 
@@ -1639,7 +1617,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 						<Flex align="center" justify="center" gap={3} py={8}>
 							<Spinner size="sm" color="panel.accent" />
 							<Text fontSize="sm" color="panel.textMuted">
-								{t("usersTable.ipsDialogLoading", "Loading IP addresses...")}
+								{t("usersTable.ipsDialogLoading")}
 							</Text>
 						</Flex>
 					) : ipDialog?.error ? (
@@ -1667,10 +1645,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 							textAlign="center"
 						>
 							<Text fontSize="sm" color="panel.textMuted">
-								{t(
-									"usersTable.ipsDialogEmpty",
-									"No IP addresses are currently reported.",
-								)}
+								{t("usersTable.ipsDialogEmpty")}
 							</Text>
 						</Box>
 					) : (
@@ -1740,11 +1715,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 												>
 													<SignalIcon width={14} aria-hidden="true" />
 													<Text>
-														{t("usersTable.ipConnections", {
-															defaultValue:
-																"{{count}} connections from this IP",
-															count: connections,
-														})}
+														{t("usersTable.ipConnections_other", { count: connections })}
 													</Text>
 												</HStack>
 											</Box>
@@ -1793,7 +1764,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 												color="panel.textSecondary"
 												overflowWrap="anywhere"
 											>
-												{t("usersTable.assignedIp", "Assigned IP")}:{" "}
+												{t("usersTable.assignedIp")}:{" "}
 												<chakra.span dir="ltr" display="inline-block">
 													{assignedIPs.join(", ")}
 												</chakra.span>
@@ -1810,13 +1781,9 @@ export const UsersTable: FC<UsersTableProps> = ({
 				isOpen={isBulkResetOpen}
 				onClose={() => setIsBulkResetOpen(false)}
 				onConfirm={handleBulkReset}
-				title={t("usersTable.resetUsage", "Reset usage")}
-				description={t(
-					"usersTable.bulkResetPrompt",
-					"Reset usage for {{count}} selected users?",
-					{ count: selectedUsers.length },
-				)}
-				confirmLabel={t("reset", "Reset")}
+				title={t("usersTable.resetUsage")}
+				description={t("usersTable.bulkResetPrompt", { count: selectedUsers.length })}
+				confirmLabel={t("reset")}
 				isLoading={bulkAction === "reset"}
 				isConfirmDisabled={selectedUsers.length === 0}
 			/>
@@ -1883,7 +1850,7 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 			}}
 		>
 			<Tooltip
-				label={copied ? t("usersTable.copied") : t("usersTable.copyLink")}
+				label={copied ? t("copied") : t("usersTable.copyLink")}
 			>
 				<span>
 					<IconButton
@@ -1906,7 +1873,7 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 			</Tooltip>
 			<Tooltip
 				label={
-					copiedConfigs ? t("usersTable.copied") : t("usersTable.copyConfigs")
+					copiedConfigs ? t("copied") : t("usersTable.copyConfigs")
 				}
 			>
 				<span>
@@ -1926,9 +1893,9 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 					/>
 				</span>
 			</Tooltip>
-			<Tooltip label={t("usersTable.qrCode", "QR Code")}>
+			<Tooltip label={t("usersTable.qrCode")}>
 				<IconButton
-					aria-label={t("usersTable.qrCode", "QR Code")}
+					aria-label={t("usersTable.qrCode")}
 					icon={<QRIcon />}
 					variant="ghost"
 					size="sm"
@@ -1972,7 +1939,7 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 				</DeleteConfirmDialog>
 			)}
 			{menuActions && menuActions.length > 0 && (
-				<RowActionsMenu actions={menuActions} label={t("actions", "Actions")} />
+				<RowActionsMenu actions={menuActions} label={t("actions")} />
 			)}
 		</HStack>
 	);

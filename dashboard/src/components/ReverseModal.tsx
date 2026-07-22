@@ -131,37 +131,31 @@ export const ReverseModal: FC<ReverseModalProps> = ({
 			<XrayModalContent mx="3">
 				<XrayModalHeader>
 					{mode === "edit"
-						? t("pages.xray.reverse.edit", "Edit reverse proxy")
-						: t("pages.xray.reverse.add", "Add reverse proxy")}
+						? t("pages.xray.reverse.edit")
+						: t("pages.xray.reverse.add")}
 				</XrayModalHeader>
 				<ModalCloseButton />
 				<form onSubmit={submit}>
 					<XrayModalBody>
 						<VStack spacing={4} align="stretch">
 							<XrayDialogSection
-								title={t("pages.xray.reverse.connection", "Connection")}
+								title={t("pages.xray.reverse.connection")}
 							>
 								<XrayFieldGrid>
 									<FormControl>
 										<FormLabel>
-											{t("pages.xray.reverse.role", "Server role")}
+											{t("pages.xray.reverse.role")}
 										</FormLabel>
 										<SearchableTagSelect
 											mode="single"
 											options={[
 												{
 													value: "internal",
-													label: t(
-														"pages.xray.reverse.internal",
-														"Internal device",
-													),
+													label: t("pages.xray.reverse.internal"),
 												},
 												{
 													value: "public",
-													label: t(
-														"pages.xray.reverse.public",
-														"Public server",
-													),
+													label: t("pages.xray.reverse.public"),
 												},
 											]}
 											value={type}
@@ -170,36 +164,24 @@ export const ReverseModal: FC<ReverseModalProps> = ({
 													shouldDirty: true,
 												})
 											}
-											placeholder={t("pages.xray.reverse.role", "Server role")}
-											searchPlaceholder={t("search", "Search")}
+											placeholder={t("pages.xray.reverse.role")}
+											searchPlaceholder={t("search")}
 										/>
 									</FormControl>
 									<FormControl isInvalid={tagInvalid}>
-										<FormLabel>{t("pages.xray.reverse.tag", "Tag")}</FormLabel>
+										<FormLabel>{t("pages.xray.reverse.tag")}</FormLabel>
 										<Input {...form.register("tag")} size="sm" placeholder="reverse-1" />
 										{tagInvalid ? (
 											<FormErrorMessage>
 												{duplicateTag
-													? t(
-															"pages.xray.reverse.tagDuplicate",
-															"This tag is already in use.",
-														)
-													: t(
-															"pages.xray.reverse.tagError",
-															"Enter a reverse tag.",
-														)}
+													? t("pages.xray.reverse.tagDuplicate")
+													: t("pages.xray.reverse.tagError")}
 											</FormErrorMessage>
 										) : (
 											<FormHelperText>
 												{type === "public"
-													? t(
-															"pages.xray.reverse.tagPendingHint",
-															"Xray activates this tag after the internal device connects.",
-														)
-													: t(
-															"pages.xray.reverse.tagHint",
-															"Xray creates this tag locally.",
-														)}
+													? t("pages.xray.reverse.tagPendingHint")
+													: t("pages.xray.reverse.tagHint")}
 											</FormHelperText>
 										)}
 									</FormControl>
@@ -208,18 +190,12 @@ export const ReverseModal: FC<ReverseModalProps> = ({
 
 							{type === "internal" ? (
 								<XrayDialogSection
-									title={t(
-										"pages.xray.reverse.internal",
-										"Internal device",
-									)}
+									title={t("pages.xray.reverse.internal")}
 								>
 									<XrayFieldGrid>
 										<FormControl isInvalid={!connectionOutbound}>
 											<FormLabel>
-												{t(
-													"pages.xray.reverse.vlessOutbound",
-													"VLESS connection",
-												)}
+												{t("pages.xray.reverse.vlessOutbound")}
 											</FormLabel>
 											<SearchableTagSelect
 												mode="single"
@@ -232,26 +208,17 @@ export const ReverseModal: FC<ReverseModalProps> = ({
 														{ shouldDirty: true },
 													)
 												}
-												placeholder={t(
-													"pages.xray.reverse.selectVlessOutbound",
-													"Select a VLESS outbound",
-												)}
-												searchPlaceholder={t("search", "Search")}
-												emptyText={t(
-													"pages.xray.reverse.noVlessOutbound",
-													"No compatible VLESS outbound",
-												)}
+												placeholder={t("pages.xray.reverse.selectVlessOutbound")}
+												searchPlaceholder={t("search")}
+												emptyText={t("pages.xray.reverse.noVlessOutbound")}
 											/>
 											<FormErrorMessage>
-												{t(
-													"pages.xray.reverse.vlessOutboundRequired",
-													"Select the VLESS connection.",
-												)}
+												{t("pages.xray.reverse.vlessOutboundRequired")}
 											</FormErrorMessage>
 										</FormControl>
 										<FormControl isInvalid={!targetOutbound}>
 											<FormLabel>
-												{t("pages.xray.reverse.target", "Target outbound")}
+												{t("pages.xray.reverse.target")}
 											</FormLabel>
 											<SearchableTagSelect
 												mode="single"
@@ -264,28 +231,19 @@ export const ReverseModal: FC<ReverseModalProps> = ({
 														shouldDirty: true,
 													})
 												}
-												placeholder={t(
-													"pages.xray.reverse.selectTargetOutbound",
-													"Select a target outbound",
-												)}
-												searchPlaceholder={t("search", "Search")}
-												emptyText={t(
-													"pages.xray.reverse.noTargetOutbound",
-													"No target outbound",
-												)}
+												placeholder={t("pages.xray.reverse.selectTargetOutbound")}
+												searchPlaceholder={t("search")}
+												emptyText={t("pages.xray.reverse.noTargetOutbound")}
 											/>
 											<FormErrorMessage>
-												{t(
-													"pages.xray.reverse.targetRequired",
-													"Select the target outbound.",
-												)}
+												{t("pages.xray.reverse.targetRequired")}
 											</FormErrorMessage>
 										</FormControl>
 										{connectionDetails && (
 											<>
 												<FormControl>
 													<FormLabel>
-														{t("pages.xray.reverse.credentialId", "Connection UUID")}
+														{t("pages.xray.reverse.credentialId")}
 													</FormLabel>
 													<Input
 														value={connectionDetails.credentialId}
@@ -294,16 +252,13 @@ export const ReverseModal: FC<ReverseModalProps> = ({
 														size="sm"
 													/>
 													<FormHelperText>
-														{t(
-															"pages.xray.reverse.pairingHint",
-															"UUID and Flow must match the internal VLESS outbound.",
-														)}
+														{t("pages.xray.reverse.pairingHint")}
 													</FormHelperText>
 												</FormControl>
 												<FormControl>
-													<FormLabel>{t("pages.outbound.flow", "Flow")}</FormLabel>
+													<FormLabel>{t("userDialog.flow.label")}</FormLabel>
 													<Input
-														value={connectionDetails.flow || t("common.none", "None")}
+														value={connectionDetails.flow || t("userDialog.flow.none")}
 														isReadOnly
 														size="sm"
 													/>
@@ -314,15 +269,12 @@ export const ReverseModal: FC<ReverseModalProps> = ({
 								</XrayDialogSection>
 							) : (
 								<XrayDialogSection
-									title={t("pages.xray.reverse.public", "Public server")}
+									title={t("pages.xray.reverse.public")}
 								>
 									<XrayFieldGrid>
 										<FormControl isInvalid={!connectionInbound}>
 											<FormLabel>
-												{t(
-													"pages.xray.reverse.vlessInbound",
-													"VLESS connection",
-												)}
+												{t("pages.xray.reverse.vlessInbound")}
 											</FormLabel>
 											<SearchableTagSelect
 												mode="single"
@@ -335,46 +287,34 @@ export const ReverseModal: FC<ReverseModalProps> = ({
 														{ shouldDirty: true },
 													)
 												}
-												placeholder={t(
-													"pages.xray.reverse.selectVlessInbound",
-													"Select a VLESS inbound",
-												)}
-												searchPlaceholder={t("search", "Search")}
+												placeholder={t("pages.xray.reverse.selectVlessInbound")}
+												searchPlaceholder={t("search")}
 											/>
 											<FormErrorMessage>
-												{t(
-													"pages.xray.reverse.vlessInboundRequired",
-													"Select the VLESS connection.",
-												)}
+												{t("pages.xray.reverse.vlessInboundRequired")}
 											</FormErrorMessage>
 										</FormControl>
 										<FormControl isInvalid={credentialInvalid}>
 											<FormLabel>
-												{t("pages.xray.reverse.credentialId", "Connection UUID")}
+												{t("pages.xray.reverse.credentialId")}
 											</FormLabel>
 											<Input {...form.register("credentialId")} size="sm" fontFamily="mono" />
 											{credentialInvalid ? (
 												<FormErrorMessage>
-													{t(
-														"pages.xray.reverse.credentialIdError",
-														"Enter a valid UUID.",
-													)}
+													{t("pages.xray.reverse.credentialIdError")}
 												</FormErrorMessage>
 											) : (
 												<FormHelperText>
-													{t(
-														"pages.xray.reverse.pairingHint",
-														"UUID and Flow must match the internal VLESS outbound.",
-													)}
+													{t("pages.xray.reverse.pairingHint")}
 												</FormHelperText>
 											)}
 										</FormControl>
 										<FormControl>
-											<FormLabel>{t("pages.outbound.flow", "Flow")}</FormLabel>
+											<FormLabel>{t("userDialog.flow.label")}</FormLabel>
 											<SearchableTagSelect
 												mode="single"
 											options={[
-												{ value: "", label: t("common.none", "None") },
+												{ value: "", label: t("userDialog.flow.none") },
 												"xtls-rprx-vision",
 											]}
 												value={form.watch("flow")}
@@ -383,13 +323,13 @@ export const ReverseModal: FC<ReverseModalProps> = ({
 														shouldDirty: true,
 													})
 												}
-												placeholder={t("common.none", "None")}
-												searchPlaceholder={t("search", "Search")}
+												placeholder={t("userDialog.flow.none")}
+												searchPlaceholder={t("search")}
 											/>
 										</FormControl>
 										<FormControl isInvalid={!sourceInbounds.length}>
 											<FormLabel>
-												{t("pages.xray.reverse.sourceInbounds", "Source inbounds")}
+												{t("pages.xray.reverse.sourceInbounds")}
 											</FormLabel>
 											<SearchableTagSelect
 												mode="multiple"
@@ -402,17 +342,11 @@ export const ReverseModal: FC<ReverseModalProps> = ({
 														shouldDirty: true,
 													})
 												}
-												placeholder={t(
-													"pages.xray.reverse.selectSourceInbounds",
-													"Select source inbounds",
-												)}
-												searchPlaceholder={t("search", "Search")}
+												placeholder={t("pages.xray.reverse.selectSourceInbounds")}
+												searchPlaceholder={t("search")}
 											/>
 											<FormErrorMessage>
-												{t(
-													"pages.xray.reverse.inboundRequired",
-													"Select at least one source inbound.",
-												)}
+												{t("pages.xray.reverse.inboundRequired")}
 											</FormErrorMessage>
 										</FormControl>
 									</XrayFieldGrid>

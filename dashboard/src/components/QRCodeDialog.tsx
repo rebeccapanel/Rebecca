@@ -111,7 +111,7 @@ export const QRCodeDialog: FC = () => {
 		return links.map((link, itemIndex) => {
 			const label =
 				getConfigLabelFromLink(link) ||
-				t("userDialog.links.configFallback", "Config {{index}}", {
+				t("userDialog.links.configFallback", {
 					index: itemIndex + 1,
 				});
 			return { link, label };
@@ -215,7 +215,7 @@ export const QRCodeDialog: FC = () => {
 										py={0.5}
 										borderRadius="full"
 									>
-										{t("usersTable.copied")}
+										{t("copied")}
 									</Box>
 								)}
 								<Box
@@ -223,7 +223,7 @@ export const QRCodeDialog: FC = () => {
 									cursor="pointer"
 									role="button"
 									tabIndex={0}
-									aria-label={t("userDialog.links.copy", "Copy")}
+									aria-label={t("copy")}
 									animation={
 										copiedSub && subAnimSeed > 0
 											? `${clickPulse} 260ms ease-in-out`
@@ -249,7 +249,7 @@ export const QRCodeDialog: FC = () => {
 									/>
 								</Box>
 								<Text fontSize="xs" color="gray.500" textAlign="center">
-									{t("qrcodeDialog.clickToCopy", "click to copy")}
+									{t("qrcodeDialog.clickToCopy")}
 								</Text>
 							</VStack>
 						)}
@@ -263,8 +263,8 @@ export const QRCodeDialog: FC = () => {
 									onClick={() => setShowConfigQrs((prev) => !prev)}
 								>
 									{showConfigQrs
-										? t("qrcodeDialog.hideConfigs", "Hide config QR codes")
-										: t("qrcodeDialog.showConfigs", "Show config QR codes")}
+										? t("qrcodeDialog.hideConfigs")
+										: t("qrcodeDialog.showConfigs")}
 								</Button>
 								<Collapse in={showConfigQrs} animateOpacity>
 									<Box pt={4}>
@@ -288,7 +288,7 @@ export const QRCodeDialog: FC = () => {
 												mb={2}
 												w="fit-content"
 											>
-												{t("usersTable.copied")}
+												{t("copied")}
 											</Box>
 										)}
 										<SlickSlider
@@ -305,7 +305,7 @@ export const QRCodeDialog: FC = () => {
 													position="absolute"
 													display="flex !important"
 													_before={{ content: '""' }}
-													aria-label="next"
+													aria-label={t("a11y.next")}
 													mr="-2"
 												>
 													<NextIcon />
@@ -317,7 +317,7 @@ export const QRCodeDialog: FC = () => {
 													position="absolute"
 													display="flex !important"
 													_before={{ content: '""' }}
-													aria-label="prev"
+													aria-label={t("a11y.previous")}
 													ml="-2"
 												>
 													<PrevIcon />
@@ -338,7 +338,7 @@ export const QRCodeDialog: FC = () => {
 														cursor="pointer"
 														role="button"
 														tabIndex={0}
-														aria-label={t("userDialog.links.copy", "Copy")}
+														aria-label={t("copy")}
 														animation={
 															configAnimIndex === itemIndex &&
 															configAnimSeed > 0

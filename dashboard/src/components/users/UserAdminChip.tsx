@@ -26,7 +26,7 @@ export const UserAdminChip: FC<UserAdminChipProps> = ({
 			dir="ltr"
 			sx={{ unicodeBidi: "isolate" }}
 		>
-			{t("usersTable.by", "by")}{" "}
+			{t("usersTable.by")}{" "}
 			<chakra.span fontWeight="semibold">{adminUsername}</chakra.span>
 		</chakra.span>
 	);

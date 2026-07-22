@@ -48,7 +48,7 @@ export const ApiDocsPage = () => {
 			<Flex minH="50vh" align="center" justify="center">
 				<VStack spacing={3}>
 					<Spinner />
-					<Text color={mutedColor}>{t("apiDocs.checking", "Checking API docs...")}</Text>
+					<Text color={mutedColor}>{t("apiDocs.checking")}</Text>
 				</VStack>
 			</Flex>
 		);
@@ -65,15 +65,12 @@ export const ApiDocsPage = () => {
 				bg={panelBg}
 				p={{ base: 4, md: 6 }}
 			>
-				<Heading size="md">{t("apiDocs.disabledTitle", "API docs are disabled")}</Heading>
+				<Heading size="md">{t("apiDocs.disabledTitle")}</Heading>
 				<Text color={mutedColor}>
-					{t(
-						"apiDocs.disabledDescription",
-						"Enable API docs from Settings, then restart or reload the panel.",
-					)}
+					{t("apiDocs.disabledDescription")}
 				</Text>
 				<Button as="a" href="/docs/" variant="outline">
-					{t("apiDocs.openRoute", "Open /docs")}
+					{t("apiDocs.openRoute")}
 				</Button>
 			</VStack>
 		);
@@ -90,7 +87,7 @@ export const ApiDocsPage = () => {
 		>
 			<Box
 				as="iframe"
-				title={t("apiDocs.menu", "API Docs")}
+				title={t("apiDocs.menu")}
 				src="/docs/"
 				w="100%"
 				h={{ base: "calc(100vh - 146px)", md: "calc(100vh - 118px)" }}

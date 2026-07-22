@@ -306,20 +306,14 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 		if (!name.trim()) {
 			toast({
 				status: "warning",
-				title: t(
-					"services.validation.nameRequired",
-					"Service name is required",
-				),
+				title: t("services.validation.nameRequired"),
 			});
 			return;
 		}
 		if (!selectedHosts.length) {
 			toast({
 				status: "warning",
-				title: t(
-					"services.validation.hostRequired",
-					"Please select at least one host",
-				),
+				title: t("services.validation.hostRequired"),
 			});
 			return;
 		}
@@ -355,17 +349,14 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 			refreshHosts();
 			toast({
 				status: "success",
-				title: t("services.autoInbound.created", "Auto inbound created"),
+				title: t("services.autoInbound.created"),
 			});
 		} catch (error: any) {
 			toast({
 				status: "error",
 				title:
 					error?.data?.detail ??
-					t(
-						"services.autoInbound.createFailed",
-						"Failed to create auto inbound",
-					),
+					t("services.autoInbound.createFailed"),
 			});
 		} finally {
 			setAutoInboundBusy(false);
@@ -385,17 +376,14 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 			refreshHosts();
 			toast({
 				status: "success",
-				title: t("services.autoInbound.deleted", "Auto inbound removed"),
+				title: t("services.autoInbound.deleted"),
 			});
 		} catch (error: any) {
 			toast({
 				status: "error",
 				title:
 					error?.data?.detail ??
-					t(
-						"services.autoInbound.deleteFailed",
-						"Failed to delete auto inbound",
-					),
+					t("services.autoInbound.deleteFailed"),
 			});
 		} finally {
 			setAutoInboundBusy(false);
@@ -420,26 +408,26 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 			>
 				<XrayModalHeader>
 					{initialService
-						? t("services.editTitle", "Edit Service")
-						: t("services.createTitle", "Create Service")}
+						? t("services.editTitle")
+						: t("services.createTitle")}
 				</XrayModalHeader>
 				<ModalCloseButton />
 				<XrayModalBody>
 					<Stack spacing={4}>
 						<Box className="xray-dialog-section service-dialog-section">
 							<Text fontSize="sm" fontWeight="semibold" mb={3}>
-								{t("services.basicInfo", "Basic information")}
+								{t("services.basicInfo")}
 							</Text>
 							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 								<Input
-									label={t("services.fields.name", "Name")}
+									label={t("services.fields.name")}
 									value={name}
 									onChange={(event) => setName(event.target.value)}
 									maxLength={128}
 									isRequired
 								/>
 								<Input
-									label={t("services.fields.description", "Description")}
+									label={t("services.fields.description")}
 									value={description ?? ""}
 									onChange={(event) => setDescription(event.target.value)}
 									maxLength={256}
@@ -450,7 +438,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 						<Box className="xray-dialog-section service-dialog-section">
 							<Flex justify="space-between" align="center" gap={3} mb={3}>
 								<Text fontSize="sm" fontWeight="semibold">
-									{t("services.fields.admins", "Admins")}
+									{t("services.fields.admins")}
 								</Text>
 								<Badge borderRadius="md" variant="subtle" colorScheme="primary">
 									{selectedAdmins.length} / {allAdmins.length}
@@ -465,12 +453,12 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 									onChange={handleToggleAllAdmins}
 									isDisabled={allAdmins.length === 0}
 								>
-									{t("services.selectAllAdmins", "Select all admins")}
+									{t("services.selectAllAdmins")}
 								</Checkbox>
 								<Input
 									value={adminSearch}
 									onChange={(event) => setAdminSearch(event.target.value)}
-									placeholder={t("services.searchAdmins", "Search admins")}
+									placeholder={t("services.searchAdmins")}
 									size="sm"
 									clearable
 								/>
@@ -486,14 +474,11 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 								>
 									{allAdmins.length === 0 ? (
 										<Text fontSize="sm" color={labelColor}>
-											{t("services.noAdminsFound", "No admins available")}
+											{t("services.noAdminsFound")}
 										</Text>
 									) : filteredAdmins.length === 0 ? (
 										<Text fontSize="sm" color={labelColor}>
-											{t(
-												"services.noAdminsMatching",
-												"No admins match your search",
-											)}
+											{t("services.noAdminsMatching")}
 										</Text>
 									) : (
 										filteredAdmins.map((admin) => {
@@ -528,7 +513,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 														</Text>
 														{isSelected && (
 															<Badge colorScheme="primary" borderRadius="md">
-																{t("services.selected", "Selected")}
+																{t("services.selected")}
 															</Badge>
 														)}
 													</Flex>
@@ -539,10 +524,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 								</VStack>
 							</Stack>
 							<Text fontSize="xs" color={labelColor} mt={2}>
-								{t(
-									"services.adminHint",
-									"Selected admins can create users for this service",
-								)}
+								{t("services.adminHint")}
 							</Text>
 						</Box>
 
@@ -556,7 +538,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 							>
 								<Box minW={0}>
 									<Text fontSize="sm" fontWeight="semibold">
-										{t("services.autoInbound.title", "Service inbound")}
+										{t("services.autoInbound.title")}
 									</Text>
 									<Text
 										fontFamily="mono"
@@ -565,10 +547,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 										mt={1}
 									>
 										{autoInboundTag ??
-											t(
-												"services.autoInbound.pendingTag",
-												"Save the service to generate the tag",
-											)}
+											t("services.autoInbound.pendingTag")}
 									</Text>
 								</Box>
 								<Badge
@@ -576,8 +555,8 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 									colorScheme={autoInboundExists ? "green" : "gray"}
 								>
 									{autoInboundExists
-										? t("services.autoInbound.statusCreated", "Created")
-										: t("services.autoInbound.statusMissing", "Not created")}
+										? t("services.autoInbound.statusCreated")
+										: t("services.autoInbound.statusMissing")}
 								</Badge>
 							</Flex>
 							<HStack spacing={2} flexWrap="wrap">
@@ -589,7 +568,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 									}
 									isLoading={autoInboundBusy}
 								>
-									{t("services.autoInbound.create", "Create inbound")}
+									{t("services.autoInbound.create")}
 								</Button>
 								<Button
 									size="sm"
@@ -601,27 +580,24 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 									}
 									isLoading={autoInboundBusy}
 								>
-									{t("services.autoInbound.delete", "Delete inbound")}
+									{t("services.autoInbound.delete")}
 								</Button>
 							</HStack>
 							<Text fontSize="xs" color={labelColor} mt={2}>
-								{t(
-									"services.autoInbound.helper",
-									"Use this inbound as the only selection to auto-assign the service. It uses Shadowsocks defaults and should stay without hosts.",
-								)}
+								{t("services.autoInbound.helper")}
 							</Text>
 						</Box>
 
 						<SimpleGrid columns={{ base: 1, lg: 2 }} spacing={4}>
 							<Box className="xray-dialog-section service-dialog-section">
 								<Text fontSize="sm" fontWeight="semibold" mb={3}>
-									{t("services.availableHosts", "Available Hosts")}
+									{t("services.availableHosts")}
 								</Text>
 								<Stack spacing={2}>
 									<Input
 										value={hostSearch}
 										onChange={(event) => setHostSearch(event.target.value)}
-										placeholder={t("services.searchHosts", "Search hosts")}
+										placeholder={t("services.searchHosts")}
 										size="sm"
 										clearable
 									/>
@@ -637,14 +613,11 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 									>
 										{availableHosts.length === 0 ? (
 											<Text fontSize="sm" color={labelColor}>
-												{t("services.noHostsLeft", "All hosts are selected")}
+												{t("services.noHostsLeft")}
 											</Text>
 										) : filteredAvailableHosts.length === 0 ? (
 											<Text fontSize="sm" color={labelColor}>
-												{t(
-													"services.noHostsMatching",
-													"No hosts match your search",
-												)}
+												{t("services.noHostsMatching")}
 											</Text>
 										) : (
 											filteredAvailableHosts.map((host) => (
@@ -683,7 +656,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 							<Box className="xray-dialog-section service-dialog-section">
 								<Flex justify="space-between" align="center" gap={3} mb={3}>
 									<Text fontSize="sm" fontWeight="semibold">
-										{t("services.selectedHosts", "Selected Hosts")}
+										{t("services.selectedHosts")}
 									</Text>
 									<Badge borderRadius="md" variant="subtle">
 										{selectedHosts.length}
@@ -701,10 +674,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 								>
 									{selectedHosts.length === 0 && (
 										<Text fontSize="sm" color={labelColor}>
-											{t(
-												"services.noHostsSelected",
-												"Choose hosts from the left list",
-											)}
+											{t("services.noHostsSelected")}
 										</Text>
 									)}
 									{selectedHosts.map((hostId, index) => {
@@ -729,7 +699,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 															</Text>
 															{host.isDisabled && (
 																<Badge colorScheme="red" borderRadius="md">
-																	{t("services.hostDisabled", "Disabled")}
+																	{t("services.hostDisabled")}
 																</Badge>
 															)}
 														</HStack>
@@ -738,7 +708,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 														</Text>
 													</Box>
 													<HStack spacing={1} flexShrink={0}>
-														<Tooltip label={t("services.moveUp", "Move up")}>
+														<Tooltip label={t("services.moveUp")}>
 															<IconButton
 																aria-label="Move up"
 																size="sm"
@@ -749,7 +719,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 															/>
 														</Tooltip>
 														<Tooltip
-															label={t("services.moveDown", "Move down")}
+															label={t("services.moveDown")}
 														>
 															<IconButton
 																aria-label="Move down"
@@ -761,7 +731,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 															/>
 														</Tooltip>
 														<Tooltip
-															label={t("services.removeHost", "Remove host")}
+															label={t("services.removeHost")}
 														>
 															<IconButton
 																aria-label="Remove"
@@ -892,7 +862,7 @@ const ServicesPage: FC = () => {
 		} catch (_error) {
 			toast({
 				status: "error",
-				title: t("services.fetchFailed", "Unable to fetch service details"),
+				title: t("services.fetchFailed"),
 			});
 		}
 	};
@@ -914,13 +884,13 @@ const ServicesPage: FC = () => {
 				await servicesStore.updateService(serviceId, payload);
 				toast({
 					status: "success",
-					title: t("services.updated", "Service updated"),
+					title: t("services.updated"),
 				});
 			} else {
 				await servicesStore.createService(payload);
 				toast({
 					status: "success",
-					title: t("services.created", "Service created"),
+					title: t("services.created"),
 				});
 			}
 			refetchUsers(true);
@@ -930,7 +900,7 @@ const ServicesPage: FC = () => {
 				status: "error",
 				title:
 					error?.data?.detail ??
-					t("services.saveFailed", "Failed to save service"),
+					t("services.saveFailed"),
 			});
 		}
 	};
@@ -945,7 +915,7 @@ const ServicesPage: FC = () => {
 				status: "error",
 				title:
 					error?.data?.detail ??
-					t("services.deleteFailed", "Unable to delete service"),
+					t("services.deleteFailed"),
 			});
 		}
 	};
@@ -955,14 +925,14 @@ const ServicesPage: FC = () => {
 			await servicesStore.resetServiceUsage(serviceId);
 			toast({
 				status: "success",
-				title: t("services.resetSuccess", "Usage reset"),
+				title: t("services.resetSuccess"),
 			});
 		} catch (error: any) {
 			toast({
 				status: "error",
 				title:
 					error?.data?.detail ??
-					t("services.resetFailed", "Failed to reset usage"),
+					t("services.resetFailed"),
 			});
 		}
 	};
@@ -1016,11 +986,8 @@ const ServicesPage: FC = () => {
 			if (!targetServiceId) {
 				toast({
 					status: "warning",
-					title: t("services.selectTargetService", "Target service"),
-					description: t(
-						"services.targetServiceRequired",
-						"Select a target service before transferring users.",
-					),
+					title: t("services.selectTargetService"),
+					description: t("services.targetServiceRequired"),
 				});
 				return;
 			}
@@ -1031,7 +998,7 @@ const ServicesPage: FC = () => {
 			await servicesStore.deleteService(servicePendingDelete.id, payload);
 			toast({
 				status: "success",
-				title: t("services.deleted", "Service removed"),
+				title: t("services.deleted"),
 			});
 			refetchUsers(true);
 			handleCloseDeleteDialog();
@@ -1040,7 +1007,7 @@ const ServicesPage: FC = () => {
 				status: "error",
 				title:
 					error?.data?.detail ??
-					t("services.deleteFailed", "Unable to delete service"),
+					t("services.deleteFailed"),
 			});
 		} finally {
 			setIsDeleting(false);
@@ -1094,32 +1061,32 @@ const ServicesPage: FC = () => {
 	const serviceSummaryItems = useMemo<ResourceSummaryItem[]>(
 		() => [
 			{
-				label: t("services.title", "Services"),
+				label: t("services.title"),
 				value: servicesStore.services.length,
 				colorScheme: "gray",
 			},
 			{
-				label: t("services.columns.hosts", "Hosts"),
+				label: t("services.columns.hosts"),
 				value: servicesSummary.totalHosts,
 				colorScheme: "green",
 			},
 			{
-				label: t("services.columns.users", "Users"),
+				label: t("users"),
 				value: servicesSummary.totalUsers,
 				colorScheme: "orange",
 			},
 			{
-				label: t("services.columns.usage", "Usage"),
+				label: t("services.columns.usage"),
 				value: formatBytes(servicesSummary.totalUsage),
 				colorScheme: "blue",
 			},
 			{
-				label: t("services.columns.lifetime", "Lifetime"),
+				label: t("services.columns.lifetime"),
 				value: formatBytes(servicesSummary.lifetimeUsage),
 				colorScheme: "purple",
 				helper:
 					servicesSummary.brokenServices > 0
-						? t("services.brokenCount", "{{count}} broken", {
+						? t("services.brokenCount", {
 								count: servicesSummary.brokenServices,
 							})
 						: undefined,
@@ -1149,13 +1116,13 @@ const ServicesPage: FC = () => {
 		() => [
 			{
 				id: "id",
-				header: t("services.columns.id", "ID"),
+				header: t("services.columns.id"),
 				accessor: (service) => service.id,
 				priority: "medium",
 				width: "78px",
 				maxWidth: "90px",
 				mobilePriority: 1,
-				mobileMetaLabel: t("services.columns.id", "ID"),
+				mobileMetaLabel: t("services.columns.id"),
 				cell: (service) => (
 					<Badge borderRadius="md" variant="subtle">
 						#{service.id}
@@ -1164,7 +1131,7 @@ const ServicesPage: FC = () => {
 			},
 			{
 				id: "name",
-				header: t("services.columns.name", "Name"),
+				header: t("services.columns.name"),
 				accessor: "name",
 				isPrimary: true,
 				priority: "primary",
@@ -1175,7 +1142,7 @@ const ServicesPage: FC = () => {
 				tooltip: true,
 				cellAlign: "start",
 				mobilePriority: 0,
-				mobileMetaLabel: t("services.columns.name", "Name"),
+				mobileMetaLabel: t("services.columns.name"),
 				cell: (service) => (
 					<VStack spacing={0.5} align="start" textAlign="start" minW={0}>
 						<HStack spacing={2} justify="flex-start" minW={0} maxW="full">
@@ -1184,7 +1151,7 @@ const ServicesPage: FC = () => {
 							</Text>
 							{!service.has_hosts && (
 								<Badge colorScheme="red" borderRadius="md" flexShrink={0}>
-									{t("services.broken", "Broken")}
+									{t("services.broken")}
 								</Badge>
 							)}
 						</HStack>
@@ -1198,40 +1165,40 @@ const ServicesPage: FC = () => {
 			},
 			{
 				id: "hosts",
-				header: t("services.columns.hosts", "Hosts"),
+				header: t("services.columns.hosts"),
 				accessor: (service) => service.host_count,
 				priority: "high",
 				width: "96px",
 				maxWidth: "110px",
 				mobilePriority: 2,
-				mobileMetaLabel: t("services.columns.hosts", "Hosts"),
+				mobileMetaLabel: t("services.columns.hosts"),
 				cell: (service) => (
 					<Text fontWeight="semibold">{service.host_count}</Text>
 				),
 			},
 			{
 				id: "users",
-				header: t("services.columns.users", "Users"),
+				header: t("users"),
 				accessor: (service) => service.user_count,
 				priority: "high",
 				width: "96px",
 				maxWidth: "110px",
 				mobilePriority: 3,
-				mobileMetaLabel: t("services.columns.users", "Users"),
+				mobileMetaLabel: t("users"),
 				cell: (service) => (
 					<Text fontWeight="semibold">{service.user_count}</Text>
 				),
 			},
 			{
 				id: "usage",
-				header: t("services.columns.usage", "Usage"),
+				header: t("services.columns.usage"),
 				accessor: (service) => service.used_traffic,
 				priority: "medium",
 				width: "132px",
 				maxWidth: "150px",
 				mobilePriority: 4,
 				mobileSummary: true,
-				mobileMetaLabel: t("services.columns.usage", "Usage"),
+				mobileMetaLabel: t("services.columns.usage"),
 				cell: (service) => (
 					<Text dir="ltr" sx={{ unicodeBidi: "isolate" }} whiteSpace="nowrap">
 						{formatBytes(service.used_traffic)}
@@ -1240,14 +1207,14 @@ const ServicesPage: FC = () => {
 			},
 			{
 				id: "lifetime",
-				header: t("services.columns.lifetime", "Lifetime"),
+				header: t("services.columns.lifetime"),
 				accessor: (service) => service.lifetime_used_traffic,
 				priority: "low",
 				hideBelow: "xl",
 				width: "132px",
 				maxWidth: "150px",
 				mobilePriority: 5,
-				mobileMetaLabel: t("services.columns.lifetime", "Lifetime"),
+				mobileMetaLabel: t("services.columns.lifetime"),
 				cell: (service) => (
 					<Text dir="ltr" sx={{ unicodeBidi: "isolate" }} whiteSpace="nowrap">
 						{formatBytes(service.lifetime_used_traffic)}
@@ -1264,7 +1231,7 @@ const ServicesPage: FC = () => {
 		const actions: DataTableRowAction<ServiceSummary>[] = [
 			{
 				id: "view",
-				label: t("services.view", "View"),
+				label: t("services.view"),
 				icon: <EyeIcon width={16} />,
 				onClick: () => {
 					void openServiceDetail(service.id, "admins");
@@ -1276,19 +1243,19 @@ const ServicesPage: FC = () => {
 			actions.push(
 				{
 					id: "edit",
-					label: t("services.edit", "Edit"),
+					label: t("edit"),
 					icon: <PencilSquareIcon width={16} />,
 					onClick: () => openEditDialog(service.id),
 				},
 				{
 					id: "reset",
-					label: t("services.resetUsage", "Reset usage"),
+					label: t("services.resetUsage"),
 					icon: <ArrowPathIcon width={16} />,
 					onClick: () => openResetConfirmation(service.id),
 				},
 				{
 					id: "delete",
-					label: t("services.delete", "Delete"),
+					label: t("delete"),
 					icon: <TrashIcon width={16} />,
 					onClick: () => beginDeleteService(service.id),
 					isDanger: true,
@@ -1338,7 +1305,7 @@ const ServicesPage: FC = () => {
 			} catch (error) {
 				toast({
 					status: "error",
-					title: t("services.adminLimitSaveFailed", "Unable to save limits"),
+					title: t("services.adminLimitSaveFailed"),
 					description: error instanceof Error ? error.message : undefined,
 				});
 				return false;
@@ -1410,15 +1377,12 @@ const ServicesPage: FC = () => {
 			await servicesStore.fetchServiceDetail(selectedService.id);
 			toast({
 				status: "success",
-				title: t("admins.resetDeletedUsageSuccess", "Deleted-user usage reset"),
+				title: t("admins.resetDeletedUsageSuccess"),
 			});
 		} catch (error) {
 			toast({
 				status: "error",
-				title: t(
-					"admins.resetDeletedUsageFailed",
-					"Unable to reset deleted-user usage",
-				),
+				title: t("admins.resetDeletedUsageFailed"),
 				description: error instanceof Error ? error.message : undefined,
 			});
 		} finally {
@@ -1449,13 +1413,13 @@ const ServicesPage: FC = () => {
 			},
 			{
 				id: "usage",
-				header: t("services.columns.usage", "Usage"),
+				header: t("services.columns.usage"),
 				priority: "high",
 				width: "170px",
 				maxWidth: "190px",
 				mobilePriority: 1,
 				mobileSummary: true,
-				mobileMetaLabel: t("services.columns.usage", "Usage"),
+				mobileMetaLabel: t("services.columns.usage"),
 				cell: (link) => (
 					<Text fontSize="sm" dir="ltr" sx={{ unicodeBidi: "isolate" }} whiteSpace="nowrap">
 						{link.traffic_limit_mode === AdminTrafficLimitMode.CreatedTraffic
@@ -1464,20 +1428,20 @@ const ServicesPage: FC = () => {
 						/{" "}
 						{formatGigabytes(
 							link.data_limit,
-							t("common.unlimited", "Unlimited"),
+							t("nodes.unlimited"),
 						)}
 					</Text>
 				),
 			},
 			{
 				id: "mode",
-				header: t("admins.trafficMode", "Traffic mode"),
+				header: t("admins.trafficMode"),
 				priority: "medium",
 				hideBelow: "xl",
 				width: "150px",
 				maxWidth: "170px",
 				mobilePriority: 2,
-				mobileMetaLabel: t("admins.trafficMode", "Traffic mode"),
+				mobileMetaLabel: t("admins.trafficMode"),
 				cell: (link) => (
 					<Select
 						size="sm"
@@ -1491,23 +1455,23 @@ const ServicesPage: FC = () => {
 						}
 					>
 						<option value={AdminTrafficLimitMode.UsedTraffic}>
-							{t("admins.usedTraffic", "Used traffic")}
+							{t("nodes.usedTrafficSeries")}
 						</option>
 						<option value={AdminTrafficLimitMode.CreatedTraffic}>
-							{t("admins.createdTraffic", "Created traffic")}
+							{t("myaccount.createdTraffic")}
 						</option>
 					</Select>
 				),
 			},
 			{
 				id: "data_limit",
-				header: t("admins.dataLimit", "Data limit"),
+				header: t("admins.dataLimit"),
 				priority: "medium",
 				hideBelow: "xl",
 				width: "120px",
 				maxWidth: "140px",
 				mobilePriority: 3,
-				mobileMetaLabel: t("admins.dataLimit", "Data limit"),
+				mobileMetaLabel: t("admins.dataLimit"),
 				cell: (link) => (
 					<Input
 						size="sm"
@@ -1535,13 +1499,13 @@ const ServicesPage: FC = () => {
 			},
 			{
 				id: "users_limit",
-				header: t("admins.usersLimit", "Users limit"),
+				header: t("admins.usersLimit"),
 				priority: "low",
 				hideBelow: "xl",
 				width: "110px",
 				maxWidth: "130px",
 				mobilePriority: 4,
-				mobileMetaLabel: t("admins.usersLimit", "Users limit"),
+				mobileMetaLabel: t("admins.usersLimit"),
 				cell: (link) => (
 					<Input
 						size="sm"
@@ -1567,13 +1531,13 @@ const ServicesPage: FC = () => {
 			},
 			{
 				id: "delete_cap",
-				header: t("admins.deleteUserUsageLimit", "Delete cap"),
+				header: t("admins.deleteUserUsageLimit"),
 				priority: "low",
 				hideBelow: "xl",
 				width: "128px",
 				maxWidth: "150px",
 				mobilePriority: 5,
-				mobileMetaLabel: t("admins.deleteUserUsageLimit", "Delete cap"),
+				mobileMetaLabel: t("admins.deleteUserUsageLimit"),
 				cell: (link) => (
 					<Input
 						size="sm"
@@ -1608,13 +1572,13 @@ const ServicesPage: FC = () => {
 			},
 			{
 				id: "flags",
-				header: t("services.permissions", "Permissions"),
+				header: t("admins.permissionsTabLabel"),
 				priority: "low",
 				hideBelow: "xl",
 				width: "230px",
 				maxWidth: "260px",
 				mobilePriority: 6,
-				mobileMetaLabel: t("services.permissions", "Permissions"),
+				mobileMetaLabel: t("admins.permissionsTabLabel"),
 				cell: (link) => (
 					<HStack spacing={3} justify="center" flexWrap="wrap">
 						<Checkbox
@@ -1628,7 +1592,7 @@ const ServicesPage: FC = () => {
 								})
 							}
 						>
-							{t("admins.showUserTraffic", "Traffic")}
+							{t("admins.showUserTraffic")}
 						</Checkbox>
 						<Checkbox
 							size="sm"
@@ -1641,7 +1605,7 @@ const ServicesPage: FC = () => {
 								})
 							}
 						>
-							{t("admins.deleteUserUsageCap", "Delete cap")}
+							{t("admins.deleteUserUsageCap")}
 						</Checkbox>
 					</HStack>
 				),
@@ -1655,14 +1619,14 @@ const ServicesPage: FC = () => {
 	): DataTableRowAction<ServiceAdmin>[] => [
 		{
 			id: "editLimits",
-			label: t("services.editAdminLimits", "Edit limits"),
+			label: t("services.editAdminLimits"),
 			icon: <PencilSquareIcon width={16} />,
 			onClick: () => openServiceAdminLimitEditor(link),
 			isDisabled: savingAdminLimitId === link.id,
 		},
 		{
 			id: "resetDeleted",
-			label: t("admins.resetDeletedUsage", "Reset deleted-user usage"),
+			label: t("admins.resetDeletedUsage"),
 			icon: <ArrowPathIcon width={16} />,
 			onClick: () => resetServiceDeletedUsersUsage(link),
 			isDisabled:
@@ -1674,7 +1638,7 @@ const ServicesPage: FC = () => {
 		() => [
 			{
 				id: "remark",
-				header: t("hosts.remark", "Name"),
+				header: t("nodes.nodeName"),
 				accessor: "remark",
 				isPrimary: true,
 				priority: "primary",
@@ -1683,7 +1647,7 @@ const ServicesPage: FC = () => {
 				truncate: true,
 				tooltip: true,
 				mobilePriority: 0,
-				mobileMetaLabel: t("hosts.remark", "Name"),
+				mobileMetaLabel: t("nodes.nodeName"),
 				cell: (host) => (
 					<Text fontWeight="semibold" noOfLines={1}>
 						<AppleEmojiText>{host.remark}</AppleEmojiText>
@@ -1692,14 +1656,14 @@ const ServicesPage: FC = () => {
 			},
 			{
 				id: "inbound",
-				header: t("services.inbound", "Inbound"),
+				header: t("inbound"),
 				priority: "high",
 				width: "180px",
 				maxWidth: "220px",
 				truncate: true,
 				tooltip: true,
 				mobilePriority: 1,
-				mobileMetaLabel: t("services.inbound", "Inbound"),
+				mobileMetaLabel: t("inbound"),
 				cell: (host) => (
 					<Text fontSize="sm" noOfLines={1}>
 						{host.inbound_protocol.toUpperCase()} - {host.inbound_tag}
@@ -1708,7 +1672,7 @@ const ServicesPage: FC = () => {
 			},
 			{
 				id: "address",
-				header: t("hosts.address", "Address"),
+				header: t("nodes.nodeAddress"),
 				accessor: "address",
 				priority: "medium",
 				hideBelow: "xl",
@@ -1717,7 +1681,7 @@ const ServicesPage: FC = () => {
 				truncate: true,
 				tooltip: true,
 				mobilePriority: 2,
-				mobileMetaLabel: t("hosts.address", "Address"),
+				mobileMetaLabel: t("nodes.nodeAddress"),
 				cell: (host) => (
 					<Text dir="ltr" sx={{ unicodeBidi: "isolate" }} noOfLines={1}>
 						{host.address || "-"}
@@ -1726,25 +1690,25 @@ const ServicesPage: FC = () => {
 			},
 			{
 				id: "port",
-				header: t("hosts.port", "Port"),
+				header: t("port"),
 				accessor: "port",
 				priority: "medium",
 				width: "90px",
 				maxWidth: "110px",
 				mobilePriority: 3,
-				mobileMetaLabel: t("hosts.port", "Port"),
+				mobileMetaLabel: t("port"),
 				cell: (host) => <Text>{host.port ?? "-"}</Text>,
 			},
 			{
 				id: "sort",
-				header: t("services.sort", "Order"),
+				header: t("services.sort"),
 				accessor: "sort",
 				priority: "low",
 				hideBelow: "xl",
 				width: "90px",
 				maxWidth: "110px",
 				mobilePriority: 4,
-				mobileMetaLabel: t("services.sort", "Order"),
+				mobileMetaLabel: t("services.sort"),
 				cell: (host) => <Badge borderRadius="md">#{host.sort + 1}</Badge>,
 			},
 		],
@@ -1762,12 +1726,9 @@ const ServicesPage: FC = () => {
 	if (!canManageServices) {
 		return (
 			<VStack spacing={3} align="stretch">
-				<PageHeader title={t("services.title", "Services")} />
+				<PageHeader title={t("services.title")} />
 				<Text fontSize="sm" color="panel.textMuted">
-					{t(
-						"services.noPermission",
-						"You do not have permission to view this section.",
-					)}
+					{t("services.noPermission")}
 				</Text>
 			</VStack>
 		);
@@ -1776,15 +1737,12 @@ const ServicesPage: FC = () => {
 	return (
 		<VStack spacing={4} align="stretch">
 			<PageHeader
-				title={t("services.title", "Services")}
-				description={t(
-					"services.subtitle",
-					"Group hosts, assign admins, and monitor usage per service.",
-				)}
+				title={t("services.title")}
+				description={t("services.subtitle")}
 			/>
 
 			<ResourceListCard
-				title={t("services.listHeader", "Service list")}
+				title={t("services.listHeader")}
 				summaryItems={serviceSummaryItems}
 				actions={
 					<Button
@@ -1796,13 +1754,13 @@ const ServicesPage: FC = () => {
 						px={3}
 						borderRadius="4px"
 					>
-						{t("services.addService", "New Service")}
+						{t("services.addService")}
 					</Button>
 				}
 			/>
 
 			<DataTable
-				ariaLabel={t("services.title", "Services")}
+				ariaLabel={t("services.title")}
 				data={servicesStore.services}
 				columns={serviceColumns}
 				getRowId={(service) => String(service.id)}
@@ -1811,13 +1769,10 @@ const ServicesPage: FC = () => {
 				emptyState={
 					<Box textAlign="center">
 						<Text fontWeight="semibold">
-							{t("services.noServicesAvailable", "No services available")}
+							{t("services.noServicesAvailable")}
 						</Text>
 						<Text fontSize="sm" color={labelColor} mt={1}>
-							{t(
-								"services.emptyHint",
-								"Create a service to group hosts and admins.",
-							)}
+							{t("services.emptyHint")}
 						</Text>
 					</Box>
 				}
@@ -1860,7 +1815,7 @@ const ServicesPage: FC = () => {
 						}
 						actions={
 							<Badge colorScheme="primary" borderRadius="md">
-								{t("services.usersCount", "{{count}} users", {
+								{t("services.usersCount", {
 									count: selectedService.user_count,
 								})}
 							</Badge>
@@ -1869,13 +1824,13 @@ const ServicesPage: FC = () => {
 					<TabSystem
 						tabs={[
 							{
-								label: t("services.admins", "Admins"),
+								label: t("services.admins"),
 								value: "admins",
 								isActive: activeServiceTab === "admins",
 								onClick: () => setActiveServiceTab("admins"),
 							},
 							{
-								label: t("services.hosts", "Hosts"),
+								label: t("services.hosts"),
 								value: "hosts",
 								isActive: activeServiceTab === "hosts",
 								onClick: () => setActiveServiceTab("hosts"),
@@ -1885,13 +1840,13 @@ const ServicesPage: FC = () => {
 					{activeServiceTab === "admins" ? (
 						<DataTable
 							containerProps={{ mt: 3 }}
-							ariaLabel={t("services.admins", "Admins")}
+							ariaLabel={t("services.admins")}
 							data={selectedService.admins}
 							columns={serviceAdminColumns}
 							getRowId={(link) => String(link.id)}
 							emptyState={
 								<Text fontSize="sm" color="panel.textMuted" textAlign="center">
-									{t("services.noAdmins", "No admins assigned")}
+									{t("services.noAdmins")}
 								</Text>
 							}
 							rowActions={serviceAdminRowActions}
@@ -1915,13 +1870,13 @@ const ServicesPage: FC = () => {
 					) : (
 						<DataTable
 							containerProps={{ mt: 3 }}
-							ariaLabel={t("services.hosts", "Hosts")}
+							ariaLabel={t("services.hosts")}
 							data={selectedService.hosts}
 							columns={serviceHostColumns}
 							getRowId={(host) => String(host.id)}
 							emptyState={
 								<Text fontSize="sm" color="panel.textMuted" textAlign="center">
-									{t("services.noHosts", "No hosts assigned")}
+									{t("services.noHosts")}
 								</Text>
 							}
 							mobileBreakpoint="lg"
@@ -1947,7 +1902,7 @@ const ServicesPage: FC = () => {
 				size="lg"
 				scrollBehavior="inside"
 				isCentered
-				title={`${t("services.editAdminLimits", "Edit limits")}${
+				title={`${t("services.editAdminLimits")}${
 					editingServiceAdminLimit
 							? ` - ${editingServiceAdminLimit.username}`
 						: ""
@@ -1957,7 +1912,7 @@ const ServicesPage: FC = () => {
 				footer={
 					<>
 						<Button variant="ghost" onClick={closeServiceAdminLimitEditor}>
-							{t("cancel", "Cancel")}
+							{t("cancel")}
 						</Button>
 						<Button
 							colorScheme="primary"
@@ -1968,7 +1923,7 @@ const ServicesPage: FC = () => {
 									: false
 							}
 						>
-							{t("save", "Save")}
+							{t("save")}
 						</Button>
 					</>
 				}
@@ -1976,7 +1931,7 @@ const ServicesPage: FC = () => {
 						<Stack spacing={4}>
 							<FormControl>
 								<FormLabel>
-									{t("admins.trafficMode", "Traffic mode")}
+									{t("admins.trafficMode")}
 								</FormLabel>
 								<Select
 									value={serviceAdminLimitForm.traffic_limit_mode}
@@ -1989,26 +1944,23 @@ const ServicesPage: FC = () => {
 									}
 								>
 									<option value={AdminTrafficLimitMode.UsedTraffic}>
-										{t("admins.usedTraffic", "Used traffic")}
+										{t("nodes.usedTrafficSeries")}
 									</option>
 									<option value={AdminTrafficLimitMode.CreatedTraffic}>
-										{t("admins.createdTraffic", "Created traffic")}
+										{t("myaccount.createdTraffic")}
 									</option>
 								</Select>
 							</FormControl>
 							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 								<FormControl>
-									<FormLabel>{t("admins.dataLimit", "Data limit")}</FormLabel>
+									<FormLabel>{t("admins.dataLimit")}</FormLabel>
 									<Input
 										type="number"
 										inputMode="decimal"
 										min={0}
 										step={0.01}
 										value={serviceAdminLimitForm.data_limit_gb}
-										placeholder={t(
-											"admins.dataLimitPlaceholder",
-											"e.g., 100 for 100GB (empty = unlimited)",
-										)}
+										placeholder={t("admins.dataLimitPlaceholder")}
 										onChange={(event) =>
 											setServiceAdminLimitForm((current) => ({
 												...current,
@@ -2017,12 +1969,12 @@ const ServicesPage: FC = () => {
 										}
 									/>
 									<FormHelperText>
-										{t("admins.dataLimitHint", "Leave empty for unlimited data")}
+										{t("admins.dataLimitHint")}
 									</FormHelperText>
 								</FormControl>
 								<FormControl>
 									<FormLabel>
-										{t("admins.usersLimit", "Users limit")}
+										{t("admins.usersLimit")}
 									</FormLabel>
 									<Input
 										type="number"
@@ -2030,10 +1982,7 @@ const ServicesPage: FC = () => {
 										min={0}
 										step={1}
 										value={serviceAdminLimitForm.users_limit}
-										placeholder={t(
-											"admins.usersLimitPlaceholder",
-											"e.g., 100 (empty = unlimited)",
-										)}
+										placeholder={t("admins.usersLimitPlaceholder")}
 										onChange={(event) =>
 											setServiceAdminLimitForm((current) => ({
 												...current,
@@ -2042,7 +1991,7 @@ const ServicesPage: FC = () => {
 										}
 									/>
 									<FormHelperText>
-										{t("admins.usersLimitHint", "Leave empty for unlimited users")}
+										{t("admins.usersLimitHint")}
 									</FormHelperText>
 								</FormControl>
 							</SimpleGrid>
@@ -2056,7 +2005,7 @@ const ServicesPage: FC = () => {
 										}))
 									}
 								>
-									{t("admins.showUserTraffic", "Admin can view user traffic")}
+									{t("admins.showUserTraffic")}
 								</Checkbox>
 								<Checkbox
 									isChecked={
@@ -2069,7 +2018,7 @@ const ServicesPage: FC = () => {
 										}))
 									}
 								>
-									{t("admins.deleteUserUsageCap", "Limit delete by user usage")}
+									{t("admins.deleteUserUsageCap")}
 								</Checkbox>
 								<FormControl
 									isDisabled={
@@ -2077,10 +2026,7 @@ const ServicesPage: FC = () => {
 									}
 								>
 									<FormLabel>
-										{t(
-											"admins.deleteUserUsageLimit",
-											"Max deletable user usage (MB)",
-										)}
+										{t("admins.deleteUserUsageLimit")}
 									</FormLabel>
 									<Input
 										type="number"
@@ -2106,11 +2052,11 @@ const ServicesPage: FC = () => {
 				isOpen={isResetDialogOpen}
 				onClose={closeResetDialog}
 				onConfirm={confirmResetUsage}
-				title={t("services.resetUsage", "Reset usage")}
-				description={t("services.resetUsageConfirm", "Reset usage for {{name}}?", {
-					name: resetTargetName ?? t("services.thisService", "this service"),
+				title={t("services.resetUsage")}
+				description={t("services.resetUsageConfirm", {
+					name: resetTargetName ?? t("services.thisService"),
 				})}
-				confirmLabel={t("services.resetUsage", "Reset usage")}
+				confirmLabel={t("services.resetUsage")}
 				colorScheme="primary"
 				isLoading={isResetting}
 				isConfirmDisabled={resetServiceId == null}
@@ -2120,7 +2066,7 @@ const ServicesPage: FC = () => {
 				isOpen={isDeleteDialogOpen}
 				onClose={handleCloseDeleteDialog}
 				size="lg"
-				title={`${t("services.deleteDialogTitle", "Delete Service")}${
+				title={`${t("services.deleteDialogTitle")}${
 					servicePendingDelete ? ` – ${servicePendingDelete.name}` : ""
 				}`}
 				overlayProps={{ bg: "blackAlpha.300", backdropFilter: "blur(6px)" }}
@@ -2128,7 +2074,7 @@ const ServicesPage: FC = () => {
 				footer={
 					<>
 						<Button variant="ghost" onClick={handleCloseDeleteDialog}>
-							{t("cancel", "Cancel")}
+							{t("cancel")}
 						</Button>
 						<Button
 							colorScheme="red"
@@ -2141,7 +2087,7 @@ const ServicesPage: FC = () => {
 									!targetServiceId)
 							}
 						>
-							{t("services.delete", "Delete")}
+							{t("delete")}
 						</Button>
 					</>
 				}
@@ -2158,17 +2104,11 @@ const ServicesPage: FC = () => {
 										isChecked={unlinkAdmins}
 										onChange={(event) => setUnlinkAdmins(event.target.checked)}
 									>
-										{t(
-											"services.unlinkAdminsOption",
-											"Unlink all admins automatically",
-										)}
+										{t("services.unlinkAdminsOption")}
 									</Checkbox>
 								) : (
 									<Text fontSize="sm" color="gray.500">
-										{t(
-											"services.noAdminsLinked",
-											"No admins are currently linked.",
-										)}
+										{t("services.noAdminsLinked")}
 									</Text>
 								)}
 								{servicePendingDelete.user_count > 0 ? (
@@ -2188,29 +2128,20 @@ const ServicesPage: FC = () => {
 										>
 											<Stack align="flex-start" spacing={2}>
 												<Radio value="delete_users">
-													{t(
-														"services.deleteUsersOption",
-														"Delete linked users with the service",
-													)}
+													{t("services.deleteUsersOption")}
 												</Radio>
 												<Radio value="transfer_users">
-													{t(
-														"services.transferUsersOption",
-														"Keep linked users (move them to another service)",
-													)}
+													{t("services.transferUsersOption")}
 												</Radio>
 											</Stack>
 										</RadioGroup>
 										{deleteMode === "transfer_users" && (
 											<FormControl>
 												<FormLabel>
-													{t("services.selectTargetService", "Target service")}
+													{t("services.selectTargetService")}
 												</FormLabel>
 												<Select
-													placeholder={t(
-														"services.selectServicePlaceholder",
-														"Select a service",
-													)}
+													placeholder={t("services.selectServicePlaceholder")}
 													value={targetServiceId?.toString() ?? ""}
 													onChange={(
 														event: React.ChangeEvent<HTMLSelectElement>,
@@ -2230,10 +2161,7 @@ const ServicesPage: FC = () => {
 													))}
 												</Select>
 												<FormHelperText>
-													{t(
-														"services.transferUsersHint",
-														"Select another service to receive the linked users.",
-													)}
+													{t("services.transferUsersHint")}
 												</FormHelperText>
 											</FormControl>
 										)}
@@ -2242,16 +2170,13 @@ const ServicesPage: FC = () => {
 									<Alert status="info" borderRadius="md">
 										<AlertIcon />
 										<AlertDescription>
-											{t(
-												"services.noUsersLinked",
-												"This service has no linked users.",
-											)}
+											{t("services.noUsersLinked")}
 										</AlertDescription>
 									</Alert>
 								)}
 							</VStack>
 						) : (
-							<Text>{t("services.loading", "Loading...")}</Text>
+							<Text>{t("services.loading")}</Text>
 						)}
 			</AppDialog>
 

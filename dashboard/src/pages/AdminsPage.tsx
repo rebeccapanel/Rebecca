@@ -40,17 +40,11 @@ export const AdminsPage: FC = () => {
 		return (
 			<VStack spacing={4} align="stretch">
 				<PageHeader
-					title={t("admins.manageTab", "Admins")}
-					description={t(
-						"admins.pageDescription",
-						"View and manage admin accounts. Use this page to create, edit and review admin permissions and recent usage.",
-					)}
+					title={t("admins")}
+					description={t("admins.pageDescription")}
 				/>
 				<Text color="panel.textMuted">
-					{t(
-						"admins.noPermission",
-						"You don't have permission to manage admins.",
-					)}
+					{t("admins.noPermission")}
 				</Text>
 			</VStack>
 		);
@@ -59,18 +53,15 @@ export const AdminsPage: FC = () => {
 	return (
 		<VStack spacing={4} align="stretch">
 			<PageHeader
-				title={t("admins.manageTab", "Admins")}
-				description={t(
-					"admins.pageDescription",
-					"View and manage admin accounts. Use this page to create, edit and review admin permissions and recent usage.",
-				)}
+				title={t("admins")}
+				description={t("admins.pageDescription")}
 			/>
 			<AdminsTable
 				toolbar={<Filters for="admins" py={0} showRefresh={false} />}
 				footerActions={
 					<ResourceRefreshButton
-						aria-label={t("refresh", "Refresh")}
-						label={t("refresh", "Refresh")}
+						aria-label={t("refresh")}
+						label={t("refresh")}
 						icon={<ReloadIcon />}
 						onClick={() => fetchAdmins(undefined, { force: true })}
 						isLoading={adminsLoading}

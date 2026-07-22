@@ -82,43 +82,34 @@ export const PhpMyAdminPage = () => {
 				) : !status.supported ? (
 					<VStack minH="360px" align="center" justify="center" spacing={3} p={6}>
 						<Heading size="sm">
-							{t("phpmyadmin.sqliteDisabled", "phpMyAdmin is unavailable")}
+							{t("phpmyadmin.sqliteDisabled")}
 						</Heading>
 						<Text color={mutedColor} textAlign="center">
-							{t(
-								"phpmyadmin.sqliteDisabled",
-								"phpMyAdmin is available only for MySQL or MariaDB installations.",
-							)}
+							{t("phpmyadmin.sqliteDisabled")}
 						</Text>
 					</VStack>
 				) : !status.enabled ? (
 					<VStack minH="360px" align="center" justify="center" spacing={3} p={6}>
 						<Heading size="sm">
-							{t("phpmyadmin.notEnabledTitle", "phpMyAdmin is disabled")}
+							{t("phpmyadmin.notEnabledTitle")}
 						</Heading>
 						<Text color={mutedColor} textAlign="center">
-							{t(
-								"phpmyadmin.notEnabledDescription",
-								"Enable phpMyAdmin from Settings to load it inside this panel.",
-							)}
+							{t("phpmyadmin.notEnabledDescription")}
 						</Text>
 					</VStack>
 				) : !isFullAccess ? (
 					<VStack minH="360px" align="center" justify="center" spacing={3} p={6}>
 						<Heading size="sm">
-							{t("phpmyadmin.fullAccessOnly", "Full access required")}
+							{t("phpmyadmin.fullAccessOnly")}
 						</Heading>
 						<Text color={mutedColor} textAlign="center">
-							{t(
-								"phpmyadmin.fullAccessOnlyHint",
-								"Embedded auto-login is available only for full access admins.",
-							)}
+							{t("phpmyadmin.fullAccessOnlyHint")}
 						</Text>
 					</VStack>
 				) : embedQuery.isError ? (
 					<VStack minH="360px" align="center" justify="center" spacing={3} p={6}>
 						<Heading size="sm">
-							{t("phpmyadmin.embedFailed", "Could not open embedded phpMyAdmin")}
+							{t("phpmyadmin.embedFailed")}
 						</Heading>
 						<Text color={mutedColor} textAlign="center">
 							{String((embedQuery.error as Error)?.message || "")}
@@ -131,7 +122,7 @@ export const PhpMyAdminPage = () => {
 				) : (
 					<Box
 						as="iframe"
-						title={t("phpmyadmin.title", "phpMyAdmin")}
+						title={t("phpmyadmin.title")}
 						srcDoc={embedQuery.data}
 						sandbox="allow-downloads allow-forms allow-modals allow-popups allow-same-origin allow-scripts"
 						w="100%"

@@ -251,8 +251,8 @@ export const RuleModal: FC<RuleModalProps> = ({
 	const title = useMemo(
 		() =>
 			mode === "edit"
-				? t("pages.xray.rules.edit", "Edit Rule")
-				: t("pages.xray.rules.add", "Add Rule"),
+				? t("pages.xray.rules.edit")
+				: t("pages.xray.rules.add"),
 		[mode, t],
 	);
 
@@ -270,12 +270,12 @@ export const RuleModal: FC<RuleModalProps> = ({
 				<XrayModalBody>
 					<Stack spacing={3}>
 						<XrayDialogSection
-							title={t("pages.outbound.basicSettings", "Basic settings")}
+							title={t("pages.outbound.basicSettings")}
 						>
 							<Stack spacing={3}>
 								<FormControl>
 									<FormLabel>
-										{t("pages.xray.rules.type", "Rule Type")}
+										{t("pages.xray.rules.type")}
 									</FormLabel>
 									<Controller
 										control={control}
@@ -286,8 +286,8 @@ export const RuleModal: FC<RuleModalProps> = ({
 												options={TYPE_OPTIONS}
 												value={field.value ?? ""}
 												onChange={(value) => field.onChange(value as string)}
-												placeholder={t("pages.xray.rules.type", "Rule Type")}
-												searchPlaceholder={t("search", "Search")}
+												placeholder={t("pages.xray.rules.type")}
+												searchPlaceholder={t("search")}
 											/>
 										)}
 									/>
@@ -295,7 +295,7 @@ export const RuleModal: FC<RuleModalProps> = ({
 
 								<FormControl>
 									<FormLabel>
-										{t("pages.xray.rules.outboundTag", "Outbound Tag")}
+										{t("pages.xray.rules.outboundTag")}
 									</FormLabel>
 									<Controller
 										control={control}
@@ -306,12 +306,9 @@ export const RuleModal: FC<RuleModalProps> = ({
 												options={availableOutboundTags}
 												value={field.value ?? ""}
 												onChange={(value) => field.onChange(value as string)}
-												placeholder={t("core.none", "None")}
-												searchPlaceholder={t("search", "Search")}
-												emptyText={t(
-													"pages.xray.outbound.empty",
-													"No outbound found",
-												)}
+												placeholder={t("userDialog.flow.none")}
+												searchPlaceholder={t("search")}
+												emptyText={t("pages.xray.outbound.empty")}
 											/>
 										)}
 									/>
@@ -319,7 +316,7 @@ export const RuleModal: FC<RuleModalProps> = ({
 
 								<FormControl>
 									<FormLabel>
-										{t("pages.xray.rules.balancer", "Balancer Tag")}
+										{t("pages.xray.rules.balancer")}
 									</FormLabel>
 									<Controller
 										control={control}
@@ -330,12 +327,9 @@ export const RuleModal: FC<RuleModalProps> = ({
 												options={availableBalancerTags}
 												value={field.value ?? ""}
 												onChange={(value) => field.onChange(value as string)}
-												placeholder={t("core.none", "None")}
-												searchPlaceholder={t("search", "Search")}
-												emptyText={t(
-													"pages.xray.balancer.empty",
-													"No balancer found",
-												)}
+												placeholder={t("userDialog.flow.none")}
+												searchPlaceholder={t("search")}
+												emptyText={t("pages.xray.balancer.empty")}
 											/>
 										)}
 									/>
@@ -343,7 +337,7 @@ export const RuleModal: FC<RuleModalProps> = ({
 
 								<FormControl>
 									<FormLabel>
-										{t("pages.xray.rules.inboundTag", "Inbound Tags")}
+										{t("pages.xray.rules.inboundTag")}
 									</FormLabel>
 									<Controller
 										control={control}
@@ -354,15 +348,9 @@ export const RuleModal: FC<RuleModalProps> = ({
 												options={availableInboundTags}
 												value={field.value ?? []}
 												onChange={(value) => field.onChange(value as string[])}
-												placeholder={t(
-													"pages.xray.rules.inboundTag",
-													"Inbound Tags",
-												)}
-												searchPlaceholder={t("search", "Search")}
-												emptyText={t(
-													"pages.inbounds.empty",
-													"No inbound found",
-												)}
+												placeholder={t("pages.xray.rules.inboundTag")}
+												searchPlaceholder={t("search")}
+												emptyText={t("pages.inbounds.empty")}
 											/>
 										)}
 									/>
@@ -370,11 +358,11 @@ export const RuleModal: FC<RuleModalProps> = ({
 							</Stack>
 						</XrayDialogSection>
 
-						<XrayDialogSection title={t("pages.xray.Routings", "Routing")}>
+						<XrayDialogSection title={t("pages.xray.Routings")}>
 							<Stack spacing={3}>
 								<FormControl>
 									<FormLabel>
-										{t("pages.xray.rules.domainMatcher", "Domain Matcher")}
+										{t("pages.xray.rules.domainMatcher")}
 									</FormLabel>
 									<Controller
 										control={control}
@@ -384,12 +372,12 @@ export const RuleModal: FC<RuleModalProps> = ({
 												mode="single"
 												options={DOMAIN_MATCHER_OPTIONS.map((option) => ({
 													value: option,
-													label: option || t("core.default", "Default"),
+													label: option || t("common.default"),
 												}))}
 												value={field.value ?? ""}
 												onChange={(value) => field.onChange(value as string)}
-												placeholder={t("core.default", "Default")}
-												searchPlaceholder={t("search", "Search")}
+												placeholder={t("common.default")}
+												searchPlaceholder={t("search")}
 											/>
 										)}
 									/>
@@ -397,7 +385,7 @@ export const RuleModal: FC<RuleModalProps> = ({
 
 								<FormControl>
 									<FormLabel>
-										{t("pages.xray.rules.network", "Network")}
+										{t("pages.xray.rules.network")}
 									</FormLabel>
 									<Controller
 										control={control}
@@ -418,7 +406,7 @@ export const RuleModal: FC<RuleModalProps> = ({
 
 								<FormControl>
 									<FormLabel>
-										{t("pages.xray.rules.protocol", "Protocol")}
+										{t("pages.xray.rules.protocol")}
 									</FormLabel>
 									<Controller
 										control={control}
@@ -440,12 +428,12 @@ export const RuleModal: FC<RuleModalProps> = ({
 						</XrayDialogSection>
 
 						<XrayDialogSection
-							title={t("pages.xray.rules.sourceGroup", "Source")}
+							title={t("pages.xray.rules.sourceGroup")}
 						>
 							<XrayFieldGrid>
 								<FormControl>
 									<FormLabel>
-										{t("pages.xray.rules.source", "Source IPs")}
+										{t("pages.xray.rules.source")}
 									</FormLabel>
 									<Controller
 										control={control}
@@ -454,10 +442,7 @@ export const RuleModal: FC<RuleModalProps> = ({
 											<MultiValueAutocomplete
 												value={field.value ?? ""}
 												onChange={field.onChange}
-												placeholder={t(
-													"pages.xray.rules.useComma",
-													"Comma or space separated",
-												)}
+												placeholder={t("pages.xray.rules.useComma")}
 											/>
 										)}
 									/>
@@ -465,7 +450,7 @@ export const RuleModal: FC<RuleModalProps> = ({
 
 								<FormControl>
 									<FormLabel>
-										{t("pages.xray.rules.sourcePort", "Source Ports")}
+										{t("pages.xray.rules.sourcePort")}
 									</FormLabel>
 									<Controller
 										control={control}
@@ -483,12 +468,12 @@ export const RuleModal: FC<RuleModalProps> = ({
 						</XrayDialogSection>
 
 						<XrayDialogSection
-							title={t("pages.xray.rules.destinationGroup", "Destination")}
+							title={t("pages.xray.rules.destinationGroup")}
 						>
 							<XrayFieldGrid>
 								<FormControl>
 									<FormLabel>
-										{t("pages.xray.rules.ip", "Destination IPs")}
+										{t("pages.xray.rules.ip")}
 									</FormLabel>
 									<Controller
 										control={control}
@@ -505,7 +490,7 @@ export const RuleModal: FC<RuleModalProps> = ({
 
 								<FormControl>
 									<FormLabel>
-										{t("pages.xray.rules.domain", "Domains")}
+										{t("pages.xray.rules.domain")}
 									</FormLabel>
 									<Controller
 										control={control}
@@ -521,7 +506,7 @@ export const RuleModal: FC<RuleModalProps> = ({
 								</FormControl>
 
 								<FormControl>
-									<FormLabel>{t("pages.xray.rules.user", "Users")}</FormLabel>
+									<FormLabel>{t("users")}</FormLabel>
 									<Controller
 										control={control}
 										name="user"
@@ -536,7 +521,7 @@ export const RuleModal: FC<RuleModalProps> = ({
 								</FormControl>
 
 								<FormControl>
-									<FormLabel>{t("pages.xray.rules.port", "Ports")}</FormLabel>
+									<FormLabel>{t("pages.xray.rules.port")}</FormLabel>
 									<Controller
 										control={control}
 										name="port"
@@ -553,11 +538,11 @@ export const RuleModal: FC<RuleModalProps> = ({
 						</XrayDialogSection>
 
 						<XrayDialogSection
-							title={t("pages.xray.rules.attrs", "Attributes")}
+							title={t("pages.xray.rules.attrs")}
 						>
 							<FormControl>
 								<FormLabel>
-									{t("pages.xray.rules.attrs", "Attributes")}
+									{t("pages.xray.rules.attrs")}
 								</FormLabel>
 								<Button
 									onClick={onAddAttribute}
@@ -566,38 +551,29 @@ export const RuleModal: FC<RuleModalProps> = ({
 									variant="outline"
 									colorScheme="primary"
 								>
-									{t("core.add", "Add")}
+									{t("add")}
 								</Button>
 							</FormControl>
 							<Stack spacing={2} mt={3}>
 								{fields.length === 0 && (
 									<Text fontSize="sm" color="gray.500">
-										{t(
-											"pages.xray.rules.attrsHelper",
-											"No custom attributes defined.",
-										)}
+										{t("pages.xray.rules.attrsHelper")}
 									</Text>
 								)}
 								{fields.map((field, index) => (
 									<HStack key={field.id} spacing={2} align="flex-start">
 										<Input
 											size="sm"
-											placeholder={t(
-												"pages.inbounds.stream.general.name",
-												"Key",
-											)}
+											placeholder={t("myaccount.apiKeyMasked")}
 											{...register(`attrs.${index}.key` as const)}
 										/>
 										<Input
 											size="sm"
-											placeholder={t(
-												"pages.inbounds.stream.general.value",
-												"Value",
-											)}
+											placeholder={t("value")}
 											{...register(`attrs.${index}.value` as const)}
 										/>
 										<IconButton
-											aria-label="Remove attribute"
+											aria-label={t("a11y.removeAttribute")}
 											icon={<XMarkIcon width={16} />}
 											size="sm"
 											variant="ghost"
@@ -615,8 +591,8 @@ export const RuleModal: FC<RuleModalProps> = ({
 					</Button>
 					<Button colorScheme="primary" type="submit" isLoading={isSubmitting}>
 						{mode === "edit"
-							? t("pages.xray.rules.edit", "Save Changes")
-							: t("pages.xray.rules.add", "Add Rule")}
+							? t("pages.xray.rules.edit")
+							: t("pages.xray.rules.add")}
 					</Button>
 				</XrayModalFooter>
 			</XrayModalContent>

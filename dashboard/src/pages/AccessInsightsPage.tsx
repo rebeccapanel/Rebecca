@@ -93,10 +93,7 @@ const AccessInsightsPage: FC = () => {
 			setError(
 				requestError?.data?.detail ||
 					requestError?.message ||
-					t(
-						"pages.accessInsights.errors.loadFailed",
-						"Failed to load access insights",
-					),
+					t("pages.accessInsights.errors.loadFailed"),
 			);
 		} finally {
 			setLoading(false);
@@ -141,7 +138,7 @@ const AccessInsightsPage: FC = () => {
 		() => [
 			{
 				id: "user",
-				header: t("user", "User"),
+				header: t("user"),
 				accessor: "user_label",
 				isPrimary: true,
 				priority: "primary",
@@ -154,7 +151,7 @@ const AccessInsightsPage: FC = () => {
 							{client.user_label}
 						</Text>
 						<Text fontSize="xs" color="panel.textMuted">
-							{t("pages.accessInsights.connections", "Connections")}:{" "}
+							{t("pages.accessInsights.connections")}:{" "}
 							{client.connections}
 						</Text>
 					</VStack>
@@ -162,7 +159,7 @@ const AccessInsightsPage: FC = () => {
 			},
 			{
 				id: "ips",
-				header: t("pages.accessInsights.ips", "IPs"),
+				header: t("pages.accessInsights.ips"),
 				accessor: (client) => client.sources?.join(", ") || "",
 				priority: "high",
 				width: "270px",
@@ -215,7 +212,7 @@ const AccessInsightsPage: FC = () => {
 			},
 			{
 				id: "protocols",
-				header: t("pages.accessInsights.protocols", "Protocols"),
+				header: t("pages.accessInsights.protocols"),
 				accessor: (client) =>
 					client.platforms.map((item) => item.platform).join(", "),
 				priority: "high",
@@ -238,7 +235,7 @@ const AccessInsightsPage: FC = () => {
 			},
 			{
 				id: "last_seen",
-				header: t("pages.accessInsights.lastSeen", "Last seen"),
+				header: t("pages.accessInsights.lastSeen"),
 				accessor: "last_seen",
 				priority: "medium",
 				width: "155px",
@@ -267,10 +264,7 @@ const AccessInsightsPage: FC = () => {
 			<Box p={6}>
 				<Alert status="warning" borderRadius="md">
 					<AlertIcon />
-					{t(
-						"pages.accessInsights.noPermission",
-						"You do not have access to Xray insights.",
-					)}
+					{t("pages.accessInsights.noPermission")}
 				</Alert>
 			</Box>
 		);
@@ -291,7 +285,7 @@ const AccessInsightsPage: FC = () => {
 						onClick={() => setPage((current) => Math.max(0, current - 1))}
 						isDisabled={page === 0}
 					>
-						{t("previous", "Previous")}
+						{t("previous")}
 					</Button>
 					<Button
 						onClick={() =>
@@ -299,7 +293,7 @@ const AccessInsightsPage: FC = () => {
 						}
 						isDisabled={page >= totalPages - 1}
 					>
-						{t("next", "Next")}
+						{t("next")}
 					</Button>
 				</ButtonGroup>
 			</HStack>
@@ -313,29 +307,26 @@ const AccessInsightsPage: FC = () => {
 			data-dir={isRTL ? "rtl" : "ltr"}
 		>
 			<PageHeader
-				title={t("pages.accessInsights.title", "Live Access Insights")}
-				description={t(
-					"pages.accessInsights.liveSubtitle",
-					"Active users across Xray, OpenVPN, WireGuard, L2TP, IKEv2, and Cisco AnyConnect.",
-				)}
+				title={t("pages.accessInsights.title")}
+				description={t("pages.accessInsights.liveSubtitle")}
 			/>
 
 			<Stack spacing={3}>
 				<ResourceListCard
-					title={t("pages.accessInsights.onlineSessions", "Online sessions")}
+					title={t("pages.accessInsights.onlineSessions")}
 					summaryItems={[
 						{
-							label: t("pages.accessInsights.onlineUsers", "Online users"),
+							label: t("pages.accessInsights.onlineUsers"),
 							value: items.length,
 							colorScheme: "green",
 						},
 						{
-							label: t("pages.accessInsights.uniqueIps", "Unique IPs"),
+							label: t("pages.accessInsights.uniqueIps"),
 							value: totalIPs,
 							colorScheme: "blue",
 						},
 						{
-							label: t("pages.accessInsights.activeNodes", "Active nodes"),
+							label: t("pages.accessInsights.activeNodes"),
 							value: totalNodes,
 							colorScheme: "cyan",
 						},
@@ -346,18 +337,15 @@ const AccessInsightsPage: FC = () => {
 								<Switch
 									isChecked={autoRefresh}
 									onChange={(event) => setAutoRefresh(event.target.checked)}
-									aria-label={t(
-										"pages.accessInsights.autoRefresh",
-										"Auto refresh",
-									)}
+									aria-label={t("pages.accessInsights.autoRefresh")}
 								/>
 								<Text fontSize="sm">
-									{t("pages.accessInsights.autoRefresh", "Auto refresh")}
+									{t("pages.accessInsights.autoRefresh")}
 								</Text>
 							</HStack>
 							<ResourceRefreshButton
-								aria-label={t("refresh", "Refresh")}
-								label={t("refresh", "Refresh")}
+								aria-label={t("refresh")}
+								label={t("refresh")}
 								icon={<ArrowPathIcon width={18} />}
 								onClick={() => void load()}
 								isLoading={loading}
@@ -398,23 +386,17 @@ const AccessInsightsPage: FC = () => {
 							<Input
 								value={search}
 								onChange={(event) => setSearch(event.target.value)}
-								placeholder={t(
-									"pages.accessInsights.liveSearch",
-									"Search user, IP, node, or protocol",
-								)}
+								placeholder={t("pages.accessInsights.liveSearch")}
 							/>
 						</InputGroup>
 						<Button type="submit" flexShrink={0}>
-							{t("search", "Search")}
+							{t("search")}
 						</Button>
 					</Stack>
 				</ResourceListCard>
 
 				<DataTable
-					ariaLabel={t(
-						"pages.accessInsights.onlineSessions",
-						"Online sessions",
-					)}
+					ariaLabel={t("pages.accessInsights.onlineSessions")}
 					data={visibleItems}
 					columns={columns}
 					getRowId={(client) => client.user_key}
@@ -423,7 +405,7 @@ const AccessInsightsPage: FC = () => {
 					error={error || undefined}
 					emptyState={
 						<Text fontSize="sm" color="panel.textMuted" textAlign="center">
-							{t("pages.accessInsights.noData", "No recent connections found.")}
+							{t("pages.accessInsights.noData")}
 						</Text>
 					}
 					pagination={pagination}

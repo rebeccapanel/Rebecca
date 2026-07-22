@@ -136,8 +136,8 @@ const AdminStatusBadge: FC<{ status: AdminStatus }> = ({ status }) => {
 			<Icon w={3} h={3} />
 			<Text textTransform="capitalize">
 				{isActive
-					? t("status.active", "Active")
-					: t("admins.disabledLabel", "Disabled")}
+					? t("status.active")
+					: t("admins.disabledLabel")}
 			</Text>
 		</Box>
 	);
@@ -151,28 +151,28 @@ const AdminRoleBadge: FC<{ role: AdminRole }> = ({ role }) => {
 			color: "yellow.800",
 			darkBg: "yellow.900",
 			darkColor: "yellow.200",
-			label: t("admins.roles.fullAccess", "Full access"),
+			label: t("admins.roles.fullAccess"),
 		},
 		[AdminRole.Sudo]: {
 			bg: "purple.100",
 			color: "purple.800",
 			darkBg: "purple.900",
 			darkColor: "purple.200",
-			label: t("admins.roles.sudo", "Sudo"),
+			label: t("admins.roles.sudo"),
 		},
 		[AdminRole.Reseller]: {
 			bg: "blue.100",
 			color: "blue.800",
 			darkBg: "blue.900",
 			darkColor: "blue.200",
-			label: t("admins.roles.reseller", "Reseller"),
+			label: t("admins.roles.reseller"),
 		},
 		[AdminRole.Standard]: {
 			bg: "gray.100",
 			color: "gray.800",
 			darkBg: "gray.700",
 			darkColor: "gray.200",
-			label: t("admins.roles.standard", "Standard"),
+			label: t("admins.roles.standard"),
 		},
 	}[role];
 
@@ -378,7 +378,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 	const handleDeleteAdmin = async (admin: Admin) => {
 		try {
 			await deleteAdmin(admin.username);
-			generateSuccessMessage(t("admins.deleteSuccess", "Admin removed"), toast);
+			generateSuccessMessage(t("admins.deleteSuccess"), toast);
 			fetchAdmins();
 			return true;
 		} catch (error) {
@@ -392,7 +392,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		try {
 			await resetUsage(admin.username);
 			generateSuccessMessage(
-				t("admins.resetUsageSuccess", "Usage reset"),
+				t("admins.resetUsageSuccess"),
 				toast,
 			);
 			fetchAdmins();
@@ -408,7 +408,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		try {
 			await resetDeletedUsersUsage(admin.username);
 			generateSuccessMessage(
-				t("admins.resetDeletedUsageSuccess", "Deleted-user usage reset"),
+				t("admins.resetDeletedUsageSuccess"),
 				toast,
 			);
 			fetchAdmins();
@@ -504,7 +504,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		try {
 			await updateAdmin(admin.username, { data_limit: nextLimit });
 			generateSuccessMessage(
-				t("admins.addTrafficSuccess", "Data limit updated"),
+				t("admins.addTrafficSuccess"),
 				toast,
 			);
 			fetchAdmins();
@@ -541,7 +541,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		try {
 			await disableAdmin(adminToDisable.username, reason);
 			generateSuccessMessage(
-				t("admins.disableAdminSuccess", "Admin disabled"),
+				t("admins.disableAdminSuccess"),
 				toast,
 			);
 			closeDisableDialogAndReset();
@@ -576,7 +576,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			setQuickPassAdmin(null);
 			openQuickPassModal();
 			generateSuccessMessage(
-				t("admins.quickPasswordSuccess", "Password updated"),
+				t("admins.quickPasswordSuccess"),
 				toast,
 			);
 			fetchAdmins();
@@ -592,7 +592,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		try {
 			await enableAdmin(admin.username);
 			generateSuccessMessage(
-				t("admins.enableAdminSuccess", "Admin re-enabled"),
+				t("admins.enableAdminSuccess"),
 				toast,
 			);
 			fetchAdmins();
@@ -612,15 +612,9 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			admin.disabled_reason === ADMIN_TIME_LIMIT_EXHAUSTED_REASON_KEY;
 		const disabledReasonLabel = admin.disabled_reason
 			? hasDataLimitDisabledReason
-				? t(
-						"admins.disabledReason.dataLimitExceeded",
-						"Your data limit has been reached",
-					)
+				? t("admins.disabledReason.dataLimitExceeded")
 				: hasTimeLimitDisabledReason
-					? t(
-							"admins.disabledReason.timeLimitExceeded",
-							"Your account time limit has expired",
-						)
+					? t("admins.disabledReason.timeLimitExceeded")
 					: admin.disabled_reason
 			: null;
 		return {
@@ -669,7 +663,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 						<HStack spacing={2} minW={0}>
 							<AddDataIcon />
 							<Text as="span" noOfLines={1}>
-								{t("admins.addTraffic", "Add traffic")}
+								{t("services.userActions.traffic.add")}
 							</Text>
 						</HStack>
 						<ChevronRightIcon
@@ -779,7 +773,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			if (expireAt === null || expireAt === undefined) {
 				return (
 					<Text fontSize="xs" color="gray.400" _dark={{ color: "gray.500" }}>
-						{t("admins.expireNotSet", "No expiry set")}
+						{t("admins.expireNotSet")}
 					</Text>
 				);
 			}
@@ -875,27 +869,27 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		value === null ? "-" : formatCount(value, locale);
 	const adminSummaryItems = [
 		{
-			label: t("admins.totalLabel", "Total"),
+			label: t("total"),
 			value: formatCount(summaryData.totalCount, locale),
 			colorScheme: "gray",
 		},
 		{
-			label: t("admins.roles.fullAccess", "Full access"),
+			label: t("admins.roles.fullAccess"),
 			value: formatSummaryCount(summaryData.fullAccessCount),
 			colorScheme: "yellow",
 		},
 		{
-			label: t("admins.roles.sudo", "Sudo"),
+			label: t("admins.roles.sudo"),
 			value: formatSummaryCount(summaryData.sudoCount),
 			colorScheme: "purple",
 		},
 		{
-			label: t("admins.roles.reseller", "Reseller"),
+			label: t("admins.roles.reseller"),
 			value: formatSummaryCount(summaryData.resellerCount),
 			colorScheme: "blue",
 		},
 		{
-			label: t("admins.roles.standard", "Standard"),
+			label: t("admins.roles.standard"),
 			value: formatSummaryCount(summaryData.standardCount),
 			colorScheme: "gray",
 		},
@@ -905,12 +899,12 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			colorScheme: "green",
 		},
 		{
-			label: t("status.expired", "Expired"),
+			label: t("status.expired"),
 			value: formatSummaryCount(summaryData.expiredCount),
 			colorScheme: "orange",
 		},
 		{
-			label: t("status.limited", "Limited"),
+			label: t("status.limited"),
 			value: formatSummaryCount(summaryData.limitedCount),
 			colorScheme: "red",
 		},
@@ -974,19 +968,19 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 							{admin.username}
 						</Text>
 						<Text fontSize="xs" color="panel.textMuted">
-							{t("admins.idLabel", "ایدی")}: {admin.id}
+							{t("admins.idLabel")}: {admin.id}
 						</Text>
 					</Stack>
 				),
 			},
 			{
 				id: "role",
-				header: t("admins.roleHeader", "Role"),
+				header: t("core.role"),
 				priority: "high",
 				width: "118px",
 				maxWidth: "130px",
 				mobilePriority: 1,
-				mobileMetaLabel: t("admins.roleHeader", "Role"),
+				mobileMetaLabel: t("core.role"),
 				cell: (admin) => <AdminRoleBadge role={admin.role} />,
 			},
 			{
@@ -1002,13 +996,13 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			},
 			{
 				id: "expire",
-				header: t("expire", "Expire"),
+				header: t("expire"),
 				priority: "medium",
 				hideBelow: "xl",
 				width: "126px",
 				maxWidth: "146px",
 				mobilePriority: 3,
-				mobileMetaLabel: t("expire", "Expire"),
+				mobileMetaLabel: t("expire"),
 				cell: (admin) =>
 					renderAdminExpire(
 						typeof admin.expire === "number" && admin.expire > 0
@@ -1018,14 +1012,14 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			},
 			{
 				id: "users_count",
-				header: t("admins.details.activeLabel", "Active"),
+				header: t("admins.details.activeLabel"),
 				sortable: true,
 				priority: "high",
 				width: "92px",
 				maxWidth: "104px",
 				headerAlign: "center",
 				mobilePriority: 4,
-				mobileMetaLabel: t("admins.details.activeLabel", "Active"),
+				mobileMetaLabel: t("admins.details.activeLabel"),
 				cell: (admin) => {
 					const usersLimitLabel =
 						admin.users_limit && admin.users_limit > 0
@@ -1045,14 +1039,14 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			},
 			{
 				id: "online",
-				header: t("admins.details.onlineLabel", "Online"),
+				header: t("admins.details.onlineLabel"),
 				priority: "medium",
 				hideBelow: "xl",
 				width: "86px",
 				maxWidth: "96px",
 				headerAlign: "center",
 				mobilePriority: 5,
-				mobileMetaLabel: t("admins.details.onlineLabel", "Online"),
+				mobileMetaLabel: t("admins.details.onlineLabel"),
 				cell: (admin) => (
 					<Text
 						fontSize="sm"
@@ -1066,31 +1060,31 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			},
 			{
 				id: "services",
-				header: t("admins.servicesHeader", "Services"),
+				header: t("services.title"),
 				priority: "medium",
 				hideBelow: "xl",
 				width: "112px",
 				maxWidth: "130px",
 				mobilePriority: 6,
-				mobileMetaLabel: t("admins.servicesHeader", "Services"),
+				mobileMetaLabel: t("services.title"),
 				cell: (admin) => (
 					<Text fontSize="sm" noOfLines={1}>
 						{admin.services?.length
 							? formatCount(admin.services.length, locale)
-							: t("admins.allServices", "All services")}
+							: t("filters.advanced.serviceAll")}
 					</Text>
 				),
 			},
 			{
 				id: "permissions",
-				header: t("admins.permissionsHeader", "Permissions"),
+				header: t("admins.permissionsTabLabel"),
 				priority: "low",
 				hideBelow: "xl",
 				width: "116px",
 				maxWidth: "130px",
 				headerAlign: "center",
 				mobilePriority: 7,
-				mobileMetaLabel: t("admins.permissionsHeader", "Permissions"),
+				mobileMetaLabel: t("admins.permissionsTabLabel"),
 				cell: (admin) => (
 					<Text
 						fontSize="sm"
@@ -1105,7 +1099,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			},
 			{
 				id: "data_usage",
-				header: t("admins.trafficUsedLimit", "Used / Limit"),
+				header: t("admins.trafficUsedLimit"),
 				sortable: true,
 				priority: "medium",
 				width: "152px",
@@ -1113,7 +1107,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 				headerAlign: "center",
 				mobilePriority: 8,
 				mobileSummary: true,
-				mobileMetaLabel: t("admins.trafficUsedLimit", "Used / Limit"),
+				mobileMetaLabel: t("admins.trafficUsedLimit"),
 				cell: (admin) => (
 					<Text
 						fontSize="sm"
@@ -1128,18 +1122,18 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			},
 			{
 				id: "traffic_mode",
-				header: t("admins.details.trafficMode", "Traffic mode"),
+				header: t("admins.details.trafficMode"),
 				priority: "low",
 				hideBelow: "xl",
 				width: "132px",
 				maxWidth: "150px",
 				mobilePriority: 10,
-				mobileMetaLabel: t("admins.details.trafficMode", "Traffic mode"),
+				mobileMetaLabel: t("admins.details.trafficMode"),
 				cell: (admin) => (
 					<Text fontSize="sm" noOfLines={1}>
 						{admin.traffic_limit_mode === AdminTrafficLimitMode.CreatedTraffic
-							? t("admins.createdTrafficMode", "Created traffic")
-							: t("admins.usedTrafficMode", "Used traffic")}
+							? t("myaccount.createdTraffic")
+							: t("nodes.usedTrafficSeries")}
 					</Text>
 				),
 			},
@@ -1155,19 +1149,19 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			actions.push(
 				{
 					id: "edit",
-					label: t("admins.editAction", "Edit"),
+					label: t("edit"),
 					icon: <PencilIcon width={16} />,
 					onClick: () => openAdminDialog(admin),
 				},
 				{
 					id: "permissions",
-					label: t("admins.editPermissionsButton", "Edit permissions"),
+					label: t("admins.editPermissionsButton"),
 					icon: <AdjustmentsHorizontalIcon width={16} />,
 					onClick: () => handleOpenPermissionsModal(admin),
 				},
 				{
 					id: "reset",
-					label: t("admins.resetUsage", "Reset usage"),
+					label: t("admins.resetUsage"),
 					icon: <ResetIcon />,
 					onClick: () => setResetConfirmation({ admin, type: "usage" }),
 					isDisabled:
@@ -1180,7 +1174,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		if (canManageSecurityFor(admin)) {
 			actions.push({
 				id: "security",
-				label: t("admins.security.action", "Sessions and 2FA"),
+				label: t("admins.security.action"),
 				icon: <ShieldCheckIcon width={16} />,
 				onClick: () => {
 					setSecurityAdmin(admin);
@@ -1192,7 +1186,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		if (meta.canManage && (admin.deleted_users_usage ?? 0) > 0) {
 			actions.push({
 				id: "resetDeleted",
-				label: t("admins.resetDeletedUsage", "Reset deleted-user usage"),
+				label: t("admins.resetDeletedUsage"),
 				icon: <QuickPassIcon />,
 				onClick: () => setResetConfirmation({ admin, type: "deleted" }),
 				isDisabled:
@@ -1204,7 +1198,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		if (meta.showEnable) {
 			actions.push({
 				id: "enable",
-				label: t("admins.enableAdmin", "Enable admin"),
+				label: t("admins.enableAdmin"),
 				icon: <EnableIcon />,
 				onClick: () => handleEnableAdmin(admin),
 				isDisabled:
@@ -1216,7 +1210,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		if (meta.showDisable) {
 			actions.push({
 				id: "disable",
-				label: t("admins.disableAdmin", "Disable admin"),
+				label: t("admins.disableAdmin"),
 				icon: <DisableIcon />,
 				onClick: () => startDisableAdmin(admin),
 				isDisabled:
@@ -1228,7 +1222,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		if (meta.showAddTraffic) {
 			actions.push({
 				id: "addTraffic",
-				label: t("admins.addTraffic", "Add traffic"),
+				label: t("services.userActions.traffic.add"),
 				render: (_row, onClose) => renderAddTrafficSubmenu(admin, onClose),
 			});
 		}
@@ -1236,7 +1230,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		if (meta.canManage) {
 			actions.push({
 				id: "quickPassword",
-				label: t("admins.quickPassword", "Generate new password"),
+				label: t("admins.quickPassword"),
 				icon: <QuickPassIcon />,
 				onClick: () => handleQuickPassword(admin),
 				isDisabled: contextAction === "quickPassword",
@@ -1246,7 +1240,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		if (meta.showDelete) {
 			actions.push({
 				id: "delete",
-				label: t("delete", "Delete"),
+				label: t("delete"),
 				icon: <DeleteIcon />,
 				onClick: () => startDeleteAdmin(admin),
 				isDisabled:
@@ -1263,7 +1257,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		<>
 			<Stack spacing={3}>
 				<ResourceListCard
-					title={t("admins.listHeader", "Admin list")}
+					title={t("admins.listHeader")}
 					summaryItems={adminSummaryItems}
 					footerActions={footerActions}
 				>
@@ -1271,7 +1265,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 				</ResourceListCard>
 
 				<DataTable
-					ariaLabel={t("admins.manageTab", "Admins")}
+					ariaLabel={t("admins")}
 					data={admins}
 					columns={adminColumns}
 					getRowId={(admin) => admin.username}
@@ -1287,10 +1281,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 					selectedRows={selectedAdmins}
 					selectedCount={selectedAdminUsernames.length}
 					onSelectionChange={(rowIds) => setSelectedAdminUsernames(rowIds)}
-					selectedLabel={t("admins.selectedCount", {
-						defaultValue: "{{count}} admins selected",
-						count: selectedAdminUsernames.length,
-					})}
+					selectedLabel={t("admins.selectedCount", { count: selectedAdminUsernames.length })}
 					rowActions={adminRowActions}
 					actionsDisplay="menu"
 					actionsPlacement="end"
@@ -1316,12 +1307,8 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 						: "admins.resetUsage",
 					"Reset usage",
 				)}
-				description={t(
-					"admins.resetUsageConfirm",
-					"Reset usage for {{username}}?",
-					{ username: resetConfirmation?.admin.username ?? "" },
-				)}
-				confirmLabel={t("reset", "Reset")}
+				description={t("admins.resetUsageConfirm", { username: resetConfirmation?.admin.username ?? "" })}
+				confirmLabel={t("reset")}
 				isLoading={
 					actionState?.type === "reset" || actionState?.type === "resetDeleted"
 				}
@@ -1331,13 +1318,9 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 				isOpen={isDeleteDialogOpen}
 				onClose={closeDeleteDialogAndReset}
 				onConfirm={confirmDeleteAdmin}
-				title={t("delete", "Delete")}
-				description={t(
-					"admins.confirmDeleteMessage",
-					"Are you sure you want to delete {{username}}?",
-					{ username: adminToDelete?.username ?? "" },
-				)}
-				confirmLabel={t("delete", "Delete")}
+				title={t("delete")}
+				description={t("admins.confirmDeleteMessage", { username: adminToDelete?.username ?? "" })}
+				confirmLabel={t("delete")}
 				colorScheme="red"
 				isLoading={actionState?.type === "deleteAdmin"}
 				isConfirmDisabled={!adminToDelete}
@@ -1351,16 +1334,9 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 					setQuickPassAdmin(null);
 				}}
 				onConfirm={confirmQuickPassword}
-				title={t(
-					"admins.quickPasswordConfirmTitle",
-					"Generate new credentials",
-				)}
-				description={t(
-					"admins.quickPasswordConfirm",
-					"Generate a new password for {{username}}? The old password will stop working immediately.",
-					{ username: quickPassAdmin?.username ?? "" },
-				)}
-				confirmLabel={t("admins.quickPasswordAction", "Generate")}
+				title={t("admins.quickPasswordConfirmTitle")}
+				description={t("admins.quickPasswordConfirm", { username: quickPassAdmin?.username ?? "" })}
+				confirmLabel={t("admins.quickPasswordAction")}
 				colorScheme="primary"
 				isLoading={contextAction === "quickPassword"}
 			/>
@@ -1392,7 +1368,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 							>
 								<QuickPassIcon />
 							</Box>
-							<Text>{t("admins.quickPasswordModal.title", "New credentials")}</Text>
+							<Text>{t("admins.quickPasswordModal.title")}</Text>
 						</HStack>
 					</ModalHeader>
 					<ModalCloseButton />
@@ -1400,13 +1376,13 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 						<Stack spacing={3}>
 							<Box>
 								<Text fontSize="sm" color="gray.500">
-									{t("admins.quickPasswordModal.username", "Username")}
+									{t("username")}
 								</Text>
 								<Input value={quickPassInfo?.username ?? ""} isReadOnly />
 							</Box>
 							<Box>
 								<Text fontSize="sm" color="gray.500">
-									{t("admins.quickPasswordModal.password", "Password")}
+									{t("admins.quickPasswordModal.password")}
 								</Text>
 								<InputGroup>
 									<Input value={quickPassInfo?.password ?? ""} isReadOnly />
@@ -1419,7 +1395,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 													try {
 														await copyTextToClipboard(quickPassInfo.password);
 														toast({
-															title: t("copied", "Copied"),
+															title: t("copied"),
 															status: "success",
 															duration: 1200,
 														});
@@ -1429,16 +1405,13 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 												}
 											}}
 										>
-											{t("copy", "Copy")}
+											{t("copy")}
 										</Button>
 									</InputRightElement>
 								</InputGroup>
 							</Box>
 							<Text fontSize="xs" color="orange.400">
-								{t(
-									"admins.quickPasswordModal.notice",
-									"Store this password now. It won't be shown again.",
-								)}
+								{t("admins.quickPasswordModal.notice")}
 							</Text>
 						</Stack>
 					</ModalBody>
@@ -1460,29 +1433,22 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 				isOpen={isDisableDialogOpen}
 				onClose={closeDisableDialogAndReset}
 				onConfirm={confirmDisableAdmin}
-				title={t("admins.disableAdminTitle", "Disable admin")}
+				title={t("admins.disableAdminTitle")}
 				description={
 					<Stack spacing={3}>
 						<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.300" }}>
-							{t(
-								"admins.disableAdminMessage",
-								"All users owned by {{username}} will be disabled. Provide a reason for this action.",
-								{
+							{t("admins.disableAdminMessage", {
 									username: adminToDisable?.username ?? "",
-								},
-							)}
+								})}
 						</Text>
 						<Textarea
 							value={disableReason}
 							onChange={(event) => setDisableReason(event.target.value)}
-							placeholder={t(
-								"admins.disableAdminReasonPlaceholder",
-								"Reason for disabling",
-							)}
+							placeholder={t("admins.disableAdminReasonPlaceholder")}
 						/>
 					</Stack>
 				}
-				confirmLabel={t("admins.disableAdminConfirm", "Disable admin")}
+				confirmLabel={t("admins.disableAdminConfirm")}
 				colorScheme="red"
 				isConfirmDisabled={disableReason.trim().length < 3}
 				isLoading={

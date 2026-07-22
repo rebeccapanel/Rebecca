@@ -45,7 +45,7 @@ export const OnlineStatus: FC<UserStatusProps> = ({
 				gap={1}
 				alignItems="center"
 			>
-				{t("onlineStatus.notConnectedYet", "Not Connected Yet")}
+				{t("onlineStatus.notConnectedYet")}
 			</Text>
 		);
 	}
@@ -74,7 +74,7 @@ export const OnlineStatus: FC<UserStatusProps> = ({
 				gap={1}
 				alignItems="center"
 			>
-				{t("onlineStatus.online", "Online")}
+				{t("onlineStatus.online")}
 			</Text>
 		);
 	}
@@ -98,7 +98,7 @@ export const OnlineStatus: FC<UserStatusProps> = ({
 			<Box as="span" dir="ltr" sx={{ unicodeBidi: "isolate" }}>
 				{formattedParts}
 			</Box>
-			<Text as="span">{t("onlineStatus.ago", "ago")}</Text>
+			<Text as="span">{t("onlineStatus.ago")}</Text>
 		</Text>
 	);
 };

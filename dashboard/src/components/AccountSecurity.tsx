@@ -226,10 +226,7 @@ export const AccountSecurity = ({
 			setCode("");
 			queryClient.invalidateQueries("current-admin");
 			toast({
-				title: t(
-					"myaccount.twoFactorEnabled",
-					"Two-factor authentication enabled",
-				),
+				title: t("myaccount.twoFactorEnabled"),
 				status: "success",
 			});
 		} catch (error) {
@@ -253,10 +250,7 @@ export const AccountSecurity = ({
 			}
 			queryClient.invalidateQueries("current-admin");
 			toast({
-				title: t(
-					"myaccount.twoFactorDisabled",
-					"Two-factor authentication disabled",
-				),
+				title: t("myaccount.twoFactorDisabled"),
 				status: "success",
 			});
 		} catch (error) {
@@ -269,7 +263,7 @@ export const AccountSecurity = ({
 	return (
 		<Stack spacing={4} w="full" maxW="960px" mx="auto">
 			{(canChangePassword || canManage2FA) && (
-				<ChartBox title={t("myaccount.securityControls", "Sign-in security")}>
+				<ChartBox title={t("myaccount.securityControls")}>
 					<Stack
 						spacing={0}
 						divider={<StackDivider borderColor="panel.border" />}
@@ -298,7 +292,7 @@ export const AccountSecurity = ({
 									</Flex>
 									<Box minW={0}>
 										<Text fontWeight="semibold" fontSize="sm">
-											{t("myaccount.changePasswordCard", "Change password")}
+											{t("myaccount.changePasswordCard")}
 										</Text>
 										<Text color="panel.textSecondary" fontSize="xs" mt={0.5}>
 											{t("myaccount.changePasswordHint")}
@@ -312,7 +306,7 @@ export const AccountSecurity = ({
 									onClick={onChangePassword}
 									alignSelf={{ base: "flex-end", sm: "center" }}
 								>
-									{t("myaccount.changePassword", "Change")}
+									{t("myaccount.changePassword")}
 								</Button>
 							</Flex>
 						)}
@@ -342,12 +336,12 @@ export const AccountSecurity = ({
 									<Box minW={0}>
 										<HStack spacing={2} flexWrap="wrap">
 											<Text fontWeight="semibold" fontSize="sm">
-												{t("myaccount.twoFactor", "Two-factor authentication")}
+												{t("myaccount.twoFactor")}
 											</Text>
 											<Badge colorScheme={totpEnabled ? "green" : "gray"}>
 												{totpEnabled
-													? t("enabled", "Enabled")
-													: t("disabled", "Disabled")}
+													? t("nodes.enabled")
+													: t("disabled")}
 											</Badge>
 										</HStack>
 										<Text color="panel.textSecondary" fontSize="xs" mt={0.5}>
@@ -368,8 +362,8 @@ export const AccountSecurity = ({
 									alignSelf={{ base: "flex-end", sm: "center" }}
 								>
 									{totpEnabled
-										? t("myaccount.disableTwoFactor", "Disable 2FA")
-										: t("myaccount.enableTwoFactor", "Enable 2FA")}
+										? t("myaccount.disableTwoFactor")
+										: t("myaccount.enableTwoFactor")}
 								</Button>
 							</Flex>
 						)}
@@ -377,7 +371,7 @@ export const AccountSecurity = ({
 				</ChartBox>
 			)}
 			{canManageSessions && (
-				<ChartBox title={t("myaccount.sessions", "Login sessions")}>
+				<ChartBox title={t("myaccount.sessions")}>
 					<Stack spacing={3}>
 						{sessions.isLoading && (
 							<Flex justify="center" py={6}>
@@ -434,7 +428,7 @@ export const AccountSecurity = ({
 													</Text>
 													{session.current && (
 														<Badge colorScheme="green">
-															{t("current", "Current")}
+															{t("current")}
 														</Badge>
 													)}
 												</HStack>
@@ -459,7 +453,7 @@ export const AccountSecurity = ({
 												</HStack>
 												<Text color="panel.textMuted" fontSize="xs" mt={1}>
 													{session.ip_address || "-"} ·{" "}
-													{t("myaccount.lastSeen", "Last seen")}{" "}
+													{t("myaccount.lastSeen")}{" "}
 													{dayjs(session.last_seen_at).format(
 														"YYYY-MM-DD HH:mm",
 													)}
@@ -476,16 +470,16 @@ export const AccountSecurity = ({
 											variant="ghost"
 											leftIcon={<ArrowRightStartOnRectangleIcon width={16} />}
 											alignSelf={{ base: "flex-end", sm: "center" }}
-											aria-label={`${t("logout", "Log out")} ${browserLabel}`}
+											aria-label={`${t("header.logout")} ${browserLabel}`}
 										>
-											{t("logout", "Log out")}
+											{t("header.logout")}
 										</Button>
 									</Flex>
 								</Box>
 							);
 						})}
 						{!sessions.isLoading && !sessions.data?.length && (
-							<Text color="gray.500">{t("noData", "No data")}</Text>
+							<Text color="gray.500">{t("noData")}</Text>
 						)}
 					</Stack>
 				</ChartBox>
@@ -494,7 +488,7 @@ export const AccountSecurity = ({
 			<AppDialog
 				isOpen={setupDialog.isOpen}
 				onClose={setupDialog.onClose}
-				title={t("myaccount.enableTwoFactor", "Enable 2FA")}
+				title={t("myaccount.enableTwoFactor")}
 				footer={
 					<Button
 						colorScheme="primary"
@@ -502,7 +496,7 @@ export const AccountSecurity = ({
 						isLoading={twoFactorLoading}
 						onClick={confirmSetup}
 					>
-						{t("confirm", "Confirm")}
+						{t("confirm")}
 					</Button>
 				}
 			>
@@ -529,7 +523,7 @@ export const AccountSecurity = ({
 			<AppDialog
 				isOpen={disableDialog.isOpen}
 				onClose={disableDialog.onClose}
-				title={t("myaccount.disableTwoFactor", "Disable 2FA")}
+				title={t("myaccount.disableTwoFactor")}
 				footer={
 					<Button
 						colorScheme="red"
@@ -537,14 +531,14 @@ export const AccountSecurity = ({
 						isLoading={twoFactorLoading}
 						onClick={confirmDisable}
 					>
-						{t("disable", "Disable")}
+						{t("phpmyadmin.disableAction")}
 					</Button>
 				}
 			>
 				<Stack spacing={3}>
 					<Input
 						type="password"
-						placeholder={t("myaccount.currentPassword", "Current password")}
+						placeholder={t("myaccount.currentPassword")}
 						value={password}
 						onChange={(event) => setPassword(event.target.value)}
 					/>
@@ -552,7 +546,7 @@ export const AccountSecurity = ({
 						autoComplete="one-time-code"
 						inputMode="numeric"
 						maxLength={6}
-						placeholder={t("login.authenticationCode", "Authentication code")}
+						placeholder={t("login.authenticationCode")}
 						value={code}
 						onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
 					/>

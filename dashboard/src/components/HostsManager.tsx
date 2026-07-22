@@ -320,7 +320,7 @@ const RotationControls: FC<RotationControlsProps> = ({
 		<SimpleGrid columns={2} spacing={2} mt={2}>
 			<FormControl>
 				<FormLabel fontSize="xs" color="gray.500" mb={1}>
-					{t("hostsDialog.rotationMode", "Selection mode")}
+					{t("hostsDialog.rotationMode")}
 				</FormLabel>
 				<SearchableTagSelect
 					size="sm"
@@ -328,17 +328,17 @@ const RotationControls: FC<RotationControlsProps> = ({
 					options={[
 						{
 							value: "random",
-							label: t("hostsDialog.rotationRandom", "Random"),
+							label: t("inbounds.randomPort"),
 						},
-						{ value: "ttl", label: t("hostsDialog.rotationTTL", "TTL") },
+						{ value: "ttl", label: t("hostsDialog.rotationTTL") },
 					]}
-					placeholder={t("hostsDialog.rotationMode", "Selection mode")}
+					placeholder={t("hostsDialog.rotationMode")}
 					onChange={(value) => onModeChange(String(value))}
 				/>
 			</FormControl>
 			<FormControl>
 				<FormLabel fontSize="xs" color="gray.500" mb={1}>
-					{t("hostsDialog.rotationTTLSeconds", "TTL seconds")}
+					{t("hostsDialog.rotationTTLSeconds")}
 				</FormLabel>
 				<NumericInput
 					size="sm"
@@ -497,61 +497,58 @@ const FragmentSettingFields: FC<{
 					)
 				}
 			>
-				{t("hostsDialog.fragment", "Fragment pattern")}
+				{t("hostsDialog.fragment")}
 			</Checkbox>
 			{isEnabled && (
 				<Box mt={2} pl={{ base: 0, md: 6 }}>
 					<SimpleGrid columns={{ base: 1, sm: 2, xl: 4 }} spacing={2}>
 						<FormControl>
 							<FormLabel fontSize="xs" color="gray.500" mb={1}>
-								{t("hostsDialog.fragmentLengthLabel", "Length")}
+								{t("hostsDialog.fragment.length")}
 							</FormLabel>
 							<Input
 								size="sm"
 								value={fields.length}
-								placeholder={t("hostsDialog.fragmentLength", "10-100")}
+								placeholder={t("hostsDialog.fragmentLength")}
 								onChange={(event) => update({ length: event.target.value })}
 							/>
 						</FormControl>
 						<FormControl>
 							<FormLabel fontSize="xs" color="gray.500" mb={1}>
-								{t("hostsDialog.fragmentIntervalLabel", "Interval")}
+								{t("hostsDialog.fragmentIntervalLabel")}
 							</FormLabel>
 							<Input
 								size="sm"
 								value={fields.interval}
-								placeholder={t("hostsDialog.fragmentInterval", "100-200")}
+								placeholder={t("hostsDialog.fragmentInterval")}
 								onChange={(event) => update({ interval: event.target.value })}
 							/>
 						</FormControl>
 						<FormControl>
 							<FormLabel fontSize="xs" color="gray.500" mb={1}>
-								{t("hostsDialog.fragmentPacketLabel", "Packet")}
+								{t("hostsDialog.fragmentPacketLabel")}
 							</FormLabel>
 							<Input
 								size="sm"
 								value={fields.packet}
-								placeholder={t("hostsDialog.fragmentPacket", "tlshello")}
+								placeholder={t("hostsDialog.fragmentPacket")}
 								onChange={(event) => update({ packet: event.target.value })}
 							/>
 						</FormControl>
 						<FormControl>
 							<FormLabel fontSize="xs" color="gray.500" mb={1}>
-								{t("hostsDialog.fragmentMaxSplitLabel", "Max split")}
+								{t("hostsDialog.fragmentMaxSplitLabel")}
 							</FormLabel>
 							<Input
 								size="sm"
 								value={fields.maxSplit}
-								placeholder={t("hostsDialog.fragmentMaxSplit", "3")}
+								placeholder={t("hostsDialog.fragmentMaxSplit")}
 								onChange={(event) => update({ maxSplit: event.target.value })}
 							/>
 						</FormControl>
 					</SimpleGrid>
 					<Text mt={1.5} fontSize="xs" color="gray.500">
-						{t(
-							"hostsDialog.fragmentHint",
-							"Saved as length,interval,packet. Example: 10-100,100-200,tlshello",
-						)}
+						{t("hostsDialog.fragmentHint")}
 					</Text>
 				</Box>
 			)}
@@ -593,7 +590,7 @@ const NoisePatternFields: FC<{
 						)
 					}
 				>
-					{t("hostsDialog.noise", "Noise pattern")}
+					{t("hostsDialog.noise")}
 				</Checkbox>
 				{isEnabled && (
 					<Button
@@ -602,7 +599,7 @@ const NoisePatternFields: FC<{
 						alignSelf={{ base: "flex-start", sm: "center" }}
 						onClick={() => updatePatterns([...patterns, defaultNoisePattern()])}
 					>
-						{t("hostsDialog.addNoisePattern", "Add pattern")}
+						{t("hostsDialog.addNoisePattern")}
 					</Button>
 				)}
 			</Stack>
@@ -618,13 +615,13 @@ const NoisePatternFields: FC<{
 							>
 								<FormControl gridColumn={{ md: "span 3" }}>
 									<FormLabel fontSize="xs" color="gray.500" mb={1}>
-										{t("hostsDialog.noiseType", "Type")}
+										{t("inbounds.fallbacks.type")}
 									</FormLabel>
 									<SearchableTagSelect
 										size="sm"
 										value={pattern.type}
 										options={["rand", "str", "hex", "base64"]}
-										placeholder={t("hostsDialog.noiseType", "Type")}
+										placeholder={t("inbounds.fallbacks.type")}
 										onChange={(value) =>
 											updatePattern(index, { type: String(value) })
 										}
@@ -632,7 +629,7 @@ const NoisePatternFields: FC<{
 								</FormControl>
 								<FormControl gridColumn={{ md: "span 4" }}>
 									<FormLabel fontSize="xs" color="gray.500" mb={1}>
-										{t("hostsDialog.noisePacketLabel", "Packet/value")}
+										{t("hostsDialog.noisePacket")}
 									</FormLabel>
 									<Input
 										size="sm"
@@ -640,7 +637,7 @@ const NoisePatternFields: FC<{
 										placeholder={
 											pattern.type === "rand"
 												? "10-20"
-												: t("hostsDialog.noisePacket", "Packet/value")
+												: t("hostsDialog.noisePacket")
 										}
 										onChange={(event) =>
 											updatePattern(index, { packet: event.target.value })
@@ -649,7 +646,7 @@ const NoisePatternFields: FC<{
 								</FormControl>
 								<FormControl gridColumn={{ md: "span 4" }}>
 									<FormLabel fontSize="xs" color="gray.500" mb={1}>
-										{t("hostsDialog.noiseDelay", "Delay")}
+										{t("hostsDialog.noiseDelay")}
 									</FormLabel>
 									<Input
 										size="sm"
@@ -680,10 +677,7 @@ const NoisePatternFields: FC<{
 						))}
 					</VStack>
 					<Text mt={1.5} fontSize="xs" color="gray.500">
-						{t(
-							"hostsDialog.noiseHint",
-							"Saved as noise patterns. Example: rand:10-20,100-200&str:hello,50",
-						)}
+						{t("hostsDialog.noiseHint")}
 					</Text>
 				</Box>
 			)}
@@ -1088,7 +1082,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 	const primaryDisabled = isCloneMode ? !canSubmit : !dirty || !canSubmit;
 	const primaryLabel = isCloneMode
 		? t("hostsPage.clone.submit")
-		: t("hostsPage.save");
+		: t("save");
 	const hostPayload = useMemo(() => {
 		if (!host) {
 			return null;
@@ -1245,10 +1239,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 														<MultiValueAutocomplete
 															value={host.data.address}
 															options={nodeAddressOptions}
-															placeholder={t(
-																"hostsDialog.addressPlaceholder",
-																"Type an address or select node IPs",
-															)}
+															placeholder={t("hostsDialog.addressPlaceholder")}
 															onChange={(value) =>
 																onChange(host.uid, "address", value)
 															}
@@ -1257,7 +1248,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 													</FormControl>
 													{!isVirtualTunnelInbound && (
 														<FormControl>
-															<FormLabel>{t("hostsDialog.port")}</FormLabel>
+															<FormLabel>{t("port")}</FormLabel>
 															<NumericInput
 																value={host.data.port ?? ""}
 																allowMouseWheel
@@ -1357,10 +1348,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 														<FormLabel>{t("hostsDialog.sni")}</FormLabel>
 														<MultiValueAutocomplete
 															value={host.data.sni}
-															placeholder={t(
-																"hostsDialog.sniPlaceholder",
-																"Type SNI values",
-															)}
+															placeholder={t("hostsDialog.sniPlaceholder")}
 															onChange={(value) =>
 																onChange(host.uid, "sni", value)
 															}
@@ -1370,10 +1358,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 														<FormLabel>{t("hostsDialog.host")}</FormLabel>
 														<MultiValueAutocomplete
 															value={host.data.host}
-															placeholder={t(
-																"hostsDialog.hostPlaceholder",
-																"Type request host values",
-															)}
+															placeholder={t("hostsDialog.hostPlaceholder")}
 															onChange={(value) =>
 																onChange(host.uid, "host", value)
 															}
@@ -1438,10 +1423,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 														<MultiValueAutocomplete
 															value={host.data.alpn}
 															options={alpnAutocompleteOptions}
-															placeholder={t(
-																"hostsDialog.alpnPlaceholder",
-																"Select or type ALPN values",
-															)}
+															placeholder={t("hostsDialog.alpnPlaceholder")}
 															onChange={(value) =>
 																onChange(host.uid, "alpn", value)
 															}
@@ -1582,7 +1564,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 								colorScheme="red"
 								leftIcon={<DeleteIcon />}
 							>
-								{t("hostsPage.delete")}
+								{t("delete")}
 							</Button>
 						</DeleteConfirmDialog>
 					)}
@@ -1603,7 +1585,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 							onClick={() => onReset(host.uid)}
 							isDisabled={!dirty || saving}
 						>
-							{t("hostsPage.reset")}
+							{t("reset")}
 						</Button>
 						<Button
 							size="sm"
@@ -1783,10 +1765,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 							<MultiValueAutocomplete
 								value={formState.address}
 								options={nodeAddressOptions}
-								placeholder={t(
-									"hostsDialog.addressPlaceholder",
-									"Type an address or select node IPs",
-								)}
+								placeholder={t("hostsDialog.addressPlaceholder")}
 								onChange={(value) =>
 									setFormState((prev) => ({
 										...prev,
@@ -1847,7 +1826,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 						{!isVirtualTunnelInbound && (
 							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 								<FormControl>
-									<FormLabel>{t("hostsDialog.port")}</FormLabel>
+									<FormLabel>{t("port")}</FormLabel>
 									<NumericInput
 										value={formState.port ?? ""}
 										fieldProps={{
@@ -1865,10 +1844,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 									<FormLabel>{t("hostsDialog.sni")}</FormLabel>
 									<MultiValueAutocomplete
 										value={formState.sni}
-										placeholder={t(
-											"hostsDialog.sniPlaceholder",
-											"Type SNI values",
-										)}
+										placeholder={t("hostsDialog.sniPlaceholder")}
 										onChange={(value) =>
 											setFormState((prev) => ({
 												...prev,
@@ -1898,10 +1874,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 								<FormLabel>{t("hostsDialog.host")}</FormLabel>
 								<MultiValueAutocomplete
 									value={formState.host}
-									placeholder={t(
-										"hostsDialog.hostPlaceholder",
-										"Type request host values",
-									)}
+									placeholder={t("hostsDialog.hostPlaceholder")}
 									onChange={(value) =>
 										setFormState((prev) => ({
 											...prev,
@@ -2023,7 +1996,7 @@ export const HostsManager: FC = () => {
 				return false;
 			}
 			toast({
-				title: t("hostsPage.error.invalidHost", "Host config is invalid"),
+				title: t("hostsPage.error.invalidHost"),
 				description: errors[0].startsWith("hostsPage.")
 					? t(errors[0])
 					: errors[0],
@@ -2444,8 +2417,8 @@ export const HostsManager: FC = () => {
 			setSelectedHostUids([]);
 			toast({
 				title: isActive
-					? t("hostsPage.bulkEnabled", "Hosts enabled")
-					: t("hostsPage.bulkDisabled", "Hosts disabled"),
+					? t("hostsPage.bulkEnabled")
+					: t("hostsPage.bulkDisabled"),
 				status: "success",
 				isClosable: true,
 				position: "top",
@@ -2483,7 +2456,7 @@ export const HostsManager: FC = () => {
 			await fetchHosts();
 			setSelectedHostUids([]);
 			toast({
-				title: t("hostsPage.bulkDeleted", "Hosts deleted"),
+				title: t("hostsPage.bulkDeleted"),
 				status: "success",
 				isClosable: true,
 				position: "top",
@@ -2614,27 +2587,27 @@ export const HostsManager: FC = () => {
 		const inboundCount = new Set(allHosts.map((host) => host.inboundTag)).size;
 		return [
 			{
-				label: t("hostsPage.summary.total", "Total"),
+				label: t("total"),
 				value: total,
 				colorScheme: "gray",
 			},
 			{
-				label: t("hostsPage.summary.enabled", "Enabled"),
+				label: t("nodes.enabled"),
 				value: enabled,
 				colorScheme: "green",
 			},
 			{
-				label: t("hostsPage.summary.disabled", "Disabled"),
+				label: t("nodes.disabled"),
 				value: disabled,
 				colorScheme: "red",
 			},
 			{
-				label: t("hostsPage.summary.inbounds", "Inbounds"),
+				label: t("pages.xray.Inbounds"),
 				value: inboundCount,
 				colorScheme: "purple",
 			},
 			{
-				label: t("hostsPage.summary.filtered", "Filtered"),
+				label: t("usersPage.filtered"),
 				value: displayedHosts.length,
 				colorScheme: "teal",
 			},
@@ -2680,14 +2653,14 @@ export const HostsManager: FC = () => {
 		() => [
 			{
 				id: "remark",
-				header: t("hostsPage.host", "Host"),
+				header: t("hostsPage.host"),
 				isPrimary: true,
 				priority: "primary",
 				width: { base: "150px", lg: "160px", xl: "180px" },
 				minWidth: "130px",
 				maxWidth: "220px",
 				mobilePriority: 0,
-				mobileMetaLabel: t("hostsPage.host", "Host"),
+				mobileMetaLabel: t("hostsPage.host"),
 				cell: (host) => {
 					const dirty = isHostDirty(host);
 					const hostName = host.data.remark || t("hostsPage.untitledHost");
@@ -2719,25 +2692,25 @@ export const HostsManager: FC = () => {
 			},
 			{
 				id: "address",
-				header: t("hostsDialog.address", "Address"),
+				header: t("hostsDialog.address"),
 				priority: "high",
 				width: { base: "210px", lg: "240px", xl: "280px" },
 				minWidth: "170px",
 				maxWidth: "320px",
 				mobilePriority: 1,
-				mobileMetaLabel: t("hostsDialog.address", "Address"),
+				mobileMetaLabel: t("hostsDialog.address"),
 				cell: (host) =>
 					renderRotationValues(host.data.address, t("hostsPage.noAddress")),
 			},
 			{
 				id: "port",
-				header: t("hostsDialog.port", "Port"),
+				header: t("port"),
 				priority: "high",
 				width: "72px",
 				minWidth: "64px",
 				maxWidth: "82px",
 				mobilePriority: 2,
-				mobileMetaLabel: t("hostsDialog.port", "Port"),
+				mobileMetaLabel: t("port"),
 				cell: (host) =>
 					host.data.port != null ? (
 						<Text fontWeight="semibold" dir="ltr" sx={{ unicodeBidi: "isolate" }}>
@@ -2749,13 +2722,13 @@ export const HostsManager: FC = () => {
 			},
 			{
 				id: "inbound",
-				header: t("hostsPage.inboundLabel", "Inbound"),
+				header: t("hostsPage.inboundLabel"),
 				priority: "high",
 				width: { base: "150px", lg: "160px", xl: "190px" },
 				minWidth: "130px",
 				maxWidth: "230px",
 				mobilePriority: 3,
-				mobileMetaLabel: t("hostsPage.inboundLabel", "Inbound"),
+				mobileMetaLabel: t("hostsPage.inboundLabel"),
 				cell: (host) => {
 					const inbound = inboundOptions.find(
 						(option) => option.value === host.inboundTag,
@@ -2768,7 +2741,7 @@ export const HostsManager: FC = () => {
 							<Text fontSize="xs" color="panel.textMuted" noOfLines={1}>
 								{inbound
 									? `${inbound.protocol.toUpperCase()} / ${inbound.network}`
-									: t("hostsPage.unknownInbound", "Unknown inbound")}
+									: t("hostsPage.unknownInbound")}
 							</Text>
 						</Stack>
 					);
@@ -2776,37 +2749,37 @@ export const HostsManager: FC = () => {
 			},
 			{
 				id: "sni",
-				header: t("hostsDialog.sni", "SNI"),
+				header: t("hostsDialog.sni"),
 				priority: "low",
 				hideBelow: "xl",
 				width: "180px",
 				minWidth: "140px",
 				maxWidth: "220px",
 				mobilePriority: 4,
-				mobileMetaLabel: t("hostsDialog.sni", "SNI"),
+				mobileMetaLabel: t("hostsDialog.sni"),
 				cell: (host) => renderRotationValues(host.data.sni, "-"),
 			},
 			{
 				id: "request_host",
-				header: t("hostsDialog.host", "Request host"),
+				header: t("hostsDialog.host"),
 				priority: "low",
 				hideBelow: "xl",
 				width: "180px",
 				minWidth: "140px",
 				maxWidth: "220px",
 				mobilePriority: 5,
-				mobileMetaLabel: t("hostsDialog.host", "Request host"),
+				mobileMetaLabel: t("hostsDialog.host"),
 				cell: (host) => renderRotationValues(host.data.host, "-"),
 			},
 			{
 				id: "security",
-				header: t("hostsDialog.security", "Security"),
+				header: t("hostsDialog.security"),
 				priority: "low",
 				hideBelow: "xl",
 				width: "130px",
 				maxWidth: "150px",
 				mobilePriority: 6,
-				mobileMetaLabel: t("hostsDialog.security", "Security"),
+				mobileMetaLabel: t("hostsDialog.security"),
 				cell: (host) => (
 					<Tag size="sm" colorScheme="blue">
 						{host.data.security || "inbound_default"}
@@ -2824,15 +2797,15 @@ export const HostsManager: FC = () => {
 			return [
 				{
 					id: "edit",
-					label: t("hostsPage.edit", "Edit"),
+					label: t("edit"),
 					icon: <EditIcon />,
 					onClick: () => setSelectedHostUid(host.uid),
 				},
 				{
 					id: "toggle",
 					label: isActive
-						? t("hostsPage.disable", "Disable")
-						: t("hostsPage.enable", "Enable"),
+						? t("phpmyadmin.disableAction")
+						: t("hostsPage.enable"),
 					icon: isActive ? (
 						<XCircleIcon width={16} />
 					) : (
@@ -2843,7 +2816,7 @@ export const HostsManager: FC = () => {
 				},
 				{
 					id: "delete",
-					label: t("hostsPage.delete", "Delete"),
+					label: t("delete"),
 					icon: <TrashIcon width={16} />,
 					isDanger: true,
 					render: (_row, onMenuClose) => (
@@ -2861,7 +2834,7 @@ export const HostsManager: FC = () => {
 								isDisabled={isPostLoading}
 								onClick={(event) => event.stopPropagation()}
 							>
-								{t("hostsPage.delete", "Delete")}
+								{t("delete")}
 							</MenuItem>
 						</DeleteConfirmDialog>
 					),
@@ -2872,7 +2845,7 @@ export const HostsManager: FC = () => {
 	return (
 		<VStack align="stretch" spacing={4}>
 			<ResourceListCard
-				title={t("hostsPage.listHeader", "Host list")}
+				title={t("hostsPage.listHeader")}
 				summaryItems={hostSummaryItems}
 				actions={
 					<Button
@@ -2890,8 +2863,8 @@ export const HostsManager: FC = () => {
 				}
 				footerActions={
 					<ResourceRefreshButton
-						aria-label={t("hostsPage.refresh", "Refresh hosts")}
-						label={t("hostsPage.refresh", "Refresh hosts")}
+						aria-label={t("hostsPage.refresh")}
+						label={t("hostsPage.refresh")}
 						icon={<ArrowPathIcon width={16} />}
 						isLoading={isRefreshing}
 						onClick={fetchHosts}
@@ -2921,7 +2894,7 @@ export const HostsManager: FC = () => {
 			</ResourceListCard>
 
 			<DataTable
-				ariaLabel={t("hostsPage.tabHosts", "Hosts")}
+				ariaLabel={t("hostsPage.tabHosts")}
 				data={displayedHosts}
 				columns={hostColumns}
 				getRowId={(host) => host.uid}
@@ -2943,10 +2916,7 @@ export const HostsManager: FC = () => {
 				selectedRowIds={selectedHostUids}
 				selectedCount={selectedHostUids.length}
 				onSelectionChange={(rowIds) => setSelectedHostUids(rowIds)}
-				selectedLabel={t("hostsPage.selectedCount", {
-					defaultValue: "{{count}} hosts selected",
-					count: selectedHostUids.length,
-				})}
+				selectedLabel={t("hostsPage.selectedCount", { count: selectedHostUids.length })}
 				renderBulkActions={(selectedRows) => {
 					const enableTargets = selectedRows.filter(
 						(host) => host.data.is_disabled,
@@ -2968,7 +2938,7 @@ export const HostsManager: FC = () => {
 								}
 								onClick={() => handleBulkToggleHosts(enableTargets, true)}
 							>
-								{t("hostsPage.enable", "Enable")}
+								{t("hostsPage.enable")}
 							</Button>
 							<Button
 								size="sm"
@@ -2982,14 +2952,10 @@ export const HostsManager: FC = () => {
 								}
 								onClick={() => handleBulkToggleHosts(disableTargets, false)}
 							>
-								{t("hostsPage.disable", "Disable")}
+								{t("phpmyadmin.disableAction")}
 							</Button>
 							<DeleteConfirmDialog
-								description={t(
-									"hostsPage.confirmBulkDelete",
-									"Delete {{count}} selected host(s)?",
-									{ count: selectedRows.length },
-								)}
+								description={t("hostsPage.confirmBulkDelete", { count: selectedRows.length })}
 								isLoading={bulkAction === "delete"}
 								isDisabled={selectedRows.length === 0}
 								onConfirm={() => handleBulkDeleteHosts(selectedRows)}
@@ -3006,7 +2972,7 @@ export const HostsManager: FC = () => {
 										selectedRows.length === 0
 									}
 								>
-									{t("hostsPage.delete", "Delete")}
+									{t("delete")}
 								</Button>
 							</DeleteConfirmDialog>
 						</>

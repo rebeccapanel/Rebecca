@@ -12,15 +12,12 @@ export const DashboardPage = () => {
 				title={
 					<PageHeader
 						title={t("dashboard")}
-						description={t(
-							"dashboard.subtitle",
-							"Live panel health, user activity, and traffic overview.",
-						)}
+						description={t("dashboard.subtitle")}
 					/>
 				}
 				summaryItems={[
-					{ label: t("systemOverview"), value: t("live", "Live"), colorScheme: "green" },
-					{ label: t("usersOverview"), value: t("live", "Live"), colorScheme: "green" },
+					{ label: t("systemOverview"), value: t("live"), colorScheme: "green" },
+					{ label: t("usersOverview"), value: t("live"), colorScheme: "green" },
 					{ label: t("panelUsage"), value: "3s", colorScheme: "blue" },
 				]}
 			/>

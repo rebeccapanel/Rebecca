@@ -191,7 +191,7 @@ export const BalancerModal: FC<BalancerModalProps> = ({
 												})
 											}
 											placeholder={t("pages.xray.balancer.balancerStrategy")}
-											searchPlaceholder={t("search", "Search")}
+											searchPlaceholder={t("search")}
 										/>
 									</FormControl>
 									<FormControl isInvalid={emptySelector}>
@@ -212,14 +212,8 @@ export const BalancerModal: FC<BalancerModalProps> = ({
 													{ shouldDirty: true },
 												)
 											}
-											placeholder={t(
-												"pages.xray.balancer.selectorPlaceholder",
-												"tag1, tag2",
-											)}
-											emptyText={t(
-												"pages.xray.outbound.empty",
-												"No outbound found",
-											)}
+											placeholder={t("pages.xray.balancer.selectorPlaceholder")}
+											emptyText={t("pages.xray.outbound.empty")}
 										/>
 										{emptySelector && (
 											<FormErrorMessage>
@@ -240,12 +234,9 @@ export const BalancerModal: FC<BalancerModalProps> = ({
 													shouldDirty: true,
 												})
 											}
-											placeholder={t("core.none", "None")}
-											searchPlaceholder={t("search", "Search")}
-											emptyText={t(
-												"pages.xray.outbound.empty",
-												"No outbound found",
-											)}
+											placeholder={t("userDialog.flow.none")}
+											searchPlaceholder={t("search")}
+											emptyText={t("pages.xray.outbound.empty")}
 										/>
 									</FormControl>
 								</VStack>

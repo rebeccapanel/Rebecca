@@ -352,13 +352,10 @@ export const Filters: FC<FilterProps> = ({
 					{isUserFilters && (
 						<HStack spacing={1} align="center">
 							<Text fontSize="xs" color="gray.500">
-								{t("users.searchHelpLabel", "Search tips")}
+								{t("users.searchHelpLabel")}
 							</Text>
 							<Tooltip
-								label={t(
-									"users.searchHelp",
-									"Search by username, 3x-ui subaddress, key, token, UUID, config link, or subscription URL.",
-								)}
+								label={t("users.searchHelp")}
 								placement="top"
 								hasArrow
 							>
@@ -381,7 +378,7 @@ export const Filters: FC<FilterProps> = ({
 								placeholder={
 									target === "users"
 										? t("search")
-										: t("admins.searchPlaceholder", "Search admins...")
+										: t("admins.searchPlaceholder")
 								}
 								value={search}
 								borderColor="light-border"
@@ -394,7 +391,7 @@ export const Filters: FC<FilterProps> = ({
 								{filters.search && filters.search.length > 0 && (
 									<IconButton
 										onClick={clear}
-										aria-label="clear"
+										aria-label={t("clear")}
 										size="xs"
 										variant="ghost"
 									>
@@ -415,14 +412,14 @@ export const Filters: FC<FilterProps> = ({
 										fontSize={isMobile ? "xs" : "sm"}
 										flex={{ base: "1 1 auto", sm: "0 1 auto" }}
 									>
-										{t("filters.advancedButton", "Filters")}
+										{t("filters.advancedButton")}
 									</Button>
 								</PopoverTrigger>
 								<PopoverContent borderColor="light-border" minW="250px">
 									<PopoverArrow />
 									<PopoverCloseButton />
 									<PopoverHeader fontWeight="semibold">
-										{t("filters.advancedTitle", "Advanced filters")}
+										{t("filters.advancedTitle")}
 									</PopoverHeader>
 									<PopoverBody>
 										<Stack spacing={2}>
@@ -439,7 +436,7 @@ export const Filters: FC<FilterProps> = ({
 										<Stack spacing={3} mt={3}>
 											<Box>
 												<Text fontSize="sm" fontWeight="semibold" mb={1}>
-													{t("filters.advanced.serviceLabel", "Service filter")}
+													{t("filters.advanced.serviceLabel")}
 												</Text>
 												<Select
 													value={serviceId ? String(serviceId) : ""}
@@ -449,7 +446,7 @@ export const Filters: FC<FilterProps> = ({
 													size="sm"
 												>
 													<option value="">
-														{t("filters.advanced.serviceAll", "All services")}
+														{t("filters.advanced.serviceAll")}
 													</option>
 													{serviceOptions.map((service) => (
 														<option key={service.id} value={String(service.id)}>
@@ -461,7 +458,7 @@ export const Filters: FC<FilterProps> = ({
 											{hasPrivilegedRole && (
 												<Box>
 													<Text fontSize="sm" fontWeight="semibold" mb={1}>
-														{t("filters.advanced.adminLabel", "Admin filter")}
+														{t("filters.advanced.adminLabel")}
 													</Text>
 													<Select
 														value={ownerFilter ?? ""}
@@ -471,10 +468,10 @@ export const Filters: FC<FilterProps> = ({
 														size="sm"
 													>
 														<option value="">
-															{t("filters.advanced.adminAll", "All admins")}
+															{t("filters.advanced.adminAll")}
 														</option>
 														<option value={userData.username}>
-															{t("filters.advanced.adminMyUsers", "My users")}
+															{t("filters.advanced.adminMyUsers")}
 														</option>
 														{safeAdminOptions.map((record) => (
 															<option
@@ -496,7 +493,7 @@ export const Filters: FC<FilterProps> = ({
 											onClick={clearAdvancedFilters}
 											isDisabled={activeFilters.length === 0}
 										>
-											{t("filters.advancedClear", "Clear filters")}
+											{t("filters.advancedClear")}
 										</Button>
 									</PopoverBody>
 								</PopoverContent>
@@ -504,7 +501,7 @@ export const Filters: FC<FilterProps> = ({
 						)}
 						{showRefresh && (
 							<Button
-								aria-label="refresh"
+								aria-label={t("refresh")}
 								isDisabled={loading}
 								onClick={handleRefresh}
 								size={isMobile ? "sm" : "md"}
@@ -521,7 +518,7 @@ export const Filters: FC<FilterProps> = ({
 								fontSize={isMobile ? "xs" : "sm"}
 								flex={{ base: "1 1 auto", sm: "0 1 auto" }}
 							>
-								{t("refresh", "Refresh")}
+								{t("refresh")}
 							</Button>
 						)}
 					</HStack>
@@ -557,7 +554,7 @@ export const Filters: FC<FilterProps> = ({
 										colorScheme="primary"
 									>
 										<TagLabel>
-											{t("filters.advanced.serviceTag", "Service: {{name}}", {
+											{t("filters.advanced.serviceTag", {
 												name:
 													serviceOptions.find(
 														(service) => service.id === serviceId,
@@ -583,7 +580,7 @@ export const Filters: FC<FilterProps> = ({
 									>
 										<TagLabel>
 											{ownerFilter === userData.username
-												? t("filters.advanced.adminTagMine", "My users")
+												? t("filters.advanced.adminTagMine")
 												: ownerFilter}
 										</TagLabel>
 										<TagCloseButton
@@ -627,7 +624,7 @@ export const Filters: FC<FilterProps> = ({
 						>
 							{target === "users"
 								? t("createUser")
-								: t("admins.addAdmin", "Add admin")}
+								: t("admins.addAdmin")}
 						</Button>
 					)}
 				</Stack>

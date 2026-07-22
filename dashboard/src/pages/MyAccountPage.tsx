@@ -241,29 +241,26 @@ const getTrafficLabels = (
 	const isCreated = basis === "created_traffic";
 	return {
 		sectionTitle: isCreated
-			? t("myaccount.createdTrafficSection", "Created traffic")
+			? t("myaccount.createdTrafficSection")
 			: t("myaccount.dataUsage"),
 		usedLabel: isCreated
-			? t("myaccount.createdTraffic", "Created traffic")
+			? t("myaccount.createdTraffic")
 			: t("myaccount.usedData"),
 		remainingLabel: isCreated
-			? t("myaccount.remainingTraffic", "Remaining traffic")
+			? t("myaccount.remainingTraffic")
 			: t("myaccount.remainingData"),
 		totalLabel: isCreated
-			? t("myaccount.trafficLimit", "Traffic limit")
-			: t("myaccount.totalData"),
+			? t("myaccount.trafficLimit")
+			: t("total"),
 		dailyChartTitle: isCreated
-			? t("myaccount.dailyCreatedTraffic", "Daily created traffic")
+			? t("myaccount.dailyCreatedTraffic")
 			: t("myaccount.dailyUsage"),
 		dailyTotalLabel: isCreated
-			? t(
-					"myaccount.selectedPeriodCreatedTraffic",
-					"Selected period created traffic",
-				)
-			: t("myaccount.selectedPeriodUsage", "Selected period usage"),
+			? t("myaccount.selectedPeriodCreatedTraffic")
+			: t("myaccount.selectedPeriodUsage"),
 		modeLabel: isCreated
-			? t("myaccount.serviceModeCreated", "Created traffic")
-			: t("myaccount.serviceModeUsed", "Used traffic"),
+			? t("myaccount.serviceModeCreated")
+			: t("myaccount.serviceModeUsed"),
 	};
 };
 
@@ -307,7 +304,7 @@ const ServiceLimitPanel: React.FC<{
 						{service.service_name}
 					</Text>
 					<Text fontSize="xs" color={labelColor}>
-						{t("myaccount.serviceLimit", "Service limit")}
+						{t("myaccount.serviceLimit")}
 					</Text>
 				</Box>
 				<Box px={4} pt={4}>
@@ -418,7 +415,7 @@ const ServiceBalanceCard: React.FC<{
 			<HStack justify="space-between" align="start" spacing={3} mb={3}>
 				<Box minW={0}>
 					<Text fontSize="xs" color={labelColor} fontWeight="semibold">
-						{t("myaccount.service", "Service")}
+						{t("myaccount.service")}
 					</Text>
 					<Text fontWeight="semibold" fontSize="lg" noOfLines={1}>
 						{service.service_name}
@@ -437,7 +434,7 @@ const ServiceBalanceCard: React.FC<{
 				{remainingText}
 			</Text>
 			<Text fontSize="sm" color={labelColor}>
-				{t("myaccount.remainingFromService", "remaining from this service")}
+				{t("myaccount.remainingFromService")}
 			</Text>
 			<SimpleGrid columns={2} spacing={3} mt={4}>
 				<MiniMetric
@@ -664,12 +661,12 @@ export const MyAccountPage: React.FC = () => {
 		selfPermissions.self_2fa;
 	const accountSections = useMemo<Array<{ id: AccountSection; label: string }>>(
 		() => [
-			{ id: "info", label: t("myaccount.info", "Info") },
+			{ id: "info", label: t("myaccount.info") },
 			...(canViewSecurity
 				? [
 						{
 							id: "security" as const,
-							label: t("myaccount.security", "Security"),
+							label: t("myaccount.security"),
 						},
 					]
 				: []),
@@ -677,7 +674,7 @@ export const MyAccountPage: React.FC = () => {
 				? [
 						{
 							id: "api_keys" as const,
-							label: t("myaccount.apiKeys", "API Keys"),
+							label: t("myaccount.apiKeys"),
 						},
 					]
 				: []),
@@ -841,8 +838,8 @@ export const MyAccountPage: React.FC = () => {
 		() => [
 			{
 				name: isCreatedTrafficBasis
-					? t("myaccount.dailyCreatedTraffic", "Daily created traffic")
-					: t("myaccount.dailyUsage", "Daily usage"),
+					? t("myaccount.dailyCreatedTraffic")
+					: t("myaccount.dailyUsage"),
 				data: dailyUsagePoints.map((p) => p.used_traffic),
 			},
 		],
@@ -915,23 +912,20 @@ export const MyAccountPage: React.FC = () => {
 	);
 	const trafficLabels = getTrafficLabels(t, trafficBasis);
 	const usageSectionTitle = isPerServiceLimits
-		? t("myaccount.serviceTrafficOverview", "Service traffic overview")
+		? t("myaccount.serviceTrafficOverview")
 		: trafficLabels.sectionTitle;
 	const usedLabel = isPerServiceLimits
-		? t("myaccount.totalServiceTraffic", "Total service traffic")
+		? t("myaccount.totalServiceTraffic")
 		: trafficLabels.usedLabel;
 	const remainingLabel = trafficLabels.remainingLabel;
 	const totalLabel = isPerServiceLimits
-		? t("myaccount.serviceTrafficLimit", "Service traffic limit")
+		? t("myaccount.serviceTrafficLimit")
 		: trafficLabels.totalLabel;
 	const dailyChartTitle = isPerServiceLimits
-		? t("myaccount.dailyServiceTraffic", "Daily service traffic")
+		? t("myaccount.dailyServiceTraffic")
 		: trafficLabels.dailyChartTitle;
 	const dailyTotalLabel = isPerServiceLimits
-		? t(
-				"myaccount.selectedPeriodServiceTraffic",
-				"Selected period service traffic",
-			)
+		? t("myaccount.selectedPeriodServiceTraffic")
 		: trafficLabels.dailyTotalLabel;
 	const showServiceBalances = isPerServiceLimits || serviceLimits.length > 0;
 
@@ -1011,7 +1005,7 @@ export const MyAccountPage: React.FC = () => {
 							mx="auto"
 						>
 							<ChartBox
-								title={t("myaccount.accountOverview", "Account overview")}
+								title={t("myaccount.accountOverview")}
 							>
 								<SimpleGrid columns={{ base: 1, lg: 2 }} spacing={0}>
 									<Box
@@ -1099,15 +1093,12 @@ export const MyAccountPage: React.FC = () => {
 
 							{showServiceBalances && (
 								<ChartBox
-									title={t("myaccount.serviceBalances", "Service balances")}
+									title={t("myaccount.serviceBalances")}
 								>
 									{serviceLimits.length ? (
 										<>
 											<Text fontSize="sm" color={labelColor} mb={3}>
-												{t(
-													"myaccount.serviceBalancesHint",
-													"Remaining traffic is shown separately for each assigned service.",
-												)}
+												{t("myaccount.serviceBalancesHint")}
 											</Text>
 											<SimpleGrid
 												columns={{ base: 1, md: 2, xl: 3 }}
@@ -1171,10 +1162,7 @@ export const MyAccountPage: React.FC = () => {
 									<Box minW={0}>
 										<ChartBox title={t("myaccount.perNodeUsage")} minH="500px">
 											<Text fontSize="sm" color={labelColor} mb={3}>
-												{t(
-													"myaccount.selectedPeriodNodeUsage",
-													"Selected period node usage",
-												)}
+												{t("myaccount.selectedPeriodNodeUsage")}
 												:{" "}
 												<chakra.span fontWeight="semibold">
 													{formatBytes(perNodeTotal, 2)}
@@ -1198,7 +1186,7 @@ export const MyAccountPage: React.FC = () => {
 
 							{isPerServiceLimits && (
 								<ChartBox
-									title={t("myaccount.serviceTrafficLimits", "Service limits")}
+									title={t("myaccount.serviceTrafficLimits")}
 								>
 									{serviceLimits.length ? (
 										<SimpleGrid columns={{ base: 1, xl: 2 }} spacing={4}>

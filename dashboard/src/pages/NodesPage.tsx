@@ -716,7 +716,7 @@ export const NodesPage: FC = () => {
 			},
 			onSuccess: (updatedNode: NodeType) => {
 				generateSuccessMessage(
-					t("nodes.regenerateCertSuccess", "New certificate generated"),
+					t("nodes.regenerateCertSuccess"),
 					toast,
 				);
 				queryClient.invalidateQueries(FetchNodesQueryKey);
@@ -783,11 +783,7 @@ export const NodesPage: FC = () => {
 		});
 		refreshHosts();
 		toast({
-			title: t(
-				"nodes.hostAddressCleanupApplied",
-				"Removed node address from {{count}} active hosts.",
-				{ count: impact.cleanupCount },
-			),
+			title: t("nodes.hostAddressCleanupApplied", { count: impact.cleanupCount }),
 			status: "success",
 			isClosable: true,
 			position: "top",
@@ -814,20 +810,12 @@ export const NodesPage: FC = () => {
 				<Text>{baseMessage}</Text>
 				{cleanupNames.length > 0 && (
 					<Text color="blue.300">
-						{t(
-							"nodes.hostAddressCleanupNotice",
-							"Rebecca will remove this node address from active multi-address hosts: {{hosts}}.",
-							{ hosts: formatNames(cleanupNames) },
-						)}
+						{t("nodes.hostAddressCleanupNotice", { hosts: formatNames(cleanupNames) })}
 					</Text>
 				)}
 				{riskyNames.length > 0 && (
 					<Text color="orange.300" fontWeight="700">
-						{t(
-							"nodes.hostAddressRiskNotice",
-							"This node address is the only address in active hosts: {{hosts}}. Continuing may break subscriptions that use those hosts.",
-							{ hosts: formatNames(riskyNames) },
-						)}
+						{t("nodes.hostAddressRiskNotice", { hosts: formatNames(riskyNames) })}
 					</Text>
 				)}
 			</VStack>
@@ -839,7 +827,7 @@ export const NodesPage: FC = () => {
 		{
 			onSuccess: () => {
 				generateSuccessMessage(
-					t("nodes.resetUsageSuccess", "Node usage reset"),
+					t("nodes.resetUsageSuccess"),
 					toast,
 				);
 				queryClient.invalidateQueries(FetchNodesQueryKey);
@@ -862,7 +850,7 @@ export const NodesPage: FC = () => {
 			},
 			onSuccess: () => {
 				generateSuccessMessage(
-					t("nodes.restartServiceTriggered", "Node restart requested"),
+					t("nodes.restartServiceTriggered"),
 					toast,
 				);
 				queryClient.invalidateQueries(FetchNodesQueryKey);
@@ -882,7 +870,7 @@ export const NodesPage: FC = () => {
 			},
 			onSuccess: () => {
 				generateSuccessMessage(
-					t("nodes.updateServiceTriggered", "Node update requested"),
+					t("nodes.updateServiceTriggered"),
 					toast,
 				);
 				queryClient.invalidateQueries(FetchNodesQueryKey);
@@ -902,7 +890,7 @@ export const NodesPage: FC = () => {
 			},
 			onSuccess: () => {
 				generateSuccessMessage(
-					t("nodes.rebootHostTriggered", "Node reboot requested"),
+					t("nodes.rebootHostTriggered"),
 					toast,
 				);
 				queryClient.invalidateQueries(FetchNodesQueryKey);
@@ -936,7 +924,7 @@ export const NodesPage: FC = () => {
 			const hostImpact = await loadNodeHostImpact([node]);
 			if (hostImpact.riskyHostNames.length > 0) {
 				const label =
-					node.name || node.address || t("nodes.thisNode", "this node");
+					node.name || node.address || t("nodes.thisNode");
 				setServiceActionConfirm({
 					type: "disable",
 					node,
@@ -994,19 +982,19 @@ export const NodesPage: FC = () => {
 
 	const handleRestartNodeService = (node: NodeType) => {
 		if (!node?.id) return;
-		const label = node.name || node.address || t("nodes.thisNode", "this node");
+		const label = node.name || node.address || t("nodes.thisNode");
 		setServiceActionConfirm({ type: "restart", node, label });
 	};
 
 	const handleUpdateNodeService = (node: NodeType) => {
 		if (!node?.id) return;
-		const label = node.name || node.address || t("nodes.thisNode", "this node");
+		const label = node.name || node.address || t("nodes.thisNode");
 		setServiceActionConfirm({ type: "update", node, label });
 	};
 
 	const handleRebootNodeHost = (node: NodeType) => {
 		if (!node?.id) return;
-		const label = node.name || node.address || t("nodes.thisNode", "this node");
+		const label = node.name || node.address || t("nodes.thisNode");
 		setServiceActionConfirm({ type: "reboot", node, label });
 	};
 
@@ -1021,7 +1009,7 @@ export const NodesPage: FC = () => {
 		try {
 			await navigator.clipboard.writeText(text);
 			toast({
-				title: t("nodes.copySuccess", "{{label}} copied", { label }),
+				title: t("nodes.copySuccess", { label }),
 				status: "success",
 				isClosable: true,
 				position: "top",
@@ -1049,10 +1037,7 @@ export const NodesPage: FC = () => {
 		);
 		if (targetNodes.length === 0) {
 			toast({
-				title: t(
-					"nodes.noBinaryNodesForServiceUpdate",
-					"No binary nodes are available for service update.",
-				),
+				title: t("nodes.noBinaryNodesForServiceUpdate"),
 				status: "warning",
 				isClosable: true,
 				position: "top",
@@ -1208,19 +1193,13 @@ export const NodesPage: FC = () => {
 			}
 			if (successCount > 0) {
 				generateSuccessMessage(
-					t("nodes.bulkActionSuccess", {
-						defaultValue: "{{count}} node actions completed.",
-						count: successCount,
-					}),
+					t("nodes.bulkActionSuccess", { count: successCount }),
 					toast,
 				);
 			}
 			if (failedCount > 0) {
 				toast({
-					title: t("nodes.bulkActionFailed", {
-						defaultValue: "{{count}} node actions failed.",
-						count: failedCount,
-					}),
+					title: t("nodes.bulkActionFailed", { count: failedCount }),
 					status: "error",
 					isClosable: true,
 					position: "top",
@@ -1260,21 +1239,13 @@ export const NodesPage: FC = () => {
 		refetchNodes();
 		if (successCount > 0) {
 			generateSuccessMessage(
-				t(
-					"nodes.updateAllNodeServicesTriggered",
-					"Node service update requested for {{count}} nodes.",
-					{ count: successCount },
-				),
+				t("nodes.updateAllNodeServicesTriggered", { count: successCount }),
 				toast,
 			);
 		}
 		if (failedCount > 0) {
 			toast({
-				title: t(
-					"nodes.updateAllNodeServicesFailed",
-					"{{count}} node service updates failed.",
-					{ count: failedCount },
-				),
+				title: t("nodes.updateAllNodeServicesFailed", { count: failedCount }),
 				status: "error",
 				isClosable: true,
 				position: "top",
@@ -1306,10 +1277,7 @@ export const NodesPage: FC = () => {
 				);
 			if (targetNodes.length === 0) {
 				toast({
-					title: t(
-						"nodes.coreVersionDialog.noConnectedNodes",
-						"No connected nodes available for update.",
-					),
+					title: t("nodes.coreVersionDialog.noConnectedNodes"),
 					status: "warning",
 					isClosable: true,
 					position: "top",
@@ -1382,7 +1350,7 @@ export const NodesPage: FC = () => {
 				});
 				generateSuccessMessage(
 					t("nodes.coreVersionDialog.nodeUpdateSuccess", {
-						name: targetNode.name ?? t("nodes.unnamedNode", "Unnamed node"),
+						name: targetNode.name ?? t("nodes.unnamedNode"),
 						version,
 					}),
 					toast,
@@ -1430,7 +1398,7 @@ export const NodesPage: FC = () => {
 				});
 				generateSuccessMessage(
 					t("nodes.geoDialog.nodeUpdateSuccess", {
-						name: targetNode.name ?? t("nodes.unnamedNode", "Unnamed node"),
+						name: targetNode.name ?? t("nodes.unnamedNode"),
 					}),
 					toast,
 				);
@@ -1450,10 +1418,7 @@ export const NodesPage: FC = () => {
 				) ?? [];
 			if (targetNodes.length === 0) {
 				toast({
-					title: t(
-						"nodes.geoDialog.noConnectedNodes",
-						"No selected connected nodes are available for geo update.",
-					),
+					title: t("nodes.geoDialog.noConnectedNodes"),
 					status: "warning",
 					isClosable: true,
 					position: "top",
@@ -1479,19 +1444,13 @@ export const NodesPage: FC = () => {
 				}
 				if (success > 0) {
 					generateSuccessMessage(
-						t("nodes.geoDialog.bulkSuccess", {
-							defaultValue: "Geo update completed for {{count}} nodes.",
-							count: success,
-						}),
+						t("nodes.geoDialog.bulkSuccess", { count: success }),
 						toast,
 					);
 				}
 				if (failed > 0) {
 					toast({
-						title: t("nodes.geoDialog.bulkPartialError", {
-							defaultValue: "{{count}} geo updates failed.",
-							count: failed,
-						}),
+						title: t("nodes.geoDialog.bulkPartialError", { count: failed }),
 						status: "error",
 						isClosable: true,
 						position: "top",
@@ -1696,10 +1655,7 @@ export const NodesPage: FC = () => {
 	) => {
 		if (nodesForAction.length === 0) {
 			toast({
-				title: t(
-					"nodes.noSelectedNodesForAction",
-					"No selected nodes can run this action.",
-				),
+				title: t("nodes.noSelectedNodesForAction"),
 				status: "warning",
 				isClosable: true,
 				position: "top",
@@ -1778,137 +1734,93 @@ export const NodesPage: FC = () => {
 
 	const serviceActionConfirmTitle =
 		serviceActionConfirm?.type === "restart"
-			? t("nodes.restartServiceAction", "Restart node service")
+			? t("nodes.restartServiceAction")
 			: serviceActionConfirm?.type === "update"
-				? t("nodes.updateServiceAction", "Update node service")
+				? t("nodes.updateServiceAction")
 				: serviceActionConfirm?.type === "reboot"
-					? t("nodes.rebootHostAction", "Reboot server")
+					? t("nodes.rebootHostAction")
 				: serviceActionConfirm?.type === "disable"
-					? t("nodes.disableNode", "Disable node")
+					? t("nodes.disableNode")
 				: serviceActionConfirm?.type === "update-all"
-					? t("nodes.updateAllNodeServices", "Update all node services")
+					? t("nodes.updateAllNodeServices")
 					: serviceActionConfirm?.type === "bulk-enable"
-						? t("nodes.bulkEnable", "Enable selected nodes")
+						? t("nodes.bulkEnable")
 						: serviceActionConfirm?.type === "bulk-disable"
-							? t("nodes.bulkDisable", "Disable selected nodes")
+							? t("nodes.bulkDisable")
 							: serviceActionConfirm?.type === "bulk-delete"
-								? t("nodes.bulkDelete", "Delete selected nodes")
+								? t("nodes.bulkDelete")
 								: serviceActionConfirm?.type === "bulk-reset"
-									? t("nodes.bulkResetTraffic", "Reset selected traffic")
+									? t("nodes.bulkResetTraffic")
 									: serviceActionConfirm?.type === "bulk-restart"
-										? t("nodes.bulkRestartService", "Restart selected node services")
+										? t("nodes.bulkRestartService")
 										: serviceActionConfirm?.type === "bulk-update"
-											? t("nodes.bulkUpdateService", "Update selected services")
+											? t("nodes.bulkUpdateService")
 											: serviceActionConfirm?.type === "bulk-reboot"
-												? t("nodes.bulkRebootHost", "Reboot selected servers")
+												? t("nodes.bulkRebootHost")
 					: "";
 
 	const serviceActionConfirmMessage =
 		serviceActionConfirm?.type === "restart"
-			? t(
-					"nodes.restartServiceConfirm",
-					"Send a restart request to {{name}}? Services will be interrupted briefly.",
-					{ name: serviceActionConfirm.label },
-				)
+			? t("nodes.restartServiceConfirm", { name: serviceActionConfirm.label })
 			: serviceActionConfirm?.type === "update"
-				? t(
-						"nodes.updateServiceConfirm",
-						"Send an update request to {{name}}? The node will download updates and restart.",
-						{ name: serviceActionConfirm.label },
-					)
+				? t("nodes.updateServiceConfirm", { name: serviceActionConfirm.label })
 				: serviceActionConfirm?.type === "reboot"
-					? t(
-							"nodes.rebootHostConfirm",
-							"Reboot {{name}} now? All active connections on this node will disconnect until the server comes back online.",
-							{ name: serviceActionConfirm.label },
-						)
+					? t("nodes.rebootHostConfirm", { name: serviceActionConfirm.label })
 				: serviceActionConfirm?.type === "disable"
 					? renderHostImpactMessage(
-							t("nodes.disableConfirm", "Disable {{name}}?", {
+							t("nodes.disableConfirm", {
 								name: serviceActionConfirm.label,
 							}),
 							serviceActionConfirm.hostImpact,
 						)
 				: serviceActionConfirm?.type === "update-all"
-					? t(
-							"nodes.updateAllNodeServicesConfirm",
-							"Send update requests to {{count}} binary nodes? Each node will download updates and restart.",
-							{ count: serviceActionConfirm.count },
-						)
+					? t("nodes.updateAllNodeServicesConfirm", { count: serviceActionConfirm.count })
 					: serviceActionConfirm?.type === "bulk-enable"
-						? t(
-								"nodes.bulkEnableConfirm",
-								"Enable {{count}} selected nodes?",
-								{ count: serviceActionConfirm.count },
-							)
+						? t("nodes.bulkEnableConfirm", { count: serviceActionConfirm.count })
 						: serviceActionConfirm?.type === "bulk-disable"
 							? renderHostImpactMessage(
-									t(
-										"nodes.bulkDisableConfirm",
-										"Disable {{count}} selected nodes?",
-										{ count: serviceActionConfirm.count },
-									),
+									t("nodes.bulkDisableConfirm", { count: serviceActionConfirm.count }),
 									serviceActionConfirm.hostImpact,
 								)
 							: serviceActionConfirm?.type === "bulk-delete"
 								? renderHostImpactMessage(
-										t(
-											"nodes.bulkDeleteConfirm",
-											"Delete {{count}} selected nodes? This cannot be undone.",
-											{ count: serviceActionConfirm.count },
-										),
+										t("nodes.bulkDeleteConfirm", { count: serviceActionConfirm.count }),
 										serviceActionConfirm.hostImpact,
 									)
 								: serviceActionConfirm?.type === "bulk-reset"
-									? t(
-											"nodes.bulkResetTrafficConfirm",
-											"Reset traffic for {{count}} selected nodes?",
-											{ count: serviceActionConfirm.count },
-										)
+									? t("nodes.bulkResetTrafficConfirm", { count: serviceActionConfirm.count })
 									: serviceActionConfirm?.type === "bulk-restart"
-										? t(
-												"nodes.bulkRestartServiceConfirm",
-												"Restart the service on {{count}} selected nodes? Connections may be interrupted briefly.",
-												{ count: serviceActionConfirm.count },
-											)
+										? t("nodes.bulkRestartServiceConfirm", { count: serviceActionConfirm.count })
 										: serviceActionConfirm?.type === "bulk-update"
-											? t(
-													"nodes.bulkUpdateServiceConfirm",
-													"Update Rebecca-node service on {{count}} selected binary nodes?",
-													{ count: serviceActionConfirm.count },
-												)
+											? t("nodes.bulkUpdateServiceConfirm", { count: serviceActionConfirm.count })
 											: serviceActionConfirm?.type === "bulk-reboot"
-												? t(
-														"nodes.bulkRebootHostConfirm",
-														"Reboot {{count}} selected node servers now? All active connections on those nodes will disconnect until the servers come back online.",
-														{ count: serviceActionConfirm.count },
-													)
+												? t("nodes.bulkRebootHostConfirm", { count: serviceActionConfirm.count })
 					: "";
 
 	const serviceActionConfirmLabel =
 		serviceActionConfirm?.type === "restart"
-			? t("nodes.restartServiceAction", "Restart node service")
+			? t("nodes.restartServiceAction")
 			: serviceActionConfirm?.type === "reboot"
-				? t("nodes.rebootHostAction", "Reboot server")
+				? t("nodes.rebootHostAction")
 			: serviceActionConfirm?.type === "update-all"
-				? t("nodes.updateAllNodeServices", "Update all node services")
+				? t("nodes.updateAllNodeServices")
 				: serviceActionConfirm?.type === "disable"
-					? t("nodes.disableNode", "Disable node")
+					? t("nodes.disableNode")
 				: serviceActionConfirm?.type === "bulk-enable"
-					? t("nodes.enableNode", "Enable node")
+					? t("nodes.enableNode")
 					: serviceActionConfirm?.type === "bulk-disable"
-						? t("nodes.disableNode", "Disable node")
+						? t("nodes.disableNode")
 						: serviceActionConfirm?.type === "bulk-delete"
-							? t("delete", "Delete")
+							? t("delete")
 							: serviceActionConfirm?.type === "bulk-reset"
-								? t("nodes.resetUsage", "Reset usage")
+								? t("nodes.resetUsage")
 								: serviceActionConfirm?.type === "bulk-restart"
-									? t("nodes.restartServiceAction", "Restart node service")
+									? t("nodes.restartServiceAction")
 									: serviceActionConfirm?.type === "bulk-update"
-										? t("nodes.updateServiceAction", "Update node service")
+										? t("nodes.updateServiceAction")
 										: serviceActionConfirm?.type === "bulk-reboot"
-											? t("nodes.rebootHostAction", "Reboot server")
-				: t("nodes.updateServiceAction", "Update node service");
+											? t("nodes.rebootHostAction")
+				: t("nodes.updateServiceAction");
 
 	const serviceActionConfirmLoading =
 		isRestartingService ||
@@ -1925,7 +1837,7 @@ export const NodesPage: FC = () => {
 					? t("nodes.coreVersionDialog.nodeTitle", {
 							name:
 								versionDialogTarget.node.name ??
-								t("nodes.unnamedNode", "Unnamed node"),
+								t("nodes.unnamedNode"),
 						})
 					: "";
 
@@ -1936,7 +1848,7 @@ export const NodesPage: FC = () => {
 					? t("nodes.coreVersionDialog.nodeDescription", {
 							name:
 								versionDialogTarget.node.name ??
-								t("nodes.unnamedNode", "Unnamed node"),
+								t("nodes.unnamedNode"),
 						})
 					: "";
 
@@ -1950,10 +1862,10 @@ export const NodesPage: FC = () => {
 			? t("nodes.geoDialog.nodeTitle", {
 					name:
 							geoDialogTarget.node.name ??
-							t("nodes.unnamedNode", "Unnamed node"),
+							t("nodes.unnamedNode"),
 					})
 				: geoDialogTarget?.type === "bulk"
-					? t("nodes.geoDialog.bulkTitle", "Update selected nodes geo")
+					? t("nodes.geoDialog.bulkTitle")
 					: "";
 
 	const renderNodeStatus = (node: NodeType) => {
@@ -1986,8 +1898,8 @@ export const NodesPage: FC = () => {
 		() => [
 			{
 				id: "name",
-				header: t("nodes.columns.name", "Name"),
-				accessor: (node) => node.name || t("nodes.unnamedNode", "Unnamed node"),
+				header: t("nodes.nodeName"),
+				accessor: (node) => node.name || t("nodes.unnamedNode"),
 				sortable: true,
 				sortValue: (node) => node.name || "",
 				isPrimary: true,
@@ -1998,7 +1910,7 @@ export const NodesPage: FC = () => {
 				truncate: true,
 				tooltip: true,
 				mobilePriority: 0,
-				mobileMetaLabel: t("nodes.columns.name", "Name"),
+				mobileMetaLabel: t("nodes.nodeName"),
 				cell: (node) => (
 					<Text
 						fontWeight="semibold"
@@ -2009,7 +1921,7 @@ export const NodesPage: FC = () => {
 					>
 						<AppleEmojiText>
 							{formatNodeNamePreview(
-								node.name || t("nodes.unnamedNode", "Unnamed node"),
+								node.name || t("nodes.unnamedNode"),
 							)}
 						</AppleEmojiText>
 					</Text>
@@ -2017,7 +1929,7 @@ export const NodesPage: FC = () => {
 			},
 			{
 				id: "status",
-				header: t("nodes.columns.status", "Status"),
+				header: t("status"),
 				sortable: true,
 				sortValue: (node) => node.status || "error",
 				priority: "high",
@@ -2027,12 +1939,12 @@ export const NodesPage: FC = () => {
 				headerAlign: "center",
 				cellAlign: "center",
 				mobilePriority: 1,
-				mobileMetaLabel: t("nodes.columns.status", "Status"),
+				mobileMetaLabel: t("status"),
 				cell: renderNodeStatus,
 			},
 			{
 				id: "address",
-				header: t("nodes.columns.address", "Address"),
+				header: t("nodes.nodeAddress"),
 				accessor: "address",
 				priority: "high",
 				width: { lg: "126px", xl: "138px" },
@@ -2041,7 +1953,7 @@ export const NodesPage: FC = () => {
 				truncate: true,
 				tooltip: true,
 				mobilePriority: 2,
-				mobileMetaLabel: t("nodes.columns.address", "Address"),
+				mobileMetaLabel: t("nodes.nodeAddress"),
 				cell: (node) => (
 					<Text
 						as="button"
@@ -2057,7 +1969,7 @@ export const NodesPage: FC = () => {
 							event.stopPropagation();
 							copyToClipboard(
 								node.address,
-								t("nodes.nodeAddress", "Address"),
+								t("nodes.nodeAddress"),
 							);
 						}}
 					>
@@ -2067,7 +1979,7 @@ export const NodesPage: FC = () => {
 			},
 			{
 				id: "xray",
-				header: t("nodes.columns.xrayVersion", "Xray version"),
+				header: t("nodes.columns.xrayVersion"),
 				priority: "medium",
 				hideBelow: "lg",
 				mobileVisible: true,
@@ -2077,7 +1989,7 @@ export const NodesPage: FC = () => {
 				truncate: true,
 				hideOnMobile: true,
 				mobilePriority: 3,
-				mobileMetaLabel: t("nodes.columns.xrayVersion", "Xray"),
+				mobileMetaLabel: t("nodes.columns.xrayVersion"),
 				cell: (node) =>
 					node.xray_version ? (
 						<Tag
@@ -2105,7 +2017,7 @@ export const NodesPage: FC = () => {
 			},
 			{
 				id: "runtime",
-				header: t("nodes.columns.nodeRuntime", "Node / install"),
+				header: t("nodes.columns.nodeRuntime"),
 				accessor: (node) =>
 					[node.node_install_mode, node.node_update_channel]
 						.filter(Boolean)
@@ -2119,7 +2031,7 @@ export const NodesPage: FC = () => {
 				truncate: true,
 				tooltip: true,
 				align: "start",
-				mobileLabel: t("nodes.runtime", "Runtime"),
+				mobileLabel: t("nodes.runtime"),
 				mobilePriority: 4,
 				cell: (node) => {
 					const nodeId = node.id as number | undefined;
@@ -2201,7 +2113,7 @@ export const NodesPage: FC = () => {
 									}
 									isDisabled={!nodeId || !nodeHostActionsAvailable}
 								>
-									{t("nodes.updateAvailable", "Update available")}
+									{t("nodes.nodeUpdateAvailable")}
 								</Button>
 							)}
 							{rebootRequired && (
@@ -2222,7 +2134,7 @@ export const NodesPage: FC = () => {
 									}
 									isDisabled={!nodeId || !nodeHostActionsAvailable}
 								>
-									{t("nodes.rebootRequired", "Reboot required")}
+									{t("nodes.rebootRequired")}
 								</Button>
 							)}
 						</VStack>
@@ -2231,7 +2143,7 @@ export const NodesPage: FC = () => {
 			},
 			{
 				id: "uptime",
-				header: t("nodes.columns.uptime", "Uptime"),
+				header: t("redisUptime"),
 				sortable: true,
 				sortValue: (node) => node.uptime_seconds ?? -1,
 				priority: "medium",
@@ -2242,7 +2154,7 @@ export const NodesPage: FC = () => {
 				maxWidth: "102px",
 				truncate: true,
 				mobilePriority: 5,
-				mobileMetaLabel: t("nodes.uptime", "Uptime"),
+				mobileMetaLabel: t("redisUptime"),
 				cell: (node) => (
 					<Text fontWeight="medium" fontSize="sm" lineHeight="short">
 						{formatNodeUptime(node.uptime_seconds)}
@@ -2251,7 +2163,7 @@ export const NodesPage: FC = () => {
 			},
 			{
 				id: "usage",
-				header: t("nodes.columns.trafficLimit", "Traffic / Limit"),
+				header: t("nodes.trafficLimit"),
 				sortable: true,
 				sortValue: getNodeUsage,
 				priority: "high",
@@ -2263,7 +2175,7 @@ export const NodesPage: FC = () => {
 				truncate: true,
 				mobilePriority: 6,
 				mobileSummary: true,
-				mobileMetaLabel: t("nodes.trafficLimit", "Traffic"),
+				mobileMetaLabel: t("nodes.trafficLimit"),
 				cell: (node) => {
 					const totalUsage = getNodeUsage(node);
 					const nodeTrafficLimitDisplay = `${formatNodeBytes(totalUsage, 2)} / ${
@@ -2280,7 +2192,7 @@ export const NodesPage: FC = () => {
 							value={nodeTrafficLimitDisplay}
 							helper={
 								nodeRemainingDataDisplay
-									? `${t("nodes.remainingData", "Remaining data")}: ${nodeRemainingDataDisplay}`
+									? `${t("nodes.remainingData")}: ${nodeRemainingDataDisplay}`
 									: null
 							}
 							colorScheme="green"
@@ -2290,7 +2202,7 @@ export const NodesPage: FC = () => {
 			},
 			{
 				id: "bandwidth",
-				header: t("nodes.columns.bandwidth", "Upload / Download"),
+				header: t("nodes.bandwidthSpeed"),
 				sortable: true,
 				sortValue: getNodeBandwidth,
 				priority: "high",
@@ -2303,7 +2215,7 @@ export const NodesPage: FC = () => {
 				cellAlign: "center",
 				truncate: true,
 				mobilePriority: 7,
-				mobileMetaLabel: t("nodes.columns.bandwidth", "Up / Down"),
+				mobileMetaLabel: t("nodes.columns.bandwidth.variant2"),
 				cell: (node) => (
 					<NodeMetricDisplay
 						value={`${formatNodeSpeed(node.upload_speed)} / ${formatNodeSpeed(
@@ -2314,7 +2226,7 @@ export const NodesPage: FC = () => {
 			},
 			{
 				id: "cpu",
-				header: t("nodes.columns.cpu", "CPU"),
+				header: t("nodes.cpu"),
 				sortable: true,
 				sortValue: (node) => node.cpu_usage_percent ?? -1,
 				priority: "high",
@@ -2327,7 +2239,7 @@ export const NodesPage: FC = () => {
 				truncate: true,
 				hideOnMobile: true,
 				mobilePriority: 8,
-				mobileMetaLabel: t("nodes.cpu", "CPU"),
+				mobileMetaLabel: t("nodes.cpu"),
 				mobileDetailCell: (node) => (
 					<Text fontSize="sm" fontWeight="semibold" dir="ltr">
 						{formatNodePercent(node.cpu_usage_percent)}
@@ -2344,7 +2256,7 @@ export const NodesPage: FC = () => {
 			},
 			{
 				id: "ram",
-				header: t("nodes.columns.ram", "RAM"),
+				header: t("nodes.ram"),
 				sortable: true,
 				sortValue: (node) => node.memory_usage_percent ?? -1,
 				priority: "high",
@@ -2357,7 +2269,7 @@ export const NodesPage: FC = () => {
 				truncate: true,
 				hideOnMobile: true,
 				mobilePriority: 9,
-				mobileMetaLabel: t("nodes.ram", "RAM"),
+				mobileMetaLabel: t("nodes.ram"),
 				mobileDetailCell: (node) => (
 					<Text fontSize="sm" fontWeight="semibold" dir="ltr">
 						{formatNodeBytes(node.memory_used, 2)} /{" "}
@@ -2378,7 +2290,7 @@ export const NodesPage: FC = () => {
 			},
 			{
 				id: "certificate",
-				header: t("nodes.columns.certificate", "Certificate"),
+				header: t("nodes.certificate"),
 				accessor: getNodeInstallBundle,
 				priority: "low",
 				hideBelow: "xl",
@@ -2394,7 +2306,7 @@ export const NodesPage: FC = () => {
 					const certificateBundle = getNodeInstallBundle(node);
 					return (
 						<IconButton
-							aria-label={t("nodes.copyCertificate", "Copy certificate")}
+							aria-label={t("nodes.copyCertificate")}
 							icon={<CopyIconStyled />}
 							size="sm"
 							variant="ghost"
@@ -2404,7 +2316,7 @@ export const NodesPage: FC = () => {
 								event.stopPropagation();
 								copyToClipboard(
 									certificateBundle,
-									t("nodes.columns.certificate", "Certificate"),
+									t("nodes.certificate"),
 								);
 							}}
 						/>
@@ -2454,8 +2366,8 @@ export const NodesPage: FC = () => {
 			{
 				id: "toggle",
 				label: displayEnabled
-					? t("nodes.disableNode", "Disable node")
-					: t("nodes.enableNode", "Enable node"),
+					? t("nodes.disableNode")
+					: t("nodes.enableNode"),
 				icon: displayEnabled ? <DisableIconStyled /> : <EnableIconStyled />,
 				onClick: () => handleToggleNode(node),
 				isDisabled: !nodeId || isToggleLoading,
@@ -2478,14 +2390,14 @@ export const NodesPage: FC = () => {
 			},
 			{
 				id: "geo",
-				label: t("nodes.updateGeoAction", "Update geo"),
+				label: t("nodes.updateGeoAction"),
 				icon: <GeoIconStyled />,
 				onClick: () => nodeId && setGeoDialogTarget({ type: "node", node }),
 				isDisabled: !nodeId || !nodeHostActionsAvailable || isGeoUpdating,
 			},
 			{
 				id: "restart-service",
-				label: t("nodes.restartServiceAction", "Restart node service"),
+				label: t("nodes.restartServiceAction"),
 				icon: <ServiceIconStyled />,
 				onClick: () => handleRestartNodeService(node),
 				isDisabled:
@@ -2493,7 +2405,7 @@ export const NodesPage: FC = () => {
 			},
 			{
 				id: "update-service",
-				label: t("nodes.updateServiceAction", "Update node service"),
+				label: t("nodes.updateServiceAction"),
 				icon: <DownloadIconStyled />,
 				onClick: () => handleUpdateNodeService(node),
 				isDisabled:
@@ -2501,7 +2413,7 @@ export const NodesPage: FC = () => {
 			},
 			{
 				id: "reboot-host",
-				label: t("nodes.rebootHostAction", "Reboot server"),
+				label: t("nodes.rebootHostAction"),
 				icon: <ArrowPathIconStyled />,
 				onClick: () => handleRebootNodeHost(node),
 				isDisabled:
@@ -2510,7 +2422,7 @@ export const NodesPage: FC = () => {
 			},
 			{
 				id: "reset-usage",
-				label: t("nodes.resetUsage", "Reset usage"),
+				label: t("nodes.resetUsage"),
 				icon: <ArrowPathIconStyled />,
 				onClick: () => handleResetNodeUsage(node),
 				isDisabled: !nodeId,
@@ -2519,10 +2431,7 @@ export const NodesPage: FC = () => {
 			node.uses_default_certificate
 				? {
 						id: "certificate",
-						label: t(
-							"nodes.generatePrivateCert",
-							"Generate private certificate",
-						),
+						label: t("nodes.generatePrivateCert"),
 						icon: <CertificateIconStyled />,
 						onClick: () => nodeId && regenerateNodeCertMutate(node),
 						isDisabled:
@@ -2569,12 +2478,7 @@ export const NodesPage: FC = () => {
 				p={3}
 			>
 				<Text fontSize="sm" color="gray.500">
-					{t("nodes.paginationSummary", {
-						defaultValue: "Showing {{start}}-{{end}} of {{total}} nodes",
-						start: paginationStart,
-						end: paginationEnd,
-						total: filteredNodes.length,
-					})}
+					{t("nodes.paginationSummary", { start: paginationStart, end: paginationEnd, total: filteredNodes.length })}
 				</Text>
 				<HStack spacing={2} justify={{ base: "space-between", md: "flex-end" }}>
 					<Select
@@ -2594,7 +2498,7 @@ export const NodesPage: FC = () => {
 							onClick={() => setPage((value) => Math.max(1, value - 1))}
 							isDisabled={currentPage <= 1}
 						>
-							{t("previous", "Previous")}
+							{t("previous")}
 						</Button>
 						<Button isDisabled>
 							{currentPage} / {totalPages}
@@ -2605,7 +2509,7 @@ export const NodesPage: FC = () => {
 							}
 							isDisabled={currentPage >= totalPages}
 						>
-							{t("next", "Next")}
+							{t("next")}
 						</Button>
 					</ButtonGroup>
 				</HStack>
@@ -2624,13 +2528,10 @@ export const NodesPage: FC = () => {
 		return (
 			<VStack spacing={4} align="stretch">
 				<Text as="h1" fontWeight="semibold" fontSize="2xl">
-					{t("nodes.title", "Nodes")}
+					{t("nodes.title")}
 				</Text>
 				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-					{t(
-						"nodes.noPermission",
-						"You do not have permission to manage nodes.",
-					)}
+					{t("nodes.noPermission")}
 				</Text>
 			</VStack>
 		);
@@ -2668,18 +2569,18 @@ export const NodesPage: FC = () => {
 				>
 					<VStack align="flex-start" spacing={1} minW={{ base: "0", xl: "210px" }}>
 						<Text fontWeight="semibold">
-							{t("nodes.manageNodesHeader", "Node list")}
+							{t("nodes.manageNodesHeader")}
 						</Text>
 						<HStack spacing={2} flexWrap="wrap">
 							<Tag size="sm" colorScheme="gray" variant="subtle">
-								{t("nodes.summaryTotal", "Total")}: {nodeSummary.total}
+								{t("total")}: {nodeSummary.total}
 							</Tag>
 							<Tag size="sm" colorScheme="green" variant="subtle">
-								{t("nodes.summaryConnected", "Connected")}:{" "}
+								{t("status.connected")}:{" "}
 								{nodeSummary.connected}
 							</Tag>
 							<Tag size="sm" colorScheme="gray" variant="subtle">
-								{t("nodes.summaryDisabled", "Disabled")}:{" "}
+								{t("nodes.disabled")}:{" "}
 								{nodeSummary.disabled}
 							</Tag>
 						</HStack>
@@ -2707,7 +2608,7 @@ export const NodesPage: FC = () => {
 								)
 							}
 						>
-							{t("nodes.toolbarTutorial", "Tutorial")}
+							{t("nodes.toolbarTutorial")}
 						</Button>
 						<Button
 							variant="outline"
@@ -2720,7 +2621,7 @@ export const NodesPage: FC = () => {
 							onClick={() => setVersionDialogTarget({ type: "bulk" })}
 							isDisabled={!hasConnectedNodes || !hostActionsAvailable}
 						>
-							{t("nodes.toolbarUpdateCore", "Update Core")}
+							{t("nodes.toolbarUpdateCore")}
 						</Button>
 						<Button
 							variant="outline"
@@ -2736,7 +2637,7 @@ export const NodesPage: FC = () => {
 								!hostActionsAvailable || !hasBinaryNodes || updatingBulkService
 							}
 						>
-							{t("nodes.toolbarUpdateServices", "Update Services")}
+							{t("nodes.toolbarUpdateServices")}
 						</Button>
 						<Button
 							leftIcon={<AddIconStyled />}
@@ -2748,7 +2649,7 @@ export const NodesPage: FC = () => {
 							w="full"
 							onClick={() => setAddNodeOpen(true)}
 						>
-							{t("nodes.toolbarAddNode", "Add Node")}
+							{t("nodes.addNode")}
 						</Button>
 					</SimpleGrid>
 				</Stack>
@@ -2779,7 +2680,7 @@ export const NodesPage: FC = () => {
 							<Input
 								value={searchTerm}
 								onChange={(event) => setSearchTerm(event.target.value)}
-								placeholder={t("nodes.searchPlaceholder", "Search nodes")}
+								placeholder={t("nodes.searchPlaceholder")}
 							/>
 						</InputGroup>
 						<Select
@@ -2788,12 +2689,12 @@ export const NodesPage: FC = () => {
 							onChange={(event) => setStatusFilter(event.target.value)}
 							w={{ base: "calc(50% - 4px)", md: "150px" }}
 						>
-							<option value="all">{t("nodes.filters.allStatuses", "All status")}</option>
-							<option value="connected">{t("status.connected", "Connected")}</option>
-							<option value="connecting">{t("status.connecting", "Connecting")}</option>
-							<option value="error">{t("status.error", "Error")}</option>
-							<option value="disabled">{t("status.disabled", "Disabled")}</option>
-							<option value="limited">{t("status.limited", "Limited")}</option>
+							<option value="all">{t("nodes.filters.allStatuses")}</option>
+							<option value="connected">{t("status.connected")}</option>
+							<option value="connecting">{t("nodeModal.status.connecting")}</option>
+							<option value="error">{t("nodeModal.status.error")}</option>
+							<option value="disabled">{t("status.disabled")}</option>
+							<option value="limited">{t("status.limited")}</option>
 						</Select>
 						<Select
 							size="sm"
@@ -2801,10 +2702,10 @@ export const NodesPage: FC = () => {
 							onChange={(event) => setInstallModeFilter(event.target.value)}
 							w={{ base: "calc(50% - 4px)", md: "150px" }}
 						>
-							<option value="all">{t("nodes.filters.allModes", "All modes")}</option>
-							<option value="binary">{t("nodes.installMode.binary", "Binary")}</option>
-							<option value="docker">{t("nodes.installMode.docker", "Docker")}</option>
-							<option value="unknown">{t("nodes.installMode.unknown", "Unknown")}</option>
+							<option value="all">{t("nodes.filters.allModes")}</option>
+							<option value="binary">{t("nodes.installMode.binary")}</option>
+							<option value="docker">{t("nodes.installMode.docker")}</option>
+							<option value="unknown">{t("status.unknown")}</option>
 						</Select>
 						<Select
 							size="sm"
@@ -2816,27 +2717,27 @@ export const NodesPage: FC = () => {
 							}}
 							w={{ base: "calc(50% - 4px)", md: "170px" }}
 						>
-							<option value="name.asc">{t("nodes.sort.nameAsc", "Name A-Z")}</option>
-							<option value="name.desc">{t("nodes.sort.nameDesc", "Name Z-A")}</option>
-							<option value="usage.asc">{t("nodes.sort.usageAsc", "Usage low-high")}</option>
-							<option value="usage.desc">{t("nodes.sort.usageDesc", "Usage high-low")}</option>
-							<option value="status.asc">{t("nodes.sort.statusAsc", "Status A-Z")}</option>
-							<option value="status.desc">{t("nodes.sort.statusDesc", "Status Z-A")}</option>
-							<option value="bandwidth.asc">{t("nodes.sort.bandwidthAsc", "Bandwidth low-high")}</option>
-							<option value="bandwidth.desc">{t("nodes.sort.bandwidthDesc", "Bandwidth high-low")}</option>
-							<option value="cpu.asc">{t("nodes.sort.cpuAsc", "CPU low-high")}</option>
-							<option value="cpu.desc">{t("nodes.sort.cpuDesc", "CPU high-low")}</option>
-							<option value="ram.asc">{t("nodes.sort.ramAsc", "RAM low-high")}</option>
-							<option value="ram.desc">{t("nodes.sort.ramDesc", "RAM high-low")}</option>
+							<option value="name.asc">{t("nodes.sort.nameAsc")}</option>
+							<option value="name.desc">{t("nodes.sort.nameDesc")}</option>
+							<option value="usage.asc">{t("nodes.sort.usageAsc")}</option>
+							<option value="usage.desc">{t("nodes.sort.usageDesc")}</option>
+							<option value="status.asc">{t("nodes.sort.statusAsc")}</option>
+							<option value="status.desc">{t("nodes.sort.statusDesc")}</option>
+							<option value="bandwidth.asc">{t("nodes.sort.bandwidthAsc")}</option>
+							<option value="bandwidth.desc">{t("nodes.sort.bandwidthDesc")}</option>
+							<option value="cpu.asc">{t("nodes.sort.cpuAsc")}</option>
+							<option value="cpu.desc">{t("nodes.sort.cpuDesc")}</option>
+							<option value="ram.asc">{t("nodes.sort.ramAsc")}</option>
+							<option value="ram.desc">{t("nodes.sort.ramDesc")}</option>
 						</Select>
 						<Box
 							w={{ base: "calc(50% - 4px)", md: "auto" }}
 							display="flex"
 							justifyContent={{ base: "flex-end", md: "flex-start" }}
 						>
-							<Tooltip label={t("nodes.refreshNodes", "Refresh nodes")}>
+							<Tooltip label={t("nodes.refreshNodes")}>
 								<IconButton
-									aria-label={t("nodes.refreshNodes", "Refresh nodes")}
+									aria-label={t("nodes.refreshNodes")}
 									icon={<ArrowPathIconStyled />}
 									variant="ghost"
 									size="sm"
@@ -2853,16 +2754,13 @@ export const NodesPage: FC = () => {
 				<Alert status="warning" variant="subtle" borderRadius="md">
 					<AlertIcon />
 					<AlertDescription>
-						{t(
-							"nodes.binaryMigrationRequired",
-							"Core, geo, restart, and update actions are disabled in Docker mode. Migrate the panel and nodes to binary mode to use host-level controls from the web UI.",
-						)}
+						{t("nodes.binaryMigrationRequired")}
 					</AlertDescription>
 				</Alert>
 			)}
 
 			<DataTable
-				ariaLabel={t("nodes.manageNodesHeader", "Node list")}
+				ariaLabel={t("nodes.manageNodesHeader")}
 				data={paginatedNodes}
 				columns={nodeColumns}
 				getRowId={(node, index) => String(node.id ?? node.name ?? index)}
@@ -2870,10 +2768,7 @@ export const NodesPage: FC = () => {
 				loadingRows={Math.min(pageSize, 8)}
 				emptyState={
 					<Text fontSize="sm" color="panel.textMuted" textAlign="center">
-						{t(
-							"nodes.noNodesFound",
-							"No nodes match the current filters.",
-						)}
+						{t("nodes.noNodesFound")}
 					</Text>
 				}
 				enableSelection
@@ -2897,10 +2792,7 @@ export const NodesPage: FC = () => {
 				onSortingChange={handleNodeTableSorting}
 				manualSorting
 				pagination={nodesPagination}
-				selectedLabel={t("nodes.selectedCount", {
-					defaultValue: "{{count}} nodes selected",
-					count: selectedNodeIds.length,
-				})}
+				selectedLabel={t("nodes.selectedCount", { count: selectedNodeIds.length })}
 				renderBulkActions={() => (
 					<>
 						<Button
@@ -2909,7 +2801,7 @@ export const NodesPage: FC = () => {
 							onClick={selectAllFilteredNodes}
 							isDisabled={allFilteredSelected}
 						>
-							{t("nodes.selectAllFiltered", "Select all")}
+							{t("nodes.selectAllFiltered")}
 						</Button>
 						<Button
 							size="sm"
@@ -2920,7 +2812,7 @@ export const NodesPage: FC = () => {
 								activeFilteredNodeIds.length === 0 || onlyActiveFilteredSelected
 							}
 						>
-							{t("nodes.selectOnlyActive", "Select only active")}
+							{t("nodes.selectOnlyActive")}
 						</Button>
 						<Button
 							size="sm"
@@ -2931,7 +2823,7 @@ export const NodesPage: FC = () => {
 							}
 							isDisabled={Boolean(bulkNodeActionLoading)}
 						>
-							{t("nodes.enableNode", "Enable node")}
+							{t("nodes.enableNode")}
 						</Button>
 						<Button
 							size="sm"
@@ -2942,7 +2834,7 @@ export const NodesPage: FC = () => {
 							}
 							isDisabled={Boolean(bulkNodeActionLoading)}
 						>
-							{t("nodes.disableNode", "Disable node")}
+							{t("nodes.disableNode")}
 						</Button>
 						<Button
 							size="sm"
@@ -2953,7 +2845,7 @@ export const NodesPage: FC = () => {
 							}
 							isDisabled={Boolean(bulkNodeActionLoading)}
 						>
-							{t("nodes.resetUsage", "Reset usage")}
+							{t("nodes.resetUsage")}
 						</Button>
 						<Button
 							size="sm"
@@ -2970,7 +2862,7 @@ export const NodesPage: FC = () => {
 								selectedConnectedBinaryNodes().length === 0
 							}
 						>
-							{t("nodes.restartServiceAction", "Restart node service")}
+							{t("nodes.restartServiceAction")}
 						</Button>
 						<Button
 							size="sm"
@@ -2983,7 +2875,7 @@ export const NodesPage: FC = () => {
 								Boolean(bulkNodeActionLoading) || selectedBinaryNodes().length === 0
 							}
 						>
-							{t("nodes.updateServiceAction", "Update node service")}
+							{t("nodes.updateServiceAction")}
 						</Button>
 						<Button
 							size="sm"
@@ -3000,7 +2892,7 @@ export const NodesPage: FC = () => {
 								selectedConnectedBinaryNodes().length === 0
 							}
 						>
-							{t("nodes.updateCoreAction", "Update core")}
+							{t("nodes.updateCoreAction")}
 						</Button>
 						<Button
 							size="sm"
@@ -3017,7 +2909,7 @@ export const NodesPage: FC = () => {
 								selectedConnectedBinaryNodes().length === 0
 							}
 						>
-							{t("nodes.updateGeoAction", "Update geo")}
+							{t("nodes.updateGeoAction")}
 						</Button>
 						<Button
 							size="sm"
@@ -3034,7 +2926,7 @@ export const NodesPage: FC = () => {
 								selectedConnectedBinaryNodes().length === 0
 							}
 						>
-							{t("nodes.rebootHostAction", "Reboot server")}
+							{t("nodes.rebootHostAction")}
 						</Button>
 						<Button
 							size="sm"
@@ -3046,7 +2938,7 @@ export const NodesPage: FC = () => {
 							}
 							isDisabled={Boolean(bulkNodeActionLoading)}
 						>
-							{t("delete", "Delete")}
+							{t("delete")}
 						</Button>
 					</>
 				)}
@@ -3110,7 +3002,7 @@ export const NodesPage: FC = () => {
 						name:
 							deleteCandidate?.name ??
 							deleteCandidate?.address ??
-							t("nodes.thisNode", "this node"),
+							t("nodes.thisNode"),
 					}),
 					deleteHostImpact,
 				)}
@@ -3124,18 +3016,14 @@ export const NodesPage: FC = () => {
 				isOpen={isResetConfirmOpen}
 				onClose={handleCloseResetConfirm}
 				onConfirm={confirmResetUsage}
-				title={t("nodes.resetUsage", "Reset usage")}
-				description={t(
-					"nodes.resetUsageConfirm",
-					"Are you sure you want to reset usage for {{name}}?",
-					{
+				title={t("nodes.resetUsage")}
+				description={t("nodes.resetUsageConfirm", {
 						name:
 							resetCandidate?.name ??
 							resetCandidate?.address ??
-							t("nodes.thisNode", "this node"),
-					},
-				)}
-				confirmLabel={t("nodes.resetUsage", "Reset usage")}
+							t("nodes.thisNode"),
+					})}
+				confirmLabel={t("nodes.resetUsage")}
 				colorScheme="red"
 				isLoading={isResettingUsage}
 				isConfirmDisabled={!resetCandidate}
@@ -3204,10 +3092,7 @@ export const NodesPage: FC = () => {
 									color="gray.600"
 									_dark={{ color: "gray.300" }}
 								>
-									{t(
-										"nodes.newNodePublicKeyDesc",
-										"Save this single bundle now. Paste it once into the node installer and the installer will split the certificate and private key automatically.",
-									)}
+									{t("nodes.newNodePublicKeyDesc")}
 								</Text>
 								<Box borderWidth="1px" borderRadius="lg" overflow="hidden">
 									<HStack
@@ -3220,10 +3105,7 @@ export const NodesPage: FC = () => {
 									>
 										<VStack align="flex-start" spacing={0}>
 											<Text fontWeight="semibold">
-												{t(
-													"nodes.installBundleLabel",
-													"Node install bundle",
-												)}
+												{t("nodes.installBundleLabel")}
 											</Text>
 											{newNodeCertificate.name && (
 												<Text
@@ -3273,10 +3155,7 @@ export const NodesPage: FC = () => {
 												}}
 												isDisabled={!generatedCertificateBundleValue}
 											>
-												{t(
-													"nodes.download-node-install-bundle",
-													"Download install bundle",
-												)}
+												{t("nodes.download-node-install-bundle")}
 											</Button>
 										</HStack>
 									</HStack>
@@ -3309,7 +3188,7 @@ export const NodesPage: FC = () => {
 								onClick={() => setNewNodeCertificate(null)}
 								colorScheme="primary"
 							>
-								{t("close", "Close")}
+								{t("close")}
 							</Button>
 						</ModalFooter>
 					</ModalContent>

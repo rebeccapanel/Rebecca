@@ -137,7 +137,7 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 			toast({
 				title: parseAPIError(
 					error,
-					t("pages.xray.outboundSub.toastLoadFailed", "Unable to load outbound subscriptions"),
+					t("pages.xray.outboundSub.toastLoadFailed"),
 				),
 				status: "error",
 				isClosable: true,
@@ -182,7 +182,7 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 	const save = async () => {
 		if (!form.url.trim()) {
 			toast({
-				title: t("pages.xray.outboundSub.toastUrlRequired", "Subscription URL is required"),
+				title: t("pages.xray.outboundSub.toastUrlRequired"),
 				status: "warning",
 				isClosable: true,
 				position: "top",
@@ -200,8 +200,8 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 				toast({
 					title:
 						editingID === null
-							? t("pages.xray.outboundSub.toastAdded", "Outbound subscription added")
-							: t("pages.xray.outboundSub.toastUpdated", "Outbound subscription updated"),
+							? t("pages.xray.outboundSub.toastAdded")
+							: t("pages.xray.outboundSub.toastUpdated"),
 					status: "success",
 					isClosable: true,
 					position: "top",
@@ -213,7 +213,7 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 			toast({
 				title: parseAPIError(
 					error,
-					t("pages.xray.outboundSub.toastAddFailed", "Unable to save outbound subscription"),
+					t("pages.xray.outboundSub.toastAddFailed"),
 				),
 				status: "error",
 				isClosable: true,
@@ -246,7 +246,7 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 			toast({
 				title: parseAPIError(
 					error,
-					t("pages.xray.outboundSub.previewEmpty", "Unable to parse this subscription"),
+					t("pages.xray.outboundSub.previewEmpty"),
 				),
 				status: "error",
 				isClosable: true,
@@ -323,7 +323,7 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 			<ModalOverlay bg="blackAlpha.400" backdropFilter="blur(8px)" />
 			<XrayModalContent mx="3">
 				<XrayModalHeader>
-					{t("pages.xray.outboundSub.title", "Outbound subscriptions")}
+					{t("pages.xray.outboundSub.title")}
 				</XrayModalHeader>
 				<ModalCloseButton />
 				<XrayModalBody>
@@ -331,18 +331,18 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 						<Box className="xray-section">
 							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 								<FormControl>
-									<FormLabel>{t("pages.xray.outboundSub.remark", "Remark")}</FormLabel>
+									<FormLabel>{t("hostsDialog.remark")}</FormLabel>
 									<Input
 										size="sm"
 										value={form.remark}
 										onChange={(event) =>
 											setForm((prev) => ({ ...prev, remark: event.target.value }))
 										}
-										placeholder={t("pages.xray.outboundSub.remarkPlaceholder", "Provider name")}
+										placeholder={t("pages.xray.outboundSub.remarkPlaceholder")}
 									/>
 								</FormControl>
 								<FormControl isRequired>
-									<FormLabel>{t("pages.xray.outboundSub.url", "Subscription URL")}</FormLabel>
+									<FormLabel>{t("pages.xray.outboundSub.url")}</FormLabel>
 									<Input
 										size="sm"
 										value={form.url}
@@ -353,7 +353,7 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 									/>
 								</FormControl>
 								<FormControl>
-									<FormLabel>{t("pages.xray.outboundSub.tagPrefix", "Tag prefix")}</FormLabel>
+									<FormLabel>{t("pages.xray.tor.tagPrefix")}</FormLabel>
 									<Input
 										size="sm"
 										value={form.tagPrefix}
@@ -363,11 +363,11 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 										placeholder="sub1-"
 									/>
 									<FormHelperText>
-										{t("pages.xray.outboundSub.tagPrefixHint", "Used to make stable outbound tags after refresh.")}
+										{t("pages.xray.outboundSub.tagPrefixHint")}
 									</FormHelperText>
 								</FormControl>
 								<FormControl>
-									<FormLabel>{t("pages.xray.outboundSub.interval", "Refresh interval")}</FormLabel>
+									<FormLabel>{t("pages.xray.outboundSub.interval")}</FormLabel>
 									<Input
 										size="sm"
 										type="number"
@@ -381,7 +381,7 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 										}
 									/>
 									<FormHelperText>
-										{t("pages.xray.outboundSub.intervalHint", "Minutes between automatic refreshes.")}
+										{t("pages.xray.outboundSub.intervalHint")}
 									</FormHelperText>
 								</FormControl>
 							</SimpleGrid>
@@ -394,7 +394,7 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 											setForm((prev) => ({ ...prev, enabled: event.target.checked }))
 										}
 									/>
-									<Text fontSize="sm">{t("pages.xray.outboundSub.enabled", "Enabled")}</Text>
+									<Text fontSize="sm">{t("nodes.enabled")}</Text>
 								</HStack>
 								<HStack>
 									<Switch
@@ -404,7 +404,7 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 											setForm((prev) => ({ ...prev, prepend: event.target.checked }))
 										}
 									/>
-									<Text fontSize="sm">{t("pages.xray.outboundSub.prepend", "Prepend")}</Text>
+									<Text fontSize="sm">{t("pages.xray.outboundSub.prepend")}</Text>
 								</HStack>
 								<HStack>
 									<Switch
@@ -414,7 +414,7 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 											setForm((prev) => ({ ...prev, allowPrivate: event.target.checked }))
 										}
 									/>
-									<Text fontSize="sm">{t("pages.xray.outboundSub.allowPrivate", "Allow private hosts")}</Text>
+									<Text fontSize="sm">{t("pages.xray.outboundSub.allowPrivate")}</Text>
 								</HStack>
 							</HStack>
 							{preview.length > 0 && (
@@ -434,10 +434,10 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 							<HStack justify="space-between" mb={3}>
 								<Box>
 									<Text fontWeight="semibold">
-										{t("pages.xray.outboundSub.active", "Saved subscriptions")}
+										{t("pages.xray.outboundSub.active")}
 									</Text>
 									<Text color="gray.500" fontSize="xs">
-										{t("pages.xray.outboundSub.restartHint", "Fetched outbounds are merged into node runtime config, not saved into the template.")}
+										{t("pages.xray.outboundSub.restartHint")}
 									</Text>
 								</Box>
 								<Button
@@ -457,17 +457,17 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 								</HStack>
 							) : items.length === 0 ? (
 								<Text color="gray.500" fontSize="sm">
-									{t("pages.xray.outboundSub.empty", "No outbound subscription yet.")}
+									{t("pages.xray.outboundSub.empty")}
 								</Text>
 							) : (
 								<Table size="sm">
 									<Thead>
 										<Tr>
 											<Th w="70px">#</Th>
-											<Th>{t("pages.xray.outboundSub.colRemark", "Remark")}</Th>
-											<Th>{t("pages.xray.Outbounds", "Outbounds")}</Th>
+											<Th>{t("hostsDialog.remark")}</Th>
+											<Th>{t("pages.xray.Outbounds")}</Th>
 											<Th>{t("status")}</Th>
-											<Th>{t("pages.xray.outboundSub.colEnabled", "Enabled")}</Th>
+											<Th>{t("nodes.enabled")}</Th>
 											<Th>{t("actions")}</Th>
 										</Tr>
 									</Thead>
@@ -477,7 +477,7 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 												<Td>
 													<HStack spacing={0}>
 														<IconButton
-															aria-label="up"
+																aria-label={t("a11y.moveUp")}
 															size="xs"
 															variant="ghost"
 															icon={<ArrowUpIcon width={14} />}
@@ -485,7 +485,7 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 															onClick={() => move(item.id, "up")}
 														/>
 														<IconButton
-															aria-label="down"
+																aria-label={t("a11y.moveDown")}
 															size="xs"
 															variant="ghost"
 															icon={<ArrowDownIcon width={14} />}
@@ -516,7 +516,7 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 														<Badge colorScheme="green">
 															{item.lastUpdated
 																? new Date(item.lastUpdated * 1000).toLocaleString()
-																: t("pages.xray.outboundSub.never", "Never")}
+																: t("myaccount.never")}
 														</Badge>
 													)}
 												</Td>
@@ -534,7 +534,7 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 															{t("edit")}
 														</Button>
 														<IconButton
-															aria-label="refresh"
+																aria-label={t("refresh")}
 															size="xs"
 															variant="ghost"
 															icon={<ArrowPathIcon width={14} />}
@@ -542,7 +542,7 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 															onClick={() => refreshOne(item.id)}
 														/>
 														<IconButton
-															aria-label="delete"
+																aria-label={t("delete")}
 															size="xs"
 															variant="ghost"
 															colorScheme="red"
@@ -577,7 +577,7 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 								isLoading={previewing}
 								onClick={previewURL}
 							>
-								{t("pages.xray.outboundSub.preview", "Preview")}
+								{t("bulkActions.preview")}
 							</Button>
 							<Button
 								size="sm"

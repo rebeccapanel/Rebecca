@@ -4132,10 +4132,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 			}
 			if (!file.type.startsWith("image/")) {
 				toast({
-					title: t(
-						"settings.templates.invalidBackgroundImage",
-						"Please select a valid image file.",
-					),
+					title: t("settings.templates.invalidBackgroundImage"),
 					status: "warning",
 					duration: 2500,
 				});
@@ -4143,10 +4140,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 			}
 			if (file.size > 3 * 1024 * 1024) {
 				toast({
-					title: t(
-						"settings.templates.backgroundImageTooLarge",
-						"Image must be smaller than 3MB.",
-					),
+					title: t("settings.templates.backgroundImageTooLarge"),
 					status: "warning",
 					duration: 2500,
 				});
@@ -4157,10 +4151,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 				const dataUrl = typeof reader.result === "string" ? reader.result : "";
 				if (!dataUrl.startsWith("data:image/")) {
 					toast({
-						title: t(
-							"settings.templates.invalidBackgroundImage",
-							"Please select a valid image file.",
-						),
+						title: t("settings.templates.invalidBackgroundImage"),
 						status: "warning",
 						duration: 2500,
 					});
@@ -4177,10 +4168,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 			};
 			reader.onerror = () => {
 				toast({
-					title: t(
-						"settings.templates.failedToReadImage",
-						"Failed to read selected image.",
-					),
+					title: t("settings.templates.failedToReadImage"),
 					status: "error",
 					duration: 2500,
 				});
@@ -4193,7 +4181,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 	const save = useCallback(async () => {
 		if (widgets.length === 0) {
 			toast({
-				title: t("settings.templates.addAtLeastOne", "Add at least one widget."),
+				title: t("settings.templates.addAtLeastOne"),
 				status: "warning",
 				duration: 2500,
 			});
@@ -4208,7 +4196,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 			setTemplateMeta(updated);
 			setExternalTemplate(false);
 			generateSuccessMessage(
-				t("settings.templates.saved", "Template creator saved."),
+				t("settings.templates.saved"),
 				toast,
 			);
 			if (onSaved) {
@@ -4490,10 +4478,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 		<Stack spacing={3}>
 			<FormControl display="flex" alignItems="center">
 				<FormLabel mb={0} fontSize="sm" flex="1">
-					{t(
-						"settings.templates.showRecommendedFirst",
-						"Show recommended apps first",
-					)}
+					{t("settings.templates.showRecommendedFirst")}
 				</FormLabel>
 				<Switch
 					isChecked={options.appImports.showRecommendedFirst}
@@ -4507,10 +4492,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 			</FormControl>
 			<FormControl display="flex" alignItems="center">
 				<FormLabel mb={0} fontSize="sm" flex="1">
-					{t(
-						"settings.templates.showAllAppButtons",
-						"Show all app buttons",
-					)}
+					{t("settings.templates.showAllAppButtons")}
 				</FormLabel>
 				<Switch
 					isChecked={options.appImports.showAllButtons}
@@ -4524,7 +4506,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 			</FormControl>
 			<Box borderWidth="1px" borderRadius="md" p={2}>
 				<Text fontSize="sm" fontWeight="semibold" mb={2}>
-					{t("settings.templates.appImportsOsOrder", "OS tab order")}
+					{t("settings.templates.appImportsOsOrder")}
 				</Text>
 				<Stack spacing={1}>
 					{options.appImports.osOrder.map((os, index) => (
@@ -4560,7 +4542,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 			<Divider />
 			<Flex align="center" justify="space-between">
 				<Text fontSize="sm" fontWeight="semibold">
-					{t("settings.templates.appImportsApps", "Apps")}
+					{t("settings.templates.appImportsApps")}
 				</Text>
 				<Button
 					size="xs"
@@ -4568,13 +4550,13 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 					leftIcon={<PlusIcon width={12} height={12} />}
 					onClick={addAppImport}
 				>
-					{t("actions.add", "Add")}
+					{t("add")}
 				</Button>
 			</Flex>
 			<Stack spacing={2}>
 				{options.appImports.apps.length === 0 ? (
 					<Text fontSize="sm" color="gray.500">
-						{t("settings.templates.noAppsSelected", "No app button is enabled.")}
+						{t("settings.templates.noAppsSelected")}
 					</Text>
 				) : null}
 				{options.appImports.apps.map((app) => (
@@ -4583,7 +4565,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={2}>
 								<FormControl>
 									<FormLabel fontSize="xs" mb={1}>
-										{t("settings.templates.appLabel", "Label")}
+										{t("settings.templates.appLabel")}
 									</FormLabel>
 									<Input
 										size="sm"
@@ -4598,7 +4580,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 								</FormControl>
 								<FormControl>
 									<FormLabel fontSize="xs" mb={1}>
-										{t("settings.templates.appId", "ID")}
+										{t("admins.idLabel")}
 									</FormLabel>
 									<Input
 										size="sm"
@@ -4613,7 +4595,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 								</FormControl>
 								<FormControl>
 									<FormLabel fontSize="xs" mb={1}>
-										{t("settings.templates.deepLinkKey", "Deep link key")}
+										{t("settings.templates.deepLinkKey")}
 									</FormLabel>
 									<Select
 										size="sm"
@@ -4643,7 +4625,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 								</FormControl>
 								<FormControl display="flex" alignItems="center">
 									<FormLabel mb={0} fontSize="xs" flex="1">
-										{t("settings.templates.recommended", "Recommended")}
+										{t("userDialog.links.recommended")}
 									</FormLabel>
 									<Switch
 										size="sm"
@@ -4660,10 +4642,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 							{app.deepLinkKey === "custom" ? (
 								<FormControl>
 									<FormLabel fontSize="xs" mb={1}>
-										{t(
-											"settings.templates.customDeepLinkTemplate",
-											"Custom deep link template ({{url}}, {{name}})",
-										)}
+										{t("settings.templates.customDeepLinkTemplate")}
 									</FormLabel>
 									<Input
 										size="sm"
@@ -4679,7 +4658,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 							) : null}
 							<Box>
 								<Text fontSize="xs" mb={1} color="gray.500">
-									{t("settings.templates.supportedOs", "Supported OS")}
+									{t("settings.templates.supportedOs")}
 								</Text>
 								<Flex wrap="wrap" gap={1}>
 									{APP_IMPORT_OS_VALUES.map((os) => {
@@ -4706,7 +4685,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 									leftIcon={<TrashIcon width={12} height={12} />}
 									onClick={() => removeAppImport(app.id)}
 								>
-									{t("actions.remove", "Remove")}
+									{t("remove")}
 								</Button>
 							</Flex>
 						</Stack>
@@ -4773,20 +4752,17 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 				>
 					<VStack align="start" spacing={1}>
 						<Text fontWeight="semibold">
-							{t("settings.templates.creatorTitle", "Subscription Template Creator")}
+							{t("settings.templates.creatorTitle")}
 						</Text>
 						<Text fontSize="sm" color="gray.500">
-							{t(
-								"settings.templates.creatorHint",
-								"Drag cards/charts into canvas. Save to use it for subscription links.",
-							)}
+							{t("settings.templates.creatorHint")}
 						</Text>
 						{templateMeta?.template_name ? (
 							<Badge colorScheme="blue">{templateMeta?.template_name}</Badge>
 						) : null}
 						{templateMeta?.resolved_path ? (
 							<Text fontSize="sm" color="gray.500">
-								{t("settings.templates.path", "Resolved path")}:{" "}
+								{t("settings.subscriptions.resolvedPath")}:{" "}
 								{templateMeta?.resolved_path}
 							</Text>
 						) : null}
@@ -4799,7 +4775,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 							onClick={() => void loadTemplate()}
 							isDisabled={isLoading || isSaving}
 						>
-							{t("actions.refresh", "Refresh")}
+							{t("refresh")}
 						</Button>
 						<Button
 							size="sm"
@@ -4807,7 +4783,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 							onClick={resetLayout}
 							isDisabled={isLoading || isSaving}
 						>
-							{t("actions.reset", "Reset")}
+							{t("reset")}
 						</Button>
 						<Button
 							size="sm"
@@ -4816,7 +4792,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 							onClick={() => setIsPreviewOpen(true)}
 							isDisabled={isLoading}
 						>
-							{t("settings.templates.livePreview", "Live Preview")}
+							{t("settings.templates.livePreview")}
 						</Button>
 						<Button
 							size="sm"
@@ -4825,7 +4801,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 							isLoading={isSaving}
 							isDisabled={isLoading}
 						>
-							{t("settings.save", "Save")}
+							{t("settings.save")}
 						</Button>
 					</HStack>
 				</Flex>
@@ -4835,22 +4811,19 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 				<Alert status="warning" borderRadius="lg">
 					<AlertIcon />
 					<AlertDescription>
-						{t(
-							"settings.templates.externalTemplate",
-							"Current template is manual. Saving here will replace it with creator output.",
-						)}
+						{t("settings.templates.externalTemplate")}
 					</AlertDescription>
 				</Alert>
 			) : null}
 
 			<Box borderWidth="1px" borderRadius="lg" p={4}>
 				<Text fontWeight="semibold" mb={3}>
-					{t("settings.templates.widgetSettings", "Widget Settings")}
+					{t("settings.templates.widgetSettings")}
 				</Text>
 				<Accordion allowMultiple reduceMotion mt={3}>
 					{renderSettingsAccordionItem(
 						"appearance",
-						t("settings.templates.appearanceSettings", "Appearance"),
+						t("settings.templates.appearanceSettings"),
 						(
 							<Box
 								borderWidth="1px"
@@ -4858,13 +4831,13 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 								p={SETTINGS_CARD_PADDING}
 							>
 						<Text fontWeight="semibold" fontSize="sm" mb={2}>
-							{t("settings.templates.appearanceSettings", "Appearance")}
+							{t("settings.templates.appearanceSettings")}
 						</Text>
 						<Stack spacing={SETTINGS_SECTION_GAP}>
 							<SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
 								<FormControl>
 									<FormLabel fontSize="sm">
-										{t("settings.templates.pageTitle", "Page title")}
+										{t("settings.templates.pageTitle")}
 									</FormLabel>
 									<Input
 										value={options.appearance.pageTitle}
@@ -4881,7 +4854,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 								</FormControl>
 								<FormControl>
 									<FormLabel fontSize="sm">
-										{t("settings.templates.pageSubtitle", "Page subtitle")}
+										{t("settings.templates.pageSubtitle")}
 									</FormLabel>
 									<Input
 										value={options.appearance.pageSubtitle}
@@ -4898,7 +4871,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 								</FormControl>
 								<FormControl>
 									<FormLabel fontSize="sm">
-										{t("settings.templates.titlePlacement", "Title placement")}
+										{t("settings.templates.titlePlacement")}
 									</FormLabel>
 									<Select
 										size={SETTINGS_CONTROL_SIZE}
@@ -4915,13 +4888,13 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 										}
 									>
 										<option value="left">
-											{t("settings.templates.titlePlacementLeft", "Left")}
+											{t("settings.templates.titlePlacementLeft")}
 										</option>
 										<option value="center">
-											{t("settings.templates.titlePlacementCenter", "Center")}
+											{t("settings.templates.titlePlacementCenter")}
 										</option>
 										<option value="hidden">
-											{t("settings.templates.titlePlacementHidden", "Hidden")}
+											{t("settings.templates.titlePlacementHidden")}
 										</option>
 									</Select>
 								</FormControl>
@@ -4941,10 +4914,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 									flexDirection={{ base: "column", md: "row" }}
 								>
 									<Text fontSize="sm" fontWeight="semibold">
-										{t(
-											"settings.templates.titlePosition",
-											"Title position in header",
-										)}
+										{t("settings.templates.titlePosition")}
 									</Text>
 									<HStack spacing={2}>
 										<Text fontSize="xs" color="gray.500">
@@ -4965,7 +4935,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 												}))
 											}
 										>
-											{t("actions.reset", "Reset")}
+											{t("reset")}
 										</Button>
 									</HStack>
 								</Flex>
@@ -5012,19 +4982,16 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 									>
 										<Text fontSize="xs" fontWeight="semibold" noOfLines={1}>
 											{options.appearance.pageTitle ||
-												t("settings.templates.pageTitle", "Page title")}
+												t("settings.templates.pageTitle")}
 										</Text>
 										<Text fontSize="10px" color="gray.500" noOfLines={1}>
 											{options.appearance.pageSubtitle ||
-												t("settings.templates.pageSubtitle", "Page subtitle")}
+												t("settings.templates.pageSubtitle")}
 										</Text>
 									</Box>
 								</Box>
 								<Text fontSize="xs" color="gray.500" mt={2}>
-									{t(
-										"settings.templates.titleDragHint",
-										"Drag inside the box to reposition title/subtitle. Position is saved in template config.",
-									)}
+									{t("settings.templates.titleDragHint")}
 								</Text>
 							</Box>
 
@@ -5037,10 +5004,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 							>
 								<Flex justify="space-between" align="center" mb={2} gap={2} flexWrap="wrap">
 									<Text fontSize="sm" fontWeight="semibold">
-										{t(
-											"settings.templates.headerCanvasSettings",
-											"Header canvas and style",
-										)}
+										{t("settings.templates.headerCanvasSettings")}
 									</Text>
 									<Button
 										size="xs"
@@ -5050,17 +5014,14 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 											options.appearance.headerTexts.length >= HEADER_TEXT_MAX_ITEMS
 										}
 									>
-										{t("settings.templates.addHeaderText", "Add header text")}
+										{t("settings.templates.addHeaderText")}
 									</Button>
 								</Flex>
 
 								<SimpleGrid columns={{ base: 1, md: 3 }} spacing={3} mb={2}>
 									<FormControl>
 										<FormLabel fontSize="sm">
-											{t(
-												"settings.templates.headerBackgroundLight",
-												"Header color (light)",
-											)}
+											{t("settings.templates.headerBackgroundLight")}
 										</FormLabel>
 										<Input
 											type="color"
@@ -5080,10 +5041,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 									</FormControl>
 									<FormControl>
 										<FormLabel fontSize="sm">
-											{t(
-												"settings.templates.headerBackgroundDark",
-												"Header color (dark)",
-											)}
+											{t("settings.templates.headerBackgroundDark")}
 										</FormLabel>
 										<Input
 											type="color"
@@ -5103,7 +5061,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 									</FormControl>
 									<FormControl>
 										<FormLabel fontSize="sm">
-											{t("settings.templates.headerOpacity", "Header opacity")}
+											{t("settings.templates.headerOpacity")}
 										</FormLabel>
 										<Input
 											type="number"
@@ -5130,10 +5088,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 
 								<FormControl display="flex" alignItems="center" mb={3}>
 									<FormLabel mb={0} fontSize="sm" flex="1">
-										{t(
-											"settings.templates.headerTransparent",
-											"Enable header transparency",
-										)}
+										{t("settings.templates.headerTransparent")}
 									</FormLabel>
 									<Switch
 										size="sm"
@@ -5216,17 +5171,14 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 											userSelect="none"
 											onMouseDown={(event) => startHeaderTextDrag(event, item.id)}
 										>
-											{item.text || t("settings.templates.headerTextEmpty", "Text")}
+											{item.text || t("settings.templates.headerTextEmpty")}
 										</Box>
 									))}
 								</Box>
 
 								{options.appearance.headerTexts.length === 0 ? (
 									<Text fontSize="xs" color="gray.500">
-										{t(
-											"settings.templates.headerTextHint",
-											"Add custom texts for the fixed header, then drag them in this mini canvas.",
-										)}
+										{t("settings.templates.headerTextHint")}
 									</Text>
 								) : (
 									<Stack spacing={2}>
@@ -5246,14 +5198,11 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 														onChange={(event) =>
 															updateHeaderTextField(item.id, "text", event.target.value)
 														}
-														placeholder={t(
-															"settings.templates.headerTextPlaceholder",
-															"Header text",
-														)}
+														placeholder={t("settings.templates.headerTextPlaceholder")}
 													/>
 													<IconButton
 														size="sm"
-														aria-label={t("actions.remove", "Remove")}
+														aria-label={t("remove")}
 														icon={<TrashIcon width={14} height={14} />}
 														variant="ghost"
 														colorScheme="red"
@@ -5289,7 +5238,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 													</FormControl>
 													<FormControl>
 														<FormLabel fontSize="xs" mb={1}>
-															{t("settings.templates.color", "Color")}
+															{t("settings.templates.color")}
 														</FormLabel>
 														<Input
 															size="sm"
@@ -5304,7 +5253,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 													</FormControl>
 													<FormControl>
 														<FormLabel fontSize="xs" mb={1}>
-															{t("settings.templates.size", "Size")}
+															{t("settings.templates.size")}
 														</FormLabel>
 														<Input
 															size="sm"
@@ -5319,7 +5268,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 													</FormControl>
 													<FormControl>
 														<FormLabel fontSize="xs" mb={1}>
-															{t("settings.templates.weight", "Weight")}
+															{t("settings.templates.weight")}
 														</FormLabel>
 														<Select
 															size="sm"
@@ -5344,10 +5293,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 							<SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
 								<FormControl>
 									<FormLabel fontSize="sm">
-										{t(
-											"settings.templates.backgroundMode",
-											"Background mode",
-										)}
+										{t("settings.templates.backgroundMode")}
 									</FormLabel>
 									<Select
 										value={options.appearance.backgroundMode}
@@ -5362,19 +5308,19 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 										}
 									>
 										<option value="solid">
-											{t("settings.templates.bgSolid", "Solid")}
+											{t("settings.templates.bgSolid")}
 										</option>
 										<option value="gradient">
-											{t("settings.templates.bgGradient", "Gradient")}
+											{t("settings.templates.bgGradient")}
 										</option>
 										<option value="image">
-											{t("settings.templates.bgImage", "Image")}
+											{t("settings.templates.bgImage")}
 										</option>
 									</Select>
 								</FormControl>
 								<FormControl>
 									<FormLabel fontSize="sm">
-										{t("settings.templates.accentColor", "Accent color")}
+										{t("theme.accent")}
 									</FormLabel>
 									<Input
 										type="color"
@@ -5394,10 +5340,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 								</FormControl>
 								<FormControl>
 									<FormLabel fontSize="sm">
-										{t(
-											"settings.templates.backgroundImageUpload",
-											"Background image",
-										)}
+										{t("settings.templates.backgroundImageUpload")}
 									</FormLabel>
 									<Input
 										type="file"
@@ -5411,10 +5354,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 								<FormControl>
 									<FormLabel fontSize="sm">
-										{t(
-											"settings.templates.lightBackgroundColor",
-											"Light background color",
-										)}
+										{t("settings.templates.lightBackgroundColor")}
 									</FormLabel>
 									<Input
 										type="color"
@@ -5434,10 +5374,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 								</FormControl>
 								<FormControl>
 									<FormLabel fontSize="sm">
-										{t(
-											"settings.templates.darkBackgroundColor",
-											"Dark background color",
-										)}
+										{t("settings.templates.darkBackgroundColor")}
 									</FormLabel>
 									<Input
 										type="color"
@@ -5461,10 +5398,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 								<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 									<FormControl>
 										<FormLabel fontSize="sm">
-											{t(
-												"settings.templates.lightGradient",
-												"Light gradient CSS",
-											)}
+											{t("settings.templates.lightGradient")}
 										</FormLabel>
 										<Input
 											value={options.appearance.gradientLight}
@@ -5481,10 +5415,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 									</FormControl>
 									<FormControl>
 										<FormLabel fontSize="sm">
-											{t(
-												"settings.templates.darkGradient",
-												"Dark gradient CSS",
-											)}
+											{t("settings.templates.darkGradient")}
 										</FormLabel>
 										<Input
 											value={options.appearance.gradientDark}
@@ -5532,33 +5463,24 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 											}))
 										}
 									>
-										{t(
-											"settings.templates.removeBackgroundImage",
-											"Remove background image",
-										)}
+										{t("settings.templates.removeBackgroundImage")}
 									</Button>
 								</Stack>
 							) : (
 								<Text fontSize="sm" color="gray.500">
-									{t(
-										"settings.templates.backgroundImageHint",
-										"Upload PNG/JPG/WebP (max 3MB). Selecting an image sets mode to Image.",
-									)}
+									{t("settings.templates.backgroundImageHint")}
 								</Text>
 							)}
 						</Stack>
 							</Box>
 						),
-						t(
-							"settings.templates.appearanceSummary",
-							"Title, placement, background and accent.",
-						),
+						t("settings.templates.appearanceSummary"),
 					)}
 
 					{hasWidget("links")
 						? renderSettingsAccordionItem(
 								"config-links",
-								t("settings.templates.configLinksSettings", "Config Links"),
+								t("settings.templates.configLinksSettings"),
 								(
 									<Box
 										borderWidth="1px"
@@ -5566,15 +5488,12 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 										p={SETTINGS_CARD_PADDING}
 									>
 							<Text fontWeight="semibold" fontSize="sm" mb={2}>
-								{t("settings.templates.configLinksSettings", "Config Links")}
+								{t("settings.templates.configLinksSettings")}
 							</Text>
 							<Stack spacing={2}>
 								<FormControl display="flex" alignItems="center">
 									<FormLabel mb={0} fontSize="sm" flex="1">
-										{t(
-											"settings.templates.extractConfigNames",
-											"Extract and show config names",
-										)}
+										{t("settings.templates.extractConfigNames")}
 									</FormLabel>
 									<Switch
 										isChecked={options.configLinks.showConfigNames}
@@ -5591,10 +5510,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 								</FormControl>
 								<FormControl display="flex" alignItems="center">
 									<FormLabel mb={0} fontSize="sm" flex="1">
-										{t(
-											"settings.templates.enableConfigQr",
-											"Enable QR modal for each config",
-										)}
+										{t("settings.templates.enableConfigQr")}
 									</FormLabel>
 									<Switch
 										isChecked={options.configLinks.enableQrModal}
@@ -5612,17 +5528,14 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 							</Stack>
 									</Box>
 								),
-								t(
-									"settings.templates.configLinksSummary",
-									"Name extraction and QR controls.",
-								),
+								t("settings.templates.configLinksSummary"),
 						  )
 						: null}
 
 					{hasWidget("usage_chart")
 						? renderSettingsAccordionItem(
 								"usage-chart",
-								t("settings.templates.chartSettings", "Usage Chart"),
+								t("settings.templates.chartSettings"),
 								(
 									<Box
 										borderWidth="1px"
@@ -5630,15 +5543,12 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 										p={SETTINGS_CARD_PADDING}
 									>
 							<Text fontWeight="semibold" fontSize="sm" mb={2}>
-								{t("settings.templates.chartSettings", "Usage Chart")}
+								{t("settings.templates.chartSettings")}
 							</Text>
 							<Stack spacing={2}>
 								<FormControl display="flex" alignItems="center">
 									<FormLabel mb={0} fontSize="sm" flex="1">
-										{t(
-											"settings.templates.enableDateControls",
-											"Enable date controls",
-										)}
+										{t("settings.templates.enableDateControls")}
 									</FormLabel>
 									<Switch
 										isChecked={options.chart.enableDateControls}
@@ -5655,10 +5565,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 								</FormControl>
 								<FormControl display="flex" alignItems="center">
 									<FormLabel mb={0} fontSize="sm" flex="1">
-										{t(
-											"settings.templates.enableQuickRanges",
-											"Show quick range buttons",
-										)}
+										{t("settings.templates.enableQuickRanges")}
 									</FormLabel>
 									<Switch
 										isChecked={options.chart.showQuickRanges}
@@ -5676,10 +5583,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 								</FormControl>
 								<FormControl display="flex" alignItems="center">
 									<FormLabel mb={0} fontSize="sm" flex="1">
-										{t(
-											"settings.templates.enableCalendar",
-											"Show calendar inputs",
-										)}
+										{t("settings.templates.enableCalendar")}
 									</FormLabel>
 									<Switch
 										isChecked={options.chart.showCalendar}
@@ -5697,10 +5601,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 								</FormControl>
 								<FormControl maxW="220px">
 									<FormLabel fontSize="sm">
-										{t(
-											"settings.templates.defaultRangeDays",
-											"Default range (days)",
-										)}
+										{t("settings.templates.defaultRangeDays")}
 									</FormLabel>
 									<Input
 										type="number"
@@ -5725,16 +5626,13 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 							</Stack>
 									</Box>
 								),
-								t(
-									"settings.templates.chartSummary",
-									"Date controls and chart defaults.",
-								),
+								t("settings.templates.chartSummary"),
 						  )
 						: null}
 
 					{renderSettingsAccordionItem(
 						"preferences",
-						t("settings.templates.preferencesSettings", "Language & Theme"),
+						t("settings.templates.preferencesSettings"),
 						(
 							<Box
 								borderWidth="1px"
@@ -5742,18 +5640,15 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 								p={SETTINGS_CARD_PADDING}
 							>
 						<Text fontWeight="semibold" fontSize="sm" mb={2}>
-							{t("settings.templates.preferencesSettings", "Language & Theme")}
+							{t("settings.templates.preferencesSettings")}
 						</Text>
 						<Text fontSize="sm" color="gray.500" mb={3}>
-							{t(
-								"settings.templates.preferencesAlwaysVisibleHint",
-								"Language and theme are shown in the username dropdown on the dashboard top bar.",
-							)}
+							{t("settings.templates.preferencesAlwaysVisibleHint")}
 						</Text>
 						<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 							<FormControl>
 								<FormLabel fontSize="sm">
-									{t("settings.templates.defaultLanguage", "Default language")}
+									{t("settings.templates.defaultLanguage")}
 								</FormLabel>
 								<Select
 									value={options.preferences.defaultLanguage}
@@ -5769,7 +5664,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 									}
 								>
 									<option value="browser">
-										{t("settings.templates.browserLanguage", "Browser")}
+										{t("settings.templates.browserLanguage")}
 									</option>
 									<option value="en">English</option>
 									<option value="fa">فارسی</option>
@@ -5779,7 +5674,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 							</FormControl>
 							<FormControl>
 								<FormLabel fontSize="sm">
-									{t("settings.templates.defaultTheme", "Default theme")}
+									{t("settings.templates.defaultTheme")}
 								</FormLabel>
 								<Select
 									value={options.preferences.defaultTheme}
@@ -5795,29 +5690,26 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 									}
 								>
 									<option value="system">
-										{t("settings.templates.themeSystem", "System")}
+										{t("sidebar.groups.system")}
 									</option>
 									<option value="light">
-										{t("settings.templates.themeLight", "Light")}
+										{t("theme.light")}
 									</option>
 									<option value="dark">
-										{t("settings.templates.themeDark", "Dark")}
+										{t("theme.dark")}
 									</option>
 								</Select>
 							</FormControl>
 						</SimpleGrid>
 							</Box>
 						),
-						t(
-							"settings.templates.preferencesSummary",
-							"Default language and theme for first load.",
-						),
+						t("settings.templates.preferencesSummary"),
 					)}
 
 					{hasWidget("online_status")
 						? renderSettingsAccordionItem(
 								"online-status",
-								t("settings.templates.onlineSettings", "Online Status"),
+								t("settings.templates.onlineSettings"),
 								(
 									<Box
 										borderWidth="1px"
@@ -5825,14 +5717,11 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 										p={SETTINGS_CARD_PADDING}
 									>
 							<Text fontWeight="semibold" fontSize="sm" mb={2}>
-								{t("settings.templates.onlineSettings", "Online Status")}
+								{t("settings.templates.onlineSettings")}
 							</Text>
 							<FormControl maxW="260px">
 								<FormLabel fontSize="sm">
-									{t(
-										"settings.templates.onlineThresholdMinutes",
-										"Online threshold (minutes)",
-									)}
+									{t("settings.templates.onlineThresholdMinutes")}
 								</FormLabel>
 								<Input
 									type="number"
@@ -5854,25 +5743,19 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 									}}
 								/>
 								<FormHelperText>
-									{t(
-										"settings.templates.onlineThresholdHint",
-										"If the user has activity in this range, they are shown as online.",
-									)}
+									{t("settings.templates.onlineThresholdHint")}
 								</FormHelperText>
 							</FormControl>
 									</Box>
 								),
-								t(
-									"settings.templates.onlineSummary",
-									"Threshold for online/offline indicator.",
-								),
+								t("settings.templates.onlineSummary"),
 						  )
 						: null}
 
 					{hasWidget("app_imports")
 						? renderSettingsAccordionItem(
 								"app-imports",
-								t("settings.templates.appImportsSettings", "Add To Apps"),
+								t("settings.templates.appImportsSettings"),
 								(
 									<Box
 										borderWidth="1px"
@@ -5880,15 +5763,12 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 										p={SETTINGS_CARD_PADDING}
 									>
 							<Text fontWeight="semibold" fontSize="sm" mb={2}>
-								{t("settings.templates.appImportsSettings", "Add To Apps")}
+								{t("settings.templates.appImportsSettings")}
 							</Text>
 							{renderAppImportsSettings()}
 									</Box>
 								),
-								t(
-									"settings.templates.appImportsSummary",
-									"OS order, app list and import actions.",
-								),
+								t("settings.templates.appImportsSummary"),
 						  )
 						: null}
 				</Accordion>
@@ -5903,7 +5783,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 					flexShrink={0}
 				>
 					<Text fontWeight="semibold" mb={3}>
-						{t("settings.templates.widgets", "Widgets")}
+						{t("settings.templates.widgets")}
 					</Text>
 					<Stack spacing={3}>
 						{WIDGETS.map((entry) => (
@@ -5932,7 +5812,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 										leftIcon={<PlusIcon width={12} height={12} />}
 										onClick={() => addWidget(entry.type)}
 									>
-										{t("actions.add", "Add")}
+										{t("add")}
 									</Button>
 								</Flex>
 							</Box>
@@ -5960,14 +5840,11 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 				>
 					<Flex justify="space-between" align="center" mb={3}>
 						<Text fontWeight="semibold">
-							{t("settings.templates.canvas", "Canvas")}
+							{t("settings.templates.canvas")}
 						</Text>
 						<HStack spacing={2}>
 							<Badge colorScheme="purple">
-							{t("settings.templates.count", {
-								defaultValue: "{{count}} widgets",
-								count: widgets.length,
-							})}
+							{t("settings.templates.count", { count: widgets.length })}
 							</Badge>
 							<Badge colorScheme="green">
 								{options.canvas.width}×{options.canvas.height}
@@ -5977,7 +5854,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 					<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3} mb={3}>
 						<FormControl>
 							<FormLabel fontSize="sm">
-								{t("settings.templates.canvasWidth", "Canvas width")}
+								{t("settings.templates.canvasWidth")}
 							</FormLabel>
 							<Input
 								size="sm"
@@ -5996,7 +5873,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 						</FormControl>
 						<FormControl>
 							<FormLabel fontSize="sm">
-								{t("settings.templates.canvasHeight", "Canvas height")}
+								{t("settings.templates.canvasHeight")}
 							</FormLabel>
 							<Input
 								size="sm"
@@ -6015,23 +5892,14 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 						</FormControl>
 					</SimpleGrid>
 					<Text fontSize="sm" color="gray.500" mb={3}>
-						{t(
-							"settings.templates.canvasHint",
-							"Drop widgets here. Drag to move and resize from bottom-right corner. Coordinates are saved.",
-						)}
+						{t("settings.templates.canvasHint")}
 					</Text>
 					<Text fontSize="xs" color="gray.500" mb={3}>
-						{t(
-							"settings.templates.widgetMinHint",
-							"Each widget has enforced min/max dimensions to prevent overlap and extreme resizing.",
-						)}
+						{t("settings.templates.widgetMinHint")}
 					</Text>
 					{hasCanvasOverlap ? (
 						<Text fontSize="xs" color="orange.500" mb={3}>
-							{t(
-								"settings.templates.outputOverlapWarning",
-								"Some widgets overlap; output will auto-stack to avoid overlap.",
-							)}
+							{t("settings.templates.outputOverlapWarning")}
 						</Text>
 					) : null}
 					{isLoading ? (
@@ -6049,10 +5917,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 							borderColor="gray.300"
 						>
 							<Text color="gray.500">
-								{t(
-									"settings.templates.empty",
-									"No widgets yet. Drag from left side or click Add.",
-								)}
+								{t("settings.templates.empty")}
 							</Text>
 						</Flex>
 					) : (
@@ -6265,13 +6130,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 																{Math.round(widget.bounds.height)}
 															</Text>
 															<Text fontSize="10px" color="gray.500">
-																{t("settings.templates.widgetMinMax", {
-																	defaultValue: "Min: {{minW}}x{{minH}} | Max: {{maxW}}x{{maxH}}",
-																	minW: minDims.width,
-																	minH: minDims.height,
-																	maxW: maxDims.width,
-																	maxH: maxDims.height,
-																})}
+																{t("settings.templates.widgetMinMax", { minW: minDims.width, minH: minDims.height, maxW: maxDims.width, maxH: maxDims.height })}
 															</Text>
 															{nearMin || nearMax ? (
 																<Text
@@ -6279,14 +6138,8 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 																	color={nearMin ? "orange.500" : "purple.500"}
 																>
 																	{nearMin
-																		? t(
-																				"settings.templates.nearMinHint",
-																				"Approaching minimum size limit",
-																		  )
-																		: t(
-																				"settings.templates.nearMaxHint",
-																				"Approaching maximum size limit",
-																		  )}
+																		? t("settings.templates.nearMinHint")
+																		: t("settings.templates.nearMaxHint")}
 																</Text>
 															) : null}
 
@@ -6294,10 +6147,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 																<>
 																	<FormControl display="flex" alignItems="center">
 																		<FormLabel mb={0} fontSize="sm" flex="1">
-																			{t(
-																				"settings.templates.extractConfigNames",
-																				"Extract and show config names",
-																			)}
+																			{t("settings.templates.extractConfigNames")}
 																		</FormLabel>
 																		<Switch
 																			size="sm"
@@ -6315,10 +6165,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 																	</FormControl>
 																	<FormControl display="flex" alignItems="center">
 																		<FormLabel mb={0} fontSize="sm" flex="1">
-																			{t(
-																				"settings.templates.enableConfigQr",
-																				"Enable QR modal for each config",
-																			)}
+																			{t("settings.templates.enableConfigQr")}
 																		</FormLabel>
 																		<Switch
 																			size="sm"
@@ -6341,10 +6188,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 																<>
 																	<FormControl display="flex" alignItems="center">
 																		<FormLabel mb={0} fontSize="sm" flex="1">
-																			{t(
-																				"settings.templates.enableDateControls",
-																				"Enable date controls",
-																			)}
+																			{t("settings.templates.enableDateControls")}
 																		</FormLabel>
 																		<Switch
 																			size="sm"
@@ -6362,10 +6206,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 																	</FormControl>
 																	<FormControl display="flex" alignItems="center">
 																		<FormLabel mb={0} fontSize="sm" flex="1">
-																			{t(
-																				"settings.templates.enableQuickRanges",
-																				"Show quick range buttons",
-																			)}
+																			{t("settings.templates.enableQuickRanges")}
 																		</FormLabel>
 																		<Switch
 																			size="sm"
@@ -6384,10 +6225,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 																	</FormControl>
 																	<FormControl display="flex" alignItems="center">
 																		<FormLabel mb={0} fontSize="sm" flex="1">
-																			{t(
-																				"settings.templates.enableCalendar",
-																				"Show calendar inputs",
-																			)}
+																			{t("settings.templates.enableCalendar")}
 																		</FormLabel>
 																		<Switch
 																			size="sm"
@@ -6406,10 +6244,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 																	</FormControl>
 																	<FormControl>
 																		<FormLabel fontSize="sm" mb={1}>
-																			{t(
-																				"settings.templates.defaultRangeDays",
-																				"Default range (days)",
-																			)}
+																			{t("settings.templates.defaultRangeDays")}
 																		</FormLabel>
 																		<Input
 																			size="sm"
@@ -6438,10 +6273,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 															{widget.type === "online_status" ? (
 																<FormControl>
 																	<FormLabel fontSize="sm" mb={1}>
-																		{t(
-																			"settings.templates.onlineThresholdMinutes",
-																			"Online threshold (minutes)",
-																		)}
+																		{t("settings.templates.onlineThresholdMinutes")}
 																	</FormLabel>
 																	<Input
 																		size="sm"
@@ -6542,7 +6374,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 								</HStack>
 								<HStack spacing={2}>
 									<Badge colorScheme="green">
-										{t("settings.templates.livePreview", "Live Preview")}
+										{t("settings.templates.livePreview")}
 									</Badge>
 									<Button
 										size="sm"
@@ -6550,7 +6382,7 @@ export const SubscriptionTemplateCreator = ({ onSaved }: CreatorProps) => {
 										leftIcon={<XMarkIcon width={16} height={16} />}
 										onClick={() => setIsPreviewOpen(false)}
 									>
-										{t("actions.close", "Close")}
+										{t("close")}
 									</Button>
 								</HStack>
 							</Flex>

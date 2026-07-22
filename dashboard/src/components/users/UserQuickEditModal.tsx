@@ -71,8 +71,8 @@ export const UserQuickEditModal: FC = () => {
 			toast({
 				title:
 					field === "data_limit"
-						? t("usersTable.setDataLimitSuccess", "Data limit updated")
-						: t("usersTable.setExpirySuccess", "Expiry date updated"),
+						? t("usersTable.setDataLimitSuccess")
+						: t("usersTable.setExpirySuccess"),
 				status: "success",
 				isClosable: true,
 				position: "top",
@@ -103,8 +103,8 @@ export const UserQuickEditModal: FC = () => {
 			size="sm"
 			title={
 				isDataLimit
-					? t("usersTable.setDataLimit", "Set data limit")
-					: t("usersTable.setExpiry", "Set custom expiry")
+					? t("usersTable.setDataLimit")
+					: t("usersTable.setExpiry")
 			}
 			overlayProps={{ bg: "blackAlpha.300", backdropFilter: "blur(10px)" }}
 			contentProps={{ mx: "3" }}
@@ -117,7 +117,7 @@ export const UserQuickEditModal: FC = () => {
 						onClick={onClose}
 						isDisabled={loading}
 					>
-						{t("cancel", "Cancel")}
+						{t("cancel")}
 					</Button>
 					<Button
 						size="sm"
@@ -125,7 +125,7 @@ export const UserQuickEditModal: FC = () => {
 						onClick={save}
 						isLoading={loading}
 					>
-						{t("save", "Save")}
+						{t("save")}
 					</Button>
 				</>
 			}
@@ -138,7 +138,7 @@ export const UserQuickEditModal: FC = () => {
 						)}
 						{isDataLimit ? (
 							<FormControl>
-								<FormLabel>{t("userDialog.dataLimit", "Data limit")}</FormLabel>
+								<FormLabel>{t("userDialog.dataLimit")}</FormLabel>
 								<InputGroup>
 									<NumericInput
 										min={0}
@@ -149,23 +149,20 @@ export const UserQuickEditModal: FC = () => {
 									<InputRightAddon>GB</InputRightAddon>
 								</InputGroup>
 								<Text fontSize="xs" color="panel.textMuted" mt={1}>
-									{t("usersTable.unlimitedHint", "Set 0 for unlimited.")}
+									{t("usersTable.unlimitedHint")}
 								</Text>
 							</FormControl>
 						) : (
 							<FormControl>
-								<FormLabel>{t("usersTable.expire", "Expire")}</FormLabel>
+								<FormLabel>{t("usersTable.expire")}</FormLabel>
 								<DateTimePicker
 									value={expireDate}
 									onChange={setExpireDate}
 									minDate={new Date()}
-									placeholder={t("usersTable.setExpiry", "Set custom expiry")}
+									placeholder={t("usersTable.setExpiry")}
 								/>
 								<Text fontSize="xs" color="panel.textMuted" mt={1}>
-									{t(
-										"usersTable.expiryClearHint",
-										"Leave empty for no expiry.",
-									)}
+									{t("usersTable.expiryClearHint")}
 								</Text>
 							</FormControl>
 						)}

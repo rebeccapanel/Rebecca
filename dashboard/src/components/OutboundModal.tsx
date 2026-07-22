@@ -1177,7 +1177,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 		const trimmed = configInput.trim();
 		if (!trimmed) {
 			setJsonError(
-				t("pages.outbound.configEmpty", "Please paste a config link"),
+				t("pages.outbound.configEmpty"),
 			);
 			return;
 		}
@@ -1190,28 +1190,22 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 				status: "success",
 				duration: 2000,
 				position: "top",
-				title: t("pages.outbound.configConvertedTitle", "Config converted"),
-				description: t(
-					"pages.outbound.configConvertedDesc",
-					"Configuration applied to the form.",
-				),
+				title: t("pages.outbound.configConvertedTitle"),
+				description: t("pages.outbound.configConvertedDesc"),
 			});
 			return;
 		}
 		const outboundFromLink = Outbound.fromLink(trimmed);
 		if (!outboundFromLink) {
 			setJsonError(
-				t("pages.outbound.invalidConfig", "Unsupported or invalid config link"),
+				t("pages.outbound.invalidConfig"),
 			);
 			toast({
 				status: "error",
 				duration: 2500,
 				position: "top",
-				title: t("pages.outbound.configParseFailedTitle", "Conversion failed"),
-				description: t(
-					"pages.outbound.configParseFailedDesc",
-					"Could not parse the provided config link.",
-				),
+				title: t("pages.outbound.configParseFailedTitle"),
+				description: t("pages.outbound.configParseFailedDesc"),
 			});
 			return;
 		}
@@ -1223,11 +1217,8 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 			status: "success",
 			duration: 2000,
 			position: "top",
-			title: t("pages.outbound.configConvertedTitle", "Config converted"),
-			description: t(
-				"pages.outbound.configConvertedDesc",
-				"Configuration applied to the form.",
-			),
+			title: t("pages.outbound.configConvertedTitle"),
+			description: t("pages.outbound.configConvertedDesc"),
 		});
 	};
 
@@ -1238,7 +1229,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 			toast({
 				title:
 					mode === "edit"
-						? t("pages.xray.outbound.updated", "Outbound updated")
+						? t("pages.xray.outbound.updated")
 						: t("pages.xray.outbound.addOutbound"),
 				status: "success",
 				duration: 2000,
@@ -1250,7 +1241,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 				title:
 					error?.data?.detail ||
 					error?.message ||
-					t("pages.xray.outbound.saveFailed", "Unable to save outbound"),
+					t("pages.xray.outbound.saveFailed"),
 				status: "error",
 				duration: 3000,
 				position: "top",
@@ -1284,7 +1275,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 			<XrayModalContent as="form" onSubmit={onSubmit}>
 				<XrayModalHeader>
 					{mode === "edit"
-						? t("pages.xray.outbound.editOutbound", "Edit Outbound")
+						? t("pages.xray.outbound.editOutbound")
 						: t("pages.xray.outbound.addOutbound")}
 				</XrayModalHeader>
 				<ModalCloseButton />
@@ -1304,7 +1295,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 								<VStack spacing={6} align="stretch">
 									<Box>
 										<Text fontWeight="semibold" mb={3}>
-											{t("pages.outbound.basicSettings", "Basic settings")}
+											{t("pages.outbound.basicSettings")}
 										</Text>
 										<VStack spacing={3} align="stretch">
 											<FormControl isRequired isInvalid={Boolean(errors.tag)}>
@@ -1320,10 +1311,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 															return (
 																!existingTags.includes(tag) ||
 																(mode === "edit" && tag === originalTag) ||
-																t(
-																	"pages.xray.outbound.tagExists",
-																	"An outbound with this tag already exists.",
-																)
+																t("pages.xray.outbound.tagExists")
 															);
 														},
 													})}
@@ -1345,7 +1333,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																	field.onChange(value as string)
 																}
 																placeholder={t("protocol")}
-																searchPlaceholder={t("search", "Search")}
+																searchPlaceholder={t("search")}
 															/>
 														)}
 													/>
@@ -1367,12 +1355,12 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 									{requiresEndpoint && (
 										<Box>
 											<Text fontWeight="semibold" mb={3}>
-												{t("pages.outbound.endpoint", "Endpoint")}
+												{t("pages.outbound.endpoint")}
 											</Text>
 											<VStack spacing={3} align="stretch">
 												<FormControl isRequired={requiresEndpoint}>
 													<FormLabel>
-														{t("pages.outbound.address", "Address")}
+														{t("pages.outbound.address")}
 													</FormLabel>
 													<Input
 														size="sm"
@@ -1391,7 +1379,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 												>
 													<FormControl isRequired={requiresEndpoint}>
 														<FormLabel>
-															{t("pages.outbound.port", "Port")}
+															{t("port")}
 														</FormLabel>
 														<Input
 															size="sm"
@@ -1440,7 +1428,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 													) : typedProtocol === Protocols.Hysteria ? (
 														<FormControl>
 															<FormLabel>
-																{t("pages.outbound.hysteriaAuth", "Auth")}
+																{t("pages.outbound.hysteriaAuth")}
 															</FormLabel>
 															<Input
 																size="sm"
@@ -1482,7 +1470,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 													<>
 														<FormControl isRequired={requiresMethod}>
 															<FormLabel>
-																{t("pages.outbound.method", "Method")}
+																{t("pages.outbound.method")}
 															</FormLabel>
 															<Controller
 																control={control}
@@ -1500,11 +1488,8 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																		onChange={(value) =>
 																			field.onChange(value as string)
 																		}
-																		placeholder={t(
-																			"pages.outbound.method",
-																			"Method",
-																		)}
-																		searchPlaceholder={t("search", "Search")}
+																		placeholder={t("pages.outbound.method")}
+																		searchPlaceholder={t("search")}
 																	/>
 																)}
 															/>
@@ -1516,7 +1501,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 														>
 															<Switch size="sm" {...register("ssIvCheck")} />
 															<FormLabel mb="0">
-																{t("pages.outbound.ivCheck", "Enable IV Check")}
+																{t("pages.outbound.ivCheck")}
 															</FormLabel>
 														</FormControl>
 													</>
@@ -1525,10 +1510,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 													<HStack spacing={3} flexWrap="wrap">
 														<FormControl minW="180px">
 															<FormLabel>
-																{t(
-																	"pages.outbound.hysteriaVersion",
-																	"Version",
-																)}
+																{t("redisVersion")}
 															</FormLabel>
 															<Input
 																size="sm"
@@ -1542,10 +1524,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 														</FormControl>
 														<FormControl minW="180px">
 															<FormLabel>
-																{t(
-																	"pages.outbound.hysteriaUdpIdleTimeout",
-																	"UDP idle timeout",
-																)}
+																{t("inbounds.hysteria.udpIdleTimeout")}
 															</FormLabel>
 															<Input
 																size="sm"
@@ -1563,7 +1542,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 													<>
 														<FormControl>
 															<FormLabel>
-																{t("pages.outbound.encryption", "Encryption")}
+																{t("pages.outbound.encryption")}
 															</FormLabel>
 															<Input
 																size="sm"
@@ -1586,7 +1565,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 												{typedProtocol === Protocols.VMess && (
 													<FormControl>
 														<FormLabel>
-															{t("pages.outbound.security", "User security")}
+															{t("pages.outbound.security")}
 														</FormLabel>
 														<Input
 															size="sm"
@@ -1602,7 +1581,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 									{typedProtocol === Protocols.DNS && (
 										<Box>
 											<Text fontWeight="semibold" mb={3}>
-												{t("pages.outbound.dnsSettings", "DNS settings")}
+												{t("pages.outbound.dnsSettings")}
 											</Text>
 											<XrayFieldGrid>
 												<FormControl>
@@ -1619,13 +1598,13 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																	field.onChange(value as string)
 																}
 																placeholder={t("pages.outbound.network")}
-																searchPlaceholder={t("search", "Search")}
+																searchPlaceholder={t("search")}
 															/>
 														)}
 													/>
 												</FormControl>
 												<FormControl isRequired={requiresDnsServer}>
-													<FormLabel>{t("pages.outbound.port")}</FormLabel>
+													<FormLabel>{t("port")}</FormLabel>
 													<Input
 														size="sm"
 														type="number"
@@ -1663,11 +1642,11 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 									{typedProtocol === Protocols.Freedom && (
 										<Box>
 											<Text fontWeight="semibold" mb={3}>
-												{t("pages.outbound.freedom", "Freedom options")}
+												{t("pages.outbound.freedom")}
 											</Text>
 											<FormControl>
 												<FormLabel>
-													{t("pages.outbound.strategy", "Strategy")}
+													{t("pages.outbound.strategy")}
 												</FormLabel>
 												<Input
 													size="sm"
@@ -1681,7 +1660,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 									{typedProtocol === Protocols.Blackhole && (
 										<Box>
 											<Text fontWeight="semibold" mb={3}>
-												{t("pages.outbound.blackhole", "Blackhole options")}
+												{t("pages.outbound.blackhole")}
 											</Text>
 											<FormControl>
 												<FormLabel>{t("pages.outbound.response")}</FormLabel>
@@ -1697,12 +1676,12 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 									{typedProtocol === Protocols.Wireguard && (
 										<Box>
 											<Text fontWeight="semibold" mb={3}>
-												{t("pages.outbound.wireguard", "Wireguard")}
+												{t("pages.outbound.wireguard")}
 											</Text>
 											<VStack spacing={3} align="stretch">
 												<FormControl>
 													<FormLabel>
-														{t("pages.outbound.secretKey", "Secret key")}
+														{t("pages.outbound.secretKey")}
 													</FormLabel>
 													<Input size="sm" {...register("wireguardSecret")} />
 												</FormControl>
@@ -1745,15 +1724,15 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 															<SearchableTagSelect
 																mode="single"
 																options={[
-																	{ value: "", label: t("common.none", "None") },
+																	{ value: "", label: t("userDialog.flow.none") },
 																	...WireguardDomainStrategy,
 																]}
 																value={field.value ?? ""}
 																onChange={(value) =>
 																	field.onChange(value as string)
 																}
-																placeholder={t("common.none", "None")}
-																searchPlaceholder={t("search", "Search")}
+																placeholder={t("userDialog.flow.none")}
+																searchPlaceholder={t("search")}
 															/>
 														)}
 													/>
@@ -1776,7 +1755,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 												<VStack spacing={3} align="stretch">
 													<HStack justify="space-between">
 														<Text fontWeight="semibold">
-															{t("pages.outbound.peer", "Peers")}
+															{t("pages.outbound.peer")}
 														</Text>
 														<IconButton
 															size="sm"
@@ -1804,10 +1783,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 															<HStack>
 																<FormControl>
 																	<FormLabel>
-																		{t(
-																			"pages.outbound.publicKey",
-																			"Public key",
-																		)}
+																		{t("pages.outbound.publicKey")}
 																	</FormLabel>
 																	<Input
 																		size="sm"
@@ -1829,10 +1805,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 															<HStack mt={2}>
 																<FormControl>
 																	<FormLabel>
-																		{t(
-																			"pages.outbound.allowedIPs",
-																			"Allowed IPs",
-																		)}
+																		{t("pages.outbound.allowedIPs")}
 																	</FormLabel>
 																	<Input
 																		size="sm"
@@ -1843,7 +1816,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																</FormControl>
 																<FormControl>
 																	<FormLabel>
-																		{t("pages.outbound.endpoint", "Endpoint")}
+																		{t("pages.outbound.endpoint")}
 																	</FormLabel>
 																	<Input
 																		size="sm"
@@ -1855,7 +1828,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 															</HStack>
 															<FormControl mt={2}>
 																<FormLabel>
-																	{t("pages.outbound.keepAlive", "Keep alive")}
+																	{t("pages.outbound.keepAlive")}
 																</FormLabel>
 																<Input
 																	size="sm"
@@ -1868,10 +1841,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 															</FormControl>
 															<FormControl mt={2}>
 																<FormLabel>
-																	{t(
-																		"pages.outbound.presharedKey",
-																		"Preshared key",
-																	)}
+																	{t("pages.outbound.presharedKey")}
 																</FormLabel>
 																<Input
 																	size="sm"
@@ -1890,7 +1860,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 									{canStream && (
 										<Box>
 											<Text fontWeight="semibold" mb={3}>
-												{t("pages.outbound.transport", "Transport")}
+												{t("pages.outbound.transport")}
 											</Text>
 											<VStack spacing={3} align="stretch">
 												<XrayFieldGrid>
@@ -1908,7 +1878,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																		field.onChange(value as string)
 																	}
 																	placeholder={t("pages.outbound.network")}
-																	searchPlaceholder={t("search", "Search")}
+																	searchPlaceholder={t("search")}
 																/>
 															)}
 														/>
@@ -1916,7 +1886,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 													{network === "tcp" && (
 														<FormControl>
 															<FormLabel>
-																{t("pages.outbound.tcpHeader", "Header")}
+																{t("pages.outbound.tcpHeader")}
 															</FormLabel>
 															<Controller
 																control={control}
@@ -1929,11 +1899,8 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																		onChange={(value) =>
 																			field.onChange(value as string)
 																		}
-																		placeholder={t(
-																			"pages.outbound.tcpHeader",
-																			"Header",
-																		)}
-																		searchPlaceholder={t("search", "Search")}
+																		placeholder={t("pages.outbound.tcpHeader")}
+																		searchPlaceholder={t("search")}
 																	/>
 																)}
 															/>
@@ -1942,7 +1909,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 													{network === "kcp" && (
 														<FormControl>
 															<FormLabel>
-																{t("pages.outbound.kcpHeader", "mKCP header")}
+																{t("pages.outbound.kcpHeader")}
 															</FormLabel>
 															<Controller
 																control={control}
@@ -1955,11 +1922,8 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																		onChange={(value) =>
 																			field.onChange(value as string)
 																		}
-																		placeholder={t(
-																			"pages.outbound.kcpHeader",
-																			"mKCP header",
-																		)}
-																		searchPlaceholder={t("search", "Search")}
+																		placeholder={t("pages.outbound.kcpHeader")}
+																		searchPlaceholder={t("search")}
 																	/>
 																)}
 															/>
@@ -1975,15 +1939,15 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																	<SearchableTagSelect
 																		mode="single"
 																		options={[
-																			{ value: "", label: t("common.none", "None") },
+																			{ value: "", label: t("userDialog.flow.none") },
 																			...XHTTP_MODE_OPTIONS,
 																		]}
 																		value={field.value ?? ""}
 																		onChange={(value) =>
 																			field.onChange(value as string)
 																		}
-																		placeholder={t("common.none", "None")}
-																		searchPlaceholder={t("search", "Search")}
+																		placeholder={t("userDialog.flow.none")}
+																		searchPlaceholder={t("search")}
 																	/>
 																)}
 															/>
@@ -2006,7 +1970,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 													<XrayFieldGrid>
 														<FormControl>
 															<FormLabel>
-																{t("pages.outbound.kcpSeed", "mKCP seed")}
+																{t("inbounds.kcp.seed")}
 															</FormLabel>
 															<Input size="sm" {...register("kcpSeed")} />
 														</FormControl>
@@ -2052,7 +2016,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																{...register("grpcMultiMode")}
 															/>
 															<FormLabel mb="0">
-																{t("pages.outbound.multiMode", "Multi mode")}
+																{t("inbounds.grpc.multiMode")}
 															</FormLabel>
 														</FormControl>
 													</>
@@ -2185,7 +2149,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 												<SearchableTagSelect
 													mode="single"
 													options={[
-														{ value: "none", label: t("common.none", "None") },
+														{ value: "none", label: t("userDialog.flow.none") },
 														{ value: "tls", label: "TLS", disabled: !canTls },
 														{
 															value: "reality",
@@ -2222,7 +2186,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 														}
 													}}
 													placeholder={t("pages.outbound.security")}
-													searchPlaceholder={t("search", "Search")}
+													searchPlaceholder={t("search")}
 												/>
 											</FormControl>
 											{tlsEnabled && canTls && (
@@ -2244,15 +2208,15 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																<SearchableTagSelect
 																	mode="single"
 																	options={[
-																		{ value: "", label: t("common.none", "None") },
+																		{ value: "", label: t("userDialog.flow.none") },
 																		...TLS_FINGERPRINT_OPTIONS,
 																	]}
 																	value={field.value ?? ""}
 																	onChange={(value) =>
 																		field.onChange(value as string)
 																	}
-																	placeholder={t("common.none", "None")}
-																	searchPlaceholder={t("search", "Search")}
+																	placeholder={t("userDialog.flow.none")}
+																	searchPlaceholder={t("search")}
 																/>
 															)}
 														/>
@@ -2307,15 +2271,15 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																<SearchableTagSelect
 																	mode="single"
 																	options={[
-																		{ value: "", label: t("common.none", "None") },
+																		{ value: "", label: t("userDialog.flow.none") },
 																		...TLS_FINGERPRINT_OPTIONS,
 																	]}
 																	value={field.value ?? ""}
 																	onChange={(value) =>
 																		field.onChange(value as string)
 																	}
-																	placeholder={t("common.none", "None")}
-																	searchPlaceholder={t("search", "Search")}
+																	placeholder={t("userDialog.flow.none")}
+																	searchPlaceholder={t("search")}
 																/>
 															)}
 														/>
@@ -2399,7 +2363,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																		field.onChange(value as string)
 																	}
 																	placeholder="reject"
-																	searchPlaceholder={t("search", "Search")}
+																	searchPlaceholder={t("search")}
 																/>
 															)}
 														/>
@@ -2414,16 +2378,13 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 								<VStack align="stretch" spacing={3}>
 									<FormControl>
 										<FormLabel>
-											{t("pages.outbound.configToJson", "Config to JSON")}
+											{t("pages.outbound.configToJson")}
 										</FormLabel>
 										<HStack align="start" spacing={3}>
 											<Textarea
 												value={configInput}
 												onChange={(e) => setConfigInput(e.target.value)}
-												placeholder={t(
-													"pages.outbound.configPlaceholder",
-													"Paste vmess/vless/trojan/ss link here",
-												)}
+												placeholder={t("pages.outbound.configPlaceholder")}
 												rows={3}
 												fontFamily="mono"
 												fontSize="sm"
@@ -2435,7 +2396,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 												colorScheme="primary"
 												onClick={handleConfigToJson}
 											>
-												{t("pages.outbound.convertConfig", "Convert")}
+												{t("pages.outbound.convertConfig")}
 											</Button>
 										</HStack>
 									</FormControl>

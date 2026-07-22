@@ -241,7 +241,7 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 		const { t, i18n } = useTranslation();
 		const direction = i18n.dir(i18n.language);
 		const isRTL = direction === "rtl";
-		const removeLabel = t("remove", "Remove");
+		const removeLabel = t("remove");
 		const inputId = useId();
 		const [search, setSearch] = useState("");
 		const [customInput, setCustomInput] = useState("");
@@ -512,7 +512,7 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 						`custom-${customTerm}`,
 						<Text as="span" noOfLines={1}>
 							<AppleEmojiText>
-								{`${t("hostsDialog.addCustomValue", "Add")} "${customTerm}"`}
+								{`${t("add")} "${customTerm}"`}
 							</AppleEmojiText>
 						</Text>,
 						() => commitCustomInput(customTerm),
@@ -520,7 +520,7 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 				{filteredOptions.length === 0 && !canCreateCustom ? (
 					<Box px={2} py={2}>
 						<Text fontSize="sm" color={mutedColor}>
-							{emptyText ?? t("hostsDialog.noAutocompleteOptions", "No options")}
+							{emptyText ?? t("hostsDialog.noAutocompleteOptions")}
 						</Text>
 					</Box>
 				) : (
@@ -655,7 +655,7 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 									value={customInput}
 									placeholder={
 										selectedValues.length
-											? t("hostsDialog.addAnotherValue", "Add another value")
+											? t("hostsDialog.addAnotherValue")
 											: placeholder
 									}
 									autoComplete="off"
@@ -817,7 +817,7 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 									bg="transparent"
 									value={search}
 									onChange={(event) => setSearch(event.target.value)}
-									placeholder={searchPlaceholder ?? t("search", "Search")}
+									placeholder={searchPlaceholder ?? t("search")}
 									autoComplete="off"
 									autoCorrect="off"
 									autoCapitalize="none"

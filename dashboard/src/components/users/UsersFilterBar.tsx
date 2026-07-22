@@ -225,7 +225,7 @@ export const UsersFilterBar: FC = () => {
 						{filters.search && filters.search.length > 0 && (
 							<IconButton
 								onClick={clearSearch}
-								aria-label={t("usersFilter.clearSearch", "Clear search")}
+								aria-label={t("usersFilter.clearSearch")}
 								size="xs"
 								variant="ghost"
 								borderRadius="full"
@@ -234,10 +234,7 @@ export const UsersFilterBar: FC = () => {
 							</IconButton>
 						)}
 						<Tooltip
-							label={t(
-								"users.searchHelp",
-								"Search by username, 3x-ui subaddress, key, token, UUID, config link, or subscription URL.",
-							)}
+							label={t("users.searchHelp")}
 							placement="top"
 							hasArrow
 						>
@@ -258,7 +255,7 @@ export const UsersFilterBar: FC = () => {
 				<PopoverTrigger>
 					<Box position="relative" flexShrink={0}>
 						<IconButton
-							aria-label={t("filters.advancedButton", "Filters")}
+							aria-label={t("filters.advancedButton")}
 							icon={<FilterIcon />}
 							variant="outline"
 							borderRadius="full"
@@ -287,7 +284,7 @@ export const UsersFilterBar: FC = () => {
 					<PopoverArrow />
 					<PopoverCloseButton />
 					<PopoverHeader fontWeight="semibold">
-						{t("filters.advancedTitle", "Advanced filters")}
+						{t("filters.advancedTitle")}
 					</PopoverHeader>
 					<PopoverBody>
 						<Stack spacing={2}>
@@ -304,7 +301,7 @@ export const UsersFilterBar: FC = () => {
 						<Stack spacing={3} mt={3}>
 							<Box>
 								<Text fontSize="sm" fontWeight="semibold" mb={1}>
-									{t("filters.advanced.serviceLabel", "Service filter")}
+									{t("filters.advanced.serviceLabel")}
 								</Text>
 								<Select
 									value={serviceId ? String(serviceId) : ""}
@@ -312,7 +309,7 @@ export const UsersFilterBar: FC = () => {
 									size="sm"
 								>
 									<option value="">
-										{t("filters.advanced.serviceAll", "All services")}
+										{t("filters.advanced.serviceAll")}
 									</option>
 									{serviceOptions.map((service) => (
 										<option key={service.id} value={String(service.id)}>
@@ -324,7 +321,7 @@ export const UsersFilterBar: FC = () => {
 							{hasPrivilegedRole && (
 								<Box>
 									<Text fontSize="sm" fontWeight="semibold" mb={1}>
-										{t("filters.advanced.adminLabel", "Admin filter")}
+										{t("filters.advanced.adminLabel")}
 									</Text>
 									<Select
 										value={ownerFilter ?? ""}
@@ -332,10 +329,10 @@ export const UsersFilterBar: FC = () => {
 										size="sm"
 									>
 										<option value="">
-											{t("filters.advanced.adminAll", "All admins")}
+											{t("filters.advanced.adminAll")}
 										</option>
 										<option value={userData.username}>
-											{t("filters.advanced.adminMyUsers", "My users")}
+											{t("filters.advanced.adminMyUsers")}
 										</option>
 										{safeAdminOptions.map((record) => (
 											<option key={record.username} value={record.username}>
@@ -354,7 +351,7 @@ export const UsersFilterBar: FC = () => {
 							onClick={clearAdvancedFilters}
 							isDisabled={!hasClearableFilters}
 						>
-							{t("filters.advancedClear", "Clear filters")}
+							{t("filters.advancedClear")}
 						</Button>
 					</PopoverBody>
 				</PopoverContent>

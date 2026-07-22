@@ -272,6 +272,7 @@ const DataTableCellContent = <TData,>({
 	value,
 	children,
 }: DataTableCellContentProps<TData>) => {
+	const { t } = useTranslation();
 	const valueText = getPrimitiveText(value);
 	const childText = getPrimitiveText(children);
 	const fullText = valueText ?? childText ?? "";
@@ -302,7 +303,7 @@ const DataTableCellContent = <TData,>({
 			</Box>
 			{shouldCopy && (
 				<IconButton
-					aria-label="Copy value"
+					aria-label={t("a11y.copyValue")}
 					icon={<Box as={DocumentDuplicateIcon} w={3.5} h={3.5} />}
 					size="xs"
 					variant="ghost"
@@ -498,9 +499,9 @@ export function DataTable<TData>({
 	ariaLabel,
 }: DataTableProps<TData>) {
 	const { t } = useTranslation();
-	const actionsLabel = t("actions", "Actions");
-	const selectAllLabel = t("selectAll", "Select all rows");
-	const selectRowLabel = t("selectRow", "Select row");
+	const actionsLabel = t("actions");
+	const selectAllLabel = t("selectAll");
+	const selectRowLabel = t("selectRow");
 	const rootRef = useRef<HTMLDivElement | null>(null);
 	const [contextMenu, setContextMenu] = useState<{
 		row: TData | null;
@@ -883,7 +884,7 @@ export function DataTable<TData>({
 		if (!showLoadingState && rows.length === 0) {
 			return (
 				<Box className="rb-resource-state">
-					{emptyState ?? t("noData", "Nothing to show yet.")}
+					{emptyState ?? t("noData")}
 				</Box>
 			);
 		}
