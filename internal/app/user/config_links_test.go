@@ -880,9 +880,10 @@ func TestBuildConfigLinksBuildsHysteriaShareLink(t *testing.T) {
 			"network":  "hysteria",
 			"security": "tls",
 			"tlsSettings": map[string]any{
-				"serverName":  "hy.example.com",
-				"fingerprint": "chrome",
-				"alpn":        []any{"h3"},
+				"serverName":    "hy.example.com",
+				"fingerprint":   "chrome",
+				"alpn":          []any{"h3"},
+				"allowInsecure": true,
 			},
 			"hysteriaSettings": map[string]any{
 				"version":        int64(2),
@@ -946,7 +947,10 @@ func TestBuildConfigLinksBuildsHysteriaShareLink(t *testing.T) {
 	if !strings.HasPrefix(link, "hysteria2://") {
 		t.Fatalf("expected hysteria2 link, got %q", link)
 	}
-	for _, expected := range []string{"security=tls", "sni=hy.example.com", "fp=chrome", "alpn=h3", "obfs=salamander", "obfs-password=mask-secret", "mport=20000-50000"} {
+	if !strings.Contains(link, ":443/?") {
+		t.Fatalf("expected strict Hysteria URI path before query: %s", link)
+	}
+	for _, expected := range []string{"security=tls", "sni=hy.example.com", "fp=chrome", "alpn=h3", "insecure=1", "obfs=salamander", "obfs-password=mask-secret", "mport=20000-50000"} {
 		if !strings.Contains(link, expected) {
 			t.Fatalf("expected %q in link: %s", expected, link)
 		}

@@ -1,7 +1,9 @@
 package user
 
 import (
+	"encoding/base64"
 	"encoding/json"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -55,6 +57,136 @@ func TestRenderClashLikeYAMLBuildsRealProxies(t *testing.T) {
 	}
 	if strings.Contains(body, `url: "vless://`) || strings.Contains(body, `url: "ss://`) {
 		t.Fatalf("clash proxies must not wrap share links as url-test URLs:\n%s", body)
+	}
+}
+
+func TestShadowsocksHTTPHeaderSurvivesEveryStructuredSubscription(t *testing.T) {
+	link := shadowsocksShareLink("ss-http", "ss.example.com", ResolvedInbound{
+		"port":        int64(8388),
+		"network":     "tcp",
+		"tls":         "none",
+		"header_type": "http",
+		"host":        "header.example.com",
+		"settings":    map[string]any{"method": "aes-256-gcm"},
+	}, map[string]any{"method": "aes-256-gcm", "password": "secret"})
+	if !strings.Contains(link, ":8388/?plugin=obfs-local%3Bobfs%3Dhttp%3Bobfs-host%3Dheader.example.com") {
+		t.Fatalf("Shadowsocks link is not strict SIP002: %s", link)
+	}
+
+	clash := renderClashLikeYAML("alice", []string{link}, true)
+	for _, expected := range []string{`plugin: "obfs"`, `plugin-opts:`, `mode: "http"`, `host: "header.example.com"`} {
+		if !strings.Contains(clash, expected) {
+			t.Fatalf("Clash output lost %q:\n%s", expected, clash)
+		}
+	}
+
+	v2rayBody, err := renderV2RayJSONSubscription([]string{link}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var configs []map[string]any
+	if err := json.Unmarshal([]byte(v2rayBody), &configs); err != nil {
+		t.Fatal(err)
+	}
+	stream := configs[0]["outbounds"].([]any)[0].(map[string]any)["streamSettings"].(map[string]any)
+	tcp := stream["tcpSettings"].(map[string]any)
+	header := tcp["header"].(map[string]any)
+	if header["type"] != "http" {
+		t.Fatalf("Xray JSON lost the HTTP header: %#v", stream)
+	}
+	request := header["request"].(map[string]any)
+	headers := request["headers"].(map[string]any)
+	if got := headers["Host"].([]any)[0]; got != "header.example.com" {
+		t.Fatalf("Xray JSON lost the HTTP host: %#v", stream)
+	}
+
+	singBoxBody, err := renderSingBoxJSON([]string{link})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var singBox map[string]any
+	if err := json.Unmarshal([]byte(singBoxBody), &singBox); err != nil {
+		t.Fatal(err)
+	}
+	outbounds := singBox["outbounds"].([]any)
+	ss := outbounds[1].(map[string]any)
+	if ss["type"] != "shadowsocks" || ss["plugin"] != "obfs-local" || ss["plugin_opts"] != "obfs=http;obfs-host=header.example.com" {
+		t.Fatalf("sing-box output lost the Shadowsocks plugin: %#v", ss)
+	}
+}
+
+func TestStructuredSubscriptionsCoverSupportedShareProtocols(t *testing.T) {
+	vmessPayload, err := json.Marshal(map[string]any{
+		"v": "2", "ps": "vmess", "add": "vmess.example.com", "port": "443",
+		"id": "11111111-1111-4111-8111-111111111111", "aid": "0", "scy": "auto",
+		"net": "ws", "type": "none", "host": "vmess.example.com", "path": "/ws", "tls": "tls", "sni": "vmess.example.com",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	links := []string{
+		"vless://11111111-1111-4111-8111-111111111111@vless.example.com:443?security=tls&type=ws&path=%2Fws&host=vless.example.com&sni=vless.example.com#vless",
+		"vmess://" + base64.RawStdEncoding.EncodeToString(vmessPayload),
+		"trojan://secret@trojan.example.com:443?security=tls&type=grpc&serviceName=tun&sni=trojan.example.com#trojan",
+		"ss://" + base64.RawURLEncoding.EncodeToString([]byte("aes-256-gcm:secret")) + "@ss.example.com:8388#ss",
+		"hysteria2://secret@hy.example.com:443?security=tls&sni=hy.example.com&obfs=salamander&obfs-password=mask&mport=20000-30000#hy2",
+	}
+
+	clash := renderClashLikeYAML("alice", links, true)
+	for _, protocol := range []string{`type: "vless"`, `type: "vmess"`, `type: "trojan"`, `type: "ss"`, `type: "hysteria2"`} {
+		if !strings.Contains(clash, protocol) {
+			t.Fatalf("Clash output missing %s:\n%s", protocol, clash)
+		}
+	}
+
+	singBoxBody, err := renderSingBoxJSON(links)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var singBox map[string]any
+	if err := json.Unmarshal([]byte(singBoxBody), &singBox); err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, raw := range singBox["outbounds"].([]any) {
+		outbound := raw.(map[string]any)
+		seen[stringValue(outbound["type"])] = true
+	}
+	for _, protocol := range []string{"selector", "vless", "vmess", "trojan", "shadowsocks", "hysteria2"} {
+		if !seen[protocol] {
+			t.Fatalf("sing-box output missing %s: %s", protocol, singBoxBody)
+		}
+	}
+
+	v2rayBody, err := renderV2RayJSONSubscription(links, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var configs []map[string]any
+	if err := json.Unmarshal([]byte(v2rayBody), &configs); err != nil {
+		t.Fatal(err)
+	}
+	v2rayProtocols := map[string]bool{}
+	for _, config := range configs {
+		outbounds := config["outbounds"].([]any)
+		v2rayProtocols[stringValue(outbounds[0].(map[string]any)["protocol"])] = true
+	}
+	for _, protocol := range []string{"vless", "vmess", "trojan", "shadowsocks", "hysteria"} {
+		if !v2rayProtocols[protocol] {
+			t.Fatalf("Xray JSON output missing %s: %s", protocol, v2rayBody)
+		}
+	}
+}
+
+func TestShadowsocks2022StructuredOutputsPreserveBothKeys(t *testing.T) {
+	link := "ss://2022-blake3-aes-128-gcm:server-key:client-key@ss.example.com:8388#ss2022"
+	parsed, err := url.Parse(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	method, password, _, ok := parseShadowsocksURL(parsed)
+	if !ok || method != "2022-blake3-aes-128-gcm" || password != "server-key:client-key" {
+		t.Fatalf("bad Shadowsocks 2022 credentials: method=%q password=%q ok=%v", method, password, ok)
 	}
 }
 

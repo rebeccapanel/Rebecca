@@ -417,16 +417,18 @@ func (s Service) generateSubscriptionConfig(ctx context.Context, user UserDetail
 		}
 		return content, nil
 	case "outline":
-		return marshalPretty(map[string]any{"servers": raw})
+		servers := make([]string, 0, len(raw))
+		for _, link := range raw {
+			if strings.HasPrefix(strings.TrimSpace(link), "ss://") {
+				servers = append(servers, link)
+			}
+		}
+		return marshalPretty(map[string]any{"servers": servers})
 	case "v2ray-json":
 		templateKey := firstNonEmptyString(config.TemplateKey, "v2ray_subscription_template")
 		return renderV2RayJSONSubscriptionWithTemplate(raw, false, s.subscriptionTemplateContent(ctx, templateKey, user.AdminID))
 	case "sing-box":
-		outbounds := make([]map[string]any, 0, len(raw)+1)
-		for i, link := range raw {
-			outbounds = append(outbounds, map[string]any{"type": "selector", "tag": fmt.Sprintf("proxy-%d", i+1), "outbounds": []string{link}})
-		}
-		return marshalPretty(map[string]any{"outbounds": outbounds})
+		return renderSingBoxJSON(raw)
 	case "clash", "clash-meta":
 		return renderClashLikeYAML(user.Username, raw, config.Format == "clash-meta"), nil
 	default:
@@ -924,6 +926,288 @@ func renderClashLikeYAML(username string, links []string, meta bool) string {
 	return b.String()
 }
 
+func renderSingBoxJSON(links []string) (string, error) {
+	proxies := make([]map[string]any, 0, len(links))
+	tags := make([]string, 0, len(links))
+	for i, link := range links {
+		tag := fmt.Sprintf("proxy-%d", i+1)
+		outbound, ok := singBoxOutboundFromShareLink(link, tag)
+		if !ok {
+			continue
+		}
+		proxies = append(proxies, outbound)
+		tags = append(tags, tag)
+	}
+	outbounds := make([]map[string]any, 0, len(proxies)+1)
+	if len(tags) > 0 {
+		outbounds = append(outbounds, map[string]any{
+			"type":      "selector",
+			"tag":       "proxy",
+			"outbounds": tags,
+		})
+	}
+	outbounds = append(outbounds, proxies...)
+	return marshalPretty(map[string]any{"outbounds": outbounds})
+}
+
+func singBoxOutboundFromShareLink(link string, tag string) (map[string]any, bool) {
+	parsed, err := url.Parse(link)
+	if err != nil {
+		return nil, false
+	}
+	switch parsed.Scheme {
+	case "vless":
+		port, ok := parseURLPort(parsed)
+		if !ok || parsed.User == nil || parsed.User.Username() == "" {
+			return nil, false
+		}
+		query := parsed.Query()
+		outbound := map[string]any{
+			"type":        "vless",
+			"tag":         tag,
+			"server":      parsed.Hostname(),
+			"server_port": port,
+			"uuid":        parsed.User.Username(),
+		}
+		if flow := query.Get("flow"); flow != "" {
+			outbound["flow"] = flow
+		}
+		return outbound, applySingBoxStream(outbound, query)
+	case "trojan":
+		port, ok := parseURLPort(parsed)
+		if !ok || parsed.User == nil || parsed.User.Username() == "" {
+			return nil, false
+		}
+		outbound := map[string]any{
+			"type":        "trojan",
+			"tag":         tag,
+			"server":      parsed.Hostname(),
+			"server_port": port,
+			"password":    parsed.User.Username(),
+		}
+		return outbound, applySingBoxStream(outbound, parsed.Query())
+	case "ss":
+		return singBoxShadowsocksOutbound(parsed, tag)
+	case "vmess":
+		return singBoxVMessOutbound(link, tag)
+	case "hysteria", "hysteria2", "hy2":
+		return singBoxHysteriaOutbound(parsed, tag)
+	default:
+		return nil, false
+	}
+}
+
+func singBoxShadowsocksOutbound(parsed *url.URL, tag string) (map[string]any, bool) {
+	method, password, port, ok := parseShadowsocksURL(parsed)
+	if !ok {
+		return nil, false
+	}
+	outbound := map[string]any{
+		"type":        "shadowsocks",
+		"tag":         tag,
+		"server":      parsed.Hostname(),
+		"server_port": port,
+		"method":      method,
+		"password":    password,
+	}
+	query := parsed.Query()
+	plugin, _ := parseSIP003Plugin(query.Get("plugin"))
+	if plugin != "" {
+		outbound["plugin"] = plugin
+		if raw := query.Get("plugin"); strings.Contains(raw, ";") {
+			outbound["plugin_opts"] = strings.SplitN(raw, ";", 2)[1]
+		}
+		return outbound, true
+	}
+	network := firstNonEmptyString(query.Get("type"), "tcp")
+	if network != "tcp" && network != "raw" {
+		return nil, false
+	}
+	if security := query.Get("security"); security != "" && security != "none" {
+		return nil, false
+	}
+	return outbound, true
+}
+
+func singBoxVMessOutbound(link string, tag string) (map[string]any, bool) {
+	decoded, err := decodeFlexibleBase64(strings.TrimPrefix(link, "vmess://"))
+	if err != nil {
+		return nil, false
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(decoded, &payload); err != nil {
+		return nil, false
+	}
+	port, err := strconv.Atoi(stringValue(payload["port"]))
+	if err != nil || port <= 0 || stringValue(payload["add"]) == "" || stringValue(payload["id"]) == "" {
+		return nil, false
+	}
+	outbound := map[string]any{
+		"type":        "vmess",
+		"tag":         tag,
+		"server":      stringValue(payload["add"]),
+		"server_port": port,
+		"uuid":        stringValue(payload["id"]),
+		"security":    firstNonEmptyString(payload["scy"], "auto"),
+		"alter_id":    intValue(payload["aid"]),
+	}
+	query := url.Values{}
+	query.Set("type", firstNonEmptyString(payload["net"], "tcp"))
+	query.Set("security", stringValue(payload["tls"]))
+	query.Set("headerType", stringValue(payload["type"]))
+	query.Set("path", stringValue(payload["path"]))
+	query.Set("host", stringValue(payload["host"]))
+	query.Set("sni", firstNonEmptyString(payload["sni"], payload["host"]))
+	query.Set("fp", stringValue(payload["fp"]))
+	query.Set("alpn", stringValue(payload["alpn"]))
+	query.Set("pbk", stringValue(payload["pbk"]))
+	query.Set("sid", stringValue(payload["sid"]))
+	return outbound, applySingBoxStream(outbound, query)
+}
+
+func singBoxHysteriaOutbound(parsed *url.URL, tag string) (map[string]any, bool) {
+	port, ok := parseURLPort(parsed)
+	if !ok || parsed.User == nil || parsed.User.Username() == "" {
+		return nil, false
+	}
+	query := parsed.Query()
+	version2 := parsed.Scheme == "hysteria2" || parsed.Scheme == "hy2"
+	typeName := "hysteria"
+	if version2 {
+		typeName = "hysteria2"
+	}
+	outbound := map[string]any{
+		"type":   typeName,
+		"tag":    tag,
+		"server": parsed.Hostname(),
+	}
+	if ports := splitCommaLines(query.Get("mport")); len(ports) > 0 {
+		outbound["server_ports"] = ports
+	} else {
+		outbound["server_port"] = port
+	}
+	if version2 {
+		outbound["password"] = parsed.User.Username()
+		if obfs := query.Get("obfs"); obfs != "" {
+			outbound["obfs"] = map[string]any{"type": obfs, "password": query.Get("obfs-password")}
+		}
+	} else {
+		outbound["auth_str"] = parsed.User.Username()
+		outbound["up_mbps"] = firstPositiveInt(query.Get("upmbps"), 100)
+		outbound["down_mbps"] = firstPositiveInt(query.Get("downmbps"), 100)
+		if obfs := query.Get("obfs"); obfs != "" {
+			outbound["obfs"] = firstNonEmptyString(query.Get("obfs-password"), obfs)
+		}
+	}
+	outbound["tls"] = singBoxTLS(query)
+	return outbound, true
+}
+
+func firstPositiveInt(value string, fallback int) int {
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
+}
+
+func applySingBoxStream(outbound map[string]any, query url.Values) bool {
+	transport, ok := singBoxTransport(query)
+	if !ok {
+		return false
+	}
+	if transport != nil {
+		outbound["transport"] = transport
+	}
+	security := query.Get("security")
+	if security == "" || security == "none" {
+		return true
+	}
+	if security != "tls" && security != "reality" {
+		return false
+	}
+	outbound["tls"] = singBoxTLS(query)
+	return true
+}
+
+func singBoxTransport(query url.Values) (map[string]any, bool) {
+	network := firstNonEmptyString(query.Get("type"), "tcp")
+	if network == "raw" {
+		network = "tcp"
+	}
+	switch network {
+	case "tcp":
+		if query.Get("headerType") != "http" {
+			return nil, true
+		}
+		transport := map[string]any{"type": "http"}
+		if hosts := stringList(query.Get("host")); len(hosts) > 0 {
+			transport["host"] = hosts
+		}
+		if path := query.Get("path"); path != "" {
+			transport["path"] = path
+		}
+		return transport, true
+	case "ws":
+		transport := map[string]any{"type": "ws"}
+		if path := query.Get("path"); path != "" {
+			transport["path"] = path
+		}
+		if host := query.Get("host"); host != "" {
+			transport["headers"] = map[string]any{"Host": host}
+		}
+		return transport, true
+	case "grpc", "gun":
+		return map[string]any{"type": "grpc", "service_name": query.Get("serviceName")}, true
+	case "http", "h2", "h3":
+		transport := map[string]any{"type": "http"}
+		if hosts := stringList(query.Get("host")); len(hosts) > 0 {
+			transport["host"] = hosts
+		}
+		if path := query.Get("path"); path != "" {
+			transport["path"] = path
+		}
+		return transport, true
+	case "httpupgrade":
+		transport := map[string]any{"type": "httpupgrade", "path": firstNonEmptyString(query.Get("path"), "/")}
+		if host := query.Get("host"); host != "" {
+			transport["host"] = host
+		}
+		return transport, true
+	case "quic":
+		return map[string]any{"type": "quic"}, true
+	default:
+		return nil, false
+	}
+}
+
+func singBoxTLS(query url.Values) map[string]any {
+	tls := map[string]any{"enabled": true}
+	if serverName := query.Get("sni"); serverName != "" {
+		tls["server_name"] = serverName
+	}
+	if queryFlag(query, "allowInsecure", "insecure") {
+		tls["insecure"] = true
+	}
+	if alpn := stringList(query.Get("alpn")); len(alpn) > 0 {
+		tls["alpn"] = alpn
+	}
+	if fingerprint := query.Get("fp"); fingerprint != "" && fingerprint != "none" {
+		tls["utls"] = map[string]any{"enabled": true, "fingerprint": fingerprint}
+	}
+	if query.Get("security") == "reality" {
+		reality := map[string]any{"enabled": true}
+		if publicKey := query.Get("pbk"); publicKey != "" {
+			reality["public_key"] = publicKey
+		}
+		if shortID := query.Get("sid"); shortID != "" {
+			reality["short_id"] = shortID
+		}
+		tls["reality"] = reality
+	}
+	return tls
+}
+
 func renderV2RayJSONSubscription(links []string, reverse bool) (string, error) {
 	return renderV2RayJSONSubscriptionWithTemplate(links, reverse, "")
 }
@@ -1034,6 +1318,8 @@ func v2rayOutboundFromShareLink(link string) (string, map[string]any, bool) {
 		return v2rayShadowsocksOutbound(parsed)
 	case "vmess":
 		return v2rayVMessOutbound(link)
+	case "hysteria", "hysteria2", "hy2":
+		return v2rayHysteriaOutbound(parsed)
 	default:
 		return "", nil, false
 	}
@@ -1096,16 +1382,8 @@ func v2rayTrojanOutbound(parsed *url.URL) (string, map[string]any, bool) {
 }
 
 func v2rayShadowsocksOutbound(parsed *url.URL) (string, map[string]any, bool) {
-	port, ok := parseURLPort(parsed)
+	method, password, port, ok := parseShadowsocksURL(parsed)
 	if !ok {
-		return "", nil, false
-	}
-	user := parsed.User.Username()
-	if decoded, err := decodeFlexibleBase64(user); err == nil {
-		user = string(decoded)
-	}
-	method, password, ok := strings.Cut(user, ":")
-	if !ok || strings.TrimSpace(method) == "" || strings.TrimSpace(password) == "" {
 		return "", nil, false
 	}
 	outbound := map[string]any{
@@ -1120,8 +1398,122 @@ func v2rayShadowsocksOutbound(parsed *url.URL) (string, map[string]any, bool) {
 			}},
 		},
 	}
-	if stream := v2rayStreamSettings(parsed.Query()); len(stream) > 0 {
+	query := parsed.Query()
+	if plugin, options := parseSIP003Plugin(query.Get("plugin")); plugin == "obfs-local" || plugin == "simple-obfs" {
+		if options["obfs"] == "http" {
+			query.Set("type", "tcp")
+			query.Set("headerType", "http")
+			query.Set("host", options["obfs-host"])
+		}
+	}
+	if stream := v2rayStreamSettings(query); len(stream) > 0 {
 		outbound["streamSettings"] = stream
+	}
+	return v2rayLinkRemark(parsed), outbound, true
+}
+
+func parseShadowsocksURL(parsed *url.URL) (string, string, int, bool) {
+	port, ok := parseURLPort(parsed)
+	if !ok || parsed.User == nil {
+		return "", "", 0, false
+	}
+	userInfo := parsed.User.Username()
+	if password, hasPassword := parsed.User.Password(); hasPassword {
+		userInfo += ":" + password
+	}
+	if decoded, err := decodeFlexibleBase64(userInfo); err == nil {
+		userInfo = string(decoded)
+	}
+	method, password, ok := strings.Cut(userInfo, ":")
+	if !ok || strings.TrimSpace(method) == "" || strings.TrimSpace(password) == "" {
+		return "", "", 0, false
+	}
+	return method, password, port, true
+}
+
+func parseSIP003Plugin(raw string) (string, map[string]string) {
+	parts := strings.Split(strings.TrimSpace(raw), ";")
+	if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
+		return "", nil
+	}
+	options := make(map[string]string, len(parts)-1)
+	for _, part := range parts[1:] {
+		key, value, ok := strings.Cut(part, "=")
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if !ok {
+			options[key] = "true"
+			continue
+		}
+		options[key] = strings.TrimSpace(value)
+	}
+	return strings.TrimSpace(parts[0]), options
+}
+
+func queryFlag(query url.Values, keys ...string) bool {
+	for _, key := range keys {
+		value := query.Get(key)
+		if value == "1" || strings.EqualFold(value, "true") {
+			return true
+		}
+	}
+	return false
+}
+
+func v2rayHysteriaOutbound(parsed *url.URL) (string, map[string]any, bool) {
+	port, ok := parseURLPort(parsed)
+	if !ok || parsed.User == nil || parsed.User.Username() == "" {
+		return "", nil, false
+	}
+	query := parsed.Query()
+	version := 1
+	if parsed.Scheme == "hysteria2" || parsed.Scheme == "hy2" {
+		version = 2
+	}
+	tlsQuery := url.Values{}
+	for key, values := range query {
+		tlsQuery[key] = append([]string(nil), values...)
+	}
+	tlsQuery.Set("security", "tls")
+	if pin := query.Get("pinSHA256"); pin != "" {
+		tlsQuery.Set("pcs", pin)
+	}
+	stream := map[string]any{
+		"network":  "hysteria",
+		"security": "tls",
+		"hysteriaSettings": map[string]any{
+			"version":        version,
+			"auth":           parsed.User.Username(),
+			"udpIdleTimeout": 60,
+		},
+		"tlsSettings": v2rayTLSSettings(tlsQuery),
+	}
+	finalMask := map[string]any{}
+	if obfs := query.Get("obfs"); obfs != "" {
+		finalMask["udp"] = []any{map[string]any{
+			"type": obfs,
+			"settings": map[string]any{
+				"password": query.Get("obfs-password"),
+			},
+		}}
+	}
+	if ports := query.Get("mport"); ports != "" {
+		finalMask["quicParams"] = map[string]any{"udpHop": map[string]any{"ports": ports}}
+	}
+	if len(finalMask) > 0 {
+		stream["finalmask"] = finalMask
+	}
+	outbound := map[string]any{
+		"tag":      "proxy",
+		"protocol": "hysteria",
+		"settings": map[string]any{
+			"address": parsed.Hostname(),
+			"port":    port,
+			"version": version,
+		},
+		"streamSettings": stream,
 	}
 	return v2rayLinkRemark(parsed), outbound, true
 }
@@ -1320,7 +1712,7 @@ func v2rayTLSSettings(query url.Values) map[string]any {
 	if pcs := query.Get("pcs"); pcs != "" {
 		settings["pinnedPeerCertSha256"] = stringList(pcs)
 	}
-	if allow := query.Get("allowInsecure"); allow == "1" || strings.EqualFold(allow, "true") {
+	if queryFlag(query, "allowInsecure", "insecure") {
 		settings["allowInsecure"] = true
 	}
 	return settings
@@ -1764,25 +2156,19 @@ func clashProxyFromShareLink(name string, link string) (map[string]any, bool) {
 		return clashTrojanProxy(name, parsed)
 	case "vmess":
 		return clashVMessProxy(name, parsed)
+	case "hysteria", "hysteria2", "hy2":
+		return clashHysteriaProxy(name, parsed)
 	default:
 		return nil, false
 	}
 }
 
 func clashShadowsocksProxy(name string, parsed *url.URL) (map[string]any, bool) {
-	user := parsed.User.Username()
-	if decoded, err := decodeFlexibleBase64(user); err == nil {
-		user = string(decoded)
-	}
-	method, password, ok := strings.Cut(user, ":")
-	if !ok || strings.TrimSpace(method) == "" || strings.TrimSpace(password) == "" {
-		return nil, false
-	}
-	port, ok := parseURLPort(parsed)
+	method, password, port, ok := parseShadowsocksURL(parsed)
 	if !ok {
 		return nil, false
 	}
-	return map[string]any{
+	proxy := map[string]any{
 		"name":     name,
 		"type":     "ss",
 		"server":   parsed.Hostname(),
@@ -1790,7 +2176,83 @@ func clashShadowsocksProxy(name string, parsed *url.URL) (map[string]any, bool) 
 		"cipher":   method,
 		"password": password,
 		"udp":      true,
-	}, true
+	}
+	query := parsed.Query()
+	plugin, options := parseSIP003Plugin(query.Get("plugin"))
+	switch plugin {
+	case "obfs-local", "simple-obfs":
+		proxy["plugin"] = "obfs"
+		pluginOpts := map[string]any{"mode": firstNonEmptyString(options["obfs"], "http")}
+		if host := options["obfs-host"]; host != "" {
+			pluginOpts["host"] = host
+		}
+		proxy["plugin-opts"] = pluginOpts
+	case "v2ray-plugin":
+		proxy["plugin"] = "v2ray-plugin"
+		pluginOpts := make(map[string]any, len(options))
+		for key, value := range options {
+			if value == "true" {
+				pluginOpts[key] = true
+			} else {
+				pluginOpts[key] = value
+			}
+		}
+		proxy["plugin-opts"] = pluginOpts
+	}
+	return proxy, true
+}
+
+func clashHysteriaProxy(name string, parsed *url.URL) (map[string]any, bool) {
+	port, ok := parseURLPort(parsed)
+	if !ok || parsed.User == nil {
+		return nil, false
+	}
+	password := strings.TrimSpace(parsed.User.Username())
+	if password == "" {
+		return nil, false
+	}
+	query := parsed.Query()
+	version2 := parsed.Scheme == "hysteria2" || parsed.Scheme == "hy2"
+	typeName := "hysteria"
+	if version2 {
+		typeName = "hysteria2"
+	}
+	proxy := map[string]any{
+		"name":   name,
+		"type":   typeName,
+		"server": parsed.Hostname(),
+		"port":   port,
+		"udp":    true,
+	}
+	if version2 {
+		proxy["password"] = password
+	} else {
+		proxy["auth-str"] = password
+		proxy["up"] = firstNonEmptyString(query.Get("up"), "100 Mbps")
+		proxy["down"] = firstNonEmptyString(query.Get("down"), "100 Mbps")
+	}
+	if ports := query.Get("mport"); ports != "" {
+		proxy["ports"] = ports
+	}
+	if obfs := query.Get("obfs"); obfs != "" {
+		proxy["obfs"] = obfs
+	}
+	if password := query.Get("obfs-password"); password != "" {
+		proxy["obfs-password"] = password
+	}
+	if sni := query.Get("sni"); sni != "" {
+		proxy["sni"] = sni
+	}
+	if fp := query.Get("fp"); fp != "" {
+		proxy["client-fingerprint"] = fp
+	}
+	if alpn := stringList(query.Get("alpn")); len(alpn) > 0 {
+		proxy["alpn"] = alpn
+	}
+	if queryFlag(query, "allowInsecure", "insecure") {
+		proxy["skip-cert-verify"] = true
+	}
+	return proxy, true
 }
 
 func clashVLESSProxy(name string, parsed *url.URL) (map[string]any, bool) {
@@ -1822,7 +2284,7 @@ func clashVLESSProxy(name string, parsed *url.URL) (map[string]any, bool) {
 	if flow := query.Get("flow"); flow != "" {
 		proxy["flow"] = flow
 	}
-	if query.Get("allowInsecure") == "1" || strings.EqualFold(query.Get("allowInsecure"), "true") {
+	if queryFlag(query, "allowInsecure", "insecure") {
 		proxy["skip-cert-verify"] = true
 	}
 	if security == "reality" {
@@ -1866,7 +2328,7 @@ func clashTrojanProxy(name string, parsed *url.URL) (map[string]any, bool) {
 	if sni := query.Get("sni"); sni != "" {
 		proxy["sni"] = sni
 	}
-	if query.Get("allowInsecure") == "1" || strings.EqualFold(query.Get("allowInsecure"), "true") {
+	if queryFlag(query, "allowInsecure", "insecure") {
 		proxy["skip-cert-verify"] = true
 	}
 	appendClashNetworkOptions(proxy, network, query)
@@ -1954,7 +2416,8 @@ func writeClashProxy(b *strings.Builder, proxy map[string]any) {
 	order := []string{
 		"name", "type", "server", "port", "cipher", "password", "uuid", "alterId",
 		"tls", "servername", "sni", "skip-cert-verify", "client-fingerprint",
-		"flow", "network", "udp", "ws-opts", "grpc-opts", "http-opts", "reality-opts",
+		"flow", "network", "udp", "plugin", "plugin-opts", "auth-str", "up", "down",
+		"ports", "obfs", "obfs-password", "alpn", "ws-opts", "grpc-opts", "http-opts", "reality-opts",
 	}
 	b.WriteString("  - ")
 	first := true
@@ -1998,7 +2461,7 @@ func writeYAMLValue(b *strings.Builder, value any, indent int) {
 }
 
 func writeYAMLMap(b *strings.Builder, values map[string]any, indent int) {
-	keys := []string{"path", "headers", "Host", "grpc-service-name", "public-key", "short-id", "spider-x"}
+	keys := []string{"mode", "host", "path", "headers", "Host", "grpc-service-name", "public-key", "short-id", "spider-x"}
 	seen := map[string]bool{}
 	for _, key := range keys {
 		if value, ok := values[key]; ok && !isEmptyYAMLValue(value) {

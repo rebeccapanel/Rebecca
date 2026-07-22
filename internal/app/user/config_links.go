@@ -1070,7 +1070,13 @@ func shadowsocksShareLink(remark string, address string, inbound ResolvedInbound
 	if len(params) > 0 {
 		query = "?" + urlencodeOrdered(params)
 	}
-	return "ss://" + userInfo + "@" + address + ":" + portString(inbound["port"]) + query + "#" + percentEncode(remark, "/", false)
+	path := ""
+	if httpObfs {
+		// SIP002 requires a trailing slash before the plugin query. Some clients
+		// tolerate the missing slash, but strict parsers drop the plugin entirely.
+		path = "/"
+	}
+	return "ss://" + userInfo + "@" + address + ":" + portString(inbound["port"]) + path + query + "#" + percentEncode(remark, "/", false)
 }
 
 func hysteriaShareLink(remark string, address string, inbound ResolvedInbound, settings map[string]any) string {
@@ -1107,6 +1113,9 @@ func hysteriaShareLink(remark string, address string, inbound ResolvedInbound, s
 			params = append(params, queryParam{"pinSHA256", strings.Join(pins, ",")})
 		}
 	}
+	if truthy(firstNonEmptyValue(inbound["ais"], inbound["allowinsecure"])) {
+		params = append(params, queryParam{"insecure", 1})
+	}
 	if obfs := firstNonEmptyString(inbound["obfs"], inbound["hysteria_obfs"]); obfs != "" {
 		params = append(params, queryParam{"obfs", obfs})
 	}
@@ -1116,7 +1125,7 @@ func hysteriaShareLink(remark string, address string, inbound ResolvedInbound, s
 	if mport := firstNonEmptyString(inbound["mport"], inbound["hysteria_mport"]); mport != "" {
 		params = append(params, queryParam{"mport", mport})
 	}
-	return scheme + "://" + percentEncode(auth, "", false) + "@" + address + ":" + portString(inbound["port"]) + "?" + urlencodeOrdered(params) + "#" + percentEncode(remark, "/", false)
+	return scheme + "://" + percentEncode(auth, "", false) + "@" + address + ":" + portString(inbound["port"]) + "/?" + urlencodeOrdered(params) + "#" + percentEncode(remark, "/", false)
 }
 
 func appendNetworkParams(params []queryParam, netValue string, path string, inbound ResolvedInbound) []queryParam {

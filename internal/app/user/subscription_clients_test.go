@@ -226,6 +226,72 @@ func TestSubscriptionClientOutputsCoverExplicitFormatsAndAutoDetect(t *testing.T
 	}
 }
 
+func TestSubscriptionClientsKeepShadowsocksHTTPHeader(t *testing.T) {
+	service, key := newSubscriptionClientTestService(t)
+	ctx := context.Background()
+	rawClients := []string{"v2ray", "v2raytun", "throne", "shadowrocket", "karing", "hiddify", "passwall", "nekobox"}
+	for _, clientType := range rawClients {
+		t.Run(clientType, func(t *testing.T) {
+			response, err := service.RenderSubscription(ctx, SubscriptionRenderRequest{Identifier: key, ClientType: clientType})
+			if err != nil {
+				t.Fatal(err)
+			}
+			decoded := decodeSubscriptionTestBody(string(response.Body))
+			if !strings.Contains(decoded, ":8388/?plugin=obfs-local%3Bobfs%3Dhttp%3Bobfs-host%3Dheader.example.com") {
+				t.Fatalf("%s lost the Shadowsocks HTTP plugin: %s", clientType, decoded)
+			}
+		})
+	}
+
+	for _, clientType := range []string{"v2ray-json", "happ", "incy"} {
+		t.Run(clientType, func(t *testing.T) {
+			response, err := service.RenderSubscription(ctx, SubscriptionRenderRequest{Identifier: key, ClientType: clientType})
+			if err != nil {
+				t.Fatal(err)
+			}
+			body := string(response.Body)
+			if !strings.Contains(body, `"protocol": "shadowsocks"`) || !strings.Contains(body, `"type": "http"`) || !strings.Contains(body, `"header.example.com"`) {
+				t.Fatalf("%s lost the Shadowsocks HTTP header: %s", clientType, body)
+			}
+		})
+	}
+
+	for _, clientType := range []string{"clash", "clash-meta", "clash-mi"} {
+		t.Run(clientType, func(t *testing.T) {
+			response, err := service.RenderSubscription(ctx, SubscriptionRenderRequest{Identifier: key, ClientType: clientType})
+			if err != nil {
+				t.Fatal(err)
+			}
+			body := string(response.Body)
+			if !strings.Contains(body, `plugin: "obfs"`) || !strings.Contains(body, `host: "header.example.com"`) {
+				t.Fatalf("%s lost the Shadowsocks HTTP plugin: %s", clientType, body)
+			}
+		})
+	}
+
+	t.Run("sing-box", func(t *testing.T) {
+		response, err := service.RenderSubscription(ctx, SubscriptionRenderRequest{Identifier: key, ClientType: "sing-box"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := string(response.Body)
+		if !strings.Contains(body, `"type": "shadowsocks"`) || !strings.Contains(body, `"plugin": "obfs-local"`) || !strings.Contains(body, `"plugin_opts": "obfs=http;obfs-host=header.example.com"`) {
+			t.Fatalf("sing-box lost the Shadowsocks HTTP plugin: %s", body)
+		}
+	})
+
+	t.Run("outline filters other protocols", func(t *testing.T) {
+		response, err := service.RenderSubscription(ctx, SubscriptionRenderRequest{Identifier: key, ClientType: "outline"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := string(response.Body)
+		if !strings.Contains(body, `ss://`) || strings.Contains(body, `vless://`) {
+			t.Fatalf("unexpected Outline payload: %s", body)
+		}
+	})
+}
+
 func TestSubscriptionInfoIncludesVPNDownloadMaterialAndProtocolEntries(t *testing.T) {
 	service, key := newSubscriptionClientTestService(t)
 	ctx := context.Background()
@@ -448,21 +514,23 @@ func newSubscriptionClientTestService(t *testing.T) (Service, string) {
 			1, 'alice', '0123456789abcdef0123456789abcdef', 'active', 1024, '2026-07-01 10:00:00',
 			10485760, 'no_reset', 1, 1
 		)`,
-		`INSERT INTO proxies (id, user_id, type, settings) VALUES (
-			1, 1, 'vless', '{"id":"11111111-1111-4111-8111-111111111111"}'
-		)`,
+		`INSERT INTO proxies (id, user_id, type, settings) VALUES
+			(1, 1, 'vless', '{"id":"11111111-1111-4111-8111-111111111111"}'),
+			(2, 1, 'shadowsocks', '{"method":"aes-256-gcm","password":"ss-secret"}')`,
 		`INSERT INTO hosts (id, inbound_tag, remark, address, security, alpn, fingerprint, is_disabled, mux_enable, random_user_agent, use_sni_as_host) VALUES
 			(1, 'vless-main', 'xray-edge', 'edge.example.com', 'inbound_default', 'none', 'none', 0, 0, 0, 0),
 			(2, 'ov', 'ov-edge', 'ov.example.com', 'inbound_default', 'none', 'none', 0, 0, 0, 0),
 			(3, 'wg', 'wg-edge', 'wg.example.com', 'inbound_default', 'none', 'none', 0, 0, 0, 0),
 			(4, 'l2tp', 'l2tp-edge', 'l2tp.example.com', 'inbound_default', 'none', 'none', 0, 0, 0, 0),
-			(5, 'pptp', 'pptp-edge', 'pptp.example.com', 'inbound_default', 'none', 'none', 0, 0, 0, 0)`,
+			(5, 'pptp', 'pptp-edge', 'pptp.example.com', 'inbound_default', 'none', 'none', 0, 0, 0, 0),
+			(6, 'ss-http', 'ss-edge', 'ss.example.com', 'inbound_default', 'none', 'none', 0, 0, 0, 0)`,
 		`INSERT INTO service_hosts (service_id, host_id, sort) VALUES
 			(1, 1, 0),
 			(1, 2, 1),
 			(1, 3, 2),
 			(1, 4, 3),
-			(1, 5, 4)`,
+			(1, 5, 4),
+			(1, 6, 5)`,
 		`INSERT INTO nodes (id, address, status, xray_config_mode, xray_config) VALUES
 			(1, '203.0.113.10', 'connected', '', NULL)`,
 	}
@@ -491,6 +559,29 @@ func newSubscriptionClientTestService(t *testing.T) (Service, string) {
 						"path": "/ws",
 						"headers": map[string]any{
 							"Host": "edge.example.com",
+						},
+					},
+				},
+			},
+			{
+				"tag":      "ss-http",
+				"protocol": "shadowsocks",
+				"port":     8388,
+				"settings": map[string]any{
+					"method": "aes-256-gcm",
+				},
+				"streamSettings": map[string]any{
+					"network":  "tcp",
+					"security": "none",
+					"tcpSettings": map[string]any{
+						"header": map[string]any{
+							"type": "http",
+							"request": map[string]any{
+								"path": []any{"/"},
+								"headers": map[string]any{
+									"Host": []any{"header.example.com"},
+								},
+							},
 						},
 					},
 				},
