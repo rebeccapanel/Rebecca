@@ -208,6 +208,18 @@ const liveMetricKeys: Array<keyof NodeType> = [
 	"download_speed",
 ];
 
+const liveNodeKeys: Array<keyof NodeType> = [
+	"status",
+	"message",
+	"xray_version",
+	"node_service_version",
+	"node_install_mode",
+	"node_update_channel",
+	"cpu_cores",
+	"cpu_frequency_hz",
+	...liveMetricKeys,
+];
+
 export type NodeStore = {
 	nodes: NodeType[];
 	addNode: (node: NodeType) => Promise<NodeType>;
@@ -286,18 +298,35 @@ const mergeLiveNodes = (
 			.filter((node) => node.id !== null && node.id !== undefined)
 			.map((node) => node.id),
 	);
+	let changed = false;
 	const merged = current.map((node) => {
 		const live =
 			node.id !== null && node.id !== undefined ? liveByID.get(node.id) : null;
-		return live ? { ...node, ...live } : node;
+		if (!live) return node;
+
+		let mergedNode: NodeType | null = null;
+		for (const key of liveNodeKeys) {
+			const liveValue = live[key];
+			if (liveValue === undefined || Object.is(node[key], liveValue)) {
+				continue;
+			}
+			if (!mergedNode) {
+				mergedNode = { ...node };
+			}
+			(mergedNode as Record<keyof NodeType, unknown>)[key] = liveValue;
+		}
+		if (!mergedNode) return node;
+		changed = true;
+		return mergedNode;
 	});
 	for (const node of liveNodes) {
 		if (node.id === null || node.id === undefined || currentIDs.has(node.id)) {
 			continue;
 		}
 		merged.push(node);
+		changed = true;
 	}
-	return merged;
+	return changed ? merged : current;
 };
 
 export const useNodeMetricsStream = (enabled = true) => {
