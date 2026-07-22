@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"time"
 
 	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
 	userapp "github.com/rebeccapanel/rebecca/internal/app/user"
@@ -218,6 +219,62 @@ VALUES
 		t.Fatalf("cleanup bulk status = %d body=%s", rec.Code, rec.Body.String())
 	}
 	assertDBString(t, db, `SELECT status FROM users WHERE username = 'bulk_c'`, "deleted")
+}
+
+func TestBulkDeleteUsersConditionsAndPreview(t *testing.T) {
+	server, db, token := testUserMutationServer(t)
+	old := time.Now().UTC().Add(-120 * 24 * time.Hour)
+	recent := time.Now().UTC().Add(-24 * time.Hour)
+	if _, err := db.Exec(`
+INSERT INTO users (id, username, admin_id, status, credential_key, created_at, online_at, last_status_change, service_id)
+VALUES
+	(70, 'old_expired', 1, 'expired', 'old-key', ?, ?, ?, 1),
+	(71, 'recent_expired', 1, 'expired', 'recent-key', ?, ?, ?, 1),
+	(72, 'named_target', 1, 'active', 'named-key', ?, ?, ?, 1),
+	(73, 'old_active', 1, 'active', 'active-key', ?, ?, ?, 1)`,
+		old, old, old,
+		recent, recent, recent,
+		recent, recent, recent,
+		old, old, old,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := adminJSONRequest(t, server, http.MethodPost, "/api/users/actions", token, `{"action":"delete_users","scope":["expired"],"status_age_days":90,"dry_run":true}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("delete preview status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	var preview userapp.BulkUsersActionResult
+	if err := json.Unmarshal(rec.Body.Bytes(), &preview); err != nil {
+		t.Fatal(err)
+	}
+	if preview.Count != 1 {
+		t.Fatalf("preview count = %d, want 1", preview.Count)
+	}
+	assertDBString(t, db, `SELECT status FROM users WHERE username = 'old_expired'`, "expired")
+
+	rec = adminJSONRequest(t, server, http.MethodPost, "/api/users/actions", token, `{"action":"delete_users","scope":["expired"],"status_age_days":90}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("conditional delete status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertDBString(t, db, `SELECT status FROM users WHERE username = 'old_expired'`, "deleted")
+	assertDBString(t, db, `SELECT status FROM users WHERE username = 'recent_expired'`, "expired")
+	assertUserOperationCount(t, db, "remove_user", "old_expired", 1)
+
+	rec = adminJSONRequest(t, server, http.MethodPost, "/api/users/actions", token, `{"action":"disable_users","usernames":["old_active"],"last_online_days":90}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("conditional update status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertDBString(t, db, `SELECT status FROM users WHERE username = 'old_active'`, "disabled")
+	assertDBString(t, db, `SELECT status FROM users WHERE username = 'named_target'`, "active")
+	assertUserOperationCount(t, db, "update_user", "old_active", 1)
+
+	rec = adminJSONRequest(t, server, http.MethodPost, "/api/users/actions", token, `{"action":"delete_users","usernames":["named_target"]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("named delete status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	assertDBString(t, db, `SELECT status FROM users WHERE username = 'named_target'`, "deleted")
+	assertUserOperationCount(t, db, "remove_user", "named_target", 1)
 }
 
 func TestServiceScopedBulkActionsGoNative(t *testing.T) {

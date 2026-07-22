@@ -197,6 +197,7 @@ func TestLegacyProxiesCredentialKeyCompatibility(t *testing.T) {
 
 func TestBulkUsersActionValidation(t *testing.T) {
 	days := int64(3)
+	conditionDays := int64(14)
 	gb := 2.5
 	serviceID := int64(9)
 	nullService := true
@@ -210,6 +211,9 @@ func TestBulkUsersActionValidation(t *testing.T) {
 		{name: "cleanup rejects active", payload: BulkUsersActionRequest{Action: AdvancedUserActionCleanupStatus, Days: &days, Statuses: []UserStatus{UserStatusActive}}, wantErr: "cleanup_status"},
 		{name: "scope strips deleted", payload: BulkUsersActionRequest{Action: AdvancedUserActionDisableUsers, Scope: []UserStatus{UserStatusDeleted}}, wantErr: "scope"},
 		{name: "service null conflicts service id", payload: BulkUsersActionRequest{Action: AdvancedUserActionDisableUsers, ServiceID: &serviceID, ServiceIDIsNull: &nullService}, wantErr: "cannot both"},
+		{name: "delete needs target", payload: BulkUsersActionRequest{Action: AdvancedUserActionDeleteUsers}, wantErr: "requires usernames"},
+		{name: "status age needs scope", payload: BulkUsersActionRequest{Action: AdvancedUserActionDeleteUsers, StatusAgeDays: &conditionDays}, wantErr: "requires at least one status"},
+		{name: "valid conditional delete", payload: BulkUsersActionRequest{Action: AdvancedUserActionDeleteUsers, Scope: []UserStatus{UserStatusExpired}, StatusAgeDays: &conditionDays}},
 		{name: "valid traffic", payload: BulkUsersActionRequest{Action: AdvancedUserActionIncreaseTraffic, Gigabytes: &gb}},
 	}
 	for _, tt := range tests {

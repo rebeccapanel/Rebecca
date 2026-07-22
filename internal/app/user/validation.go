@@ -102,6 +102,20 @@ func ValidateBulkUsersAction(payload *BulkUsersActionRequest) error {
 	if payload == nil {
 		return ValidationError{Detail: "payload is required"}
 	}
+	allowedActions := map[AdvancedUserAction]struct{}{
+		AdvancedUserActionExtendExpire:    {},
+		AdvancedUserActionReduceExpire:    {},
+		AdvancedUserActionIncreaseTraffic: {},
+		AdvancedUserActionDecreaseTraffic: {},
+		AdvancedUserActionCleanupStatus:   {},
+		AdvancedUserActionActivateUsers:   {},
+		AdvancedUserActionDisableUsers:    {},
+		AdvancedUserActionChangeService:   {},
+		AdvancedUserActionDeleteUsers:     {},
+	}
+	if _, ok := allowedActions[payload.Action]; !ok {
+		return ValidationError{Detail: "unsupported bulk action"}
+	}
 	needsDays := map[AdvancedUserAction]struct{}{
 		AdvancedUserActionExtendExpire:  {},
 		AdvancedUserActionReduceExpire:  {},
@@ -161,6 +175,50 @@ func ValidateBulkUsersAction(payload *BulkUsersActionRequest) error {
 	}
 	if payload.ServiceIDIsNull != nil && *payload.ServiceIDIsNull && payload.ServiceID != nil {
 		return ValidationError{Detail: "service_id and service_id_is_null cannot both be set"}
+	}
+	if len(payload.Usernames) > 500 {
+		return ValidationError{Detail: "at most 500 usernames can be targeted per bulk action"}
+	}
+	if len(payload.Usernames) > 0 {
+		seen := map[string]struct{}{}
+		usernames := make([]string, 0, len(payload.Usernames))
+		for _, value := range payload.Usernames {
+			username := strings.TrimSpace(value)
+			if err := validateUsername(username); err != nil {
+				return err
+			}
+			key := strings.ToLower(username)
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			usernames = append(usernames, username)
+		}
+		payload.Usernames = usernames
+	}
+	for _, item := range []struct {
+		name  string
+		value *int64
+	}{
+		{name: "last_online_days", value: payload.LastOnlineDays},
+		{name: "status_age_days", value: payload.StatusAgeDays},
+		{name: "created_before_days", value: payload.CreatedBeforeDays},
+	} {
+		if item.value != nil && *item.value <= 0 {
+			return ValidationError{Detail: item.name + " must be a positive integer"}
+		}
+	}
+	if payload.StatusAgeDays != nil && len(payload.Scope) == 0 {
+		return ValidationError{Detail: "status_age_days requires at least one status in scope"}
+	}
+	if payload.DryRun && payload.Action != AdvancedUserActionDeleteUsers {
+		return ValidationError{Detail: "dry_run is only supported for delete_users"}
+	}
+	if payload.Action == AdvancedUserActionDeleteUsers {
+		hasTarget := len(payload.Usernames) > 0 || payload.LastOnlineDays != nil || payload.StatusAgeDays != nil || payload.CreatedBeforeDays != nil
+		if !hasTarget {
+			return ValidationError{Detail: "delete_users requires usernames or at least one time-based condition"}
+		}
 	}
 	return nil
 }

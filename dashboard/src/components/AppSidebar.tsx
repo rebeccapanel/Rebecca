@@ -40,7 +40,12 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, useHref, useLocation, useNavigate } from "react-router-dom";
-import { AdminRole, AdminSection, UserPermissionToggle } from "types/Admin";
+import {
+	AdminManagementPermission,
+	AdminRole,
+	AdminSection,
+	UserPermissionToggle,
+} from "types/Admin";
 import {
 	getTutorialManifestUrl,
 	getTutorialSeenKey,
@@ -122,6 +127,11 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 	const isPrivilegedAdmin = isFullAccess || userData.role === AdminRole.Sudo;
 	const canUseBulkActions =
 		isFullAccess ||
+		Boolean(
+			userData.permissions?.admin_management?.[
+				AdminManagementPermission.Edit
+			],
+		) ||
 		Boolean(
 			userData.permissions?.users?.[UserPermissionToggle.Create] ||
 				userData.permissions?.users?.[UserPermissionToggle.Delete] ||

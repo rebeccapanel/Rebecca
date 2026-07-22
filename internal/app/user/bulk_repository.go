@@ -12,6 +12,7 @@ import (
 )
 
 const NodeOperationSyncConfig = "sync_config"
+const maxBulkDeleteUsers = 500
 
 type bulkUserFilter struct {
 	where []string
@@ -69,12 +70,30 @@ func (r Repository) bulkUsersActionMutation(ctx context.Context, requester admin
 	if err := r.ensureBulkActionAllowedTx(ctx, tx, requester, targetAdmin, payload); err != nil {
 		return BulkUsersActionResult{}, err
 	}
-	affectedUserIDs, err := r.bulkAffectedUserIDsTx(ctx, tx, targetAdmin, payload)
-	if err != nil {
-		return BulkUsersActionResult{}, err
+	var result BulkUsersActionResult
+	var affectedUserIDs []int64
+	if payload.Action == AdvancedUserActionDeleteUsers {
+		if payload.DryRun {
+			count, err := r.bulkMatchingUserCountTx(ctx, tx, targetAdmin, payload)
+			if err != nil {
+				return BulkUsersActionResult{}, err
+			}
+			return BulkUsersActionResult{Detail: "Users matching the selected conditions", Count: count}, nil
+		}
+		count, userIDs, err := r.deleteBulkUsersTx(ctx, tx, requester, targetAdmin, payload)
+		if err != nil {
+			return BulkUsersActionResult{}, err
+		}
+		result = BulkUsersActionResult{Detail: "Users deleted", Count: count}
+		affectedUserIDs = userIDs
+	} else {
+		var err error
+		affectedUserIDs, err = r.bulkAffectedUserIDsTx(ctx, tx, targetAdmin, payload)
+		if err != nil {
+			return BulkUsersActionResult{}, err
+		}
 	}
 
-	var result BulkUsersActionResult
 	switch payload.Action {
 	case AdvancedUserActionExtendExpire:
 		count, err := r.adjustBulkExpireTx(ctx, tx, targetAdmin, payload, *payload.Days*86400)
@@ -135,14 +154,17 @@ func (r Repository) bulkUsersActionMutation(ctx context.Context, requester admin
 			return BulkUsersActionResult{}, err
 		}
 		result = BulkUsersActionResult{Detail: detail, Count: count}
+	case AdvancedUserActionDeleteUsers:
 	default:
 		return BulkUsersActionResult{}, clientError(400, "Unsupported action")
 	}
 
-	now := time.Now().UTC()
-	for _, userID := range affectedUserIDs {
-		if err := r.enqueueUserOperationForNodesTx(ctx, tx, NodeOperationUpdateUser, userID, now); err != nil {
-			return BulkUsersActionResult{}, err
+	if payload.Action != AdvancedUserActionDeleteUsers {
+		now := time.Now().UTC()
+		for _, userID := range affectedUserIDs {
+			if err := r.enqueueUserOperationForNodesTx(ctx, tx, NodeOperationUpdateUser, userID, now); err != nil {
+				return BulkUsersActionResult{}, err
+			}
 		}
 	}
 	if err := tx.Commit(); err != nil {
@@ -179,6 +201,8 @@ func (r Repository) bulkAffectedUserIDsTx(ctx context.Context, tx *sql.Tx, targe
 		}
 		filter.where = append(filter.where, "(service_id IS NULL OR service_id != ?)")
 		filter.args = append(filter.args, *payload.TargetServiceID)
+	case AdvancedUserActionDeleteUsers:
+		filter.addStatuses("status", payload.Scope)
 	default:
 		return nil, nil
 	}
@@ -199,9 +223,85 @@ func (r Repository) bulkAffectedUserIDsTx(ctx context.Context, tx *sql.Tx, targe
 	return ids, rows.Err()
 }
 
+func (r Repository) bulkMatchingUserCountTx(ctx context.Context, tx *sql.Tx, targetAdmin *adminapp.Admin, payload BulkUsersActionRequest) (int64, error) {
+	filter := r.bulkDeleteFilter(targetAdmin, payload)
+	whereSQL, args := filter.sql()
+	var count int64
+	err := tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM users WHERE "+whereSQL, args...).Scan(&count)
+	return count, err
+}
+
+func (r Repository) deleteBulkUsersTx(ctx context.Context, tx *sql.Tx, requester adminapp.Admin, targetAdmin *adminapp.Admin, payload BulkUsersActionRequest) (int64, []int64, error) {
+	filter := r.bulkDeleteFilter(targetAdmin, payload)
+	whereSQL, args := filter.sql()
+	args = append(args, maxBulkDeleteUsers+1)
+	rows, err := tx.QueryContext(ctx, `
+SELECT id, username, status, COALESCE(used_traffic, 0), data_limit, service_id, admin_id
+FROM users
+WHERE `+whereSQL+`
+ORDER BY id
+LIMIT ?`, args...)
+	if err != nil {
+		return 0, nil, err
+	}
+	defer rows.Close()
+
+	users := make([]UserSnapshot, 0, maxBulkDeleteUsers+1)
+	for rows.Next() {
+		var snapshot UserSnapshot
+		var status string
+		var dataLimit, serviceID, adminID sql.NullInt64
+		if err := rows.Scan(&snapshot.ID, &snapshot.Username, &status, &snapshot.UsedTraffic, &dataLimit, &serviceID, &adminID); err != nil {
+			return 0, nil, err
+		}
+		snapshot.Status = UserStatus(status)
+		snapshot.DataLimit = int64Ptr(dataLimit)
+		snapshot.ServiceID = int64Ptr(serviceID)
+		snapshot.AdminID = int64Ptr(adminID)
+		users = append(users, snapshot)
+	}
+	if err := rows.Err(); err != nil {
+		return 0, nil, err
+	}
+	if len(users) > maxBulkDeleteUsers {
+		return 0, nil, clientError(400, fmt.Sprintf("The selected conditions match more than %d users. Narrow the conditions and try again.", maxBulkDeleteUsers))
+	}
+
+	now := time.Now().UTC()
+	userIDs := make([]int64, 0, len(users))
+	for _, snapshot := range users {
+		if err := EnsureUserDeleteAllowed(requester, snapshot); err != nil {
+			return 0, nil, permissionHTTPError(err)
+		}
+		if err := r.recordDeletedUserUsageCreditTx(ctx, tx, requester, snapshot, now); err != nil {
+			return 0, nil, err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE users SET status = ?, last_status_change = ? WHERE id = ?`, string(UserStatusDeleted), dbTime(now), snapshot.ID); err != nil {
+			return 0, nil, err
+		}
+		if err := r.enqueueUserOperationForNodesTx(ctx, tx, NodeOperationRemoveUser, snapshot.ID, now); err != nil {
+			return 0, nil, err
+		}
+		userIDs = append(userIDs, snapshot.ID)
+	}
+	return int64(len(userIDs)), userIDs, nil
+}
+
+func (r Repository) bulkDeleteFilter(targetAdmin *adminapp.Admin, payload BulkUsersActionRequest) bulkUserFilter {
+	filter := r.bulkFilter(targetAdmin, payload)
+	filter.addStatuses("status", payload.Scope)
+	return filter
+}
+
 func (r Repository) ensureBulkActionAllowedTx(ctx context.Context, tx *sql.Tx, requester adminapp.Admin, targetAdmin *adminapp.Admin, payload BulkUsersActionRequest) error {
-	if err := EnsureUserPermission(requester, UserPermissionAdvancedActions); err != nil {
-		return permissionHTTPError(err)
+	if payload.Action == AdvancedUserActionDeleteUsers {
+		if err := EnsureUserPermission(requester, UserPermissionDelete); err != nil {
+			return permissionHTTPError(err)
+		}
+	} else {
+		if err := EnsureUserPermission(requester, UserPermissionAdvancedActions); err != nil {
+			return permissionHTTPError(err)
+		}
 	}
 	if payload.Action != AdvancedUserActionActivateUsers && payload.Action != AdvancedUserActionDisableUsers {
 		if err := EnsureUserManagementAvailable(requester, "run this bulk action"); err != nil {
@@ -522,6 +622,28 @@ func (r Repository) bulkFilter(targetAdmin *adminapp.Admin, payload BulkUsersAct
 		filter.args = append(filter.args, *payload.ServiceID)
 	} else if payload.ServiceIDIsNull != nil && *payload.ServiceIDIsNull {
 		filter.where = append(filter.where, "service_id IS NULL")
+	}
+	if len(payload.Usernames) > 0 {
+		placeholders := make([]string, 0, len(payload.Usernames))
+		for _, username := range payload.Usernames {
+			placeholders = append(placeholders, "?")
+			filter.args = append(filter.args, strings.ToLower(username))
+		}
+		filter.where = append(filter.where, "LOWER(username) IN ("+strings.Join(placeholders, ",")+")")
+	}
+	now := time.Now().UTC()
+	if payload.LastOnlineDays != nil {
+		filter.where = append(filter.where, "online_at IS NOT NULL", "online_at <= ?")
+		filter.args = append(filter.args, dbTime(now.Add(-time.Duration(*payload.LastOnlineDays)*24*time.Hour)))
+	}
+	if payload.StatusAgeDays != nil {
+		filter.addStatuses("status", payload.Scope)
+		filter.where = append(filter.where, "last_status_change IS NOT NULL", "last_status_change <= ?")
+		filter.args = append(filter.args, dbTime(now.Add(-time.Duration(*payload.StatusAgeDays)*24*time.Hour)))
+	}
+	if payload.CreatedBeforeDays != nil {
+		filter.where = append(filter.where, "created_at <= ?")
+		filter.args = append(filter.args, dbTime(now.Add(-time.Duration(*payload.CreatedBeforeDays)*24*time.Hour)))
 	}
 	return filter
 }
