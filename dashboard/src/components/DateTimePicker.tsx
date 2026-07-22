@@ -7,6 +7,12 @@ import {
 	HStack,
 	IconButton,
 	Input,
+	Modal,
+	ModalBody,
+	ModalCloseButton,
+	ModalContent,
+	ModalHeader,
+	ModalOverlay,
 	Popover,
 	PopoverBody,
 	PopoverContent,
@@ -20,6 +26,7 @@ import {
 import { ChevronLeftIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
 import dayjs from "dayjs";
 import { type FC, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { NumericInput } from "./common/NumericInput";
 
 interface DateTimePickerProps {
@@ -37,11 +44,13 @@ interface DateTimePickerProps {
 export const DateTimePicker: FC<DateTimePickerProps> = ({
 	value,
 	onChange,
-	placeholder = "Select date",
+	placeholder,
 	disabled = false,
 	minDate,
-	quickSelects: _quickSelects = [],
+	quickSelects = [],
 }) => {
+	const { t } = useTranslation();
+	const inputPlaceholder = placeholder ?? t("dateTimePicker.selectDate");
 	const { isOpen, onOpen, onClose } = useDisclosure();
 	const isMobile = useBreakpointValue({ base: true, md: false }) ?? false;
 	const [displayMonth, setDisplayMonth] = useState(() =>
@@ -134,6 +143,18 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
 		// Don't close the popover so user can click multiple times
 	};
 
+	const builtInQuickSelects = [
+		{ label: t("dateTimePicker.addDay"), onClick: () => handleQuickSelect(1) },
+		{ label: t("dateTimePicker.addMonth"), onClick: () => handleQuickSelect(30) },
+		{ label: t("dateTimePicker.addThreeMonths"), onClick: () => handleQuickSelect(90) },
+		{ label: t("dateTimePicker.addSixMonths"), onClick: () => handleQuickSelect(180) },
+		{ label: t("dateTimePicker.addYear"), onClick: () => handleQuickSelect(365) },
+		{ label: t("dateTimePicker.addThreeYears"), onClick: () => handleQuickSelect(1095) },
+	];
+
+	const effectiveQuickSelects =
+		quickSelects.length > 0 ? quickSelects : builtInQuickSelects;
+
 	const renderDays = () => {
 		const days = [];
 		const minDay = minDate ? dayjs(minDate) : null;
@@ -185,6 +206,198 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
 	};
 
 	const displayValue = value ? dayjs(value).format("YYYY/MM/DD HH:mm") : "";
+	const mobileTrigger = (
+		<Button
+			type="button"
+			variant="outline"
+			size="sm"
+			w="full"
+			h="32px"
+			justifyContent="flex-start"
+			fontWeight="normal"
+			px={3}
+			isDisabled={disabled}
+			onClick={onOpen}
+			bg="transparent"
+			_dark={{ bg: "transparent" }}
+		>
+			<Text
+				as="span"
+				noOfLines={1}
+				color={displayValue ? "inherit" : "gray.500"}
+			>
+				{displayValue || inputPlaceholder}
+			</Text>
+		</Button>
+	);
+
+	const pickerContent = (
+		<Flex direction={{ base: "column", md: "row" }}>
+			{/* Quick Select Sidebar */}
+			<Flex
+				gap={1}
+				align="stretch"
+				px={2}
+				py={2}
+				bg={quickSelectBg}
+				minW={{ base: "0", md: "100px" }}
+				maxW={{ base: "100%", md: "110px" }}
+				borderRight={{ base: "0", md: "1px solid" }}
+				borderBottom={{ base: "1px solid", md: "0" }}
+				borderColor={quickSelectBorderColor}
+				flexShrink={0}
+				flexDirection={{ base: "row", md: "column" }}
+				flexWrap={{ base: "wrap", md: "nowrap" }}
+			>
+				{effectiveQuickSelects.map((option) => (
+					<Button
+						key={option.label}
+						variant="ghost"
+						justifyContent={{ base: "center", md: "flex-start" }}
+						size="sm"
+						fontSize="xs"
+						whiteSpace="nowrap"
+						flex={{ base: "1 1 calc(33.333% - 4px)", md: "0 0 auto" }}
+						minW={{ base: "82px", md: "auto" }}
+						onClick={option.onClick}
+						_hover={{ bg: quickSelectHoverBg }}
+					>
+						{option.label}
+					</Button>
+				))}
+			</Flex>
+
+			{/* Calendar */}
+			<Box flex="1" p={{ base: 2, md: 2 }} minW={0}>
+				{/* Month Navigation */}
+				<Flex justify="space-between" align="center" mb={2}>
+					<HStack spacing={1}>
+						<IconButton
+							aria-label={t("dateTimePicker.previousMonth")}
+							size="xs"
+							variant="ghost"
+							icon={<ChevronLeftIcon width={14} height={14} />}
+							onClick={prevMonth}
+							_hover={{ bg: quickSelectHoverBg }}
+						/>
+						<IconButton
+							aria-label={t("dateTimePicker.nextMonth")}
+							size="xs"
+							variant="ghost"
+							icon={<ChevronRightIcon width={14} height={14} />}
+							onClick={nextMonth}
+							_hover={{ bg: quickSelectHoverBg }}
+						/>
+					</HStack>
+					<Text fontSize="xs" fontWeight="semibold">
+						{displayMonth.format("MMMM YYYY")}
+					</Text>
+				</Flex>
+
+				{/* Day Names */}
+				<Grid templateColumns="repeat(7, 1fr)" gap={0.5} mb={1}>
+					{Array.from({ length: 7 }, (_, index) =>
+						displayMonth.startOf("week").add(index, "day").format("dd"),
+					).map((day) => (
+						<GridItem key={day}>
+							<Text
+								fontSize="2xs"
+								textAlign="center"
+								color={dayNameColor}
+								fontWeight="semibold"
+							>
+								{day}
+							</Text>
+						</GridItem>
+					))}
+				</Grid>
+
+				{/* Days Grid */}
+				<Grid templateColumns="repeat(7, 1fr)" gap={0.5} mb={2}>
+					{renderDays()}
+				</Grid>
+
+				{/* Time Picker */}
+				<HStack
+					spacing={2}
+					justify="center"
+					pt={2}
+					borderTop="1px solid"
+					borderColor={timeDividerColor}
+				>
+					<Text fontSize="2xs" color={timeLabelColor}>
+						{t("dateTimePicker.time")}
+					</Text>
+					<NumericInput
+						size="xs"
+						w="45px"
+						min={0}
+						max={23}
+						value={selectedTime.hour}
+						onChange={(value) => {
+							const h = Math.max(0, Math.min(23, parseInt(value, 10) || 0));
+							handleTimeChange(h, selectedTime.minute);
+						}}
+						fieldProps={{ textAlign: "center", fontSize: "xs" }}
+					/>
+					<Text fontSize="xs">:</Text>
+					<NumericInput
+						size="xs"
+						w="45px"
+						min={0}
+						max={59}
+						value={selectedTime.minute}
+						onChange={(value) => {
+							const m = Math.max(0, Math.min(59, parseInt(value, 10) || 0));
+							handleTimeChange(selectedTime.hour, m);
+						}}
+						fieldProps={{ textAlign: "center", fontSize: "xs" }}
+					/>
+				</HStack>
+
+				{/* Actions */}
+				<HStack spacing={2} justify="flex-end" mt={2}>
+					<Button size="xs" variant="ghost" onClick={handleClear}>
+						{t("clear")}
+					</Button>
+					<Button size="xs" colorScheme="primary" onClick={handleClose}>
+						{t("dateTimePicker.done")}
+					</Button>
+				</HStack>
+			</Box>
+		</Flex>
+	);
+
+	if (isMobile) {
+		return (
+			<>
+				{mobileTrigger}
+				<Modal
+					isOpen={isOpen}
+					onClose={handleClose}
+					size="full"
+					motionPreset="slideInBottom"
+				>
+					<ModalOverlay />
+					<ModalContent
+						m={0}
+						minH="100dvh"
+						bg={popoverBg}
+						color={popoverText}
+						borderRadius={0}
+					>
+						<ModalHeader fontSize="sm" py={3} pe={12}>
+							{inputPlaceholder}
+						</ModalHeader>
+						<ModalCloseButton />
+						<ModalBody p={0} overflowY="auto">
+							{pickerContent}
+						</ModalBody>
+					</ModalContent>
+				</Modal>
+			</>
+		);
+	}
 
 	return (
 		<Popover
@@ -207,7 +420,7 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
 			<PopoverTrigger>
 				<Input
 					value={displayValue}
-					placeholder={placeholder}
+					placeholder={inputPlaceholder}
 					size="sm"
 					isReadOnly
 					cursor="pointer"
@@ -217,8 +430,9 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
 					_dark={{ bg: "transparent" }}
 				/>
 			</PopoverTrigger>
-			<Portal>
+			<Portal appendToParentPortal={false}>
 				<PopoverContent
+					className="date-time-picker-popover"
 					w={{
 						base: "calc(100vw - 16px)",
 						sm: "min(420px, calc(100vw - 16px))",
@@ -230,211 +444,11 @@ export const DateTimePicker: FC<DateTimePickerProps> = ({
 					bg={popoverBg}
 					borderColor={popoverBorderColor}
 					color={popoverText}
-					zIndex={17002}
+					zIndex={17020}
 					_focus={{ boxShadow: "none" }}
 				>
 					<PopoverBody p={0} maxH="inherit" overflowY="auto">
-						<Flex direction={{ base: "column", md: "row" }}>
-							{/* Quick Select Sidebar */}
-							<Flex
-								gap={1}
-								align="stretch"
-								px={2}
-								py={2}
-								bg={quickSelectBg}
-								minW={{ base: "0", md: "100px" }}
-								maxW={{ base: "100%", md: "110px" }}
-								borderRight={{ base: "0", md: "1px solid" }}
-								borderBottom={{ base: "1px solid", md: "0" }}
-								borderColor={quickSelectBorderColor}
-								flexShrink={0}
-								flexDirection={{ base: "row", md: "column" }}
-								flexWrap={{ base: "wrap", md: "nowrap" }}
-							>
-								{/* Built-in Quick Selects */}
-								<Button
-									variant="ghost"
-									justifyContent={{ base: "center", md: "flex-start" }}
-									size="sm"
-									fontSize="xs"
-									whiteSpace="nowrap"
-									flex={{ base: "1 1 calc(33.333% - 4px)", md: "0 0 auto" }}
-									minW={{ base: "82px", md: "auto" }}
-									onClick={() => handleQuickSelect(1)}
-									_hover={{ bg: quickSelectHoverBg }}
-								>
-									+1 Day
-								</Button>
-								<Button
-									variant="ghost"
-									justifyContent={{ base: "center", md: "flex-start" }}
-									size="sm"
-									fontSize="xs"
-									whiteSpace="nowrap"
-									flex={{ base: "1 1 calc(33.333% - 4px)", md: "0 0 auto" }}
-									minW={{ base: "82px", md: "auto" }}
-									onClick={() => handleQuickSelect(30)}
-									_hover={{ bg: quickSelectHoverBg }}
-								>
-									+1 Month
-								</Button>
-								<Button
-									variant="ghost"
-									justifyContent={{ base: "center", md: "flex-start" }}
-									size="sm"
-									fontSize="xs"
-									whiteSpace="nowrap"
-									flex={{ base: "1 1 calc(33.333% - 4px)", md: "0 0 auto" }}
-									minW={{ base: "82px", md: "auto" }}
-									onClick={() => handleQuickSelect(90)}
-									_hover={{ bg: quickSelectHoverBg }}
-								>
-									+3 Months
-								</Button>
-								<Button
-									variant="ghost"
-									justifyContent={{ base: "center", md: "flex-start" }}
-									size="sm"
-									fontSize="xs"
-									whiteSpace="nowrap"
-									flex={{ base: "1 1 calc(33.333% - 4px)", md: "0 0 auto" }}
-									minW={{ base: "82px", md: "auto" }}
-									onClick={() => handleQuickSelect(180)}
-									_hover={{ bg: quickSelectHoverBg }}
-								>
-									+6 Months
-								</Button>
-								<Button
-									variant="ghost"
-									justifyContent={{ base: "center", md: "flex-start" }}
-									size="sm"
-									fontSize="xs"
-									whiteSpace="nowrap"
-									flex={{ base: "1 1 calc(33.333% - 4px)", md: "0 0 auto" }}
-									minW={{ base: "82px", md: "auto" }}
-									onClick={() => handleQuickSelect(365)}
-									_hover={{ bg: quickSelectHoverBg }}
-								>
-									+1 Year
-								</Button>
-								<Button
-									variant="ghost"
-									justifyContent={{ base: "center", md: "flex-start" }}
-									size="sm"
-									fontSize="xs"
-									whiteSpace="nowrap"
-									flex={{ base: "1 1 calc(33.333% - 4px)", md: "0 0 auto" }}
-									minW={{ base: "82px", md: "auto" }}
-									onClick={() => handleQuickSelect(1095)}
-									_hover={{ bg: quickSelectHoverBg }}
-								>
-									+3 Years
-								</Button>
-							</Flex>
-
-							{/* Calendar */}
-							<Box flex="1" p={{ base: 2, md: 2 }} minW={0}>
-								{/* Month Navigation */}
-								<Flex justify="space-between" align="center" mb={2}>
-									<HStack spacing={1}>
-										<IconButton
-											aria-label="Previous month"
-											size="xs"
-											variant="ghost"
-											icon={<ChevronLeftIcon width={14} height={14} />}
-											onClick={prevMonth}
-											_hover={{ bg: quickSelectHoverBg }}
-										/>
-										<IconButton
-											aria-label="Next month"
-											size="xs"
-											variant="ghost"
-											icon={<ChevronRightIcon width={14} height={14} />}
-											onClick={nextMonth}
-											_hover={{ bg: quickSelectHoverBg }}
-										/>
-									</HStack>
-									<Text fontSize="xs" fontWeight="semibold">
-										{displayMonth.format("MMMM YYYY")}
-									</Text>
-								</Flex>
-
-								{/* Day Names */}
-								<Grid templateColumns="repeat(7, 1fr)" gap={0.5} mb={1}>
-									{["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => (
-										<GridItem key={day}>
-											<Text
-												fontSize="2xs"
-												textAlign="center"
-												color={dayNameColor}
-												fontWeight="semibold"
-											>
-												{day}
-											</Text>
-										</GridItem>
-									))}
-								</Grid>
-
-								{/* Days Grid */}
-								<Grid templateColumns="repeat(7, 1fr)" gap={0.5} mb={2}>
-									{renderDays()}
-								</Grid>
-
-								{/* Time Picker */}
-								<HStack
-									spacing={2}
-									justify="center"
-									pt={2}
-									borderTop="1px solid"
-									borderColor={timeDividerColor}
-								>
-									<Text fontSize="2xs" color={timeLabelColor}>
-										Time:
-									</Text>
-									<NumericInput
-										size="xs"
-										w="45px"
-										min={0}
-										max={23}
-										value={selectedTime.hour}
-										onChange={(value) => {
-											const h = Math.max(
-												0,
-												Math.min(23, parseInt(value, 10) || 0),
-											);
-											handleTimeChange(h, selectedTime.minute);
-										}}
-										fieldProps={{ textAlign: "center", fontSize: "xs" }}
-									/>
-									<Text fontSize="xs">:</Text>
-									<NumericInput
-										size="xs"
-										w="45px"
-										min={0}
-										max={59}
-										value={selectedTime.minute}
-										onChange={(value) => {
-											const m = Math.max(
-												0,
-												Math.min(59, parseInt(value, 10) || 0),
-											);
-											handleTimeChange(selectedTime.hour, m);
-										}}
-										fieldProps={{ textAlign: "center", fontSize: "xs" }}
-									/>
-								</HStack>
-
-								{/* Actions */}
-								<HStack spacing={2} justify="flex-end" mt={2}>
-									<Button size="xs" variant="ghost" onClick={handleClear}>
-										Clear
-									</Button>
-									<Button size="xs" colorScheme="primary" onClick={handleClose}>
-										Done
-									</Button>
-								</HStack>
-							</Box>
-						</Flex>
+						{pickerContent}
 					</PopoverBody>
 				</PopoverContent>
 			</Portal>

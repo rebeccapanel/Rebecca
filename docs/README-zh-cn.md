@@ -276,8 +276,6 @@ server {
 
 | 变量                                     | 描述                                                                                                                      |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| SUDO_USERNAME                            | Bootstrap 管理员用户名。                                                                                                  |
-| SUDO_PASSWORD                            | Bootstrap 管理员密码。                                                                                                    |
 | SQLALCHEMY_DATABASE_URL                  | 数据库 URL；Go runtime 仍保留这个 legacy 名称以兼容旧安装。                                                               |
 | UVICORN_HOST                             | Go gateway 监听主机（默认：`0.0.0.0`）。                                                                                  |
 | UVICORN_PORT                             | Go gateway 监听端口（默认：`8000`）。                                                                                     |

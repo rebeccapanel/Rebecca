@@ -2,7 +2,6 @@ import {
 	Box,
 	chakra,
 	HStack,
-	Select,
 	Spinner,
 	Stack,
 	Text,
@@ -10,6 +9,7 @@ import {
 	useColorMode,
 	VStack,
 } from "@chakra-ui/react";
+import { PanelSelect as Select } from "components/common/PanelSelect";
 import { InformationCircleIcon } from "@heroicons/react/24/outline";
 import type { ApexOptions } from "apexcharts";
 import { ChartBox } from "components/common/ChartBox";
@@ -466,7 +466,7 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 	const areaSeries = useMemo(
 		() => [
 			{
-				name: t("services.usageSeries", "Usage"),
+				name: t("services.usageSeries"),
 				data: timeseries.map((point) => point.used_traffic),
 			},
 		],
@@ -478,7 +478,7 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 			buildAreaChartOptions(
 				colorMode,
 				categories,
-				t("services.usageYAxis", "Usage"),
+				t("services.usageYAxis"),
 			),
 		[categories, colorMode, t],
 	);
@@ -487,7 +487,7 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 		() =>
 			adminUsage.map((item) => ({
 				value: item.admin_id === null ? "null" : String(item.admin_id),
-				label: item.username || t("services.unassignedAdmin", "Unassigned"),
+				label: item.username || t("services.unassignedAdmin"),
 			})),
 		[adminUsage, t],
 	);
@@ -499,7 +499,7 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 			adminSelectOptions.find((option) => option.value === targetValue)
 				?.label ??
 			(selectedAdminId === null
-				? t("services.unassignedAdmin", "Unassigned")
+				? t("services.unassignedAdmin")
 				: "")
 		);
 	}, [adminSelectOptions, selectedAdminId, t]);
@@ -515,7 +515,7 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 	const adminTimeseriesSeries = useMemo(
 		() => [
 			{
-				name: t("services.usageSeries", "Usage"),
+				name: t("services.usageSeries"),
 				data: adminTimeseries.map((point) => point.used_traffic),
 			},
 		],
@@ -527,7 +527,7 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 			buildAreaChartOptions(
 				colorMode,
 				adminTimeseriesCategories,
-				t("services.usageYAxis", "Usage"),
+				t("services.usageYAxis"),
 			),
 		[adminTimeseriesCategories, colorMode, t],
 	);
@@ -548,7 +548,7 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 	const donutLabels = useMemo(
 		() =>
 			adminUsage.map(
-				(item) => item.username || t("services.unassignedAdmin", "Unassigned"),
+				(item) => item.username || t("services.unassignedAdmin"),
 			),
 		[adminUsage, t],
 	);
@@ -565,11 +565,11 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 		return (
 			<VStack spacing={2} align="stretch" mt={4}>
 				<Text fontWeight="semibold">
-					{t("services.usageAnalyticsTitle", "Usage Analytics")}
+					{t("services.usageAnalyticsTitle")}
 				</Text>
 				<Box borderWidth="1px" borderRadius="md" p={6}>
 					<Text color="gray.500">
-						{t("services.noServicesAvailable", "No services available")}
+						{t("services.noServicesAvailable")}
 					</Text>
 				</Box>
 			</VStack>
@@ -585,7 +585,7 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 				gap={3}
 			>
 				<Text fontWeight="semibold" fontSize="lg">
-					{t("services.usageAnalyticsTitle", "Usage Analytics")}
+					{t("services.usageAnalyticsTitle")}
 				</Text>
 				<Stack
 					direction={{ base: "column", md: "row" }}
@@ -609,7 +609,7 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 			</HStack>
 
 			<ChartBox
-				title={t("services.usageOverTime", "Usage over time")}
+				title={t("services.usageOverTime")}
 				headerActions={
 					<Stack
 						direction={{ base: "column", lg: "row" }}
@@ -619,7 +619,7 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 						<HStack fontSize="sm" color="gray.500">
 							<InfoIcon />
 							<Text>
-								{t("services.totalUsage", "Total")}{" "}
+								{t("usage.selectedRangeTotal")}{" "}
 								<chakra.span fontWeight="medium">
 									{formatBytes(
 										timeseries.reduce(
@@ -664,16 +664,13 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 			<ChartBox
 				title={
 					<Tooltip
-						label={t(
-							"services.adminUsageTrendHint",
-							"Daily usage for the selected admin within this service.",
-						)}
+						label={t("services.adminUsageTrendHint")}
 						placement="top"
 						fontSize="sm"
 					>
 						<HStack spacing={2} align="center">
 							<Text fontWeight="semibold">
-								{t("services.adminUsageTrend", "Admin usage over time")}
+								{t("services.adminUsageTrend")}
 							</Text>
 							<InfoIcon color="gray.500" aria-label="info" cursor="help" />
 						</HStack>
@@ -719,11 +716,11 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 			>
 				<VStack align="start" spacing={1} mb={4}>
 					<Text fontSize="sm" color="gray.500">
-						{t("services.selectedAdmin", "Admin")}:{" "}
+						{t("admins.admin")}:{" "}
 						<chakra.span fontWeight="medium">
 							{adminDisplayLabel || adminTimeseriesUsername || "-"}
 						</chakra.span>{" "}
-						{t("services.totalUsage", "Total")}:{" "}
+						{t("usage.selectedRangeTotal")}:{" "}
 						<chakra.span fontWeight="medium">
 							{formatBytes(adminTimeseriesTotal || 0, 2)}
 						</chakra.span>
@@ -751,7 +748,7 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 			</ChartBox>
 
 			<ChartBox
-				title={t("services.adminUsageDistribution", "Admin usage distribution")}
+				title={t("services.adminUsageDistribution")}
 				headerActions={
 					<Stack
 						direction={{ base: "column", lg: "row" }}
@@ -761,7 +758,7 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 						<HStack fontSize="sm" color="gray.500">
 							<InfoIcon />
 							<Text>
-								{t("services.totalUsage", "Total")}{" "}
+								{t("usage.selectedRangeTotal")}{" "}
 								<chakra.span fontWeight="medium">
 									{formatBytes(adminTotal, 2)}
 								</chakra.span>
@@ -815,7 +812,7 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 								>
 									<Text fontWeight="medium">
 										{item.username ||
-											t("services.unassignedAdmin", "Unassigned")}
+											t("services.unassignedAdmin")}
 									</Text>
 									<Text fontSize="sm" color="gray.500">
 										{formatBytes(item.used_traffic || 0, 2)}

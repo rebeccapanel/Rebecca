@@ -3,6 +3,7 @@ import {
 	mergePermissionsWithRoleDefaults,
 } from "constants/adminPermissions";
 import { useQuery } from "react-query";
+import type { AuthSession } from "service/auth";
 import { fetch } from "service/http";
 import {
 	AdminRole,
@@ -11,8 +12,9 @@ import {
 } from "types/Admin";
 import type { UseGetUserReturn, UserApi } from "types/User";
 
-const fetchUser = async () => {
-	return await fetch("/admin");
+const fetchUser = async (): Promise<UserApi> => {
+	const session = await fetch<AuthSession>("/auth/session");
+	return session.admin as unknown as UserApi;
 };
 
 const useGetUser = (): UseGetUserReturn => {
@@ -20,7 +22,10 @@ const useGetUser = (): UseGetUserReturn => {
 		UserApi,
 		Error
 	>({
+		queryKey: ["current-admin"],
 		queryFn: () => fetchUser(),
+		refetchInterval: 30_000,
+		refetchIntervalInBackground: true,
 	});
 
 	const userDataEmpty: UserApi = {

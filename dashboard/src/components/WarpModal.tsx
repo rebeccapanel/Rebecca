@@ -344,7 +344,7 @@ export const WarpModal: FC<WarpModalProps> = ({
 			setWarpOutboundCandidate(null);
 		} catch (error: any) {
 			toast({
-				title: t("pages.xray.warp.loadFailed", "Failed to load WARP account."),
+				title: t("pages.xray.warp.loadFailed"),
 				description: error?.data?.detail || error?.message,
 				status: "error",
 				duration: 4000,
@@ -387,10 +387,7 @@ export const WarpModal: FC<WarpModalProps> = ({
 		updateFormField("privateKey", keys.privateKey);
 		updateFormField("publicKey", keys.publicKey);
 		toast({
-			title: t(
-				"pages.xray.warp.keysGenerated",
-				"WireGuard key pair generated.",
-			),
+			title: t("pages.xray.warp.keysGenerated"),
 			status: "info",
 			duration: 2500,
 			isClosable: true,
@@ -438,7 +435,7 @@ export const WarpModal: FC<WarpModalProps> = ({
 			setWarpRemote(response.config);
 			hydrateFromRemote(response.account, response.config);
 			toast({
-				title: t("pages.xray.warp.registerSuccess", "WARP device registered."),
+				title: t("pages.xray.warp.registerSuccess"),
 				status: "success",
 				duration: 4000,
 				isClosable: true,
@@ -446,10 +443,7 @@ export const WarpModal: FC<WarpModalProps> = ({
 			});
 		} catch (error: any) {
 			toast({
-				title: t(
-					"pages.xray.warp.registerFailed",
-					"Failed to register WARP device.",
-				),
+				title: t("pages.xray.warp.registerFailed"),
 				description: error?.data?.detail || error?.message,
 				status: "error",
 				duration: 5000,
@@ -464,10 +458,7 @@ export const WarpModal: FC<WarpModalProps> = ({
 	const handleFetchInfo = async () => {
 		if (!warpAccount) {
 			toast({
-				title: t(
-					"pages.xray.warp.accountMissing",
-					"Create a WARP device first.",
-				),
+				title: t("pages.xray.warp.accountMissing"),
 				status: "warning",
 				duration: 3000,
 				isClosable: true,
@@ -484,7 +475,7 @@ export const WarpModal: FC<WarpModalProps> = ({
 			setWarpRemote(response.config);
 			hydrateFromRemote(warpAccount, response.config);
 			toast({
-				title: t("pages.xray.warp.infoFetched", "WARP information refreshed."),
+				title: t("pages.xray.warp.infoFetched"),
 				status: "success",
 				duration: 3000,
 				isClosable: true,
@@ -492,7 +483,7 @@ export const WarpModal: FC<WarpModalProps> = ({
 			});
 		} catch (error: any) {
 			toast({
-				title: t("pages.xray.warp.infoFailed", "Unable to fetch WARP info."),
+				title: t("pages.xray.warp.infoFailed"),
 				description: error?.data?.detail || error?.message,
 				status: "error",
 				duration: 5000,
@@ -519,7 +510,7 @@ export const WarpModal: FC<WarpModalProps> = ({
 			);
 			setWarpAccount(response.account);
 			toast({
-				title: t("pages.xray.warp.licenseUpdated", "License updated."),
+				title: t("pages.xray.warp.licenseUpdated"),
 				status: "success",
 				duration: 3000,
 				isClosable: true,
@@ -527,7 +518,7 @@ export const WarpModal: FC<WarpModalProps> = ({
 			});
 		} catch (error: any) {
 			toast({
-				title: t("pages.xray.warp.licenseFailed", "Failed to update license."),
+				title: t("pages.xray.warp.licenseFailed"),
 				description: error?.data?.detail || error?.message,
 				status: "error",
 				duration: 5000,
@@ -548,7 +539,7 @@ export const WarpModal: FC<WarpModalProps> = ({
 			setWarpOutboundCandidate(null);
 			onDelete();
 			toast({
-				title: t("pages.xray.warp.accountRemoved", "WARP account removed."),
+				title: t("pages.xray.warp.accountRemoved"),
 				status: "success",
 				duration: 3000,
 				isClosable: true,
@@ -556,10 +547,7 @@ export const WarpModal: FC<WarpModalProps> = ({
 			});
 		} catch (error: any) {
 			toast({
-				title: t(
-					"pages.xray.warp.removeFailed",
-					"Failed to remove WARP account.",
-				),
+				title: t("pages.xray.warp.removeFailed"),
 				description: error?.data?.detail || error?.message,
 				status: "error",
 				duration: 5000,
@@ -578,7 +566,7 @@ export const WarpModal: FC<WarpModalProps> = ({
 		const outboundJson = warpOutboundCandidate.toJson();
 		onSave(outboundJson);
 		toast({
-			title: t("pages.xray.warp.outboundApplied", "WARP outbound updated."),
+			title: t("pages.xray.warp.outboundApplied"),
 			status: "success",
 			duration: 2500,
 			isClosable: true,
@@ -590,7 +578,7 @@ export const WarpModal: FC<WarpModalProps> = ({
 		onDelete();
 		setForm({ ...DEFAULT_WARP_FORM });
 		toast({
-			title: t("pages.xray.warp.removeOutbound", "Outbound removed."),
+			title: t("pages.xray.warp.removeOutbound"),
 			status: "info",
 			duration: 2500,
 			isClosable: true,
@@ -605,10 +593,7 @@ export const WarpModal: FC<WarpModalProps> = ({
 			!form.endpoint.trim()
 		) {
 			toast({
-				title: t(
-					"pages.xray.warp.validationMissing",
-					"Private key, public key, and endpoint are required.",
-				),
+				title: t("pages.xray.warp.validationMissing"),
 				status: "error",
 				isClosable: true,
 				duration: 3500,
@@ -631,7 +616,7 @@ export const WarpModal: FC<WarpModalProps> = ({
 			<ModalOverlay bg="blackAlpha.300" backdropFilter="blur(8px)" />
 			<XrayModalContent>
 				<XrayModalHeader>
-					{t("pages.xray.warp.manage", "Manage WARP")}
+					{t("pages.xray.warp.manage")}
 				</XrayModalHeader>
 				<ModalCloseButton />
 				<XrayModalBody>
@@ -639,10 +624,7 @@ export const WarpModal: FC<WarpModalProps> = ({
 						<Alert status="info" borderRadius="md">
 							<AlertIcon />
 							<AlertDescription>
-								{t(
-									"pages.xray.warp.manualNote",
-									"Provide the credentials exported from Cloudflare WARP (e.g. via warp-cli). You can generate a WireGuard key pair locally, but you still need reserved bytes and endpoints from the official client.",
-								)}
+								{t("pages.xray.warp.manualNote")}
 							</AlertDescription>
 						</Alert>
 
@@ -656,27 +638,27 @@ export const WarpModal: FC<WarpModalProps> = ({
 								<VStack spacing={4} align="stretch">
 									<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 										<InfoItem
-											label={t("pages.xray.warp.accessToken", "Access token")}
+											label={t("pages.xray.warp.accessToken")}
 											value={warpAccount.access_token || "-"}
 										/>
 										<InfoItem
-											label={t("pages.xray.warp.deviceId", "Device ID")}
+											label={t("pages.xray.warp.deviceId")}
 											value={warpAccount.device_id || "-"}
 										/>
 										<InfoItem
-											label={t("pages.xray.warp.licenseKey", "License key")}
+											label={t("pages.xray.warp.licenseKey")}
 											value={warpAccount.license_key || "-"}
 										/>
 										<InfoItem
-											label={t("pages.xray.warp.privateKey", "Private key")}
+											label={t("pages.xray.warp.privateKey")}
 											value={warpAccount.private_key || "-"}
 										/>
 										<InfoItem
-											label={t("pages.xray.warp.registeredAt", "Registered at")}
+											label={t("pages.xray.warp.registeredAt")}
 											value={formatDate(warpAccount.created_at)}
 										/>
 										<InfoItem
-											label={t("pages.xray.warp.updatedAt", "Updated at")}
+											label={t("pages.xray.warp.updatedAt")}
 											value={formatDate(warpAccount.updated_at)}
 										/>
 									</SimpleGrid>
@@ -686,7 +668,7 @@ export const WarpModal: FC<WarpModalProps> = ({
 											onClick={handleFetchInfo}
 											isLoading={isFetchingInfo}
 										>
-											{t("pages.xray.warp.fetchInfo", "Refresh info")}
+											{t("pages.xray.warp.fetchInfo")}
 										</Button>
 										<Button
 											variant="ghost"
@@ -694,24 +676,21 @@ export const WarpModal: FC<WarpModalProps> = ({
 											onClick={handleDeleteAccount}
 											isLoading={isDeletingAccount}
 										>
-											{t("pages.xray.warp.removeAccount", "Remove account")}
+											{t("pages.xray.warp.removeAccount")}
 										</Button>
 									</HStack>
 								</VStack>
 							) : (
 								<VStack spacing={3} align="stretch">
 									<Text fontSize="sm" color={helperColor}>
-										{t(
-											"pages.xray.warp.registerDescription",
-											"No Cloudflare WARP device has been registered yet. The dashboard can generate a WireGuard key pair locally and register a new device via Cloudflare's API.",
-										)}
+										{t("pages.xray.warp.registerDescription")}
 									</Text>
 									<Button
 										colorScheme="primary"
 										onClick={handleRegister}
 										isLoading={isRegistering || isAccountLoading}
 									>
-										{t("pages.xray.warp.registerAction", "Create WARP device")}
+										{t("pages.xray.warp.registerAction")}
 									</Button>
 								</VStack>
 							)}
@@ -725,7 +704,7 @@ export const WarpModal: FC<WarpModalProps> = ({
 								p={4}
 							>
 								<Text fontWeight="semibold" mb={2}>
-									{t("pages.xray.warp.licenseSection", "WARP+/License key")}
+									{t("pages.xray.warp.licenseSection")}
 								</Text>
 								<HStack spacing={3} align="stretch" flexWrap="wrap">
 									<Input
@@ -740,14 +719,11 @@ export const WarpModal: FC<WarpModalProps> = ({
 										isLoading={isUpdatingLicense}
 										isDisabled={!licenseInput.trim()}
 									>
-										{t("pages.xray.warp.updateLicense", "Update license")}
+										{t("pages.xray.warp.updateLicense")}
 									</Button>
 								</HStack>
 								<Text fontSize="xs" color={helperColor} mt={2}>
-									{t(
-										"pages.xray.warp.licenseHint",
-										"Optional Cloudflare WARP+ license. Leave empty if you only need the free tier.",
-									)}
+									{t("pages.xray.warp.licenseHint")}
 								</Text>
 							</Box>
 						)}
@@ -760,39 +736,39 @@ export const WarpModal: FC<WarpModalProps> = ({
 						>
 							<HStack justify="space-between" align="center" mb={2}>
 								<Text fontWeight="semibold">
-									{t("pages.xray.warp.remoteConfig", "Remote configuration")}
+									{t("pages.xray.warp.remoteConfig")}
 								</Text>
 								{warpRemote ? (
 									<Badge colorScheme={warpRemote.enabled ? "green" : "yellow"}>
 										{warpRemote.enabled
-											? t("core.active", "Active")
-											: t("core.pending", "Pending")}
+											? t("status.active")
+											: t("core.pending")}
 									</Badge>
 								) : (
-									<Badge colorScheme="gray">{t("core.empty", "Empty")}</Badge>
+									<Badge colorScheme="gray">{t("core.empty")}</Badge>
 								)}
 							</HStack>
 							{warpRemote ? (
 								<Stack spacing={4}>
 									<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 										<InfoItem
-											label={t("core.name", "Name")}
+											label={t("nodes.nodeName")}
 											value={warpRemote.name ?? "-"}
 										/>
 										<InfoItem
-											label={t("core.model", "Model")}
+											label={t("core.model")}
 											value={warpRemote.model ?? "-"}
 										/>
 										<InfoItem
-											label={t("core.status", "Status")}
+											label={t("status")}
 											value={
 												warpRemote.enabled
-													? t("core.enabled", "Enabled")
-													: t("core.disabled", "Disabled")
+													? t("nodes.enabled")
+													: t("nodes.disabled")
 											}
 										/>
 										<InfoItem
-											label={t("core.id", "ID")}
+											label={t("admins.idLabel")}
 											value={warpRemote.id ?? "-"}
 										/>
 									</SimpleGrid>
@@ -801,23 +777,23 @@ export const WarpModal: FC<WarpModalProps> = ({
 											<Divider />
 											<SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
 												<InfoItem
-													label={t("core.type", "Type")}
+													label={t("inbounds.fallbacks.type")}
 													value={warpRemote.account.account_type ?? "-"}
 												/>
 												<InfoItem
-													label={t("core.role", "Role")}
+													label={t("core.role")}
 													value={warpRemote.account.role ?? "-"}
 												/>
 												<InfoItem
-													label={t("pages.xray.warp.premiumData", "WARP+ data")}
+													label={t("pages.xray.warp.premiumData")}
 													value={formatBytes(warpRemote.account.premium_data)}
 												/>
 												<InfoItem
-													label={t("core.quota", "Quota")}
+													label={t("core.quota")}
 													value={formatBytes(warpRemote.account.quota)}
 												/>
 												<InfoItem
-													label={t("core.usage", "Usage")}
+													label={t("topAdminUsage")}
 													value={formatBytes(warpRemote.account.usage)}
 												/>
 											</SimpleGrid>
@@ -829,22 +805,16 @@ export const WarpModal: FC<WarpModalProps> = ({
 											onClick={applyOutboundCandidate}
 											isDisabled={!warpOutboundCandidate}
 										>
-											{t(
-												"pages.xray.warp.applyGenerated",
-												"Apply generated outbound",
-											)}
+											{t("pages.xray.warp.applyGenerated")}
 										</Button>
 										<Button variant="ghost" onClick={() => setWarpRemote(null)}>
-											{t("core.reset", "Reset")}
+											{t("reset")}
 										</Button>
 									</HStack>
 								</Stack>
 							) : (
 								<Text fontSize="sm" color={helperColor}>
-									{t(
-										"pages.xray.warp.remoteEmpty",
-										"Fetch the remote configuration to generate an outbound automatically.",
-									)}
+									{t("pages.xray.warp.remoteEmpty")}
 								</Text>
 							)}
 						</Box>
@@ -856,11 +826,11 @@ export const WarpModal: FC<WarpModalProps> = ({
 							p={4}
 						>
 							<Text fontWeight="semibold" mb={2}>
-								{t("pages.xray.warp.manualTitle", "Manual outbound")}
+								{t("pages.xray.warp.manualTitle")}
 							</Text>
 							<Stack spacing={4}>
 								<FormControl isRequired>
-									<FormLabel>{t("pages.xray.outbound.tag", "Tag")}</FormLabel>
+									<FormLabel>{t("pages.xray.outbound.tag")}</FormLabel>
 									<Input
 										size="sm"
 										value={form.tag}
@@ -901,13 +871,10 @@ export const WarpModal: FC<WarpModalProps> = ({
 										colorScheme="primary"
 										onClick={handleGenerateKeys}
 									>
-										{t("pages.xray.warp.generateKeys", "Generate Keys")}
+										{t("pages.xray.warp.generateKeys")}
 									</Button>
 									<Text fontSize="xs" color={helperColor} mt={1}>
-										{t(
-											"pages.xray.warp.generateKeysHint",
-											"Overrides the current key pair.",
-										)}
+										{t("pages.xray.warp.generateKeysHint")}
 									</Text>
 								</FormControl>
 
@@ -925,7 +892,7 @@ export const WarpModal: FC<WarpModalProps> = ({
 
 								<FormControl>
 									<FormLabel>
-										{t("pages.xray.warp.addressV4", "Client IPv4")}
+										{t("pages.xray.warp.addressV4")}
 									</FormLabel>
 									<Input
 										size="sm"
@@ -936,16 +903,13 @@ export const WarpModal: FC<WarpModalProps> = ({
 										placeholder="172.16.0.2"
 									/>
 									<FormHelperText>
-										{t(
-											"pages.xray.warp.addressV4Hint",
-											"Optional /32 address from the WARP profile.",
-										)}
+										{t("pages.xray.warp.addressV4Hint")}
 									</FormHelperText>
 								</FormControl>
 
 								<FormControl>
 									<FormLabel>
-										{t("pages.xray.warp.addressV6", "Client IPv6")}
+										{t("pages.xray.warp.addressV6")}
 									</FormLabel>
 									<Input
 										size="sm"
@@ -968,10 +932,7 @@ export const WarpModal: FC<WarpModalProps> = ({
 										placeholder="0,0,0"
 									/>
 									<FormHelperText>
-										{t(
-											"pages.xray.warp.reservedHint",
-											"Comma separated integers (usually three numbers) derived from the client_id.",
-										)}
+										{t("pages.xray.warp.reservedHint")}
 									</FormHelperText>
 									<Button
 										size="xs"
@@ -979,15 +940,12 @@ export const WarpModal: FC<WarpModalProps> = ({
 										variant="ghost"
 										onClick={handleInsertReserved}
 									>
-										{t(
-											"pages.xray.warp.randomReserved",
-											"Insert random reserved bytes",
-										)}
+										{t("pages.xray.warp.randomReserved")}
 									</Button>
 								</FormControl>
 
 								<FormControl>
-									<FormLabel>{t("pages.xray.warp.mtu", "MTU")}</FormLabel>
+									<FormLabel>{t("pages.xray.warp.mtu")}</FormLabel>
 									<NumericInput
 										size="sm"
 										min={576}
@@ -1001,7 +959,7 @@ export const WarpModal: FC<WarpModalProps> = ({
 
 								<FormControl>
 									<FormLabel>
-										{t("pages.xray.warp.notes", "Notes (optional)")}
+										{t("pages.xray.warp.notes")}
 									</FormLabel>
 									<Textarea
 										size="sm"

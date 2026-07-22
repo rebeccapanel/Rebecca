@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="{{ .Lang }}" dir="{{ .Language.LanguageDirection }}">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1" />
+		<meta http-equiv="refresh" content="0; url=docs/" />
+		<title>{{ .Site.Title }}</title>
+		<script>location.replace("docs/" + location.search + location.hash);</script>
+	</head>
+	<body>
+		<a href="docs/">{{ if eq .Lang "fa" }}باز کردن راهنما{{ else }}Open tutorials{{ end }}</a>
+	</body>
+</html>

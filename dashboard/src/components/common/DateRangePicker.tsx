@@ -324,7 +324,7 @@ export const DateRangePicker: FC<DateRangePickerProps> = ({
 									py={1.5}
 									_selected={{ bg: "primary.500", color: "white" }}
 								>
-									{t("userDialog.relative", "Relative")}
+									{t("userDialog.relative")}
 								</Tab>
 								<Tab
 									fontSize={fontSize}
@@ -333,7 +333,7 @@ export const DateRangePicker: FC<DateRangePickerProps> = ({
 									py={1.5}
 									_selected={{ bg: "primary.500", color: "white" }}
 								>
-									{t("userDialog.absolute", "Absolute")}
+									{t("userDialog.absolute")}
 								</Tab>
 							</TabList>
 							<TabPanels>

@@ -1,0 +1,37 @@
+name: درخواست قابلیت (فارسی)
+description: یک بهبود مشخص برای ربکا پیشنهاد کنید.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: مسئله
+      description: این قابلیت باید چه محدودیت یا مشکلی را حل کند؟
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: راهکار پیشنهادی
+      description: کوچک‌ترین رفتار کاربردی مورد انتظار را توضیح دهید.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: راهکارهای جایگزین
+  - type: dropdown
+    id: component
+    attributes:
+      label: بخش مرتبط
+      options: [داشبورد, مستر, نود, Xray, ساب, دیتابیس, نصب‌کننده, سایر]
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: بررسی نهایی
+      options:
+        - label: ایشوها و درخواست‌های قبلی را جست‌وجو کردم.
+          required: true

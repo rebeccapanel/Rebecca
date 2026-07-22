@@ -20,6 +20,8 @@ curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/r
 
 Binary mode installs the published Linux release asset for the current machine.
 
+Do not run these installers with `sudo bash -c "$(curl ...)"`; the script body can exceed Linux's single-argument limit. Always pipe the download into bash as shown above.
+
 Install the dev channel explicitly:
 
 ```bash

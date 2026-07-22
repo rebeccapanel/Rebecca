@@ -8,12 +8,13 @@ import {
 	Checkbox,
 	chakra,
 	FormControl,
+	FormErrorMessage,
 	FormLabel,
 	HStack,
-	IconButton,
 	Input,
 	InputGroup,
 	InputRightElement,
+	MenuItem,
 	Modal,
 	ModalCloseButton,
 	ModalOverlay,
@@ -24,11 +25,8 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 	Portal,
-	Select,
 	SimpleGrid,
-	Spinner,
 	Stack,
-	Switch,
 	Tab,
 	TabList,
 	TabPanel,
@@ -41,12 +39,13 @@ import {
 	VStack,
 } from "@chakra-ui/react";
 import {
-	Bars3Icon,
+	ArrowPathIcon,
+	CheckCircleIcon,
 	InformationCircleIcon,
-	ListBulletIcon,
 	PencilIcon,
 	PlusIcon,
-	Squares2X2Icon,
+	TrashIcon,
+	XCircleIcon,
 } from "@heroicons/react/24/outline";
 import {
 	proxyALPN,
@@ -55,10 +54,9 @@ import {
 } from "constants/Proxies";
 import { fetchInbounds, useDashboard } from "contexts/DashboardContext";
 import { type HostsSchema, useHosts } from "contexts/HostsContext";
-import { Reorder, useDragControls } from "framer-motion";
+import { type NodeType, useNodesQuery } from "contexts/NodesContext";
 import {
 	type FC,
-	type PointerEvent as ReactPointerEvent,
 	useCallback,
 	useEffect,
 	useMemo,
@@ -66,10 +64,24 @@ import {
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
+import { AppleEmojiText } from "./common/AppleEmojiText";
+import { DeleteIcon } from "./common/DeleteIcon";
+import {
+	MultiValueAutocomplete,
+	type MultiValueAutocompleteOption,
+} from "./common/MultiValueAutocomplete";
 import { NumericInput } from "./common/NumericInput";
-import { DeleteConfirmPopover } from "./DeleteConfirmPopover";
-import { DeleteIcon } from "./DeleteUserModal";
+import { SearchableTagSelect } from "./common/SearchableTagSelect";
+import { DeleteConfirmDialog } from "./dialogs/ConfirmDialog";
 import { JsonEditor } from "./JsonEditor";
+import {
+	DataTable,
+	ResourceListCard,
+	ResourceRefreshButton,
+	type DataTableColumn,
+	type DataTableRowAction,
+	type ResourceSummaryItem,
+} from "./ui";
 import {
 	XrayModalBody,
 	XrayModalContent,
@@ -81,11 +93,21 @@ type HostData = {
 	id: number | null;
 	remark: string;
 	address: string;
-	sort: number;
+	dns_primary: string;
+	dns_secondary: string;
+	address_options: string;
+	address_selection_mode: string;
+	address_ttl_seconds: number | null;
 	port: number | null;
 	path: string;
 	sni: string;
+	sni_options: string;
+	sni_selection_mode: string;
+	sni_ttl_seconds: number | null;
 	host: string;
+	host_options: string;
+	host_selection_mode: string;
+	host_ttl_seconds: number | null;
 	mux_enable: boolean;
 	allowinsecure: boolean;
 	is_disabled: boolean;
@@ -103,20 +125,19 @@ const coerceHostValue = <Key extends keyof HostData>(
 	value: unknown,
 	currentData: HostData,
 ): HostData[Key] => {
-	if (key === "sort") {
-		const numeric = Number(value);
-		return Number.isFinite(numeric)
-			? (numeric as HostData[Key])
-			: (currentData.sort as HostData[Key]);
-	}
-	if (key === "port") {
+	if (
+		key === "port" ||
+		key === "address_ttl_seconds" ||
+		key === "sni_ttl_seconds" ||
+		key === "host_ttl_seconds"
+	) {
 		if (value === null || value === "") {
 			return null as HostData[Key];
 		}
 		const numeric = Number(value);
 		return Number.isFinite(numeric)
 			? (numeric as HostData[Key])
-			: (currentData.port as HostData[Key]);
+			: (currentData[key] as HostData[Key]);
 	}
 	if (key === "id") {
 		if (value === null || value === "") {
@@ -136,6 +157,25 @@ const coerceHostValue = <Key extends keyof HostData>(
 	) {
 		return Boolean(value) as HostData[Key];
 	}
+	if (
+		key === "address_options" ||
+		key === "sni_options" ||
+		key === "host_options"
+	) {
+		if (Array.isArray(value)) {
+			return rotationOptionsToText(
+				value.filter((item): item is string => typeof item === "string"),
+			) as HostData[Key];
+		}
+		return String(value ?? "") as HostData[Key];
+	}
+	if (
+		key === "address_selection_mode" ||
+		key === "sni_selection_mode" ||
+		key === "host_selection_mode"
+	) {
+		return normalizeRotationMode(String(value ?? "")) as HostData[Key];
+	}
 	return (value ?? "") as HostData[Key];
 };
 
@@ -143,11 +183,21 @@ const EMPTY_HOST_DATA: HostData = {
 	id: null,
 	remark: "",
 	address: "",
-	sort: 0,
+	dns_primary: "1.1.1.1",
+	dns_secondary: "8.8.8.8",
+	address_options: "",
+	address_selection_mode: "random",
+	address_ttl_seconds: null,
 	port: null,
 	path: "",
 	sni: "",
+	sni_options: "",
+	sni_selection_mode: "random",
+	sni_ttl_seconds: null,
 	host: "",
+	host_options: "",
+	host_selection_mode: "random",
+	host_ttl_seconds: null,
 	mux_enable: false,
 	allowinsecure: false,
 	is_disabled: false,
@@ -173,17 +223,43 @@ type InboundOption = {
 	value: string;
 	protocol: string;
 	network: string;
+	port?: number;
+};
+
+const profileHostNameError = (protocol: string | undefined, value: string) => {
+	const name = value.trim();
+	if (!name) return null;
+	if (protocol === "wireguard") {
+		if (name.length > 15) return "hostsPage.profileName.wireguardLength";
+		if (!/^[A-Za-z0-9_]+$/.test(name)) {
+			return "hostsPage.profileName.wireguardCharacters";
+		}
+	}
+	if (protocol === "openvpn" && !/^[A-Za-z0-9._-]+$/.test(name)) {
+		return "hostsPage.profileName.openvpnCharacters";
+	}
+	return null;
 };
 
 type CreateHostValues = {
 	inboundTag: string;
 	remark: string;
 	address: string;
-	sort: number;
+	dns_primary: string;
+	dns_secondary: string;
+	address_options: string;
+	address_selection_mode: string;
+	address_ttl_seconds: number | null;
 	port: number | null;
 	path: string;
 	sni: string;
+	sni_options: string;
+	sni_selection_mode: string;
+	sni_ttl_seconds: number | null;
 	host: string;
+	host_options: string;
+	host_selection_mode: string;
+	host_ttl_seconds: number | null;
 };
 
 const EditIcon = chakra(PencilIcon, {
@@ -194,27 +270,6 @@ const EditIcon = chakra(PencilIcon, {
 });
 
 const AddIcon = chakra(PlusIcon, {
-	baseStyle: {
-		w: 4,
-		h: 4,
-	},
-});
-
-const HandleIcon = chakra(Bars3Icon, {
-	baseStyle: {
-		w: 4,
-		h: 4,
-	},
-});
-
-const GridViewIcon = chakra(Squares2X2Icon, {
-	baseStyle: {
-		w: 4,
-		h: 4,
-	},
-});
-
-const ListViewIcon = chakra(ListBulletIcon, {
 	baseStyle: {
 		w: 4,
 		h: 4,
@@ -247,6 +302,83 @@ const DYNAMIC_TOKENS: Array<{ token: string; labelKey: string }> = [
 	{ token: "{TRANSPORT}", labelKey: "hostsDialog.proxyMethod" },
 ];
 
+type RotationControlsProps = {
+	mode: string;
+	ttl: number | null;
+	onModeChange: (value: string) => void;
+	onTTLChange: (value: number | null) => void;
+};
+
+const RotationControls: FC<RotationControlsProps> = ({
+	mode,
+	ttl,
+	onModeChange,
+	onTTLChange,
+}) => {
+	const { t } = useTranslation();
+	return (
+		<SimpleGrid columns={2} spacing={2} mt={2}>
+			<FormControl>
+				<FormLabel fontSize="xs" color="gray.500" mb={1}>
+					{t("hostsDialog.rotationMode")}
+				</FormLabel>
+				<SearchableTagSelect
+					size="sm"
+					value={mode}
+					options={[
+						{
+							value: "random",
+							label: t("inbounds.randomPort"),
+						},
+						{ value: "ttl", label: t("hostsDialog.rotationTTL") },
+					]}
+					placeholder={t("hostsDialog.rotationMode")}
+					onChange={(value) => onModeChange(String(value))}
+				/>
+			</FormControl>
+			<FormControl>
+				<FormLabel fontSize="xs" color="gray.500" mb={1}>
+					{t("hostsDialog.rotationTTLSeconds")}
+				</FormLabel>
+				<NumericInput
+					size="sm"
+					value={ttl ?? ""}
+					min={1}
+					max={2592000}
+					fieldProps={{ placeholder: "120" }}
+					isDisabled={mode !== "ttl"}
+					onChange={(_, num) => onTTLChange(Number.isNaN(num) ? null : num)}
+				/>
+			</FormControl>
+		</SimpleGrid>
+	);
+};
+
+const shortNodeName = (name?: string | null) => {
+	const trimmed = (name ?? "").trim();
+	if (!trimmed) return "Node";
+	return trimmed.length > 5 ? `${trimmed.slice(0, 5)}...` : trimmed;
+};
+
+const getNodeAddressOptions = (
+	nodes?: NodeType[],
+): MultiValueAutocompleteOption[] =>
+	(nodes ?? [])
+		.filter((node) => node.status !== "disabled")
+		.reduce<MultiValueAutocompleteOption[]>((options, node) => {
+			const address =
+				typeof node.address === "string" ? node.address.trim() : "";
+			if (!address) return options;
+			const fullName = String(node.name ?? "").trim();
+			const labelName = shortNodeName(fullName);
+			options.push({
+				label: `${labelName} - ${address}`,
+				title: fullName ? `${fullName} - ${address}` : address,
+				value: address,
+			});
+			return options;
+		}, []);
+
 const HOST_MODAL_SX = {
 	".xray-dialog-section .chakra-form-control": {
 		display: "block",
@@ -255,6 +387,302 @@ const HOST_MODAL_SX = {
 		whiteSpace: "nowrap",
 		mb: 1.5,
 	},
+};
+
+const alpnAutocompleteOptions = proxyALPN
+	.map((option) => option.value)
+	.filter(Boolean);
+
+const inboundPortPlaceholder = (inbound?: InboundOption) =>
+	inbound?.port ? `Inbound default: ${inbound.port}` : "Inherited from inbound";
+
+type FragmentFields = {
+	length: string;
+	interval: string;
+	packet: string;
+	maxSplit: string;
+};
+
+const parseFragmentSetting = (value: string): FragmentFields => {
+	const [length = "", interval = "", packet = "", maxSplit = ""] = value
+		.split(",")
+		.map((item) => item.trim());
+	return { length, interval, packet, maxSplit };
+};
+
+const formatFragmentSetting = (fields: FragmentFields) => {
+	const length = fields.length.trim();
+	const interval = fields.interval.trim();
+	const packet = fields.packet.trim();
+	const maxSplit = fields.maxSplit.trim();
+	if (!length && !interval && !packet && !maxSplit) return "";
+	const parts = [
+		length || "10-100",
+		interval || "100-200",
+		packet || "tlshello",
+	];
+	if (maxSplit) parts.push(maxSplit);
+	return parts.join(",");
+};
+
+type NoisePattern = {
+	type: string;
+	packet: string;
+	delay: string;
+};
+
+const defaultNoisePattern = (): NoisePattern => ({
+	type: "rand",
+	packet: "10-20",
+	delay: "100-200",
+});
+
+const parseNoiseSetting = (value: string): NoisePattern[] => {
+	const patterns = value
+		.split("&")
+		.map((raw) => raw.trim())
+		.filter(Boolean)
+		.map((raw) => {
+			const colonIndex = raw.indexOf(":");
+			const type = colonIndex > 0 ? raw.slice(0, colonIndex).trim() : "rand";
+			const rest = colonIndex > 0 ? raw.slice(colonIndex + 1) : raw;
+			const [packet = "", delay = ""] = rest
+				.split(",")
+				.map((item) => item.trim());
+			return {
+				type: ["rand", "str", "hex", "base64"].includes(type) ? type : "rand",
+				packet: packet || "10-20",
+				delay: delay || "100-200",
+			};
+		});
+	return patterns.length ? patterns : [defaultNoisePattern()];
+};
+
+const formatNoiseSetting = (patterns: NoisePattern[]) =>
+	patterns
+		.map((pattern) => ({
+			type: pattern.type || "rand",
+			packet: pattern.packet.trim(),
+			delay: pattern.delay.trim(),
+		}))
+		.filter((pattern) => pattern.packet)
+		.map((pattern) =>
+			pattern.delay
+				? `${pattern.type}:${pattern.packet},${pattern.delay}`
+				: `${pattern.type}:${pattern.packet}`,
+		)
+		.join("&");
+
+const FragmentSettingFields: FC<{
+	value: string;
+	onChange: (value: string) => void;
+}> = ({ value, onChange }) => {
+	const { t } = useTranslation();
+	const fields = parseFragmentSetting(value);
+	const isEnabled = value.trim() !== "";
+	const update = (patch: Partial<FragmentFields>) => {
+		onChange(formatFragmentSetting({ ...fields, ...patch }));
+	};
+	return (
+		<Box>
+			<Checkbox
+				isChecked={isEnabled}
+				onChange={(event) =>
+					onChange(
+						event.target.checked
+							? formatFragmentSetting(
+									parseFragmentSetting("10-100,100-200,tlshello"),
+								)
+							: "",
+					)
+				}
+			>
+				{t("hostsDialog.fragment")}
+			</Checkbox>
+			{isEnabled && (
+				<Box mt={2} pl={{ base: 0, md: 6 }}>
+					<SimpleGrid columns={{ base: 1, sm: 2, xl: 4 }} spacing={2}>
+						<FormControl>
+							<FormLabel fontSize="xs" color="gray.500" mb={1}>
+								{t("hostsDialog.fragment.length")}
+							</FormLabel>
+							<Input
+								size="sm"
+								value={fields.length}
+								placeholder={t("hostsDialog.fragmentLength")}
+								onChange={(event) => update({ length: event.target.value })}
+							/>
+						</FormControl>
+						<FormControl>
+							<FormLabel fontSize="xs" color="gray.500" mb={1}>
+								{t("hostsDialog.fragmentIntervalLabel")}
+							</FormLabel>
+							<Input
+								size="sm"
+								value={fields.interval}
+								placeholder={t("hostsDialog.fragmentInterval")}
+								onChange={(event) => update({ interval: event.target.value })}
+							/>
+						</FormControl>
+						<FormControl>
+							<FormLabel fontSize="xs" color="gray.500" mb={1}>
+								{t("hostsDialog.fragmentPacketLabel")}
+							</FormLabel>
+							<Input
+								size="sm"
+								value={fields.packet}
+								placeholder={t("hostsDialog.fragmentPacket")}
+								onChange={(event) => update({ packet: event.target.value })}
+							/>
+						</FormControl>
+						<FormControl>
+							<FormLabel fontSize="xs" color="gray.500" mb={1}>
+								{t("hostsDialog.fragmentMaxSplitLabel")}
+							</FormLabel>
+							<Input
+								size="sm"
+								value={fields.maxSplit}
+								placeholder={t("hostsDialog.fragmentMaxSplit")}
+								onChange={(event) => update({ maxSplit: event.target.value })}
+							/>
+						</FormControl>
+					</SimpleGrid>
+					<Text mt={1.5} fontSize="xs" color="gray.500">
+						{t("hostsDialog.fragmentHint")}
+					</Text>
+				</Box>
+			)}
+		</Box>
+	);
+};
+
+const NoisePatternFields: FC<{
+	value: string;
+	onChange: (value: string) => void;
+}> = ({ value, onChange }) => {
+	const { t } = useTranslation();
+	const patterns = parseNoiseSetting(value);
+	const isEnabled = value.trim() !== "";
+	const updatePatterns = (next: NoisePattern[]) =>
+		onChange(formatNoiseSetting(next));
+	const updatePattern = (index: number, patch: Partial<NoisePattern>) => {
+		updatePatterns(
+			patterns.map((pattern, patternIndex) =>
+				patternIndex === index ? { ...pattern, ...patch } : pattern,
+			),
+		);
+	};
+	return (
+		<Box>
+			<Stack
+				direction={{ base: "column", sm: "row" }}
+				spacing={2}
+				align={{ base: "stretch", sm: "center" }}
+				justify="space-between"
+			>
+				<Checkbox
+					isChecked={isEnabled}
+					onChange={(event) =>
+						onChange(
+							event.target.checked
+								? formatNoiseSetting([defaultNoisePattern()])
+								: "",
+						)
+					}
+				>
+					{t("hostsDialog.noise")}
+				</Checkbox>
+				{isEnabled && (
+					<Button
+						size="xs"
+						variant="outline"
+						alignSelf={{ base: "flex-start", sm: "center" }}
+						onClick={() => updatePatterns([...patterns, defaultNoisePattern()])}
+					>
+						{t("hostsDialog.addNoisePattern")}
+					</Button>
+				)}
+			</Stack>
+			{isEnabled && (
+				<Box mt={2} pl={{ base: 0, md: 6 }}>
+					<VStack align="stretch" spacing={2}>
+						{patterns.map((pattern, index) => (
+							<SimpleGrid
+								key={`${index}-${pattern.type}`}
+								columns={{ base: 1, md: 12 }}
+								spacing={2}
+								alignItems="end"
+							>
+								<FormControl gridColumn={{ md: "span 3" }}>
+									<FormLabel fontSize="xs" color="gray.500" mb={1}>
+										{t("inbounds.fallbacks.type")}
+									</FormLabel>
+									<SearchableTagSelect
+										size="sm"
+										value={pattern.type}
+										options={["rand", "str", "hex", "base64"]}
+										placeholder={t("inbounds.fallbacks.type")}
+										onChange={(value) =>
+											updatePattern(index, { type: String(value) })
+										}
+									/>
+								</FormControl>
+								<FormControl gridColumn={{ md: "span 4" }}>
+									<FormLabel fontSize="xs" color="gray.500" mb={1}>
+										{t("hostsDialog.noisePacket")}
+									</FormLabel>
+									<Input
+										size="sm"
+										value={pattern.packet}
+										placeholder={
+											pattern.type === "rand"
+												? "10-20"
+												: t("hostsDialog.noisePacket")
+										}
+										onChange={(event) =>
+											updatePattern(index, { packet: event.target.value })
+										}
+									/>
+								</FormControl>
+								<FormControl gridColumn={{ md: "span 4" }}>
+									<FormLabel fontSize="xs" color="gray.500" mb={1}>
+										{t("hostsDialog.noiseDelay")}
+									</FormLabel>
+									<Input
+										size="sm"
+										value={pattern.delay}
+										placeholder="100-200"
+										onChange={(event) =>
+											updatePattern(index, { delay: event.target.value })
+										}
+									/>
+								</FormControl>
+								<Button
+									size="sm"
+									variant="ghost"
+									colorScheme="red"
+									isDisabled={patterns.length === 1}
+									onClick={() =>
+										updatePatterns(
+											patterns.filter(
+												(_, patternIndex) => patternIndex !== index,
+											),
+										)
+									}
+									gridColumn={{ md: "span 1" }}
+								>
+									×
+								</Button>
+							</SimpleGrid>
+						))}
+					</VStack>
+					<Text mt={1.5} fontSize="xs" color="gray.500">
+						{t("hostsDialog.noiseHint")}
+					</Text>
+				</Box>
+			)}
+		</Box>
+	);
 };
 
 const DynamicTokensPopover: FC = () => {
@@ -277,7 +705,7 @@ const DynamicTokensPopover: FC = () => {
 							{DYNAMIC_TOKENS.map(({ token, labelKey }) => (
 								<Text key={token} mt={1}>
 									<Badge mr={2}>{token}</Badge>
-									{t(labelKey)}
+									<AppleEmojiText>{t(labelKey)}</AppleEmojiText>
 								</Text>
 							))}
 						</Box>
@@ -291,31 +719,57 @@ const DynamicTokensPopover: FC = () => {
 const createUid = () =>
 	`${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-const safeSortValue = (value: number | null | undefined) =>
-	typeof value === "number" && !Number.isNaN(value)
-		? value
-		: Number.MAX_SAFE_INTEGER;
-
 const normalizeString = (value: string | null | undefined) =>
 	(value ?? "").trim();
+
+const normalizeRotationMode = (value: string | null | undefined) =>
+	value === "ttl" ? "ttl" : "random";
+
+const rotationOptionsToText = (values: string[] | null | undefined) =>
+	(values ?? [])
+		.map((value) => value.trim())
+		.filter(Boolean)
+		.join("\n");
+
+const rotationTextToOptions = (value: string) =>
+	value
+		.split(/\r?\n|,/)
+		.map((item) => item.trim())
+		.filter(Boolean);
+
+const mergeRotationValue = (
+	value: string | null | undefined,
+	options: string[] | null | undefined,
+) =>
+	rotationTextToOptions([value ?? "", ...(options ?? [])].join(",")).join(", ");
+
+const hasMultipleRotationValues = (value: string) =>
+	rotationTextToOptions(value).length > 1;
 
 const normalizeBoolean = (
 	value: boolean | null | undefined,
 	fallback = false,
 ) => (typeof value === "boolean" ? value : fallback);
 
-const normalizeHostData = (
-	host: HostsSchema[string][number],
-	fallbackSort: number,
-): HostData => ({
+const normalizeHostData = (host: HostsSchema[string][number]): HostData => ({
 	id: host.id ?? null,
 	remark: host.remark ?? "",
-	address: host.address ?? "",
-	sort: host.sort ?? fallbackSort,
+	address: mergeRotationValue(host.address, host.address_options),
+	dns_primary: normalizeString(host.dns_primary) || "1.1.1.1",
+	dns_secondary: normalizeString(host.dns_secondary) || "8.8.8.8",
+	address_options: "",
+	address_selection_mode: normalizeRotationMode(host.address_selection_mode),
+	address_ttl_seconds: host.address_ttl_seconds ?? null,
 	port: host.port ?? null,
 	path: normalizeString(host.path),
-	sni: normalizeString(host.sni),
-	host: normalizeString(host.host),
+	sni: mergeRotationValue(host.sni, host.sni_options),
+	sni_options: "",
+	sni_selection_mode: normalizeRotationMode(host.sni_selection_mode),
+	sni_ttl_seconds: host.sni_ttl_seconds ?? null,
+	host: mergeRotationValue(host.host, host.host_options),
+	host_options: "",
+	host_selection_mode: normalizeRotationMode(host.host_selection_mode),
+	host_ttl_seconds: host.host_ttl_seconds ?? null,
 	mux_enable: normalizeBoolean(host.mux_enable),
 	allowinsecure: normalizeBoolean(host.allowinsecure),
 	is_disabled: normalizeBoolean(host.is_disabled, false),
@@ -332,11 +786,21 @@ const cloneHostData = (data: HostData): HostData => ({
 	id: data.id ?? null,
 	remark: data.remark,
 	address: data.address,
-	sort: data.sort,
+	dns_primary: data.dns_primary,
+	dns_secondary: data.dns_secondary,
+	address_options: data.address_options,
+	address_selection_mode: data.address_selection_mode,
+	address_ttl_seconds: data.address_ttl_seconds ?? null,
 	port: data.port ?? null,
 	path: data.path,
 	sni: data.sni,
+	sni_options: data.sni_options,
+	sni_selection_mode: data.sni_selection_mode,
+	sni_ttl_seconds: data.sni_ttl_seconds ?? null,
 	host: data.host,
+	host_options: data.host_options,
+	host_selection_mode: data.host_selection_mode,
+	host_ttl_seconds: data.host_ttl_seconds ?? null,
 	mux_enable: data.mux_enable,
 	allowinsecure: data.allowinsecure,
 	is_disabled: data.is_disabled,
@@ -356,9 +820,73 @@ const serializeHostData = (data: HostData) => ({
 	path: normalizeString(data.path),
 	sni: normalizeString(data.sni),
 	host: normalizeString(data.host),
+	address_options: rotationTextToOptions(data.address_options),
+	address_selection_mode: normalizeRotationMode(data.address_selection_mode),
+	address_ttl_seconds: data.address_ttl_seconds ?? null,
+	sni_options: rotationTextToOptions(data.sni_options),
+	sni_selection_mode: normalizeRotationMode(data.sni_selection_mode),
+	sni_ttl_seconds: data.sni_ttl_seconds ?? null,
+	host_options: rotationTextToOptions(data.host_options),
+	host_selection_mode: normalizeRotationMode(data.host_selection_mode),
+	host_ttl_seconds: data.host_ttl_seconds ?? null,
 	fragment_setting: normalizeString(data.fragment_setting),
 	noise_setting: normalizeString(data.noise_setting),
 });
+
+const validateHostState = (
+	inboundTag: string,
+	data: HostData | CreateHostValues,
+	protocol?: string,
+): string[] => {
+	const errors: string[] = [];
+	if (!inboundTag.trim()) {
+		errors.push("Inbound is required.");
+	}
+	if (!data.remark.trim()) {
+		errors.push("Remark is required.");
+	}
+	const profileNameError = profileHostNameError(protocol, data.remark);
+	if (profileNameError) {
+		errors.push(profileNameError);
+	}
+	if (
+		!data.address.trim() &&
+		rotationTextToOptions(data.address_options).length === 0
+	) {
+		errors.push("Address is required.");
+	}
+	if (data.port !== null) {
+		const port = Number(data.port);
+		if (!Number.isInteger(port) || port < 1 || port > 65535) {
+			errors.push("Port must be a number between 1 and 65535.");
+		}
+	}
+	const path = data.path.trim();
+	if (path && !path.startsWith("/")) {
+		errors.push("Path must start with /.");
+	}
+	for (const [label, mode, ttl] of [
+		["Address", data.address_selection_mode, data.address_ttl_seconds],
+		["SNI", data.sni_selection_mode, data.sni_ttl_seconds],
+		["Request Host", data.host_selection_mode, data.host_ttl_seconds],
+	] as const) {
+		if (mode === "ttl" && ttl !== null) {
+			const numeric = Number(ttl);
+			if (!Number.isInteger(numeric) || numeric < 1 || numeric > 2592000) {
+				errors.push(`${label} TTL must be between 1 and 2592000 seconds.`);
+			}
+		}
+	}
+	for (const [label, value] of [
+		["Primary DNS", data.dns_primary],
+		["Secondary DNS", data.dns_secondary],
+	] as const) {
+		if (!value.trim()) {
+			errors.push(`${label} is required.`);
+		}
+	}
+	return errors;
+};
 
 const isHostDirty = (host: HostState) => {
 	const current = serializeHostData(host.data);
@@ -369,33 +897,48 @@ const isHostDirty = (host: HostState) => {
 	return JSON.stringify(current) !== JSON.stringify(original);
 };
 
-const formatHostForApi = (data: HostData): HostsSchema[string][number] => ({
-	id: data.id ?? null,
-	remark: data.remark.trim(),
-	address: data.address.trim(),
-	sort: data.sort,
-	port: data.port,
-	path: data.path.trim() ? data.path.trim() : null,
-	sni: data.sni.trim() ? data.sni.trim() : null,
-	host: data.host.trim() ? data.host.trim() : null,
-	mux_enable: data.mux_enable,
-	allowinsecure: data.allowinsecure,
-	is_disabled: data.is_disabled,
-	fragment_setting: data.fragment_setting.trim()
-		? data.fragment_setting.trim()
-		: null,
-	noise_setting: data.noise_setting.trim() ? data.noise_setting.trim() : null,
-	random_user_agent: data.random_user_agent,
-	security: data.security || "inbound_default",
-	alpn: data.alpn || "",
-	fingerprint: data.fingerprint || "",
-	use_sni_as_host: data.use_sni_as_host,
-});
+const formatHostForApi = (data: HostData): HostsSchema[string][number] => {
+	return {
+		id: data.id ?? null,
+		remark: data.remark.trim(),
+		address: rotationTextToOptions(data.address).join(", "),
+		dns_primary: data.dns_primary.trim(),
+		dns_secondary: data.dns_secondary.trim(),
+		address_options: [],
+		address_selection_mode: normalizeRotationMode(data.address_selection_mode),
+		address_ttl_seconds: data.address_ttl_seconds ?? null,
+		port: data.port,
+		path: data.path.trim() ? data.path.trim() : null,
+		sni: rotationTextToOptions(data.sni).join(", ") || null,
+		sni_options: [],
+		sni_selection_mode: normalizeRotationMode(data.sni_selection_mode),
+		sni_ttl_seconds: data.sni_ttl_seconds ?? null,
+		host: rotationTextToOptions(data.host).join(", ") || null,
+		host_options: [],
+		host_selection_mode: normalizeRotationMode(data.host_selection_mode),
+		host_ttl_seconds: data.host_ttl_seconds ?? null,
+		mux_enable: data.mux_enable,
+		allowinsecure: data.allowinsecure,
+		is_disabled: data.is_disabled,
+		fragment_setting: data.fragment_setting.trim()
+			? data.fragment_setting.trim()
+			: null,
+		noise_setting: data.noise_setting.trim() ? data.noise_setting.trim() : null,
+		random_user_agent: data.random_user_agent,
+		security: data.security || "inbound_default",
+		alpn: data.alpn || "",
+		fingerprint: data.fingerprint || "",
+		use_sni_as_host: data.use_sni_as_host,
+	};
+};
 
 const sortHosts = (hosts: HostState[]) =>
 	[...hosts].sort((a, b) => {
-		const diff = safeSortValue(a.data.sort) - safeSortValue(b.data.sort);
-		if (diff !== 0) return diff;
+		const inboundDiff = a.inboundTag.localeCompare(b.inboundTag);
+		if (inboundDiff !== 0) return inboundDiff;
+		const leftID = a.data.id ?? Number.MAX_SAFE_INTEGER;
+		const rightID = b.data.id ?? Number.MAX_SAFE_INTEGER;
+		if (leftID !== rightID) return leftID - rightID;
 		return a.data.remark.localeCompare(b.data.remark);
 	});
 
@@ -411,7 +954,7 @@ const mapHostsToState = (hosts: HostsSchema): HostState[] => {
 		}
 		hostList.forEach((host, index) => {
 			try {
-				const normalized = normalizeHostData(host, index);
+				const normalized = normalizeHostData(host);
 				const persistentUid =
 					normalized.id != null ? `host-${normalized.id}` : createUid();
 				result.push({
@@ -442,9 +985,7 @@ const groupHostsByInbound = (items: HostState[]): HostsSchema => {
 	});
 	const result: HostsSchema = {};
 	grouped.forEach((value, key) => {
-		result[key] = value
-			.map((host) => formatHostForApi(host))
-			.sort((a, b) => safeSortValue(a.sort) - safeSortValue(b.sort));
+		result[key] = value.map((host) => formatHostForApi(host));
 	});
 	return result;
 };
@@ -460,345 +1001,6 @@ const buildInboundPayload = (
 		payload[tag] = grouped[tag] ?? [];
 	});
 	return payload;
-};
-
-type HostCardProps = {
-	host: HostState;
-	inboundOptions: InboundOption[];
-	orderIndex: number;
-	onToggleActive: (uid: string, active: boolean) => void;
-	onEdit: (uid: string) => void;
-	onDelete: (uid: string) => void;
-	saving: boolean;
-	deleting: boolean;
-};
-
-const HostCard: FC<HostCardProps> = ({
-	host,
-	inboundOptions,
-	orderIndex,
-	onToggleActive,
-	onEdit,
-	onDelete,
-	saving,
-	deleting,
-}) => {
-	const { t } = useTranslation();
-	const inbound = inboundOptions.find(
-		(option) => option.value === host.inboundTag,
-	);
-	const active = !host.data.is_disabled;
-	const dirty = isHostDirty(host);
-	const hostName = host.data.remark || t("hostsPage.untitledHost");
-
-	return (
-		<Card
-			borderWidth="1px"
-			borderColor={dirty ? "primary.400" : "gray.200"}
-			_dark={{
-				borderColor: dirty ? "primary.300" : "gray.700",
-				bg: dirty ? "gray.800" : "gray.900",
-			}}
-			cursor="pointer"
-			onClick={() => onEdit(host.uid)}
-			transition="border-color 0.2s ease"
-			_hover={{ borderColor: "primary.400" }}
-		>
-			<CardBody as={Stack} spacing={4}>
-				<HStack justify="space-between" align="center" wrap="wrap" rowGap={2}>
-					<VStack align="flex-start" spacing={1} flex="1">
-						<Tooltip label={host.data.remark} isDisabled={!host.data.remark}>
-							<Text fontWeight="semibold" noOfLines={1} maxW="full">
-								{hostName}
-							</Text>
-						</Tooltip>
-						<HStack spacing={2} flexWrap="wrap">
-							<Tag colorScheme="gray" size="sm">
-								{t("hostsPage.orderIndex", { value: orderIndex + 1 })}
-							</Tag>
-							{inbound && (
-								<Tag colorScheme="purple" size="sm">
-									{`${inbound.value} (${inbound.protocol.toUpperCase()} - ${inbound.network})`}
-								</Tag>
-							)}
-							{typeof host.data.port === "number" && (
-								<Tag colorScheme="blue" size="sm">
-									{t("hostsPage.portTag", { value: host.data.port })}
-								</Tag>
-							)}
-							{dirty && (
-								<Tag colorScheme="orange" size="sm">
-									{t("hostsPage.unsaved")}
-								</Tag>
-							)}
-						</HStack>
-					</VStack>
-					<HStack
-						spacing={2}
-						onClick={(event) => event.stopPropagation()}
-						onPointerDown={(event) => event.stopPropagation()}
-					>
-						<Switch
-							size="sm"
-							colorScheme="primary"
-							isChecked={active}
-							onChange={(event) => {
-								event.stopPropagation();
-								onToggleActive(host.uid, event.target.checked);
-							}}
-							onClick={(event) => event.stopPropagation()}
-							onPointerDown={(event) => event.stopPropagation()}
-							aria-label={t("hostsPage.toggleActive")}
-						/>
-						<Text fontSize="sm" color="gray.600" _dark={{ color: "gray.300" }}>
-							{active ? t("hostsPage.enabled") : t("hostsPage.disabled")}
-						</Text>
-					</HStack>
-				</HStack>
-
-				<VStack
-					align="stretch"
-					spacing={2}
-					color="gray.600"
-					_dark={{ color: "gray.300" }}
-				>
-					<Text fontSize="sm">
-						{host.data.address || t("hostsPage.noAddress")}
-					</Text>
-					{host.data.path && (
-						<Text fontSize="sm" noOfLines={1}>
-							{t("hostsDialog.path")}: {host.data.path}
-						</Text>
-					)}
-					{host.data.sni && (
-						<Text fontSize="sm" noOfLines={1}>
-							{t("hostsDialog.sni")}: {host.data.sni}
-						</Text>
-					)}
-				</VStack>
-
-				<HStack justify="space-between">
-					<Button
-						size="sm"
-						variant="outline"
-						leftIcon={<EditIcon />}
-						onClick={(event) => {
-							event.stopPropagation();
-							onEdit(host.uid);
-						}}
-						isLoading={saving}
-					>
-						{t("hostsPage.edit")}
-					</Button>
-					<DeleteConfirmPopover
-						message={t("hostsPage.deleteConfirmation")}
-						isLoading={deleting}
-						onConfirm={() => onDelete(host.uid)}
-					>
-						<IconButton
-							aria-label={t("hostsPage.delete")}
-							size="sm"
-							colorScheme="red"
-							variant="ghost"
-							onClick={(event) => event.stopPropagation()}
-							icon={<DeleteIcon />}
-						/>
-					</DeleteConfirmPopover>
-				</HStack>
-			</CardBody>
-		</Card>
-	);
-};
-
-const HostListRow: FC<HostCardProps> = ({
-	host,
-	inboundOptions,
-	orderIndex,
-	onToggleActive,
-	onEdit,
-	onDelete,
-	saving,
-	deleting,
-}) => {
-	const { t } = useTranslation();
-	const inbound = inboundOptions.find(
-		(option) => option.value === host.inboundTag,
-	);
-	const active = !host.data.is_disabled;
-	const dirty = isHostDirty(host);
-	const hostName = host.data.remark || t("hostsPage.untitledHost");
-
-	return (
-		<Box
-			borderWidth="1px"
-			borderRadius="md"
-			borderColor={dirty ? "primary.400" : "gray.200"}
-			_dark={{
-				borderColor: dirty ? "primary.300" : "gray.700",
-				bg: dirty ? "gray.800" : "gray.900",
-			}}
-			px={{ base: 4, md: 5 }}
-			py={3}
-			onClick={() => onEdit(host.uid)}
-			cursor="pointer"
-			transition="border-color 0.2s ease"
-			_hover={{ borderColor: "primary.400" }}
-		>
-			<HStack justify="space-between" align="center" spacing={4}>
-				<VStack align="flex-start" spacing={1} flex="1">
-					<HStack spacing={2} flexWrap="wrap">
-						<Tag colorScheme="gray" size="sm">
-							{t("hostsPage.orderIndex", { value: orderIndex + 1 })}
-						</Tag>
-						<Text fontWeight="semibold" noOfLines={1}>
-							{hostName}
-						</Text>
-						{inbound && (
-							<Tag colorScheme="purple" size="sm">
-								{`${inbound.value} (${inbound.protocol.toUpperCase()} - ${inbound.network})`}
-							</Tag>
-						)}
-						{typeof host.data.port === "number" && (
-							<Tag colorScheme="blue" size="sm">
-								{t("hostsPage.portTag", { value: host.data.port })}
-							</Tag>
-						)}
-						{dirty && (
-							<Tag colorScheme="orange" size="sm">
-								{t("hostsPage.unsaved")}
-							</Tag>
-						)}
-					</HStack>
-					<Text fontSize="sm" color="gray.600" _dark={{ color: "gray.300" }}>
-						{host.data.address || t("hostsPage.noAddress")}
-					</Text>
-				</VStack>
-				<HStack
-					spacing={3}
-					onClick={(event) => event.stopPropagation()}
-					onPointerDown={(event) => event.stopPropagation()}
-				>
-					<Switch
-						size="sm"
-						colorScheme="primary"
-						isChecked={active}
-						onChange={(event) => {
-							event.stopPropagation();
-							onToggleActive(host.uid, event.target.checked);
-						}}
-						onClick={(event) => event.stopPropagation()}
-						onPointerDown={(event) => event.stopPropagation()}
-						aria-label={t("hostsPage.toggleActive")}
-					/>
-					<Text fontSize="sm" color="gray.600" _dark={{ color: "gray.300" }}>
-						{active ? t("hostsPage.enabled") : t("hostsPage.disabled")}
-					</Text>
-					<IconButton
-						aria-label={t("hostsPage.edit")}
-						size="sm"
-						variant="ghost"
-						icon={<EditIcon />}
-						onClick={(event) => {
-							event.stopPropagation();
-							onEdit(host.uid);
-						}}
-						isLoading={saving}
-					/>
-					<DeleteConfirmPopover
-						message={t("hostsPage.deleteConfirmation")}
-						isLoading={deleting}
-						onConfirm={() => onDelete(host.uid)}
-					>
-						<IconButton
-							aria-label={t("hostsPage.delete")}
-							size="sm"
-							colorScheme="red"
-							variant="ghost"
-							onClick={(event) => event.stopPropagation()}
-							icon={<DeleteIcon />}
-						/>
-					</DeleteConfirmPopover>
-				</HStack>
-			</HStack>
-		</Box>
-	);
-};
-
-type SortRowProps = {
-	host: HostState;
-	index: number;
-};
-
-const SortRow: FC<SortRowProps> = ({ host, index }) => {
-	const { t } = useTranslation();
-	const dragControls = useDragControls();
-	const hostName = host.data.remark || t("hostsPage.untitledHost");
-
-	const handlePointerDown = useCallback(
-		(event: ReactPointerEvent<HTMLButtonElement>) => {
-			if (event.pointerType === "mouse" && event.button !== 0) {
-				return;
-			}
-			event.preventDefault();
-			dragControls.start(event);
-		},
-		[dragControls],
-	);
-
-	return (
-		<Reorder.Item
-			value={host}
-			id={host.uid}
-			dragListener={false}
-			dragControls={dragControls}
-			drag
-			dragMomentum={false}
-			whileDrag={{ zIndex: 10, scale: 1.01 }}
-			dragTransition={{ bounceStiffness: 600, bounceDamping: 40 }}
-			style={{ listStyle: "none", touchAction: "none" }}
-		>
-			<HStack
-				borderWidth="1px"
-				borderRadius="md"
-				borderColor="gray.200"
-				_dark={{ borderColor: "gray.600", bg: "gray.800" }}
-				px={4}
-				py={3}
-				spacing={4}
-				align="center"
-			>
-				<Tooltip label={t("hostsPage.dragHandle")} hasArrow>
-					<IconButton
-						aria-label={t("hostsPage.dragHandle")}
-						size="sm"
-						variant="ghost"
-						icon={<HandleIcon />}
-						cursor="grab"
-						onPointerDown={handlePointerDown}
-						style={{ touchAction: "none" }}
-					/>
-				</Tooltip>
-				<Tag colorScheme="gray" size="sm">
-					{t("hostsPage.orderIndex", { value: index + 1 })}
-				</Tag>
-				<VStack align="flex-start" spacing={0} flex="1">
-					<Tooltip label={host.data.remark} isDisabled={!host.data.remark}>
-						<Text fontWeight="medium" noOfLines={1} maxW="full">
-							{hostName}
-						</Text>
-					</Tooltip>
-					<Text
-						fontSize="sm"
-						color="gray.500"
-						_dark={{ color: "gray.300" }}
-						noOfLines={1}
-					>
-						{host.data.address || host.inboundTag}
-					</Text>
-				</VStack>
-			</HStack>
-		</Reorder.Item>
-	);
 };
 
 type HostDetailModalProps = {
@@ -817,6 +1019,7 @@ type HostDetailModalProps = {
 	onDelete: (uid: string) => void;
 	saving: boolean;
 	deleting: boolean;
+	nodes?: NodeType[];
 	mode?: "edit" | "clone";
 	onClone?: (uid: string) => void;
 };
@@ -833,6 +1036,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 	onDelete,
 	saving,
 	deleting,
+	nodes,
 	mode = "edit",
 	onClone,
 }) => {
@@ -849,24 +1053,54 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 	};
 	const isCloneMode = mode === "clone";
 	const dirty = host ? isHostDirty(host) : false;
+	const selectedInbound = useMemo(
+		() =>
+			host
+				? inboundOptions.find((option) => option.value === host.inboundTag)
+				: undefined,
+		[inboundOptions, host],
+	);
+	const isWireGuardInbound = selectedInbound?.protocol === "wireguard";
+	const isProfileHostInbound =
+		isWireGuardInbound || selectedInbound?.protocol === "openvpn";
+	const remarkError = profileHostNameError(
+		selectedInbound?.protocol,
+		host?.data.remark ?? "",
+	);
 	const canSubmit = host
 		? Boolean(
-				host.inboundTag && host.data.remark.trim() && host.data.address.trim(),
+				host.inboundTag &&
+					host.data.remark.trim() &&
+					!remarkError &&
+					(host.data.address.trim() ||
+						rotationTextToOptions(host.data.address_options).length > 0) &&
+					(!isWireGuardInbound ||
+						(host.data.dns_primary.trim() &&
+							host.data.dns_secondary.trim())),
 			)
 		: false;
-	const primaryDisabled = isCloneMode ? !canSubmit : !dirty;
+	const primaryDisabled = isCloneMode ? !canSubmit : !dirty || !canSubmit;
 	const primaryLabel = isCloneMode
 		? t("hostsPage.clone.submit")
-		: t("hostsPage.save");
+		: t("save");
 	const hostPayload = useMemo(() => {
 		if (!host) {
 			return null;
 		}
 		return {
 			inboundTag: host.inboundTag,
-			...host.data,
+			...formatHostForApi(host.data),
 		};
 	}, [host]);
+	const nodeAddressOptions = useMemo(
+		() => getNodeAddressOptions(nodes),
+		[nodes],
+	);
+	const isVirtualTunnelInbound =
+		selectedInbound?.protocol === "openvpn" ||
+		selectedInbound?.protocol === "l2tp" ||
+		selectedInbound?.protocol === "ikev2" ||
+		selectedInbound?.protocol === "anyconnect";
 	useEffect(() => {
 		if (!hostPayload) {
 			setJsonText("");
@@ -941,9 +1175,11 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 				<XrayModalHeader
 					subtitle={isCloneMode ? t("hostsPage.clone.description") : undefined}
 				>
-					{isCloneMode
-						? t("hostsPage.clone.title")
-						: host.data.remark || t("hostsPage.untitledHost")}
+					<AppleEmojiText>
+						{isCloneMode
+							? t("hostsPage.clone.title")
+							: host.data.remark || t("hostsPage.untitledHost")}
+					</AppleEmojiText>
 				</XrayModalHeader>
 				<XrayModalBody>
 					<Tabs className="xray-dialog-auto-sections" variant="unstyled">
@@ -962,11 +1198,12 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 										</CardHeader>
 										<CardBody pt={0}>
 											<VStack align="stretch" spacing={4}>
-												<FormControl>
+												<FormControl isRequired isInvalid={Boolean(remarkError)}>
 													<FormLabel>{t("hostsDialog.remark")}</FormLabel>
 													<InputGroup>
 														<Input
 															value={host.data.remark}
+															maxLength={isWireGuardInbound ? 15 : undefined}
 															onChange={(event) =>
 																onChange(host.uid, "remark", event.target.value)
 															}
@@ -976,93 +1213,128 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 															pr={2}
 															pointerEvents="auto"
 														>
-															<DynamicTokensPopover />
+															{!isProfileHostInbound && <DynamicTokensPopover />}
 														</InputRightElement>
 													</InputGroup>
+													{remarkError && (
+														<FormErrorMessage>{t(remarkError)}</FormErrorMessage>
+													)}
 												</FormControl>
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-													<FormControl>
+													<FormControl isRequired>
 														<FormLabel>{t("hostsPage.inboundLabel")}</FormLabel>
-														<Select
+														<SearchableTagSelect
 															value={host.inboundTag}
-															onChange={(event) =>
-																onChangeInbound(host.uid, event.target.value)
-															}
-														>
-															{inboundOptions.map((option) => (
-																<option key={option.value} value={option.value}>
-																	{option.label}
-																</option>
-															))}
-														</Select>
-													</FormControl>
-													<FormControl>
-														<FormLabel>{t("hostsDialog.sort")}</FormLabel>
-														<NumericInput
-															value={host.data.sort}
-															allowMouseWheel
-															onChange={(_, num) =>
-																onChange(
-																	host.uid,
-																	"sort",
-																	Number.isNaN(num) ? host.data.sort : num,
-																)
+															options={inboundOptions}
+															placeholder={t("hostsPage.inboundLabel")}
+															onChange={(value) =>
+																onChangeInbound(host.uid, String(value))
 															}
 														/>
 													</FormControl>
 												</SimpleGrid>
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-													<FormControl>
+													<FormControl isRequired>
 														<FormLabel>{t("hostsDialog.address")}</FormLabel>
-														<InputGroup>
+														<MultiValueAutocomplete
+															value={host.data.address}
+															options={nodeAddressOptions}
+															placeholder={t("hostsDialog.addressPlaceholder")}
+															onChange={(value) =>
+																onChange(host.uid, "address", value)
+															}
+															rightElement={<DynamicTokensPopover />}
+														/>
+													</FormControl>
+													{!isVirtualTunnelInbound && (
+														<FormControl>
+															<FormLabel>{t("port")}</FormLabel>
+															<NumericInput
+																value={host.data.port ?? ""}
+																allowMouseWheel
+																fieldProps={{
+																	placeholder:
+																		inboundPortPlaceholder(selectedInbound),
+																}}
+																onChange={(_, num) =>
+																	onChange(
+																		host.uid,
+																		"port",
+																		Number.isNaN(num) ? null : num,
+																	)
+																}
+															/>
+														</FormControl>
+													)}
+												</SimpleGrid>
+												{hasMultipleRotationValues(host.data.address) && (
+													<RotationControls
+														mode={host.data.address_selection_mode}
+														ttl={host.data.address_ttl_seconds}
+														onModeChange={(value) =>
+															onChange(
+																host.uid,
+																"address_selection_mode",
+																value,
+															)
+														}
+														onTTLChange={(value) =>
+															onChange(host.uid, "address_ttl_seconds", value)
+														}
+													/>
+												)}
+												{isWireGuardInbound && (
+													<SimpleGrid
+														columns={{ base: 1, md: 2 }}
+														spacing={4}
+													>
+														<FormControl isRequired>
+															<FormLabel>{t("hostsDialog.dnsPrimary")}</FormLabel>
 															<Input
-																value={host.data.address}
+																value={host.data.dns_primary}
+																placeholder="1.1.1.1"
 																onChange={(event) =>
 																	onChange(
 																		host.uid,
-																		"address",
+																		"dns_primary",
 																		event.target.value,
 																	)
 																}
 															/>
-															<InputRightElement
-																width="auto"
-																pr={2}
-																pointerEvents="auto"
-															>
-																<DynamicTokensPopover />
-															</InputRightElement>
-														</InputGroup>
-													</FormControl>
+														</FormControl>
+														<FormControl isRequired>
+															<FormLabel>{t("hostsDialog.dnsSecondary")}</FormLabel>
+															<Input
+																value={host.data.dns_secondary}
+																placeholder="8.8.8.8"
+																onChange={(event) =>
+																	onChange(
+																		host.uid,
+																		"dns_secondary",
+																		event.target.value,
+																	)
+																}
+															/>
+														</FormControl>
+													</SimpleGrid>
+												)}
+												{!isVirtualTunnelInbound && (
 													<FormControl>
-														<FormLabel>{t("hostsDialog.port")}</FormLabel>
-														<NumericInput
-															value={host.data.port ?? ""}
-															allowMouseWheel
-															onChange={(_, num) =>
-																onChange(
-																	host.uid,
-																	"port",
-																	Number.isNaN(num) ? null : num,
-																)
+														<FormLabel>{t("hostsDialog.path")}</FormLabel>
+														<Input
+															value={host.data.path}
+															onChange={(event) =>
+																onChange(host.uid, "path", event.target.value)
 															}
+															placeholder="/"
 														/>
 													</FormControl>
-												</SimpleGrid>
-												<FormControl>
-													<FormLabel>{t("hostsDialog.path")}</FormLabel>
-													<Input
-														value={host.data.path}
-														onChange={(event) =>
-															onChange(host.uid, "path", event.target.value)
-														}
-														placeholder="/"
-													/>
-												</FormControl>
+												)}
 											</VStack>
 										</CardBody>
 									</Card>
 
+									{!isVirtualTunnelInbound && (
 									<Card className="xray-dialog-section" variant="outline">
 										<CardHeader pb={2}>
 											<Text fontWeight="semibold">
@@ -1074,93 +1346,112 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 													<FormControl>
 														<FormLabel>{t("hostsDialog.sni")}</FormLabel>
-														<Input
+														<MultiValueAutocomplete
 															value={host.data.sni}
-															onChange={(event) =>
-																onChange(host.uid, "sni", event.target.value)
+															placeholder={t("hostsDialog.sniPlaceholder")}
+															onChange={(value) =>
+																onChange(host.uid, "sni", value)
 															}
 														/>
 													</FormControl>
 													<FormControl>
 														<FormLabel>{t("hostsDialog.host")}</FormLabel>
-														<InputGroup>
-															<Input
-																value={host.data.host}
-																onChange={(event) =>
-																	onChange(host.uid, "host", event.target.value)
-																}
-															/>
-															<InputRightElement
-																width="auto"
-																pr={2}
-																pointerEvents="auto"
-															>
-																<DynamicTokensPopover />
-															</InputRightElement>
-														</InputGroup>
+														<MultiValueAutocomplete
+															value={host.data.host}
+															placeholder={t("hostsDialog.hostPlaceholder")}
+															onChange={(value) =>
+																onChange(host.uid, "host", value)
+															}
+															rightElement={<DynamicTokensPopover />}
+														/>
 													</FormControl>
 												</SimpleGrid>
+												{(hasMultipleRotationValues(host.data.sni) ||
+													hasMultipleRotationValues(host.data.host)) && (
+													<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
+														{hasMultipleRotationValues(host.data.sni) && (
+															<RotationControls
+																mode={host.data.sni_selection_mode}
+																ttl={host.data.sni_ttl_seconds}
+																onModeChange={(value) =>
+																	onChange(
+																		host.uid,
+																		"sni_selection_mode",
+																		value,
+																	)
+																}
+																onTTLChange={(value) =>
+																	onChange(host.uid, "sni_ttl_seconds", value)
+																}
+															/>
+														)}
+														{hasMultipleRotationValues(host.data.host) && (
+															<RotationControls
+																mode={host.data.host_selection_mode}
+																ttl={host.data.host_ttl_seconds}
+																onModeChange={(value) =>
+																	onChange(
+																		host.uid,
+																		"host_selection_mode",
+																		value,
+																	)
+																}
+																onTTLChange={(value) =>
+																	onChange(host.uid, "host_ttl_seconds", value)
+																}
+															/>
+														)}
+													</SimpleGrid>
+												)}
 												<SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
 													<FormControl>
 														<FormLabel>{t("hostsDialog.security")}</FormLabel>
-														<Select
+														<SearchableTagSelect
 															value={host.data.security}
-															onChange={(event) =>
-																onChange(
-																	host.uid,
-																	"security",
-																	event.target.value,
-																)
+															options={proxyHostSecurity.map((option) => ({
+																value: option.value,
+																label: option.title,
+															}))}
+															placeholder={t("hostsDialog.security")}
+															onChange={(value) =>
+																onChange(host.uid, "security", String(value))
 															}
-														>
-															{proxyHostSecurity.map((option) => (
-																<option key={option.value} value={option.value}>
-																	{option.title}
-																</option>
-															))}
-														</Select>
+														/>
 													</FormControl>
 													<FormControl>
 														<FormLabel>{t("hostsDialog.alpn")}</FormLabel>
-														<Select
+														<MultiValueAutocomplete
 															value={host.data.alpn}
-															onChange={(event) =>
-																onChange(host.uid, "alpn", event.target.value)
+															options={alpnAutocompleteOptions}
+															placeholder={t("hostsDialog.alpnPlaceholder")}
+															onChange={(value) =>
+																onChange(host.uid, "alpn", value)
 															}
-														>
-															{proxyALPN.map((option) => (
-																<option key={option.value} value={option.value}>
-																	{option.title}
-																</option>
-															))}
-														</Select>
+														/>
 													</FormControl>
 													<FormControl>
 														<FormLabel>
 															{t("hostsDialog.fingerprint")}
 														</FormLabel>
-														<Select
+														<SearchableTagSelect
 															value={host.data.fingerprint}
-															onChange={(event) =>
-																onChange(
-																	host.uid,
-																	"fingerprint",
-																	event.target.value,
-																)
+															options={proxyFingerprint.map((option) => ({
+																value: option.value,
+																label: option.title,
+															}))}
+															placeholder={t("hostsDialog.fingerprint")}
+															onChange={(value) =>
+																onChange(host.uid, "fingerprint", String(value))
 															}
-														>
-															{proxyFingerprint.map((option) => (
-																<option key={option.value} value={option.value}>
-																	{option.title}
-																</option>
-															))}
-														</Select>
+														/>
 													</FormControl>
 												</SimpleGrid>
 											</VStack>
 										</CardBody>
 									</Card>
+									)}
 
+									{!isVirtualTunnelInbound && (
 									<Card className="xray-dialog-section" variant="outline">
 										<CardHeader pb={2}>
 											<Text fontWeight="semibold">
@@ -1169,19 +1460,18 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 										</CardHeader>
 										<CardBody pt={0}>
 											<VStack align="stretch" spacing={4}>
-												<FormControl>
-													<FormLabel>{t("hostsDialog.noise")}</FormLabel>
-													<Input
-														value={host.data.noise_setting}
-														onChange={(event) =>
-															onChange(
-																host.uid,
-																"noise_setting",
-																event.target.value,
-															)
-														}
-													/>
-												</FormControl>
+												<FragmentSettingFields
+													value={host.data.fragment_setting}
+													onChange={(value) =>
+														onChange(host.uid, "fragment_setting", value)
+													}
+												/>
+												<NoisePatternFields
+													value={host.data.noise_setting}
+													onChange={(value) =>
+														onChange(host.uid, "noise_setting", value)
+													}
+												/>
 												<Stack
 													direction={{ base: "column", md: "row" }}
 													spacing={4}
@@ -1238,6 +1528,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 											</VStack>
 										</CardBody>
 									</Card>
+									)}
 								</VStack>
 							</TabPanel>
 							<TabPanel px={0}>
@@ -1262,8 +1553,8 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 							{t("hostsPage.cancel")}
 						</Button>
 					) : (
-						<DeleteConfirmPopover
-							message={t("hostsPage.deleteConfirmation")}
+						<DeleteConfirmDialog
+							description={t("hostsPage.deleteConfirmation")}
 							isLoading={deleting}
 							onConfirm={() => onDelete(host.uid)}
 						>
@@ -1273,9 +1564,9 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 								colorScheme="red"
 								leftIcon={<DeleteIcon />}
 							>
-								{t("hostsPage.delete")}
+								{t("delete")}
 							</Button>
-						</DeleteConfirmPopover>
+						</DeleteConfirmDialog>
 					)}
 					<HStack spacing={3}>
 						{!isCloneMode && onClone && (
@@ -1294,7 +1585,7 @@ const HostDetailModal: FC<HostDetailModalProps> = ({
 							onClick={() => onReset(host.uid)}
 							isDisabled={!dirty || saving}
 						>
-							{t("hostsPage.reset")}
+							{t("reset")}
 						</Button>
 						<Button
 							size="sm"
@@ -1318,7 +1609,7 @@ type CreateHostModalProps = {
 	inboundOptions: InboundOption[];
 	onSubmit: (values: CreateHostValues) => void;
 	isSubmitting: boolean;
-	defaultSort: number;
+	nodes?: NodeType[];
 };
 
 const CreateHostModal: FC<CreateHostModalProps> = ({
@@ -1327,7 +1618,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 	inboundOptions,
 	onSubmit,
 	isSubmitting,
-	defaultSort,
+	nodes,
 }) => {
 	const { t } = useTranslation();
 	const initialRef = useRef<HTMLInputElement | null>(null);
@@ -1335,12 +1626,43 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 		inboundTag: inboundOptions[0]?.value ?? "",
 		remark: "",
 		address: "",
-		sort: defaultSort ?? 0,
+		dns_primary: "1.1.1.1",
+		dns_secondary: "8.8.8.8",
+		address_options: "",
+		address_selection_mode: "random",
+		address_ttl_seconds: null,
 		port: null,
 		path: "",
 		sni: "",
+		sni_options: "",
+		sni_selection_mode: "random",
+		sni_ttl_seconds: null,
 		host: "",
+		host_options: "",
+		host_selection_mode: "random",
+		host_ttl_seconds: null,
 	});
+	const nodeAddressOptions = useMemo(
+		() => getNodeAddressOptions(nodes),
+		[nodes],
+	);
+	const selectedInbound = useMemo(
+		() =>
+			inboundOptions.find((option) => option.value === formState.inboundTag),
+		[inboundOptions, formState.inboundTag],
+	);
+	const isVirtualTunnelInbound =
+		selectedInbound?.protocol === "openvpn" ||
+		selectedInbound?.protocol === "l2tp" ||
+		selectedInbound?.protocol === "ikev2" ||
+		selectedInbound?.protocol === "anyconnect";
+	const isWireGuardInbound = selectedInbound?.protocol === "wireguard";
+	const isProfileHostInbound =
+		isWireGuardInbound || selectedInbound?.protocol === "openvpn";
+	const remarkError = profileHostNameError(
+		selectedInbound?.protocol,
+		formState.remark,
+	);
 
 	useEffect(() => {
 		if (isOpen) {
@@ -1348,21 +1670,35 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 				inboundTag: inboundOptions[0]?.value ?? "",
 				remark: "",
 				address: "",
-				sort: defaultSort ?? 0,
+				dns_primary: "1.1.1.1",
+				dns_secondary: "8.8.8.8",
+				address_options: "",
+				address_selection_mode: "random",
+				address_ttl_seconds: null,
 				port: null,
 				path: "",
 				sni: "",
+				sni_options: "",
+				sni_selection_mode: "random",
+				sni_ttl_seconds: null,
 				host: "",
+				host_options: "",
+				host_selection_mode: "random",
+				host_ttl_seconds: null,
 			});
 			setTimeout(() => initialRef.current?.focus(), 150);
 		}
-	}, [defaultSort, inboundOptions, isOpen]);
+	}, [inboundOptions, isOpen]);
 
 	const handleSubmit = () => {
 		if (
 			!formState.inboundTag ||
 			!formState.remark.trim() ||
-			!formState.address.trim()
+			Boolean(remarkError) ||
+			(!formState.address.trim() &&
+				rotationTextToOptions(formState.address_options).length === 0) ||
+			(isWireGuardInbound &&
+				(!formState.dns_primary.trim() || !formState.dns_secondary.trim()))
 		) {
 			return;
 		}
@@ -1388,30 +1724,27 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 						<Text fontSize="sm" fontWeight="semibold">
 							{t("hostsPage.section.general")}
 						</Text>
-						<FormControl>
+						<FormControl isRequired>
 							<FormLabel>{t("hostsPage.inboundLabel")}</FormLabel>
-							<Select
+							<SearchableTagSelect
 								value={formState.inboundTag}
-								onChange={(event) =>
+								options={inboundOptions}
+								placeholder={t("hostsPage.inboundLabel")}
+								onChange={(value) =>
 									setFormState((prev) => ({
 										...prev,
-										inboundTag: event.target.value,
+										inboundTag: String(value),
 									}))
 								}
-							>
-								{inboundOptions.map((option) => (
-									<option key={option.value} value={option.value}>
-										{option.label}
-									</option>
-								))}
-							</Select>
+							/>
 						</FormControl>
-						<FormControl isRequired>
+						<FormControl isRequired isInvalid={Boolean(remarkError)}>
 							<FormLabel>{t("hostsDialog.remark")}</FormLabel>
 							<InputGroup>
 								<Input
 									ref={initialRef}
 									value={formState.remark}
+									maxLength={isWireGuardInbound ? 15 : undefined}
 									onChange={(event) =>
 										setFormState((prev) => ({
 											...prev,
@@ -1420,107 +1753,179 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 									}
 								/>
 								<InputRightElement width="auto" pr={2} pointerEvents="auto">
-									<DynamicTokensPopover />
+									{!isProfileHostInbound && <DynamicTokensPopover />}
 								</InputRightElement>
 							</InputGroup>
+							{remarkError && (
+								<FormErrorMessage>{t(remarkError)}</FormErrorMessage>
+							)}
 						</FormControl>
 						<FormControl isRequired>
 							<FormLabel>{t("hostsDialog.address")}</FormLabel>
-							<InputGroup>
-								<Input
-									value={formState.address}
-									onChange={(event) =>
-										setFormState((prev) => ({
-											...prev,
-											address: event.target.value,
-										}))
-									}
-								/>
-								<InputRightElement width="auto" pr={2} pointerEvents="auto">
-									<DynamicTokensPopover />
-								</InputRightElement>
-							</InputGroup>
-						</FormControl>
-						<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-							<FormControl>
-								<FormLabel>{t("hostsDialog.port")}</FormLabel>
-								<NumericInput
-									value={formState.port ?? ""}
-									onChange={(_, num) =>
-										setFormState((prev) => ({
-											...prev,
-											port: Number.isNaN(num) ? null : num,
-										}))
-									}
-								/>
-							</FormControl>
-							<FormControl>
-								<FormLabel>{t("hostsDialog.sni")}</FormLabel>
-								<Input
-									value={formState.sni}
-									onChange={(event) =>
-										setFormState((prev) => ({
-											...prev,
-											sni: event.target.value,
-										}))
-									}
-								/>
-							</FormControl>
-						</SimpleGrid>
-						<FormControl>
-							<FormLabel>{t("hostsDialog.path")}</FormLabel>
-							<Input
-								value={formState.path}
-								onChange={(event) =>
+							<MultiValueAutocomplete
+								value={formState.address}
+								options={nodeAddressOptions}
+								placeholder={t("hostsDialog.addressPlaceholder")}
+								onChange={(value) =>
 									setFormState((prev) => ({
 										...prev,
-										path: event.target.value,
+										address: value,
+									}))
+								}
+								rightElement={<DynamicTokensPopover />}
+							/>
+						</FormControl>
+						{hasMultipleRotationValues(formState.address) && (
+							<RotationControls
+								mode={formState.address_selection_mode}
+								ttl={formState.address_ttl_seconds}
+								onModeChange={(value) =>
+									setFormState((prev) => ({
+										...prev,
+										address_selection_mode: value,
+									}))
+								}
+								onTTLChange={(value) =>
+									setFormState((prev) => ({
+										...prev,
+										address_ttl_seconds: value,
 									}))
 								}
 							/>
-						</FormControl>
-						<FormControl>
-							<FormLabel>{t("hostsDialog.host")}</FormLabel>
-							<InputGroup>
+						)}
+						{isWireGuardInbound && (
+							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+								<FormControl isRequired>
+									<FormLabel>{t("hostsDialog.dnsPrimary")}</FormLabel>
+									<Input
+										value={formState.dns_primary}
+										placeholder="1.1.1.1"
+										onChange={(event) =>
+											setFormState((prev) => ({
+												...prev,
+												dns_primary: event.target.value,
+											}))
+										}
+									/>
+								</FormControl>
+								<FormControl isRequired>
+									<FormLabel>{t("hostsDialog.dnsSecondary")}</FormLabel>
+									<Input
+										value={formState.dns_secondary}
+										placeholder="8.8.8.8"
+										onChange={(event) =>
+											setFormState((prev) => ({
+												...prev,
+												dns_secondary: event.target.value,
+											}))
+										}
+									/>
+								</FormControl>
+							</SimpleGrid>
+						)}
+						{!isVirtualTunnelInbound && (
+							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+								<FormControl>
+									<FormLabel>{t("port")}</FormLabel>
+									<NumericInput
+										value={formState.port ?? ""}
+										fieldProps={{
+											placeholder: inboundPortPlaceholder(selectedInbound),
+										}}
+										onChange={(_, num) =>
+											setFormState((prev) => ({
+												...prev,
+												port: Number.isNaN(num) ? null : num,
+											}))
+										}
+									/>
+								</FormControl>
+								<FormControl>
+									<FormLabel>{t("hostsDialog.sni")}</FormLabel>
+									<MultiValueAutocomplete
+										value={formState.sni}
+										placeholder={t("hostsDialog.sniPlaceholder")}
+										onChange={(value) =>
+											setFormState((prev) => ({
+												...prev,
+												sni: value,
+											}))
+										}
+									/>
+								</FormControl>
+							</SimpleGrid>
+						)}
+						{!isVirtualTunnelInbound && (
+							<FormControl>
+								<FormLabel>{t("hostsDialog.path")}</FormLabel>
 								<Input
+									value={formState.path}
+									onChange={(event) =>
+										setFormState((prev) => ({
+											...prev,
+											path: event.target.value,
+										}))
+									}
+								/>
+							</FormControl>
+						)}
+						{!isVirtualTunnelInbound && (
+							<FormControl>
+								<FormLabel>{t("hostsDialog.host")}</FormLabel>
+								<MultiValueAutocomplete
 									value={formState.host}
-									onChange={(event) =>
+									placeholder={t("hostsDialog.hostPlaceholder")}
+									onChange={(value) =>
 										setFormState((prev) => ({
 											...prev,
-											host: event.target.value,
+											host: value,
 										}))
 									}
+									rightElement={<DynamicTokensPopover />}
 								/>
-								<InputRightElement width="auto" pr={2} pointerEvents="auto">
-									<DynamicTokensPopover />
-								</InputRightElement>
-							</InputGroup>
-						</FormControl>
-						<FormControl>
-							<FormLabel>{t("hostsDialog.sort")}</FormLabel>
-							<NumericInput
-								value={Number.isFinite(formState.sort) ? formState.sort : ""}
-								onChange={(_, num) =>
-									setFormState((prev) => ({
-										...prev,
-										sort: Number.isNaN(num) ? prev.sort : num,
-									}))
-								}
-							/>
-						</FormControl>
-						<Box
-							borderRadius="md"
-							bg="gray.50"
-							color="gray.600"
-							fontSize="sm"
-							px={4}
-							py={3}
-							_dark={{ bg: "gray.800", color: "gray.300" }}
-						>
-							{t("hostsPage.create.sortHint", {
-								value: formState.sort ?? defaultSort,
-							})}
-						</Box>
+							</FormControl>
+						)}
+						{!isVirtualTunnelInbound && (hasMultipleRotationValues(formState.sni) ||
+							hasMultipleRotationValues(formState.host)) && (
+							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+								{hasMultipleRotationValues(formState.sni) && (
+									<RotationControls
+										mode={formState.sni_selection_mode}
+										ttl={formState.sni_ttl_seconds}
+										onModeChange={(value) =>
+											setFormState((prev) => ({
+												...prev,
+												sni_selection_mode: value,
+											}))
+										}
+										onTTLChange={(value) =>
+											setFormState((prev) => ({
+												...prev,
+												sni_ttl_seconds: value,
+											}))
+										}
+									/>
+								)}
+								{hasMultipleRotationValues(formState.host) && (
+									<RotationControls
+										mode={formState.host_selection_mode}
+										ttl={formState.host_ttl_seconds}
+										onModeChange={(value) =>
+											setFormState((prev) => ({
+												...prev,
+												host_selection_mode: value,
+											}))
+										}
+										onTTLChange={(value) =>
+											setFormState((prev) => ({
+												...prev,
+												host_ttl_seconds: value,
+											}))
+										}
+									/>
+								)}
+							</SimpleGrid>
+						)}
 					</VStack>
 				</XrayModalBody>
 				<XrayModalFooter justifyContent="flex-end">
@@ -1531,6 +1936,15 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 						colorScheme="primary"
 						onClick={handleSubmit}
 						isLoading={isSubmitting}
+						isDisabled={
+							!formState.inboundTag ||
+							!formState.remark.trim() ||
+							Boolean(remarkError) ||
+							!rotationTextToOptions(formState.address).length ||
+							(isWireGuardInbound &&
+								(!formState.dns_primary.trim() ||
+									!formState.dns_secondary.trim()))
+						}
 					>
 						{t("hostsPage.create.submit")}
 					</Button>
@@ -1544,6 +1958,7 @@ export const HostsManager: FC = () => {
 	const toast = useToast();
 	const { hosts, fetchHosts, isLoading, isPostLoading, setHosts } = useHosts();
 	const { inbounds } = useDashboard();
+	const { data: nodes = [] } = useNodesQuery();
 	const [_hostItemsState, setHostItemsState] = useState<HostState[]>([]);
 	const hostItemsRef = useRef<HostState[]>([]);
 	const applyHostItems = useCallback(
@@ -1563,6 +1978,7 @@ export const HostsManager: FC = () => {
 	);
 
 	const [selectedHostUid, setSelectedHostUid] = useState<string | null>(null);
+	const [selectedHostUids, setSelectedHostUids] = useState<string[]>([]);
 	const [cloneHost, setCloneHost] = useState<HostState | null>(null);
 	// Disabled hosts are hidden by default.
 	const [includeDisabled, setIncludeDisabled] = useState(false);
@@ -1570,35 +1986,32 @@ export const HostsManager: FC = () => {
 	const [createOpen, setCreateOpen] = useState(false);
 	const [savingHostUid, setSavingHostUid] = useState<string | null>(null);
 	const [deletingUid, setDeletingUid] = useState<string | null>(null);
+	const [bulkAction, setBulkAction] = useState<
+		"enable" | "disable" | "delete" | null
+	>(null);
 
-	const [orderDirtyState, setOrderDirtyState] = useState(false);
-	const orderDirtyRef = useRef(false);
-	const [savingOrder, setSavingOrder] = useState(false);
-	const [isSorting, setIsSorting] = useState(false);
-	const [visualOrder, setVisualOrder] = useState<HostState[] | null>(null);
-	const viewModeStorageKey = "hostsViewMode";
-	const [viewMode, setViewMode] = useState<"grid" | "list">(() => {
-		if (typeof window === "undefined") {
-			return "grid";
-		}
-		const saved = window.localStorage.getItem(viewModeStorageKey);
-		return saved === "list" ? "list" : "grid";
-	});
+	const showHostValidationError = useCallback(
+		(errors: string[]) => {
+			if (!errors.length) {
+				return false;
+			}
+			toast({
+				title: t("hostsPage.error.invalidHost"),
+				description: errors[0].startsWith("hostsPage.")
+					? t(errors[0])
+					: errors[0],
+				status: "error",
+				isClosable: true,
+				position: "top",
+			});
+			return true;
+		},
+		[t, toast],
+	);
 
 	useEffect(() => {
 		fetchHosts();
 	}, [fetchHosts]);
-
-	useEffect(() => {
-		if (typeof window === "undefined") {
-			return;
-		}
-		try {
-			window.localStorage.setItem(viewModeStorageKey, viewMode);
-		} catch (error) {
-			console.warn("Unable to persist hosts view mode", error);
-		}
-	}, [viewMode]);
 
 	useEffect(() => {
 		if (!inbounds.size) {
@@ -1625,29 +2038,12 @@ export const HostsManager: FC = () => {
 		}
 	}, [selectedHostUid]);
 
-	const setOrderDirtyFlag = useCallback((value: boolean) => {
-		orderDirtyRef.current = value;
-		setOrderDirtyState(value);
-	}, []);
-
 	useEffect(() => {
-		if (!isSorting) {
-			setVisualOrder(null);
-			setOrderDirtyFlag(false);
-		}
-	}, [isSorting, setOrderDirtyFlag]);
-
-	useEffect(() => {
-		if (!isSorting || !visualOrder) {
-			return;
-		}
-		const currentIds = new Set(hostItemsRef.current.map((host) => host.uid));
-		const stillValid = visualOrder.every((host) => currentIds.has(host.uid));
-		if (!stillValid) {
-			setVisualOrder(null);
-			setOrderDirtyFlag(false);
-		}
-	}, [isSorting, setOrderDirtyFlag, visualOrder]);
+		const existing = new Set(_hostItemsState.map((host) => host.uid));
+		setSelectedHostUids((current) =>
+			current.filter((uid) => existing.has(uid)),
+		);
+	}, [_hostItemsState]);
 
 	const inboundOptions: InboundOption[] = useMemo(() => {
 		const options: InboundOption[] = [];
@@ -1658,6 +2054,7 @@ export const HostsManager: FC = () => {
 					value: inbound.tag,
 					protocol: inbound.protocol,
 					network: inbound.network,
+					port: inbound.port,
 				});
 			});
 		});
@@ -1665,22 +2062,11 @@ export const HostsManager: FC = () => {
 	}, [inbounds]);
 
 	const activeHosts = useMemo(
-		() =>
-			_hostItemsState
-				.filter((host) => !host.data.is_disabled)
-				.sort(
-					(a, b) => safeSortValue(a.data.sort) - safeSortValue(b.data.sort),
-				),
+		() => sortHosts(_hostItemsState.filter((host) => !host.data.is_disabled)),
 		[_hostItemsState],
 	);
 
-	const allHosts = useMemo(
-		() =>
-			[..._hostItemsState].sort(
-				(a, b) => safeSortValue(a.data.sort) - safeSortValue(b.data.sort),
-			),
-		[_hostItemsState],
-	);
+	const allHosts = useMemo(() => sortHosts(_hostItemsState), [_hostItemsState]);
 
 	const baseFilteredHosts = useMemo(
 		() => (includeDisabled ? allHosts : activeHosts),
@@ -1709,34 +2095,17 @@ export const HostsManager: FC = () => {
 		});
 	}, [baseFilteredHosts, normalizedSearchQuery]);
 
-	useEffect(() => {
-		if (isSorting) {
-			setVisualOrder((prev) => prev ?? [...activeHosts]);
-		}
-	}, [activeHosts, isSorting]);
-
-	const displayedHosts = isSorting
-		? (visualOrder ?? activeHosts)
-		: filteredHosts;
+	const displayedHosts = filteredHosts;
 
 	const hasLoadedHosts = hostItemsRef.current.length > 0;
 	const isInitialLoading = isLoading && !hasLoadedHosts;
 	const isRefreshing = isLoading && hasLoadedHosts;
 	const isSearchActive = normalizedSearchQuery.length > 0;
 	const showSearchEmptyState =
-		!isSorting &&
 		!isInitialLoading &&
 		isSearchActive &&
 		baseFilteredHosts.length > 0 &&
 		filteredHosts.length === 0;
-
-	const orderIndexMap = useMemo(() => {
-		const map = new Map<string, number>();
-		displayedHosts.forEach((host, index) => {
-			map.set(host.uid, index);
-		});
-		return map;
-	}, [displayedHosts]);
 
 	const selectedHost = selectedHostUid
 		? (hostItemsRef.current.find((host) => host.uid === selectedHostUid) ??
@@ -1774,148 +2143,21 @@ export const HostsManager: FC = () => {
 		);
 	};
 
-	const persistOrder = useCallback(async () => {
-		if (!isSorting || savingOrder) return false;
-		const baseOrder = activeHosts;
-		const targetOrder = visualOrder ?? baseOrder;
-
-		const hasChanges =
-			targetOrder.length !== baseOrder.length ||
-			targetOrder.some((host, index) => host.uid !== baseOrder[index]?.uid);
-
-		if (!hasChanges) {
-			setIsSorting(false);
-			setVisualOrder(null);
-			setOrderDirtyFlag(false);
-			return true;
-		}
-
-		if (!visualOrder || targetOrder.length === 0) {
-			setIsSorting(false);
-			setVisualOrder(null);
-			setOrderDirtyFlag(false);
-			return true;
-		}
-
-		const orderedUids = targetOrder.map((host) => host.uid);
-		const orderedIndexMap = new Map<string, number>();
-		orderedUids.forEach((uid, index) => {
-			orderedIndexMap.set(uid, index);
-		});
-
-		const previousHosts = hostItemsRef.current;
-
-		const orderedSegment = hostItemsRef.current
-			.filter((host) => orderedIndexMap.has(host.uid))
-			.sort(
-				(a, b) =>
-					(orderedIndexMap.get(a.uid) ?? Number.MAX_SAFE_INTEGER) -
-					(orderedIndexMap.get(b.uid) ?? Number.MAX_SAFE_INTEGER),
-			);
-
-		const remainingSegment = hostItemsRef.current
-			.filter((host) => !orderedIndexMap.has(host.uid))
-			.sort((a, b) => safeSortValue(a.data.sort) - safeSortValue(b.data.sort));
-
-		const combined = [...orderedSegment, ...remainingSegment].map(
-			(host, index) => ({
-				...host,
-				data: { ...host.data, sort: index },
-				original: { ...host.original, sort: index },
-			}),
-		);
-
-		applyHostItems(combined);
-		setVisualOrder(combined.filter((host) => !host.data.is_disabled));
-		setSavingOrder(true);
-
-		try {
-			const payload = groupHostsByInbound(combined);
-			await setHosts(payload);
-			await fetchHosts();
-			setOrderDirtyFlag(false);
-			setIsSorting(false);
-			setVisualOrder(null);
-			toast({
-				title: t("hostsPage.reorderSaved"),
-				status: "success",
-				isClosable: true,
-				position: "top",
-			});
-			return true;
-		} catch (_error) {
-			applyHostItems(previousHosts);
-			const previousActive = previousHosts
-				.filter((host) => !host.data.is_disabled)
-				.sort(
-					(a, b) => safeSortValue(a.data.sort) - safeSortValue(b.data.sort),
-				);
-			setVisualOrder(previousActive);
-			setOrderDirtyFlag(true);
-			toast({
-				title: t("hostsPage.reorderFailed"),
-				status: "error",
-				isClosable: true,
-				position: "top",
-			});
-			return false;
-		} finally {
-			setSavingOrder(false);
-		}
-	}, [
-		applyHostItems,
-		activeHosts,
-		fetchHosts,
-		isSorting,
-		savingOrder,
-		setHosts,
-		setOrderDirtyFlag,
-		t,
-		toast,
-		visualOrder,
-	]);
-
-	const handleReorder = useCallback(
-		(orderedSubset: HostState[]) => {
-			if (!isSorting || !orderedSubset.length) return;
-			const referenceOrder = visualOrder ?? activeHosts;
-			const changed =
-				orderedSubset.length !== referenceOrder.length ||
-				orderedSubset.some(
-					(host, index) => host.uid !== referenceOrder[index]?.uid,
-				);
-
-			if (!changed) {
-				return;
-			}
-
-			setVisualOrder(orderedSubset);
-			if (!orderDirtyRef.current) {
-				setOrderDirtyFlag(true);
-			}
-		},
-		[activeHosts, isSorting, setOrderDirtyFlag, visualOrder],
-	);
-
-	const enterSortMode = useCallback(() => {
-		setVisualOrder([...activeHosts]);
-		setOrderDirtyFlag(false);
-		setIsSorting(true);
-	}, [activeHosts, setOrderDirtyFlag]);
-
-	const cancelSort = useCallback(() => {
-		setIsSorting(false);
-		setVisualOrder(null);
-		setOrderDirtyFlag(false);
-	}, [setOrderDirtyFlag]);
-
-	const handleSaveSort = useCallback(() => {
-		void persistOrder();
-	}, [persistOrder]);
-
 	const saveHost = async (uid: string) => {
 		const host = hostItemsRef.current.find((item) => item.uid === uid);
 		if (!host) return;
+		if (
+			showHostValidationError(
+				validateHostState(
+					host.inboundTag,
+					host.data,
+					inboundOptions.find((option) => option.value === host.inboundTag)
+						?.protocol,
+				),
+			)
+		) {
+			return;
+		}
 		setSavingHostUid(uid);
 		try {
 			const payload = buildInboundPayload(hostItemsRef.current, [
@@ -2006,8 +2248,24 @@ export const HostsManager: FC = () => {
 
 	const addCloneHost = async (uid: string) => {
 		if (!cloneHost || cloneHost.uid !== uid) return;
+		if (
+			showHostValidationError(
+				validateHostState(
+					cloneHost.inboundTag,
+					cloneHost.data,
+					inboundOptions.find(
+						(option) => option.value === cloneHost.inboundTag,
+					)?.protocol,
+				),
+			)
+		) {
+			return;
+		}
 		const remark = cloneHost.data.remark.trim();
-		const address = cloneHost.data.address.trim();
+		const address =
+			cloneHost.data.address.trim() ||
+			rotationTextToOptions(cloneHost.data.address_options)[0] ||
+			"";
 		if (!cloneHost.inboundTag || !remark || !address) {
 			toast({
 				title: t("hostsPage.clone.error"),
@@ -2018,21 +2276,13 @@ export const HostsManager: FC = () => {
 			return;
 		}
 
-		const previousHosts = hostItemsRef.current;
-		const nextSort = previousHosts.length
-			? Math.max(...previousHosts.map((host) => host.data.sort)) + 1
-			: 0;
-		const sortValue = Number.isFinite(cloneHost.data.sort)
-			? cloneHost.data.sort
-			: nextSort;
-
 		const newData: HostData = {
 			...cloneHostData(cloneHost.data),
 			id: null,
 			remark,
 			address,
-			sort: sortValue,
 		};
+		const previousHosts = hostItemsRef.current;
 		const newHost: HostState = {
 			uid: createUid(),
 			inboundTag: cloneHost.inboundTag,
@@ -2081,9 +2331,6 @@ export const HostsManager: FC = () => {
 			),
 		);
 		applyHostItems(nextHosts);
-		if (!isActive) {
-			setIncludeDisabled(true);
-		}
 		setSavingHostUid(uid);
 		try {
 			const updatedHost = nextHosts.find((host) => host.uid === uid);
@@ -2140,10 +2387,106 @@ export const HostsManager: FC = () => {
 		}
 	};
 
+	const handleBulkToggleHosts = async (
+		items: HostState[],
+		isActive: boolean,
+	) => {
+		if (!items.length || isPostLoading || bulkAction) {
+			return;
+		}
+		const selected = new Set(items.map((host) => host.uid));
+		const affectedTags = new Set<string>();
+		items.forEach((host) => {
+			affectedTags.add(host.inboundTag);
+			affectedTags.add(host.initialInboundTag);
+		});
+		const previousHosts = hostItemsRef.current;
+		const nextHosts = sortHosts(
+			previousHosts.map((host) =>
+				selected.has(host.uid)
+					? { ...host, data: { ...host.data, is_disabled: !isActive } }
+					: host,
+			),
+		);
+		applyHostItems(nextHosts);
+		setBulkAction(isActive ? "enable" : "disable");
+		try {
+			const payload = buildInboundPayload(nextHosts, affectedTags);
+			await setHosts(payload);
+			await fetchHosts();
+			setSelectedHostUids([]);
+			toast({
+				title: isActive
+					? t("hostsPage.bulkEnabled")
+					: t("hostsPage.bulkDisabled"),
+				status: "success",
+				isClosable: true,
+				position: "top",
+			});
+		} catch (_error) {
+			applyHostItems(previousHosts);
+			toast({
+				title: t("hostsPage.error.save"),
+				status: "error",
+				isClosable: true,
+				position: "top",
+			});
+		} finally {
+			setBulkAction(null);
+		}
+	};
+
+	const handleBulkDeleteHosts = async (items: HostState[]) => {
+		if (!items.length || isPostLoading || bulkAction) {
+			return;
+		}
+		const selected = new Set(items.map((host) => host.uid));
+		const affectedTags = new Set<string>();
+		items.forEach((host) => {
+			affectedTags.add(host.inboundTag);
+			affectedTags.add(host.initialInboundTag);
+		});
+		const previousHosts = hostItemsRef.current;
+		const nextHosts = previousHosts.filter((host) => !selected.has(host.uid));
+		applyHostItems(nextHosts);
+		setBulkAction("delete");
+		try {
+			const payload = buildInboundPayload(nextHosts, affectedTags);
+			await setHosts(payload);
+			await fetchHosts();
+			setSelectedHostUids([]);
+			toast({
+				title: t("hostsPage.bulkDeleted"),
+				status: "success",
+				isClosable: true,
+				position: "top",
+			});
+		} catch (_error) {
+			applyHostItems(previousHosts);
+			toast({
+				title: t("hostsPage.error.delete"),
+				status: "error",
+				isClosable: true,
+				position: "top",
+			});
+		} finally {
+			setBulkAction(null);
+		}
+	};
+
 	const handleCreateHost = async (values: CreateHostValues) => {
-		const nextSort = hostItemsRef.current.length
-			? Math.max(...hostItemsRef.current.map((host) => host.data.sort)) + 1
-			: 0;
+		if (
+			showHostValidationError(
+				validateHostState(
+					values.inboundTag,
+					values,
+					inboundOptions.find((option) => option.value === values.inboundTag)
+						?.protocol,
+				),
+			)
+		) {
+			return;
+		}
 		setSavingHostUid("create");
 		try {
 			const newHost: HostState = {
@@ -2154,11 +2497,21 @@ export const HostsManager: FC = () => {
 					id: null,
 					remark: values.remark,
 					address: values.address,
-					sort: Number.isFinite(values.sort) ? values.sort : nextSort,
+					dns_primary: values.dns_primary,
+					dns_secondary: values.dns_secondary,
+					address_options: values.address_options,
+					address_selection_mode: values.address_selection_mode,
+					address_ttl_seconds: values.address_ttl_seconds,
 					port: values.port,
 					path: values.path,
 					sni: values.sni,
+					sni_options: values.sni_options,
+					sni_selection_mode: values.sni_selection_mode,
+					sni_ttl_seconds: values.sni_ttl_seconds,
 					host: values.host,
+					host_options: values.host_options,
+					host_selection_mode: values.host_selection_mode,
+					host_ttl_seconds: values.host_ttl_seconds,
 					mux_enable: false,
 					allowinsecure: false,
 					is_disabled: false,
@@ -2174,11 +2527,21 @@ export const HostsManager: FC = () => {
 					id: null,
 					remark: values.remark,
 					address: values.address,
-					sort: Number.isFinite(values.sort) ? values.sort : nextSort,
+					dns_primary: values.dns_primary,
+					dns_secondary: values.dns_secondary,
+					address_options: values.address_options,
+					address_selection_mode: values.address_selection_mode,
+					address_ttl_seconds: values.address_ttl_seconds,
 					port: values.port,
 					path: values.path,
 					sni: values.sni,
+					sni_options: values.sni_options,
+					sni_selection_mode: values.sni_selection_mode,
+					sni_ttl_seconds: values.sni_ttl_seconds,
 					host: values.host,
+					host_options: values.host_options,
+					host_selection_mode: values.host_selection_mode,
+					host_ttl_seconds: values.host_ttl_seconds,
 					mux_enable: false,
 					allowinsecure: false,
 					is_disabled: false,
@@ -2217,195 +2580,417 @@ export const HostsManager: FC = () => {
 		}
 	};
 
+	const hostSummaryItems = useMemo<ResourceSummaryItem[]>(() => {
+		const total = allHosts.length;
+		const disabled = allHosts.filter((host) => host.data.is_disabled).length;
+		const enabled = total - disabled;
+		const inboundCount = new Set(allHosts.map((host) => host.inboundTag)).size;
+		return [
+			{
+				label: t("total"),
+				value: total,
+				colorScheme: "gray",
+			},
+			{
+				label: t("nodes.enabled"),
+				value: enabled,
+				colorScheme: "green",
+			},
+			{
+				label: t("nodes.disabled"),
+				value: disabled,
+				colorScheme: "red",
+			},
+			{
+				label: t("pages.xray.Inbounds"),
+				value: inboundCount,
+				colorScheme: "purple",
+			},
+			{
+				label: t("usersPage.filtered"),
+				value: displayedHosts.length,
+				colorScheme: "teal",
+			},
+		];
+	}, [allHosts, displayedHosts.length, t]);
+
+	const renderRotationValues = useCallback(
+		(value: string, emptyLabel: string) => {
+			const values = rotationTextToOptions(value);
+			if (!values.length) {
+				return <Text color="panel.textMuted">{emptyLabel}</Text>;
+			}
+			const visible = values.slice(0, 2);
+			const hiddenCount = values.length - visible.length;
+			return (
+				<Tooltip
+					label={values.join(", ")}
+					isDisabled={values.length <= visible.length}
+					hasArrow
+					placement="top"
+				>
+					<HStack spacing={1} flexWrap="wrap" maxW="full">
+						{visible.map((item) => (
+							<Tag key={item} size="sm" maxW="120px">
+								<Text as="span" noOfLines={1}>
+									{item}
+								</Text>
+							</Tag>
+						))}
+						{hiddenCount > 0 && (
+							<Tag size="sm" colorScheme="blue">
+								+{hiddenCount}
+							</Tag>
+						)}
+					</HStack>
+				</Tooltip>
+			);
+		},
+		[],
+	);
+
+	const hostColumns = useMemo<DataTableColumn<HostState>[]>(
+		() => [
+			{
+				id: "remark",
+				header: t("hostsPage.host"),
+				isPrimary: true,
+				priority: "primary",
+				width: { base: "150px", lg: "160px", xl: "180px" },
+				minWidth: "130px",
+				maxWidth: "220px",
+				mobilePriority: 0,
+				mobileMetaLabel: t("hostsPage.host"),
+				cell: (host) => {
+					const dirty = isHostDirty(host);
+					const hostName = host.data.remark || t("hostsPage.untitledHost");
+					return (
+						<Stack spacing={0.5} minW={0}>
+							<Tooltip
+								label={<AppleEmojiText>{hostName}</AppleEmojiText>}
+								isDisabled={hostName.length <= 24}
+							>
+								<Text fontWeight="semibold" noOfLines={1}>
+									<AppleEmojiText>{hostName}</AppleEmojiText>
+								</Text>
+							</Tooltip>
+							<HStack spacing={1} flexWrap="wrap">
+								{host.data.id != null && (
+									<Text fontSize="xs" color="panel.textMuted">
+										ID: {host.data.id}
+									</Text>
+								)}
+								{dirty && (
+									<Tag size="sm" colorScheme="orange">
+										{t("hostsPage.unsaved")}
+									</Tag>
+								)}
+							</HStack>
+						</Stack>
+					);
+				},
+			},
+			{
+				id: "address",
+				header: t("hostsDialog.address"),
+				priority: "high",
+				width: { base: "210px", lg: "240px", xl: "280px" },
+				minWidth: "170px",
+				maxWidth: "320px",
+				mobilePriority: 1,
+				mobileMetaLabel: t("hostsDialog.address"),
+				cell: (host) =>
+					renderRotationValues(host.data.address, t("hostsPage.noAddress")),
+			},
+			{
+				id: "port",
+				header: t("port"),
+				priority: "high",
+				width: "72px",
+				minWidth: "64px",
+				maxWidth: "82px",
+				mobilePriority: 2,
+				mobileMetaLabel: t("port"),
+				cell: (host) =>
+					host.data.port != null ? (
+						<Text fontWeight="semibold" dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+							{host.data.port}
+						</Text>
+					) : (
+						<Text color="panel.textMuted">-</Text>
+					),
+			},
+			{
+				id: "inbound",
+				header: t("hostsPage.inboundLabel"),
+				priority: "high",
+				width: { base: "150px", lg: "160px", xl: "190px" },
+				minWidth: "130px",
+				maxWidth: "230px",
+				mobilePriority: 3,
+				mobileMetaLabel: t("hostsPage.inboundLabel"),
+				cell: (host) => {
+					const inbound = inboundOptions.find(
+						(option) => option.value === host.inboundTag,
+					);
+					return (
+						<Stack spacing={0.5} minW={0}>
+							<Text fontWeight="semibold" noOfLines={1}>
+								{host.inboundTag}
+							</Text>
+							<Text fontSize="xs" color="panel.textMuted" noOfLines={1}>
+								{inbound
+									? `${inbound.protocol.toUpperCase()} / ${inbound.network}`
+									: t("hostsPage.unknownInbound")}
+							</Text>
+						</Stack>
+					);
+				},
+			},
+			{
+				id: "sni",
+				header: t("hostsDialog.sni"),
+				priority: "low",
+				hideBelow: "xl",
+				width: "180px",
+				minWidth: "140px",
+				maxWidth: "220px",
+				mobilePriority: 4,
+				mobileMetaLabel: t("hostsDialog.sni"),
+				cell: (host) => renderRotationValues(host.data.sni, "-"),
+			},
+			{
+				id: "request_host",
+				header: t("hostsDialog.host"),
+				priority: "low",
+				hideBelow: "xl",
+				width: "180px",
+				minWidth: "140px",
+				maxWidth: "220px",
+				mobilePriority: 5,
+				mobileMetaLabel: t("hostsDialog.host"),
+				cell: (host) => renderRotationValues(host.data.host, "-"),
+			},
+			{
+				id: "security",
+				header: t("hostsDialog.security"),
+				priority: "low",
+				hideBelow: "xl",
+				width: "130px",
+				maxWidth: "150px",
+				mobilePriority: 6,
+				mobileMetaLabel: t("hostsDialog.security"),
+				cell: (host) => (
+					<Tag size="sm" colorScheme="blue">
+						{host.data.security || "inbound_default"}
+					</Tag>
+				),
+			},
+		],
+		[inboundOptions, renderRotationValues, t],
+	);
+
+	const hostRowActions = (
+		host: HostState,
+	): DataTableRowAction<HostState>[] => {
+			const isActive = !host.data.is_disabled;
+			return [
+				{
+					id: "edit",
+					label: t("edit"),
+					icon: <EditIcon />,
+					onClick: () => setSelectedHostUid(host.uid),
+				},
+				{
+					id: "toggle",
+					label: isActive
+						? t("phpmyadmin.disableAction")
+						: t("hostsPage.enable"),
+					icon: isActive ? (
+						<XCircleIcon width={16} />
+					) : (
+						<CheckCircleIcon width={16} />
+					),
+					onClick: () => toggleActive(host.uid, !isActive),
+					isDisabled: isPostLoading,
+				},
+				{
+					id: "delete",
+					label: t("delete"),
+					icon: <TrashIcon width={16} />,
+					isDanger: true,
+					render: (_row, onMenuClose) => (
+						<DeleteConfirmDialog
+							description={t("hostsPage.deleteConfirmation")}
+							isLoading={deletingUid === host.uid && isPostLoading}
+							onConfirm={async () => {
+								await handleDeleteHost(host.uid);
+								onMenuClose();
+							}}
+						>
+							<MenuItem
+								icon={<TrashIcon width={16} />}
+								color="red.400"
+								isDisabled={isPostLoading}
+								onClick={(event) => event.stopPropagation()}
+							>
+								{t("delete")}
+							</MenuItem>
+						</DeleteConfirmDialog>
+					),
+				},
+			];
+	};
+
 	return (
 		<VStack align="stretch" spacing={4}>
-			{isSorting ? (
-				<VStack align="stretch" spacing={2}>
-					<HStack justify="space-between" align="center" wrap="wrap" rowGap={2}>
-						<Text fontWeight="semibold">{t("hostsPage.sortingTitle")}</Text>
-						<HStack spacing={2}>
-							<Button
-								variant="ghost"
-								onClick={cancelSort}
-								isDisabled={savingOrder}
-							>
-								{t("hostsPage.cancel")}
-							</Button>
-							<Button
-								colorScheme="primary"
-								onClick={handleSaveSort}
-								isLoading={savingOrder}
-								isDisabled={!orderDirtyState && !savingOrder}
-							>
-								{t("hostsPage.saveOrder")}
-							</Button>
-						</HStack>
-					</HStack>
-					<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.300" }}>
-						{t("hostsPage.sortingInstructions")}
-					</Text>
-					{savingOrder ? (
-						<HStack
-							spacing={2}
-							fontSize="sm"
-							color="gray.600"
-							_dark={{ color: "gray.300" }}
-						>
-							<Spinner size="xs" />
-							<Text>{t("hostsPage.orderSaving")}</Text>
-						</HStack>
-					) : orderDirtyState ? (
-						<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.300" }}>
-							{t("hostsPage.orderDirty")}
-						</Text>
-					) : null}
-				</VStack>
-			) : (
-				<Stack
-					direction={{ base: "column", md: "row" }}
-					spacing={3}
-					align={{ base: "stretch", md: "center" }}
-					justify="space-between"
-				>
-					<HStack spacing={3} flexWrap="wrap">
-						<Button
-							colorScheme="primary"
-							size="sm"
-							onClick={() => setCreateOpen(true)}
-							leftIcon={<AddIcon />}
-							isDisabled={!inboundOptions.length}
-						>
-							{t("hostsPage.addHost")}
-						</Button>
-						<Switch
-							isChecked={includeDisabled}
-							onChange={(event) => setIncludeDisabled(event.target.checked)}
-						>
-							{t("hostsPage.showDisabled")}
-						</Switch>
-					</HStack>
-					<Stack
-						direction={{ base: "column", sm: "row" }}
-						spacing={2}
-						align={{ base: "stretch", sm: "center" }}
-						justify="flex-end"
-						w="full"
+			<ResourceListCard
+				title={t("hostsPage.listHeader")}
+				summaryItems={hostSummaryItems}
+				actions={
+					<Button
+						colorScheme="primary"
+						size="sm"
+						onClick={() => setCreateOpen(true)}
+						leftIcon={<AddIcon />}
+						isDisabled={!inboundOptions.length}
+						h="36px"
+						px={3}
+						borderRadius="4px"
 					>
-						<Input
-							value={searchQuery}
-							onChange={(event) => setSearchQuery(event.target.value)}
-							placeholder={t("hostsPage.searchPlaceholder")}
-							size="sm"
-							w="100%"
-						/>
-						<HStack spacing={2} justify="flex-end">
-							{isRefreshing && <Spinner size="sm" />}
-							<Tooltip label={t("hostsPage.viewList", "List view")}>
-								<IconButton
-									aria-label={t("hostsPage.viewList", "List view")}
-									icon={<ListViewIcon />}
-									variant={viewMode === "list" ? "solid" : "ghost"}
-									colorScheme={viewMode === "list" ? "primary" : undefined}
-									size="sm"
-									onClick={() => setViewMode("list")}
-								/>
-							</Tooltip>
-							<Tooltip label={t("hostsPage.viewGrid", "Grid view")}>
-								<IconButton
-									aria-label={t("hostsPage.viewGrid", "Grid view")}
-									icon={<GridViewIcon />}
-									variant={viewMode === "grid" ? "solid" : "ghost"}
-									colorScheme={viewMode === "grid" ? "primary" : undefined}
-									size="sm"
-									onClick={() => setViewMode("grid")}
-								/>
-							</Tooltip>
-							<Button
-								size="sm"
-								variant="outline"
-								leftIcon={<HandleIcon />}
-								onClick={enterSortMode}
-								isDisabled={isInitialLoading || !activeHosts.length}
-							>
-								{t("hostsPage.enterSort")}
-							</Button>
-						</HStack>
-					</Stack>
-				</Stack>
-			)}
-
-			{isInitialLoading ? (
-				<HStack justify="center" py={10}>
-					<Spinner />
-				</HStack>
-			) : displayedHosts.length === 0 ? (
-				<Box
-					border="1px dashed"
-					borderRadius="md"
-					px={6}
-					py={10}
-					textAlign="center"
-					borderColor="gray.300"
-					_dark={{ borderColor: "gray.600" }}
+						{t("hostsPage.addHost")}
+					</Button>
+				}
+				footerActions={
+					<ResourceRefreshButton
+						aria-label={t("hostsPage.refresh")}
+						label={t("hostsPage.refresh")}
+						icon={<ArrowPathIcon width={16} />}
+						isLoading={isRefreshing}
+						onClick={fetchHosts}
+					/>
+				}
+			>
+				<Stack
+					direction={{ base: "column", sm: "row" }}
+					spacing={2}
+					align={{ base: "stretch", sm: "center" }}
+					flexWrap="wrap"
 				>
-					<Text>
+					<Input
+						value={searchQuery}
+						onChange={(event) => setSearchQuery(event.target.value)}
+						placeholder={t("hostsPage.searchPlaceholder")}
+						size="sm"
+						w={{ base: "full", md: "280px" }}
+					/>
+					<Checkbox
+						isChecked={includeDisabled}
+						onChange={(event) => setIncludeDisabled(event.target.checked)}
+					>
+						{t("hostsPage.showDisabled")}
+					</Checkbox>
+				</Stack>
+			</ResourceListCard>
+
+			<DataTable
+				ariaLabel={t("hostsPage.tabHosts")}
+				data={displayedHosts}
+				columns={hostColumns}
+				getRowId={(host) => host.uid}
+				isLoading={isInitialLoading}
+				loadingRows={5}
+				emptyState={
+					<Box textAlign="center" color="panel.textMuted">
 						{showSearchEmptyState
 							? t("hostsPage.searchEmpty")
 							: t("hostsPage.emptyState")}
-					</Text>
-				</Box>
-			) : isSorting ? (
-				<Reorder.Group
-					axis="y"
-					values={displayedHosts}
-					onReorder={handleReorder}
-					layoutScroll
-					style={{
-						display: "flex",
-						flexDirection: "column",
-						gap: "0.75rem",
-						listStyle: "none",
-						padding: 0,
-						margin: 0,
-					}}
-				>
-					{displayedHosts.map((host, index) => (
-						<SortRow key={host.uid} host={host} index={index} />
-					))}
-				</Reorder.Group>
-			) : viewMode === "list" ? (
-				<VStack align="stretch" spacing={3}>
-					{displayedHosts.map((host, index) => (
-						<HostListRow
-							key={host.uid}
-							host={host}
-							inboundOptions={inboundOptions}
-							orderIndex={orderIndexMap.get(host.uid) ?? index}
-							onToggleActive={toggleActive}
-							onEdit={setSelectedHostUid}
-							onDelete={handleDeleteHost}
-							saving={savingHostUid === host.uid && isPostLoading}
-							deleting={deletingUid === host.uid && isPostLoading}
-						/>
-					))}
-				</VStack>
-			) : (
-				<SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} spacing={4}>
-					{displayedHosts.map((host, index) => (
-						<HostCard
-							key={host.uid}
-							host={host}
-							inboundOptions={inboundOptions}
-							orderIndex={orderIndexMap.get(host.uid) ?? index}
-							onToggleActive={toggleActive}
-							onEdit={setSelectedHostUid}
-							onDelete={handleDeleteHost}
-							saving={savingHostUid === host.uid && isPostLoading}
-							deleting={deletingUid === host.uid && isPostLoading}
-						/>
-					))}
-				</SimpleGrid>
-			)}
+					</Box>
+				}
+				rowActions={hostRowActions}
+				actionsDisplay="menu"
+				actionsPlacement="end"
+				actionsColumnWidth="60px"
+				showActionsOnHover
+				enableSelection
+				selectedRowIds={selectedHostUids}
+				selectedCount={selectedHostUids.length}
+				onSelectionChange={(rowIds) => setSelectedHostUids(rowIds)}
+				selectedLabel={t("hostsPage.selectedCount", { count: selectedHostUids.length })}
+				renderBulkActions={(selectedRows) => {
+					const enableTargets = selectedRows.filter(
+						(host) => host.data.is_disabled,
+					);
+					const disableTargets = selectedRows.filter(
+						(host) => !host.data.is_disabled,
+					);
+					return (
+						<>
+							<Button
+								size="sm"
+								variant="outline"
+								leftIcon={<CheckCircleIcon width={16} />}
+								isLoading={bulkAction === "enable"}
+								isDisabled={
+									Boolean(bulkAction) ||
+									isPostLoading ||
+									enableTargets.length === 0
+								}
+								onClick={() => handleBulkToggleHosts(enableTargets, true)}
+							>
+								{t("hostsPage.enable")}
+							</Button>
+							<Button
+								size="sm"
+								variant="outline"
+								leftIcon={<XCircleIcon width={16} />}
+								isLoading={bulkAction === "disable"}
+								isDisabled={
+									Boolean(bulkAction) ||
+									isPostLoading ||
+									disableTargets.length === 0
+								}
+								onClick={() => handleBulkToggleHosts(disableTargets, false)}
+							>
+								{t("phpmyadmin.disableAction")}
+							</Button>
+							<DeleteConfirmDialog
+								description={t("hostsPage.confirmBulkDelete", { count: selectedRows.length })}
+								isLoading={bulkAction === "delete"}
+								isDisabled={selectedRows.length === 0}
+								onConfirm={() => handleBulkDeleteHosts(selectedRows)}
+							>
+								<Button
+									size="sm"
+									variant="outline"
+									colorScheme="red"
+									leftIcon={<TrashIcon width={16} />}
+									isLoading={bulkAction === "delete"}
+									isDisabled={
+										Boolean(bulkAction) ||
+										isPostLoading ||
+										selectedRows.length === 0
+									}
+								>
+									{t("delete")}
+								</Button>
+							</DeleteConfirmDialog>
+						</>
+					);
+				}}
+				mobileBreakpoint="lg"
+				tableProps={{
+					w: "full",
+					sx: {
+						tableLayout: "fixed",
+						"& th, & td": {
+							px: { base: 2, xl: 2.5 },
+							py: 2.5,
+							verticalAlign: "middle",
+						},
+					},
+				}}
+			/>
 
 			<CreateHostModal
 				isOpen={createOpen}
@@ -2413,12 +2998,7 @@ export const HostsManager: FC = () => {
 				inboundOptions={inboundOptions}
 				onSubmit={handleCreateHost}
 				isSubmitting={savingHostUid === "create" && isPostLoading}
-				defaultSort={
-					hostItemsRef.current.length
-						? Math.max(...hostItemsRef.current.map((host) => host.data.sort)) +
-							1
-						: 0
-				}
+				nodes={nodes}
 			/>
 
 			<HostDetailModal
@@ -2438,6 +3018,7 @@ export const HostsManager: FC = () => {
 				deleting={
 					!!selectedHost && deletingUid === selectedHost.uid && isPostLoading
 				}
+				nodes={nodes}
 			/>
 
 			<HostDetailModal
@@ -2453,6 +3034,7 @@ export const HostsManager: FC = () => {
 				mode="clone"
 				saving={!!cloneHost && savingHostUid === cloneHost.uid && isPostLoading}
 				deleting={false}
+				nodes={nodes}
 			/>
 		</VStack>
 	);

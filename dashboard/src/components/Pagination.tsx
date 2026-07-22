@@ -4,16 +4,22 @@ import {
 	ButtonGroup,
 	chakra,
 	HStack,
-	Select,
+	Menu,
+	MenuButton,
+	MenuItem,
+	MenuList,
+	Portal,
 	Text,
+	useBreakpointValue,
 } from "@chakra-ui/react";
 import {
 	ArrowLongLeftIcon,
 	ArrowLongRightIcon,
+	ChevronDownIcon,
 } from "@heroicons/react/24/outline";
 import { useAdminsStore } from "contexts/AdminsContext";
 import { useDashboard } from "contexts/DashboardContext";
-import { type ChangeEvent, type FC, useMemo } from "react";
+import { type FC, useMemo } from "react";
 
 import { useTranslation } from "react-i18next";
 import {
@@ -33,12 +39,19 @@ const NextIcon = chakra(ArrowLongRightIcon, {
 		h: 4,
 	},
 });
+const ChevronIcon = chakra(ChevronDownIcon, {
+	baseStyle: {
+		w: 4,
+		h: 4,
+	},
+});
 
 export type PaginationProps = {
 	for?: "users" | "admins";
 };
 
 const MINIMAL_PAGE_ITEM_COUNT = 5;
+const PAGE_SIZE_OPTIONS = [10, 20, 30, 50, 100];
 
 function generatePageItems(total: number, current: number, width: number) {
 	if (width < MINIMAL_PAGE_ITEM_COUNT) {
@@ -84,7 +97,9 @@ export const Pagination: FC<PaginationProps> = ({ for: target = "users" }) => {
 		total: adminsTotal,
 	} = useAdminsStore();
 
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const direction = i18n.dir(i18n.language);
+	const isRTL = direction === "rtl";
 
 	const { filters, total, onFilterChange } = useMemo(() => {
 		if (target === "admins") {
@@ -116,7 +131,9 @@ export const Pagination: FC<PaginationProps> = ({ for: target = "users" }) => {
 
 	const page = Math.floor(offsetNum / perPageNum);
 	const noPages = Math.ceil(total / perPageNum);
-	const pages = generatePageItems(noPages, page, 7);
+	const isCompactPagination =
+		useBreakpointValue({ base: true, md: false }) ?? false;
+	const pages = isCompactPagination ? [] : generatePageItems(noPages, page, 7);
 
 	const changePage = (p: number) => {
 		onFilterChange({
@@ -125,15 +142,14 @@ export const Pagination: FC<PaginationProps> = ({ for: target = "users" }) => {
 		});
 	};
 
-	const handlePageSizeChange = (e: ChangeEvent<HTMLSelectElement>) => {
-		const next = parseInt(e.target.value, 10);
+	const handlePageSizeSelect = (next: number) => {
 		onFilterChange({
 			...filters,
 			limit: next,
 			offset: 0,
 		});
-		if (target === "users") setUsersPerPageLimitSize(e.target.value);
-		if (target === "admins") setAdminsPerPageLimitSize(e.target.value);
+		if (target === "users") setUsersPerPageLimitSize(String(next));
+		if (target === "admins") setAdminsPerPageLimitSize(String(next));
 	};
 
 	const canPrev = useMemo(() => page > 0 && noPages > 0, [page, noPages]);
@@ -142,77 +158,135 @@ export const Pagination: FC<PaginationProps> = ({ for: target = "users" }) => {
 		[page, noPages],
 	);
 
-	if (total <= perPageNum && page === 0) {
-		return null;
-	}
-
 	return (
 		<HStack
+			className="rb-data-table-pagination"
 			justifyContent="space-between"
 			mt={4}
 			w="full"
+			maxW="full"
 			display="flex"
 			columnGap={{ lg: 4, md: 0 }}
 			rowGap={{ md: 0, base: 4 }}
 			flexDirection={{ md: "row", base: "column" }}
 		>
-			<Box order={{ base: 2, md: 1 }}>
-				<HStack>
-					<Select
-						minW="60px"
-						value={String(perPageNum)}
-						onChange={handlePageSizeChange}
-						size="sm"
-						rounded="md"
+			<Box order={{ base: 2, md: 1 }} w={{ base: "full", md: "auto" }}>
+				<HStack justify={{ base: "center", md: "flex-start" }} minW={0}>
+					<Menu
+						placement={isRTL ? "top-end" : "top-start"}
+						strategy="fixed"
+						gutter={8}
+						isLazy
 					>
-						<option value="10">10</option>
-						<option value="20">20</option>
-						<option value="30">30</option>
-						<option value="50">50</option>
-						<option value="100">100</option>
-					</Select>
+						<MenuButton
+							as={Button}
+							size="sm"
+							variant="outline"
+							minW={{ base: "104px", md: "112px" }}
+							maxW={{ base: "104px", md: "120px" }}
+							rightIcon={<ChevronIcon />}
+							justifyContent="space-between"
+							px={3}
+						>
+							{perPageNum}
+						</MenuButton>
+						<Portal>
+							<MenuList
+								dir={direction}
+								zIndex={1800}
+								minW={{ base: "104px", md: "112px" }}
+								maxW={{ base: "104px", md: "120px" }}
+								py={1}
+								borderRadius="lg"
+								boxShadow="2xl"
+								bg="panel.surface"
+								borderColor="panel.border"
+								overflow="hidden"
+							>
+								{PAGE_SIZE_OPTIONS.map((option) => {
+									const isSelected = option === perPageNum;
+									return (
+										<MenuItem
+											key={option}
+											onClick={() => handlePageSizeSelect(option)}
+											fontSize="sm"
+											fontWeight={isSelected ? "700" : "500"}
+											bg={isSelected ? "primary.500" : "transparent"}
+											color={isSelected ? "white" : "inherit"}
+											_hover={{
+												bg: isSelected ? "primary.600" : "panel.hover",
+											}}
+											_focus={{
+												bg: isSelected ? "primary.600" : "panel.hover",
+											}}
+										>
+											{option}
+										</MenuItem>
+									);
+								})}
+							</MenuList>
+						</Portal>
+					</Menu>
 					<Text whiteSpace="nowrap" fontSize="sm">
 						{t("itemsPerPage")}
 					</Text>
 				</HStack>
 			</Box>
 
-			<ButtonGroup
-				size="sm"
-				isAttached
-				variant="outline"
-				order={{ base: 1, md: 2 }}
-			>
-				<Button
-					leftIcon={<PrevIcon />}
-					onClick={() => changePage(page - 1)}
-					isDisabled={!canPrev}
+			{noPages > 1 && (
+				<ButtonGroup
+					size="sm"
+					isAttached
+					variant="outline"
+					order={{ base: 1, md: 2 }}
+					w={{ base: "full", md: "auto" }}
+					maxW="full"
 				>
-					{t("previous")}
-				</Button>
+					<Button
+						leftIcon={isRTL ? <NextIcon /> : <PrevIcon />}
+						onClick={() => changePage(page - 1)}
+						isDisabled={!canPrev}
+						flex={{ base: "1 1 0", md: "0 0 auto" }}
+						px={{ base: 2, md: 3 }}
+					>
+						{t("previous")}
+					</Button>
 
-				{pages.map((pageIndex) => {
-					if (typeof pageIndex === "string")
-						return <Button key={pageIndex}>...</Button>;
-					return (
+					{isCompactPagination ? (
 						<Button
-							key={pageIndex}
-							variant={pageIndex === page ? "solid" : "outline"}
-							onClick={() => changePage(pageIndex)}
+							isDisabled
+							flex={{ base: "0 0 auto", md: "0 0 auto" }}
+							px={{ base: 3, md: 3 }}
 						>
-							{pageIndex + 1}
+							{page + 1} / {noPages}
 						</Button>
-					);
-				})}
+					) : (
+						pages.map((pageIndex) => {
+							if (typeof pageIndex === "string")
+								return <Button key={pageIndex}>...</Button>;
+							return (
+								<Button
+									key={pageIndex}
+									variant={pageIndex === page ? "solid" : "outline"}
+									onClick={() => changePage(pageIndex)}
+								>
+									{pageIndex + 1}
+								</Button>
+							);
+						})
+					)}
 
-				<Button
-					rightIcon={<NextIcon />}
-					onClick={() => changePage(page + 1)}
-					isDisabled={!canNext}
-				>
-					{t("next")}
-				</Button>
-			</ButtonGroup>
+					<Button
+						rightIcon={isRTL ? <PrevIcon /> : <NextIcon />}
+						onClick={() => changePage(page + 1)}
+						isDisabled={!canNext}
+						flex={{ base: "1 1 0", md: "0 0 auto" }}
+						px={{ base: 2, md: 3 }}
+					>
+						{t("next")}
+					</Button>
+				</ButtonGroup>
+			)}
 		</HStack>
 	);
 };

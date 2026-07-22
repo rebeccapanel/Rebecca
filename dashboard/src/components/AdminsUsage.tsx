@@ -3,7 +3,6 @@ import {
 	Button,
 	chakra,
 	HStack,
-	Select,
 	Spinner,
 	Stack,
 	Text,
@@ -11,6 +10,7 @@ import {
 	useColorMode,
 	VStack,
 } from "@chakra-ui/react";
+import { PanelSelect as Select } from "components/common/PanelSelect";
 import { InformationCircleIcon } from "@heroicons/react/24/outline";
 import type { ApexOptions } from "apexcharts";
 import { ChartBox } from "components/common/ChartBox";
@@ -239,7 +239,7 @@ const AdminsUsage: FC = () => {
 	const serviceDonutLabels = useMemo(
 		() =>
 			serviceAdminUsage.map(
-				(item) => item.username || t("services.unassignedAdmin", "Unassigned"),
+				(item) => item.username || t("services.unassignedAdmin"),
 			),
 		[serviceAdminUsage, t],
 	);
@@ -435,8 +435,8 @@ const AdminsUsage: FC = () => {
 		() => [
 			{
 				name: isCreatedTrafficBasis
-					? t("admins.createdTrafficSeries", "Created traffic")
-					: t("nodes.usedTrafficSeries", "Used traffic"),
+					? t("myaccount.createdTraffic")
+					: t("nodes.usedTrafficSeries"),
 				data: points.map((p) => p.used_traffic),
 			},
 		],
@@ -474,7 +474,7 @@ const AdminsUsage: FC = () => {
 	return (
 		<VStack spacing={4} align="stretch">
 			<ChartBox
-				title={t("admins.serviceUsageTitle", "Service usage distribution")}
+				title={t("admins.serviceUsageTitle")}
 				headerActions={
 					<Stack
 						direction={{ base: "column", lg: "row" }}
@@ -488,7 +488,7 @@ const AdminsUsage: FC = () => {
 								setSelectedServiceId(Number.isNaN(value) ? null : value);
 							}}
 							minW={{ sm: "220px" }}
-							placeholder={t("admins.selectService", "Select service")}
+							placeholder={t("admins.selectService")}
 							isDisabled={!serviceOptions.length}
 						>
 							{serviceOptions.map((service) => (
@@ -510,7 +510,7 @@ const AdminsUsage: FC = () => {
 						>
 							<InfoIcon />
 							<Text>
-								{t("services.totalUsage", "Total")}:{" "}
+								{t("usage.selectedRangeTotal")}:{" "}
 								<chakra.span fontWeight="medium">
 									{formatBytes(serviceUsageTotal, 2)}
 								</chakra.span>
@@ -525,10 +525,7 @@ const AdminsUsage: FC = () => {
 					_dark={{ color: "gray.400" }}
 					mb={4}
 				>
-					{t(
-						"admins.serviceUsageHint",
-						"Pick a service to see how its usage is split between admins.",
-					)}
+					{t("admins.serviceUsageHint")}
 				</Text>
 				<Stack
 					mt={6}
@@ -569,7 +566,7 @@ const AdminsUsage: FC = () => {
 						{serviceAdminUsage.length ? (
 							serviceAdminUsage.map((item) => {
 								const username =
-									item.username || t("services.unassignedAdmin", "Unassigned");
+									item.username || t("services.unassignedAdmin");
 								const isSelectable = Boolean(item.username);
 								const isActive =
 									selectedAdmin === item.username && isSelectable;
@@ -613,20 +610,14 @@ const AdminsUsage: FC = () => {
 					<HStack spacing={2} align="center">
 						<Text fontWeight="semibold">
 							{isCreatedTrafficBasis
-								? t("admins.dailyCreatedTraffic", "Daily created traffic")
-								: t("admins.dailyUsage", "Daily usage")}
+								? t("myaccount.dailyCreatedTraffic")
+								: t("admins.dailyUsage")}
 						</Text>
 						<Tooltip
 							label={
 								isCreatedTrafficBasis
-									? t(
-											"admins.dailyCreatedTrafficTooltip",
-											"Total created traffic per day for the selected admin and time range",
-										)
-									: t(
-											"admins.dailyUsageTooltip",
-											"Total data usage per day for the selected admin and time range",
-										)
+									? t("admins.dailyCreatedTrafficTooltip")
+									: t("admins.dailyUsageTooltip")
 							}
 						>
 							<InfoIcon
@@ -672,13 +663,13 @@ const AdminsUsage: FC = () => {
 			>
 				<VStack align="start" spacing={1} mb={4}>
 					<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-						{t("admins.selectedAdmin", "Admin")}:{" "}
+						{t("admins.selectedAdmin")}:{" "}
 						<chakra.span fontWeight="medium">
 							{selectedAdmin ?? "-"}
 						</chakra.span>{" "}
 						{isCreatedTrafficBasis
-							? t("admins.totalCreatedTraffic", "Total created traffic")
-							: t("nodes.totalLabel", "Total")}
+							? t("myaccount.totalCreatedTraffic")
+							: t("nodes.totalLabel")}
 						:{" "}
 						<chakra.span fontWeight="medium">
 							{formatBytes(total || 0, 2)}

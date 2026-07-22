@@ -198,7 +198,7 @@ export const HeaderCalendar: FC = () => {
 								<IconButton
 									size="xs"
 									variant="ghost"
-									aria-label="Previous month"
+									aria-label={t("dateTimePicker.previousMonth")}
 									icon={prevIcon}
 									onClick={() => {
 										const next = new Date(displayDate);
@@ -215,13 +215,13 @@ export const HeaderCalendar: FC = () => {
 										gap={1}
 									>
 										<Sparkles />
-										{t("season.christmas", "Christmas mode")}
+										{t("season.christmas")}
 									</Badge>
 								)}
 								<IconButton
 									size="xs"
 									variant="ghost"
-									aria-label="Next month"
+									aria-label={t("dateTimePicker.nextMonth")}
 									icon={nextIcon}
 									onClick={() => {
 										const next = new Date(displayDate);
@@ -271,7 +271,7 @@ export const HeaderCalendar: FC = () => {
 						</SimpleGrid>
 						{isChristmas && christmasRange && (
 							<Text fontSize="xs" color="gray.500" textAlign="center">
-								{t("season.window", "Holiday cheer is on")} ({christmasRange})
+								{t("season.window")} ({christmasRange})
 							</Text>
 						)}
 					</Stack>

@@ -12,16 +12,20 @@ import {
 	Modal,
 	ModalCloseButton,
 	ModalOverlay,
-	Select,
 	SimpleGrid,
 	Stack,
 	Switch,
 	Tag,
 	Text,
+	Textarea,
 	Tooltip,
 	useClipboard,
 	useToast,
+	VStack,
+	Wrap,
+	WrapItem,
 } from "@chakra-ui/react";
+import { PanelSelect as Select } from "components/common/PanelSelect";
 import {
 	ArrowDownTrayIcon,
 	DocumentDuplicateIcon,
@@ -32,15 +36,26 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import {
 	getNodeDefaultValues,
 	NodeSchema,
+	type NodeType,
 	useNodes,
 } from "contexts/NodesContext";
 import dayjs from "dayjs";
-import { type FC, useCallback, useEffect, useState } from "react";
+import {
+	type FC,
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import { useQuery } from "react-query";
-import { getPanelSettings } from "service/settings";
 import { SizeFormatter } from "../utils/outbound";
+import {
+	AnimatedSubmitButton,
+	type AnimatedSubmitStatus,
+} from "./common/AnimatedSubmitButton";
 import { Input } from "./Input";
 import {
 	XrayModalBody,
@@ -48,6 +63,7 @@ import {
 	XrayModalFooter,
 	XrayModalHeader,
 } from "./xray/XrayDialog";
+import { NodeModalStatusBadge } from "./NodeModalStatusBadge";
 
 const EyeIconStyled = chakra(EyeIcon, { baseStyle: { w: 4, h: 4 } });
 const EyeSlashIconStyled = chakra(EyeSlashIcon, { baseStyle: { w: 4, h: 4 } });
@@ -59,8 +75,6 @@ const DownloadIconStyled = chakra(ArrowDownTrayIcon, {
 });
 
 const BYTES_IN_GB = 1024 * 1024 * 1024;
-const DEFAULT_NOBETCI_PORT = 51031;
-
 const getInputError = (error: unknown): string | undefined => {
 	if (error && typeof error === "object" && "message" in error) {
 		const message = (error as { message?: unknown }).message;
@@ -69,22 +83,110 @@ const getInputError = (error: unknown): string | undefined => {
 	return undefined;
 };
 
+const uniqueValues = (items: string[]): string[] =>
+	Array.from(new Set(items.filter(Boolean)));
+
+const getConfigInbounds = (config: NodeType["xray_config"]): string[] => {
+	if (!config || typeof config !== "object" || Array.isArray(config)) {
+		return [];
+	}
+
+	const inbounds = (config as { inbounds?: unknown }).inbounds;
+	if (!Array.isArray(inbounds)) {
+		return [];
+	}
+
+	return inbounds
+		.map((inbound) => {
+			if (!inbound || typeof inbound !== "object") {
+				return "";
+			}
+			const item = inbound as { tag?: unknown; remark?: unknown };
+			return typeof item.tag === "string" && item.tag
+				? item.tag
+				: typeof item.remark === "string" && item.remark
+					? item.remark
+					: "inbound";
+		})
+		.filter(Boolean);
+};
+
+const formatNodeBytes = (value?: number | null) =>
+	value !== null && value !== undefined ? SizeFormatter.sizeFormat(value) : "-";
+
+const formatNodeSpeed = (value?: number | null) =>
+	value !== null && value !== undefined ? `${SizeFormatter.sizeFormat(value)}/s` : "-";
+
+const formatNodePercent = (value?: number | null) =>
+	value !== null && value !== undefined && Number.isFinite(value)
+		? `${Math.round(value * 10) / 10}%`
+		: "-";
+
+const formatCPUFrequency = (value?: number | null) => {
+	if (value === null || value === undefined || !Number.isFinite(value) || value <= 0) {
+		return "-";
+	}
+	return `${Math.round((value / 1_000_000_000) * 100) / 100} GHz`;
+};
+
+const buildNodeInstallBundle = (
+	certificate?: string | null,
+	certificateKey?: string | null,
+) => {
+	const cert = certificate?.trim() ?? "";
+	const key = certificateKey?.trim() ?? "";
+	if (cert && key) {
+		return `${cert}\n${key}\n`;
+	}
+	return cert;
+};
+
+const OverviewItem: FC<{
+	detail?: ReactNode;
+	label: ReactNode;
+	value: ReactNode;
+}> = ({ detail, label, value }) => (
+	<Box>
+		<Text fontSize="xs" textTransform="uppercase" color="gray.500">
+			{label}
+		</Text>
+		<Box fontWeight="medium" lineHeight="short" mt={0.5}>
+			{value}
+		</Box>
+		{detail && (
+			<Text fontSize="xs" color="gray.500" mt={1}>
+				{detail}
+			</Text>
+		)}
+	</Box>
+);
+
 interface NodeFormModalProps {
 	isOpen: boolean;
 	onClose: () => void;
-	node?: any;
-	mutate: (data: any) => void;
+	node?: NodeType;
+	defaultInboundTags?: string[];
+	mutate: (
+		data: any,
+		options?: {
+			onError?: (error: unknown) => void;
+			onSuccess?: (data: NodeType) => void;
+		},
+	) => void;
 	isLoading: boolean;
 	isAddMode?: boolean;
+	onSubmitSuccess?: (node: NodeType) => void;
 }
 
 export const NodeFormModal: FC<NodeFormModalProps> = ({
 	isOpen,
 	onClose,
 	node,
+	defaultInboundTags = [],
 	mutate,
 	isLoading,
 	isAddMode = false,
+	onSubmitSuccess,
 }) => {
 	const { t } = useTranslation();
 	const toast = useToast();
@@ -94,14 +196,10 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 		uplink: number;
 		downlink: number;
 	} | null>(null);
-
-	const { data: panelSettings } = useQuery({
-		queryKey: "panel-settings",
-		queryFn: getPanelSettings,
-		staleTime: 5 * 60 * 1000,
-	});
-
-	const allowNobetci = panelSettings?.use_nobetci ?? true;
+	const [submitStatus, setSubmitStatus] =
+		useState<AnimatedSubmitStatus>("idle");
+	const submitResetTimerRef = useRef<number | null>(null);
+	const successCloseTimerRef = useRef<number | null>(null);
 
 	const formatDataLimitForInput = useCallback((value?: number | null) => {
 		if (value === null || value === undefined) {
@@ -120,12 +218,31 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 			? null
 			: Math.round(value * BYTES_IN_GB);
 
+	const buildMutationPayload = (data: NodeType) => ({
+		...(isAddMode ? {} : { id: node?.id ?? data.id }),
+		name: data.name,
+		note: data.note ?? "",
+		address: data.address,
+		port: Number(data.port),
+		api_port: Number(data.api_port),
+		usage_coefficient: Number(data.usage_coefficient),
+		data_limit: convertLimitToBytes(data.data_limit ?? null),
+		proxy_enabled: Boolean(data.proxy_enabled),
+		proxy_type: data.proxy_enabled ? data.proxy_type : null,
+		proxy_host: data.proxy_enabled ? data.proxy_host : null,
+		proxy_port:
+			data.proxy_enabled && data.proxy_port !== null && data.proxy_port !== undefined
+				? Number(data.proxy_port)
+				: null,
+		proxy_username: data.proxy_enabled ? data.proxy_username : null,
+		proxy_password: data.proxy_enabled ? data.proxy_password : null,
+	});
+
 	const baseDefaults = isAddMode
-		? { ...getNodeDefaultValues(), add_as_new_host: false }
+		? getNodeDefaultValues()
 		: {
 				...getNodeDefaultValues(),
 				...node,
-				add_as_new_host: false,
 			};
 
 	const form = useForm({
@@ -136,39 +253,65 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 		},
 	});
 
-	const nodeCertificateValue = (!isAddMode && node?.node_certificate) || "";
+	const nodeCertificateValue = !isAddMode
+		? buildNodeInstallBundle(node?.node_certificate, node?.node_certificate_key)
+		: "";
 	const { onCopy: copyNodeCertificate, hasCopied: nodeCertificateCopied } =
 		useClipboard(nodeCertificateValue);
-	const useNobetci = form.watch("use_nobetci");
 	const proxyEnabled = form.watch("proxy_enabled");
+	const overviewInboundTags = useMemo(() => {
+		const customInbounds = uniqueValues(getConfigInbounds(node?.xray_config));
+		return customInbounds.length ? customInbounds : defaultInboundTags;
+	}, [defaultInboundTags, node?.xray_config]);
+	const nodeStatus = node?.status || "error";
+	const nodeUsageTotal = (node?.uplink ?? 0) + (node?.downlink ?? 0);
+	const nodeUsagePeriodTotal =
+		nodeUsage !== null ? nodeUsage.uplink + nodeUsage.downlink : null;
+	const nodeLimitDisplay =
+		node?.data_limit !== null &&
+		node?.data_limit !== undefined &&
+		node.data_limit > 0
+			? formatNodeBytes(node.data_limit)
+			: t("nodes.unlimited");
+	const nodeRuntimeVersion =
+		node?.node_binary_tag || node?.node_service_version || "";
+	const nodeInstallLabel =
+		[node?.node_install_mode, node?.node_update_channel]
+			.filter(Boolean)
+			.join(" / ") || "-";
+	const certificateState = node?.uses_default_certificate
+		? t("nodes.legacyCertificate")
+		: node?.has_custom_certificate
+			? t("nodes.privateCertificate")
+			: "-";
 
-	useEffect(() => {
-		if (!allowNobetci || !useNobetci) {
-			if (form.getValues("nobetci_port") !== null) {
-				form.setValue("nobetci_port", null);
-			}
-			return;
+	const clearSubmitTimers = useCallback(() => {
+		if (submitResetTimerRef.current !== null) {
+			window.clearTimeout(submitResetTimerRef.current);
+			submitResetTimerRef.current = null;
 		}
-		const currentPort = form.getValues("nobetci_port");
-		if (
-			currentPort === null ||
-			currentPort === undefined ||
-			currentPort === ""
-		) {
-			form.setValue("nobetci_port", DEFAULT_NOBETCI_PORT);
+		if (successCloseTimerRef.current !== null) {
+			window.clearTimeout(successCloseTimerRef.current);
+			successCloseTimerRef.current = null;
 		}
-	}, [useNobetci, form, allowNobetci]);
+	}, []);
 
-	useEffect(() => {
-		if (panelSettings && !panelSettings.use_nobetci) {
-			if (form.getValues("use_nobetci")) {
-				form.setValue("use_nobetci", false);
-			}
-			if (form.getValues("nobetci_port") !== null) {
-				form.setValue("nobetci_port", null);
-			}
+	useEffect(() => clearSubmitTimers, [clearSubmitTimers]);
+
+	const showSubmitError = useCallback(() => {
+		if (successCloseTimerRef.current !== null) {
+			window.clearTimeout(successCloseTimerRef.current);
+			successCloseTimerRef.current = null;
 		}
-	}, [panelSettings, form]);
+		if (submitResetTimerRef.current !== null) {
+			window.clearTimeout(submitResetTimerRef.current);
+		}
+		setSubmitStatus("error");
+		submitResetTimerRef.current = window.setTimeout(() => {
+			setSubmitStatus("idle");
+			submitResetTimerRef.current = null;
+		}, 900);
+	}, []);
 
 	useEffect(() => {
 		if (!proxyEnabled) {
@@ -182,12 +325,13 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 
 	useEffect(() => {
 		if (isOpen) {
+			clearSubmitTimers();
+			setSubmitStatus("idle");
 			const defaults = isAddMode
-				? { ...getNodeDefaultValues(), add_as_new_host: false }
+				? getNodeDefaultValues()
 				: {
 						...getNodeDefaultValues(),
 						...node,
-						add_as_new_host: false,
 					};
 			form.reset({
 				...defaults,
@@ -195,17 +339,22 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 			});
 			setShowCertificate(!isAddMode && !!node?.node_certificate);
 		}
-	}, [isOpen, isAddMode, node, form, formatDataLimitForInput]);
+	}, [isOpen, isAddMode, node, form, formatDataLimitForInput, clearSubmitTimers]);
 
 	useEffect(() => {
 		if (!isAddMode && node && isOpen) {
+			if (node.id === null || node.id === undefined) {
+				setNodeUsage(null);
+				return;
+			}
+			const nodeId = String(node.id);
 			fetchNodesUsage({
 				start: dayjs().utc().subtract(30, "day").format("YYYY-MM-DDTHH:00:00"),
 			}).then(
 				(data: {
 					usages?: Record<string, { uplink?: number; downlink?: number }>;
 				}) => {
-					const usage = data.usages?.[node.id];
+					const usage = data.usages?.[nodeId];
 					if (usage) {
 						setNodeUsage({
 							uplink: usage.uplink ?? 0,
@@ -222,11 +371,28 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 	}, [node, isAddMode, isOpen, fetchNodesUsage]);
 
 	const handleSubmit = form.handleSubmit((data) => {
-		const payload = {
-			...data,
-			data_limit: convertLimitToBytes(data.data_limit ?? null),
-		};
-		mutate(payload);
+		if (submitStatus !== "idle" || isLoading) return;
+		clearSubmitTimers();
+		setSubmitStatus("loading");
+		const payload = buildMutationPayload(data);
+		mutate(payload, {
+			onError: () => {
+				showSubmitError();
+			},
+			onSuccess: (createdOrUpdatedNode) => {
+				setSubmitStatus("success");
+				successCloseTimerRef.current = window.setTimeout(() => {
+					successCloseTimerRef.current = null;
+					handleClose();
+					window.setTimeout(() => {
+						onSubmitSuccess?.(createdOrUpdatedNode);
+					}, 0);
+				}, 1000);
+			},
+		});
+	}, () => {
+		if (submitStatus !== "idle") return;
+		showSubmitError();
 	});
 
 	const handleCopyNodeCertificate = () => {
@@ -247,16 +413,18 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 		const url = URL.createObjectURL(blob);
 		const anchor = document.createElement("a");
 		anchor.href = url;
-		anchor.download = "node_certificate.pem";
+		anchor.download = "node_install_bundle.pem";
 		anchor.click();
 		URL.revokeObjectURL(url);
 	};
 
-	const handleClose = () => {
+	function handleClose() {
+		clearSubmitTimers();
+		setSubmitStatus("idle");
 		setShowCertificate(false);
 		setNodeUsage(null);
 		onClose();
-	};
+	}
 
 	return (
 		<Modal
@@ -306,27 +474,179 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 				<ModalCloseButton />
 				<XrayModalBody>
 					<Stack spacing={4}>
-						{!isAddMode && nodeUsage && (
-							<Stack className="xray-dialog-section" spacing={2}>
-								<Text fontWeight="medium">{t("nodes.usage")}</Text>
-								<HStack>
-									<Tag colorScheme="green">
-										{t("nodes.uplink")}:{" "}
-										{SizeFormatter.sizeFormat(nodeUsage.uplink)}
-									</Tag>
-									<Tag colorScheme="blue">
-										{t("nodes.downlink")}:{" "}
-										{SizeFormatter.sizeFormat(nodeUsage.downlink)}
-									</Tag>
+						{!isAddMode && node && (
+							<Stack className="xray-dialog-section" spacing={4}>
+								<HStack justify="space-between" align="flex-start" gap={3}>
+									<VStack align="flex-start" spacing={1} minW={0}>
+										<Text fontWeight="semibold">
+											{t("nodes.overview")}
+										</Text>
+										<Text
+											fontSize="xs"
+											color="gray.500"
+											noOfLines={2}
+											wordBreak="break-word"
+										>
+											{node.name || t("nodes.unnamedNode")} ·{" "}
+											{t("admins.idLabel")}: {node.id ?? "-"}
+										</Text>
+										{node.note && (
+											<Text
+												fontSize="xs"
+												color="gray.500"
+												noOfLines={3}
+												wordBreak="break-word"
+											>
+												{node.note}
+											</Text>
+										)}
+									</VStack>
+									<NodeModalStatusBadge status={nodeStatus} compact />
 								</HStack>
+								{node.message && (
+									<Box
+										borderWidth="1px"
+										borderColor="red.200"
+										borderRadius="md"
+										bg="red.50"
+										color="red.700"
+										px={3}
+										py={2}
+										_dark={{
+											bg: "red.900",
+											borderColor: "red.700",
+											color: "red.100",
+										}}
+									>
+										<Text fontSize="sm">{node.message}</Text>
+									</Box>
+								)}
+								<SimpleGrid columns={{ base: 1, sm: 2, lg: 3 }} spacing={3}>
+									<OverviewItem
+										label={t("nodes.nodeAddress")}
+										value={
+											<Text as="span" dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+												{node.address || "-"}
+											</Text>
+										}
+										detail={`${t("port")}: ${
+											node.port ?? "-"
+										} · ${t("nodes.nodeAPIPort")}: ${
+											node.api_port ?? "-"
+										}`}
+									/>
+									<OverviewItem
+										label={t("nodes.trafficLimit")}
+										value={`${formatNodeBytes(nodeUsageTotal)} / ${nodeLimitDisplay}`}
+										detail={`${t("nodes.uplink")}: ${formatNodeBytes(
+											node.uplink,
+										)} · ${t("nodes.downlink")}: ${formatNodeBytes(
+											node.downlink,
+										)}`}
+									/>
+									<OverviewItem
+										label={t("nodes.range30d")}
+										value={
+											nodeUsagePeriodTotal !== null
+												? formatNodeBytes(nodeUsagePeriodTotal)
+												: "-"
+										}
+										detail={
+											nodeUsage
+												? `${t("nodes.uplink")}: ${formatNodeBytes(
+														nodeUsage.uplink,
+													)} · ${t("nodes.downlink")}: ${formatNodeBytes(
+														nodeUsage.downlink,
+													)}`
+												: t("nodes.usageUnavailable")
+										}
+									/>
+									<OverviewItem
+										label={t("nodes.bandwidthSpeed")}
+										value={`${formatNodeSpeed(node.upload_speed)} / ${formatNodeSpeed(
+											node.download_speed,
+										)}`}
+									/>
+									<OverviewItem
+										label={t("nodes.cpu")}
+										value={formatNodePercent(node.cpu_usage_percent)}
+										detail={`${node.cpu_cores ?? "-"} ${t("cores")} · ${formatCPUFrequency(node.cpu_frequency_hz)}`}
+									/>
+									<OverviewItem
+										label={t("nodes.ram")}
+										value={formatNodePercent(node.memory_usage_percent)}
+										detail={`${formatNodeBytes(node.memory_used)} / ${formatNodeBytes(
+											node.memory_total,
+										)}`}
+									/>
+									<OverviewItem
+										label={t("nodes.runtime")}
+										value={
+											node.xray_version
+												? `Xray ${node.xray_version}`
+												: t("nodes.versionUnknown")
+										}
+										detail={
+											nodeRuntimeVersion
+												? `${t("nodes.nodeServiceVersionTag", {
+														version: nodeRuntimeVersion,
+													})} · ${nodeInstallLabel}`
+												: nodeInstallLabel
+										}
+									/>
+									<OverviewItem
+										label={t("nodes.certificate")}
+										value={
+											<Tag
+												size="sm"
+												colorScheme={
+													node.uses_default_certificate
+														? "orange"
+														: node.has_custom_certificate
+															? "green"
+															: "gray"
+												}
+											>
+												{certificateState}
+											</Tag>
+										}
+									/>
+								</SimpleGrid>
+								<Box>
+									<Text fontSize="xs" textTransform="uppercase" color="gray.500">
+										{t("pages.xray.Inbounds")}
+									</Text>
+									{overviewInboundTags.length ? (
+										<Wrap spacing={1.5} mt={1}>
+											{overviewInboundTags.map((tag) => (
+												<WrapItem key={tag}>
+													<Tag size="sm" colorScheme="teal" variant="subtle">
+														{tag}
+													</Tag>
+												</WrapItem>
+											))}
+										</Wrap>
+									) : (
+										<Text fontSize="sm" color="gray.500" mt={1}>
+											{t("nodes.noInboundsConfigured")}
+										</Text>
+									)}
+								</Box>
 							</Stack>
 						)}
 
 						{!isAddMode && nodeCertificateValue && (
 							<Stack className="xray-dialog-section" spacing={3}>
-								<HStack justify="space-between" align="center">
-									<Text fontWeight="medium">{t("nodes.certificate")}</Text>
-									<HStack spacing={2}>
+								<Stack
+									direction={{ base: "column", sm: "row" }}
+									justify="space-between"
+									align={{ base: "stretch", sm: "center" }}
+									spacing={2}
+								>
+									<Text fontWeight="medium" minW={0}>
+										{t("nodes.certificate")}
+									</Text>
+									<HStack spacing={2} flexWrap="wrap" justify="flex-end">
 										<Button
 											size="xs"
 											variant="outline"
@@ -369,7 +689,7 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 											</IconButton>
 										</Tooltip>
 									</HStack>
-								</HStack>
+								</Stack>
 								<Collapse in={showCertificate} animateOpacity>
 									<Box
 										borderWidth="1px"
@@ -393,14 +713,11 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 							spacing={3}
 						>
 							<Text fontSize="sm" fontWeight="semibold">
-								{t("nodes.connectionSettings", "Connection settings")}
+								{t("nodes.connectionSettings")}
 							</Text>
 							{isAddMode && (
 								<Checkbox isChecked isReadOnly isDisabled pointerEvents="none">
-									{t(
-										"nodes.certInfoOption",
-										"Cert: After creating the node, the certificate will be shown. This option is informational only.",
-									)}
+									{t("nodes.certInfoOption")}
 								</Checkbox>
 							)}
 							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
@@ -408,6 +725,7 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 									label={t("nodes.nodeName")}
 									size="sm"
 									placeholder="Rebecca-S2"
+									maxLength={120}
 									{...form.register("name")}
 									error={getInputError(form.formState?.errors?.name)}
 								/>
@@ -419,9 +737,22 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 									error={getInputError(form.formState?.errors?.address)}
 								/>
 							</SimpleGrid>
+							<FormControl isInvalid={Boolean(form.formState?.errors?.note)}>
+								<FormLabel>{t("fields.note")}</FormLabel>
+								<Textarea
+									size="sm"
+									maxLength={500}
+									rows={3}
+									placeholder={t("nodes.notePlaceholder")}
+									{...form.register("note")}
+								/>
+								<FormErrorMessage>
+									{getInputError(form.formState?.errors?.note)}
+								</FormErrorMessage>
+							</FormControl>
 							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 								<Input
-									label={t("nodes.nodePort")}
+									label={t("port")}
 									size="sm"
 									placeholder="62050"
 									{...form.register("port")}
@@ -447,15 +778,12 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 								/>
 								<FormControl>
 									<Input
-										label={t("nodes.dataLimitField", "Data Limit (GB)")}
+										label={t("nodes.dataLimitField")}
 										size="sm"
 										type="number"
 										step={0.01}
 										min={0}
-										placeholder={t(
-											"nodes.dataLimitPlaceholder",
-											"e.g., 500 (empty = unlimited)",
-										)}
+										placeholder={t("nodes.dataLimitPlaceholder")}
 										{...form.register("data_limit", {
 											setValueAs: (value) => {
 												if (
@@ -473,110 +801,24 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 													return true;
 												}
 												if (Number.isNaN(value)) {
-													return t(
-														"nodes.dataLimitValidation",
-														"Data limit must be a valid number",
-													);
+													return t("nodes.dataLimitValidation");
 												}
 												return (
 													value >= 0 ||
-													t(
-														"nodes.dataLimitPositive",
-														"Data limit must be zero or greater",
-													)
+													t("nodes.dataLimitPositive")
 												);
 											},
 										})}
 										error={getInputError(form.formState?.errors?.data_limit)}
 									/>
 									<Text fontSize="xs" color="gray.500" mt={1}>
-										{t(
-											"nodes.dataLimitHint",
-											"Leave empty for unlimited data.",
-										)}
+										{t("nodes.dataLimitHint")}
 									</Text>
 								</FormControl>
 							</SimpleGrid>
-							{allowNobetci && (
-								<>
-									<FormControl className="node-switch-control">
-										<FormLabel mb={0}>
-											{t("nodes.useNobetci", "Enable Nobetci integration")}
-										</FormLabel>
-										<Controller
-											control={form.control}
-											name="use_nobetci"
-											render={({ field }) => (
-												<Switch
-													isChecked={Boolean(field.value)}
-													onChange={(event) =>
-														field.onChange(event.target.checked)
-													}
-												/>
-											)}
-										/>
-									</FormControl>
-									<Collapse in={Boolean(useNobetci)} animateOpacity>
-										<FormControl mt={useNobetci ? 2 : 0}>
-											<Input
-												label={t("nodes.nobetciPort", "Nobetci port")}
-												size="sm"
-												placeholder="443"
-												{...form.register("nobetci_port", {
-													setValueAs: (value) => {
-														if (
-															value === "" ||
-															value === null ||
-															value === undefined
-														) {
-															return null;
-														}
-														const parsed = Number(value);
-														return Number.isFinite(parsed)
-															? parsed
-															: Number.NaN;
-													},
-													validate: (value) => {
-														if (!useNobetci) {
-															return true;
-														}
-														if (value === null || value === undefined) {
-															return t(
-																"nodes.nobetciPortRequired",
-																"Port is required when Nobetci is enabled",
-															);
-														}
-														if (Number.isNaN(value)) {
-															return t(
-																"nodes.nobetciPortInvalid",
-																"Enter a valid port number",
-															);
-														}
-														return value >= 1 && value <= 65535
-															? true
-															: t(
-																	"nodes.nobetciPortRange",
-																	"Port must be between 1 and 65535",
-																);
-													},
-												})}
-												error={getInputError(
-													form.formState?.errors?.nobetci_port,
-												)}
-											/>
-											<Text fontSize="xs" color="gray.500" mt={1}>
-												{t(
-													"nodes.nobetciHint",
-													"Provide the Nobetci listener port. Leave blank to disable.",
-												)}
-											</Text>
-										</FormControl>
-									</Collapse>
-								</>
-							)}
-							<FormControl className="node-switch-control">
+							<FormControl className="node-switch-control rb-dialog-switch-row">
 								<FormLabel mb={0}>
-									{t("nodes.useProxy", "Enable proxy for node connection")}
+									{t("nodes.useProxy")}
 								</FormLabel>
 								<Controller
 									control={form.control}
@@ -596,39 +838,46 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 									mt={2}
 								>
 									<Text fontSize="sm" fontWeight="semibold">
-										{t("nodes.proxySettings", "Proxy settings")}
+										{t("nodes.proxySettings")}
 									</Text>
 									<FormControl
 										isInvalid={
 											!!getInputError(form.formState?.errors?.proxy_type)
 										}
 									>
-										<FormLabel>{t("nodes.proxyType", "Proxy type")}</FormLabel>
-										<Select
-											size="sm"
-											placeholder={t(
-												"nodes.proxyTypePlaceholder",
-												"Select proxy type",
-											)}
-											{...form.register("proxy_type")}
-										>
-											<option value="http">HTTP</option>
-											<option value="socks5">SOCKS5</option>
-										</Select>
+										<FormLabel>{t("nodes.proxyType")}</FormLabel>
+									<Controller
+										control={form.control}
+										name="proxy_type"
+										render={({ field }) => (
+											<Select
+												size="sm"
+												placeholder={t("nodes.proxyTypePlaceholder")}
+												name={field.name}
+												value={field.value ?? ""}
+												onBlur={field.onBlur}
+												onValueChange={(value) => field.onChange(value || null)}
+												options={[
+													{ value: "http", label: "HTTP" },
+													{ value: "socks5", label: "SOCKS5" },
+												]}
+											/>
+										)}
+									/>
 										<FormErrorMessage>
 											{getInputError(form.formState?.errors?.proxy_type)}
 										</FormErrorMessage>
 									</FormControl>
 									<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 										<Input
-											label={t("nodes.proxyHost", "Proxy host")}
+											label={t("nodes.proxyHost")}
 											size="sm"
 											placeholder="proxy.example.com"
 											{...form.register("proxy_host")}
 											error={getInputError(form.formState?.errors?.proxy_host)}
 										/>
 										<Input
-											label={t("nodes.proxyPort", "Proxy port")}
+											label={t("nodes.proxyPort")}
 											size="sm"
 											type="number"
 											min={1}
@@ -652,7 +901,7 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 									</SimpleGrid>
 									<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
 										<Input
-											label={t("nodes.proxyUsername", "Proxy username")}
+											label={t("nodes.proxyUsername")}
 											size="sm"
 											placeholder="user"
 											{...form.register("proxy_username")}
@@ -661,7 +910,7 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 											)}
 										/>
 										<Input
-											label={t("nodes.proxyPassword", "Proxy password")}
+											label={t("nodes.proxyPassword")}
 											size="sm"
 											type="password"
 											placeholder="••••••••"
@@ -672,31 +921,26 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 										/>
 									</SimpleGrid>
 									<Text fontSize="xs" color="gray.500">
-										{t(
-											"nodes.proxyHint",
-											"Applies only to master-to-node communication.",
-										)}
+										{t("nodes.proxyHint")}
 									</Text>
 								</Stack>
 							</Collapse>
 						</Stack>
 
-						{isAddMode && (
-							<Box className="xray-dialog-section">
-								<Checkbox {...form.register("add_as_new_host")}>
-									{t("nodes.addHostForEveryInbound")}
-								</Checkbox>
-							</Box>
-						)}
 					</Stack>
 				</XrayModalBody>
 				<XrayModalFooter justifyContent="flex-end">
-					<Button variant="outline" onClick={handleClose}>
+					<Button variant="outline" size="sm" onClick={handleClose}>
 						{t("cancel")}
 					</Button>
-					<Button type="submit" colorScheme="primary" isLoading={isLoading}>
-						{isAddMode ? t("nodes.addNode") : t("nodes.editNode")}
-					</Button>
+					<AnimatedSubmitButton
+						status={submitStatus}
+						idleContent={isAddMode ? t("nodes.addNode") : t("nodes.editNode")}
+						successLabel={t("userDialog.submitSuccess")}
+						isDisabled={isLoading}
+						type="submit"
+						containerProps={{ w: { base: "full", sm: "180px" } }}
+					/>
 				</XrayModalFooter>
 			</XrayModalContent>
 		</Modal>

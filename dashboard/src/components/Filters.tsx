@@ -19,7 +19,6 @@ import {
 	PopoverContent,
 	PopoverHeader,
 	PopoverTrigger,
-	Select,
 	Spinner,
 	Stack,
 	Tag,
@@ -40,6 +39,7 @@ import {
 	XMarkIcon,
 } from "@heroicons/react/24/outline";
 import classNames from "classnames";
+import { PanelSelect as Select } from "components/common/PanelSelect";
 import { useAdminsStore } from "contexts/AdminsContext";
 import { useDashboard } from "contexts/DashboardContext";
 import { useServicesStore } from "contexts/ServicesContext";
@@ -55,7 +55,6 @@ import {
 	UserPermissionToggle,
 } from "types/Admin";
 import { isUserManagementLocked } from "utils/adminTraffic";
-import AdvancedUserActions from "./AdvancedUserActions";
 
 const iconProps = {
 	baseStyle: {
@@ -71,13 +70,13 @@ export const ReloadIcon = chakra(ArrowPathIcon, iconProps);
 const PlusIconStyled = chakra(PlusIcon, iconProps);
 const HelpIcon = chakra(QuestionMarkCircleIcon, iconProps);
 
-type AdvancedFilterOption = {
+export type AdvancedFilterOption = {
 	key: string;
 	labelKey: string;
 	fallback: string;
 };
 
-const ADVANCED_FILTER_OPTIONS: AdvancedFilterOption[] = [
+export const ADVANCED_FILTER_OPTIONS: AdvancedFilterOption[] = [
 	{
 		key: "online",
 		labelKey: "filters.advanced.online",
@@ -135,10 +134,16 @@ const ADVANCED_FILTER_OPTIONS: AdvancedFilterOption[] = [
 	},
 ];
 
-export type FilterProps = { for?: "users" | "admins" } & BoxProps;
+export type FilterProps = {
+	for?: "users" | "admins";
+	actionsSlot?: React.ReactNode;
+	showRefresh?: boolean;
+} & BoxProps;
 
 export const Filters: FC<FilterProps> = ({
 	for: target = "users",
+	actionsSlot,
+	showRefresh = true,
 	...props
 }) => {
 	const {
@@ -153,8 +158,9 @@ export const Filters: FC<FilterProps> = ({
 		filters: adminFilters,
 		onFilterChange: onAdminFilterChange,
 		fetchAdmins,
+		fetchAdminOptions,
 		openAdminDialog,
-		admins: adminList,
+		adminOptions,
 	} = useAdminsStore();
 	const { t } = useTranslation();
 	const [search, setSearch] = useState("");
@@ -185,7 +191,12 @@ export const Filters: FC<FilterProps> = ({
 	const activeFilters: string[] = userFiltersOnly?.advancedFilters ?? [];
 	const serviceId = userFiltersOnly?.serviceId;
 	const ownerFilter = userFiltersOnly?.owner;
-	const { services, fetchServices } = useServicesStore();
+	const { serviceOptions: rawServiceOptions, fetchServiceOptions } =
+		useServicesStore();
+	const serviceOptions = Array.isArray(rawServiceOptions)
+		? rawServiceOptions
+		: [];
+	const safeAdminOptions = Array.isArray(adminOptions) ? adminOptions : [];
 	const debouncedSearchChange = useMemo(
 		() =>
 			debounce((nextSearch: string) => {
@@ -211,14 +222,14 @@ export const Filters: FC<FilterProps> = ({
 	}, [debouncedSearchChange]);
 
 	useEffect(() => {
-		fetchServices({ limit: 500 });
-	}, [fetchServices]);
+		fetchServiceOptions({ limit: 1000 });
+	}, [fetchServiceOptions]);
 
 	useEffect(() => {
 		if (isUserFilters && hasPrivilegedRole) {
-			fetchAdmins({ search: "", limit: 200, offset: 0, sort: "username" });
+			fetchAdminOptions({ limit: 1000, offset: 0, sort: "username" });
 		}
-	}, [fetchAdmins, hasPrivilegedRole, isUserFilters]);
+	}, [fetchAdminOptions, hasPrivilegedRole, isUserFilters]);
 
 	useEffect(() => {
 		const nextSearch = isUserFilters
@@ -341,13 +352,10 @@ export const Filters: FC<FilterProps> = ({
 					{isUserFilters && (
 						<HStack spacing={1} align="center">
 							<Text fontSize="xs" color="gray.500">
-								{t("users.searchHelpLabel", "Search tips")}
+								{t("users.searchHelpLabel")}
 							</Text>
 							<Tooltip
-								label={t(
-									"users.searchHelp",
-									"Search by username, 3x-ui subaddress, key, token, UUID, config link, or subscription URL.",
-								)}
+								label={t("users.searchHelp")}
 								placement="top"
 								hasArrow
 							>
@@ -370,7 +378,7 @@ export const Filters: FC<FilterProps> = ({
 								placeholder={
 									target === "users"
 										? t("search")
-										: t("admins.searchPlaceholder", "Search admins...")
+										: t("admins.searchPlaceholder")
 								}
 								value={search}
 								borderColor="light-border"
@@ -383,7 +391,7 @@ export const Filters: FC<FilterProps> = ({
 								{filters.search && filters.search.length > 0 && (
 									<IconButton
 										onClick={clear}
-										aria-label="clear"
+										aria-label={t("clear")}
 										size="xs"
 										variant="ghost"
 									>
@@ -404,14 +412,14 @@ export const Filters: FC<FilterProps> = ({
 										fontSize={isMobile ? "xs" : "sm"}
 										flex={{ base: "1 1 auto", sm: "0 1 auto" }}
 									>
-										{t("filters.advancedButton", "Filters")}
+										{t("filters.advancedButton")}
 									</Button>
 								</PopoverTrigger>
 								<PopoverContent borderColor="light-border" minW="250px">
 									<PopoverArrow />
 									<PopoverCloseButton />
 									<PopoverHeader fontWeight="semibold">
-										{t("filters.advancedTitle", "Advanced filters")}
+										{t("filters.advancedTitle")}
 									</PopoverHeader>
 									<PopoverBody>
 										<Stack spacing={2}>
@@ -428,7 +436,7 @@ export const Filters: FC<FilterProps> = ({
 										<Stack spacing={3} mt={3}>
 											<Box>
 												<Text fontSize="sm" fontWeight="semibold" mb={1}>
-													{t("filters.advanced.serviceLabel", "Service filter")}
+													{t("filters.advanced.serviceLabel")}
 												</Text>
 												<Select
 													value={serviceId ? String(serviceId) : ""}
@@ -438,9 +446,9 @@ export const Filters: FC<FilterProps> = ({
 													size="sm"
 												>
 													<option value="">
-														{t("filters.advanced.serviceAll", "All services")}
+														{t("filters.advanced.serviceAll")}
 													</option>
-													{services.map((service) => (
+													{serviceOptions.map((service) => (
 														<option key={service.id} value={String(service.id)}>
 															{service.name}
 														</option>
@@ -450,7 +458,7 @@ export const Filters: FC<FilterProps> = ({
 											{hasPrivilegedRole && (
 												<Box>
 													<Text fontSize="sm" fontWeight="semibold" mb={1}>
-														{t("filters.advanced.adminLabel", "Admin filter")}
+														{t("filters.advanced.adminLabel")}
 													</Text>
 													<Select
 														value={ownerFilter ?? ""}
@@ -460,12 +468,12 @@ export const Filters: FC<FilterProps> = ({
 														size="sm"
 													>
 														<option value="">
-															{t("filters.advanced.adminAll", "All admins")}
+															{t("filters.advanced.adminAll")}
 														</option>
 														<option value={userData.username}>
-															{t("filters.advanced.adminMyUsers", "My users")}
+															{t("filters.advanced.adminMyUsers")}
 														</option>
-														{adminList.map((record) => (
+														{safeAdminOptions.map((record) => (
 															<option
 																key={record.username}
 																value={record.username}
@@ -485,32 +493,34 @@ export const Filters: FC<FilterProps> = ({
 											onClick={clearAdvancedFilters}
 											isDisabled={activeFilters.length === 0}
 										>
-											{t("filters.advancedClear", "Clear filters")}
+											{t("filters.advancedClear")}
 										</Button>
 									</PopoverBody>
 								</PopoverContent>
 							</Popover>
 						)}
-						<Button
-							aria-label="refresh"
-							isDisabled={loading}
-							onClick={handleRefresh}
-							size={isMobile ? "sm" : "md"}
-							variant="outline"
-							leftIcon={
-								<ReloadIcon
-									className={classNames({
-										"animate-spin": loading,
-									})}
-								/>
-							}
-							minW={isMobile ? "auto" : "8rem"}
-							h={isMobile ? "36px" : undefined}
-							fontSize={isMobile ? "xs" : "sm"}
-							flex={{ base: "1 1 auto", sm: "0 1 auto" }}
-						>
-							{t("refresh", "Refresh")}
-						</Button>
+						{showRefresh && (
+							<Button
+								aria-label={t("refresh")}
+								isDisabled={loading}
+								onClick={handleRefresh}
+								size={isMobile ? "sm" : "md"}
+								variant="outline"
+								leftIcon={
+									<ReloadIcon
+										className={classNames({
+											"animate-spin": loading,
+										})}
+									/>
+								}
+								minW={isMobile ? "auto" : "8rem"}
+								h={isMobile ? "36px" : undefined}
+								fontSize={isMobile ? "xs" : "sm"}
+								flex={{ base: "1 1 auto", sm: "0 1 auto" }}
+							>
+								{t("refresh")}
+							</Button>
+						)}
 					</HStack>
 					{showAdvancedFilters &&
 						(activeFilters.length > 0 ||
@@ -544,10 +554,11 @@ export const Filters: FC<FilterProps> = ({
 										colorScheme="primary"
 									>
 										<TagLabel>
-											{t("filters.advanced.serviceTag", "Service: {{name}}", {
+											{t("filters.advanced.serviceTag", {
 												name:
-													services.find((service) => service.id === serviceId)
-														?.name ?? serviceId,
+													serviceOptions.find(
+														(service) => service.id === serviceId,
+													)?.name ?? serviceId,
 											})}
 										</TagLabel>
 										<TagCloseButton
@@ -569,7 +580,7 @@ export const Filters: FC<FilterProps> = ({
 									>
 										<TagLabel>
 											{ownerFilter === userData.username
-												? t("filters.advanced.adminTagMine", "My users")
+												? t("filters.advanced.adminTagMine")
 												: ownerFilter}
 										</TagLabel>
 										<TagCloseButton
@@ -594,16 +605,18 @@ export const Filters: FC<FilterProps> = ({
 					w="full"
 					flexWrap="wrap"
 				>
-					{target === "users" && <AdvancedUserActions />}
+					{actionsSlot}
 					{showCreateButton && (
 						<Button
 							colorScheme="primary"
-							size={isMobile ? "sm" : "md"}
+							size="sm"
 							onClick={handleCreate}
 							isDisabled={target === "admins" && !canManageAdmins}
 							leftIcon={isMobile ? undefined : <PlusIconStyled />}
-							h={isMobile ? "36px" : undefined}
-							minW={isMobile ? "auto" : "8.5rem"}
+							h="36px"
+							px={3}
+							borderRadius="4px"
+							minW={isMobile ? "auto" : "8rem"}
 							fontSize={isMobile ? "xs" : "sm"}
 							fontWeight="semibold"
 							whiteSpace="nowrap"
@@ -611,7 +624,7 @@ export const Filters: FC<FilterProps> = ({
 						>
 							{target === "users"
 								? t("createUser")
-								: t("admins.addAdmin", "Add admin")}
+								: t("admins.addAdmin")}
 						</Button>
 					)}
 				</Stack>

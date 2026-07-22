@@ -7,11 +7,21 @@ export type HostsSchema = Record<
 		id?: number | null;
 		remark: string;
 		address: string;
-		sort: number | null;
+		dns_primary: string;
+		dns_secondary: string;
+		address_options?: string[];
+		address_selection_mode?: string;
+		address_ttl_seconds?: number | null;
 		port: number | null;
 		path: string | null;
 		sni: string | null;
+		sni_options?: string[];
+		sni_selection_mode?: string;
+		sni_ttl_seconds?: number | null;
 		host: string | null;
+		host_options?: string[];
+		host_selection_mode?: string;
+		host_ttl_seconds?: number | null;
 		mux_enable: boolean | null;
 		allowinsecure: boolean | null;
 		is_disabled: boolean;
@@ -66,3 +76,11 @@ export const useHosts = create<HostsStore>((set) => ({
 		});
 	},
 }));
+
+export const clearHostsCache = () => {
+	useHosts.setState({
+		isLoading: false,
+		isPostLoading: false,
+		hosts: {},
+	});
+};

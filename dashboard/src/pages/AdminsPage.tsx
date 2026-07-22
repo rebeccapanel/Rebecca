@@ -1,9 +1,13 @@
-import { Box, Text, useColorModeValue, VStack } from "@chakra-ui/react";
+import {
+	Text,
+	VStack,
+} from "@chakra-ui/react";
 import AdminDetailsDrawer from "components/AdminDetailsDrawer";
 import { AdminDialog } from "components/AdminDialog";
 import { AdminsTable } from "components/AdminsTable";
-import { Filters } from "components/Filters";
+import { Filters, ReloadIcon } from "components/Filters";
 import { Pagination } from "components/Pagination";
+import { PageHeader, ResourceRefreshButton } from "components/ui";
 import { useAdminsStore } from "contexts/AdminsContext";
 import useGetUser from "hooks/useGetUser";
 import { type FC, useEffect } from "react";
@@ -11,14 +15,12 @@ import { useTranslation } from "react-i18next";
 
 export const AdminsPage: FC = () => {
 	const { t } = useTranslation();
-	const panelBg = useColorModeValue("gray.50", "whiteAlpha.50");
-	const panelBorder = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
 	const fetchAdmins = useAdminsStore((s) => s.fetchAdmins);
+	const adminsLoading = useAdminsStore((s) => s.loading);
 	const openAdminDialog = useAdminsStore((s) => s.openAdminDialog);
 	const { userData, getUserIsSuccess } = useGetUser();
 	const canViewAdmins =
 		getUserIsSuccess && Boolean(userData.permissions?.sections.admins);
-
 	useEffect(() => {
 		if (canViewAdmins) {
 			fetchAdmins(undefined, { force: true });
@@ -37,80 +39,35 @@ export const AdminsPage: FC = () => {
 	if (!canViewAdmins) {
 		return (
 			<VStack spacing={4} align="stretch">
-				<Box
-					borderWidth="1px"
-					borderColor={panelBorder}
-					borderRadius="md"
-					bg={panelBg}
-					p={4}
-				>
-					<Text as="h1" fontWeight="semibold" fontSize="2xl">
-						{t("admins.manageTab", "Admins")}
-					</Text>
-					<Text
-						fontSize="sm"
-						color="gray.500"
-						_dark={{ color: "gray.400" }}
-						mt={2}
-					>
-						{t(
-							"admins.pageDescription",
-							"View and manage admin accounts. Use this page to create, edit and review admin permissions and recent usage.",
-						)}
-					</Text>
-					<Text mt={3}>
-						{t(
-							"admins.noPermission",
-							"You don't have permission to manage admins.",
-						)}
-					</Text>
-				</Box>
+				<PageHeader
+					title={t("admins")}
+					description={t("admins.pageDescription")}
+				/>
+				<Text color="panel.textMuted">
+					{t("admins.noPermission")}
+				</Text>
 			</VStack>
 		);
 	}
 
 	return (
 		<VStack spacing={4} align="stretch">
-			<Box
-				borderWidth="1px"
-				borderColor={panelBorder}
-				borderRadius="md"
-				bg={panelBg}
-				p={4}
-			>
-				<Text as="h1" fontWeight="semibold" fontSize="2xl">
-					{t("admins.manageTab", "Admins")}
-				</Text>
-				<Text
-					fontSize="sm"
-					color="gray.500"
-					_dark={{ color: "gray.400" }}
-					mt={2}
-				>
-					{t(
-						"admins.pageDescription",
-						"View and manage admin accounts. Use this page to create, edit and review admin permissions and recent usage.",
-					)}
-				</Text>
-			</Box>
-			<Box
-				borderWidth="1px"
-				borderColor={panelBorder}
-				borderRadius="md"
-				bg={panelBg}
-				p={3}
-			>
-				<Filters for="admins" />
-			</Box>
-			<Box
-				borderWidth="1px"
-				borderColor={panelBorder}
-				borderRadius="md"
-				bg={panelBg}
-				overflow="hidden"
-			>
-				<AdminsTable />
-			</Box>
+			<PageHeader
+				title={t("admins")}
+				description={t("admins.pageDescription")}
+			/>
+			<AdminsTable
+				toolbar={<Filters for="admins" py={0} showRefresh={false} />}
+				footerActions={
+					<ResourceRefreshButton
+						aria-label={t("refresh")}
+						label={t("refresh")}
+						icon={<ReloadIcon />}
+						onClick={() => fetchAdmins(undefined, { force: true })}
+						isLoading={adminsLoading}
+					/>
+				}
+			/>
 			<Pagination for="admins" />
 			<AdminDialog />
 			<AdminDetailsDrawer />

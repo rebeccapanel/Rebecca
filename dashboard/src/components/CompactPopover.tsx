@@ -12,6 +12,7 @@ import {
 	PopoverTrigger,
 	Tag,
 	Text,
+	Tooltip,
 	useBreakpointValue,
 	useClipboard,
 	VStack,
@@ -97,18 +98,17 @@ export const CompactTextWithCopy: React.FC<{
 	return (
 		<HStack spacing={2} align="center">
 			<CompactPopover triggerLabel={display} title={label}>
-				<VStack align="stretch">
-					<Text wordBreak="break-all">{text}</Text>
-					<HStack>
+				<HStack align="start" spacing={2}>
+					<Tooltip label={hasCopied ? "Copied" : "Copy"} hasArrow>
 						<IconButton
-							aria-label="copy"
+							aria-label={hasCopied ? "Copied" : "Copy"}
 							size="sm"
 							icon={<CopyIcon />}
 							onClick={onCopy}
 						/>
-						<Text fontSize="sm">{hasCopied ? "Copied" : "Copy"}</Text>
-					</HStack>
-				</VStack>
+					</Tooltip>
+					<Text wordBreak="break-all" pt={1.5}>{text}</Text>
+				</HStack>
 			</CompactPopover>
 		</HStack>
 	);

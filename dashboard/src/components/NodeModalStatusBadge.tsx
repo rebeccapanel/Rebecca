@@ -25,6 +25,7 @@ export const NodeModalStatusBadge: FC<UserStatusProps> = ({
 	return (
 		<>
 			<Badge
+				className="rb-status-badge"
 				colorScheme={statusColors[userStatus].statusColor}
 				rounded="full"
 				display="inline-flex"
@@ -32,19 +33,24 @@ export const NodeModalStatusBadge: FC<UserStatusProps> = ({
 				py={1}
 				columnGap={compact ? 1 : 2}
 				alignItems="center"
-				flexWrap="wrap"
+				justifyContent="center"
+				flexWrap="nowrap"
+				lineHeight="1"
+				whiteSpace="nowrap"
+				minW={compact ? "64px" : "72px"}
+				maxW="full"
 			>
-				<Icon w={compact ? 3 : 4} />
+				<Icon w={compact ? 3 : 4} flexShrink={0} />
 				{showDetail && (
 					<Text
+						className="rb-status-badge-text"
 						textTransform="capitalize"
 						fontSize={compact ? ".7rem" : ".875rem"}
 						lineHeight={compact ? "1rem" : "1.25rem"}
 						fontWeight="medium"
-						letterSpacing="tighter"
-						whiteSpace="normal"
-						textAlign="left"
-						maxW={{ base: "100%", md: "fit-content" }}
+						letterSpacing="0"
+						whiteSpace="nowrap"
+						textAlign="center"
 					>
 						{userStatus && t(`nodeModal.status.${userStatus}`)}
 						{extraText && `: ${extraText}`}

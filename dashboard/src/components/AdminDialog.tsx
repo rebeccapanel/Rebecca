@@ -35,9 +35,10 @@ import {
 } from "@heroicons/react/24/outline";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useAdminsStore } from "contexts/AdminsContext";
+import { getDefaultPermissionsForRole } from "constants/adminPermissions";
 import dayjs from "dayjs";
 import useGetUser from "hooks/useGetUser";
-import { type FC, useCallback, useEffect, useMemo, useState } from "react";
+import { type FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { fetch } from "service/http";
@@ -57,6 +58,10 @@ import {
 import { z } from "zod";
 import AdminPermissionsEditor from "./AdminPermissionsEditor";
 import AdminPermissionsModal from "./AdminPermissionsModal";
+import {
+	AnimatedSubmitButton,
+	type AnimatedSubmitStatus,
+} from "./common/AnimatedSubmitButton";
 import { NumericInput } from "./common/NumericInput";
 import { DateTimePicker } from "./DateTimePicker";
 import {
@@ -69,151 +74,8 @@ import {
 const GB_IN_BYTES = 1024 * 1024 * 1024;
 const MB_IN_BYTES = 1024 * 1024;
 
-const ROLE_PERMISSION_PRESETS: Record<AdminRole, AdminPermissions> = {
-	[AdminRole.Standard]: {
-		users: {
-			create: true,
-			delete: false,
-			reset_usage: false,
-			revoke: true,
-			create_on_hold: true,
-			allow_unlimited_data: true,
-			allow_unlimited_expire: true,
-			allow_next_plan: true,
-			advanced_actions: true,
-			set_flow: false,
-			allow_custom_key: false,
-			max_data_limit_per_user: null,
-		},
-		admin_management: {
-			can_view: false,
-			can_edit: false,
-			can_manage_sudo: false,
-		},
-		self_permissions: {
-			self_myaccount: true,
-			self_change_password: true,
-			self_api_keys: true,
-		},
-		sections: {
-			usage: false,
-			admins: false,
-			services: false,
-			hosts: false,
-			nodes: false,
-			integrations: false,
-			xray: false,
-		},
-	},
-	[AdminRole.Reseller]: {
-		users: {
-			create: true,
-			delete: false,
-			reset_usage: false,
-			revoke: true,
-			create_on_hold: true,
-			allow_unlimited_data: true,
-			allow_unlimited_expire: true,
-			allow_next_plan: true,
-			advanced_actions: true,
-			set_flow: false,
-			allow_custom_key: false,
-			max_data_limit_per_user: null,
-		},
-		admin_management: {
-			can_view: false,
-			can_edit: false,
-			can_manage_sudo: false,
-		},
-		self_permissions: {
-			self_myaccount: true,
-			self_change_password: true,
-			self_api_keys: true,
-		},
-		sections: {
-			usage: false,
-			admins: false,
-			services: false,
-			hosts: false,
-			nodes: false,
-			integrations: false,
-			xray: false,
-		},
-	},
-	[AdminRole.Sudo]: {
-		users: {
-			create: true,
-			delete: false,
-			reset_usage: false,
-			revoke: true,
-			create_on_hold: true,
-			allow_unlimited_data: true,
-			allow_unlimited_expire: true,
-			allow_next_plan: true,
-			advanced_actions: true,
-			set_flow: true,
-			allow_custom_key: true,
-			max_data_limit_per_user: null,
-		},
-		admin_management: {
-			can_view: true,
-			can_edit: true,
-			can_manage_sudo: false,
-		},
-		self_permissions: {
-			self_myaccount: true,
-			self_change_password: true,
-			self_api_keys: true,
-		},
-		sections: {
-			usage: true,
-			admins: true,
-			services: true,
-			hosts: true,
-			nodes: true,
-			integrations: true,
-			xray: true,
-		},
-	},
-	[AdminRole.FullAccess]: {
-		users: {
-			create: true,
-			delete: true,
-			reset_usage: true,
-			revoke: true,
-			create_on_hold: true,
-			allow_unlimited_data: true,
-			allow_unlimited_expire: true,
-			allow_next_plan: true,
-			advanced_actions: true,
-			set_flow: true,
-			allow_custom_key: true,
-			max_data_limit_per_user: null,
-		},
-		admin_management: {
-			can_view: true,
-			can_edit: true,
-			can_manage_sudo: true,
-		},
-		self_permissions: {
-			self_myaccount: true,
-			self_change_password: true,
-			self_api_keys: true,
-		},
-		sections: {
-			usage: true,
-			admins: true,
-			services: true,
-			hosts: true,
-			nodes: true,
-			integrations: true,
-			xray: true,
-		},
-	},
-};
-
 const clonePermissions = (role: AdminRole): AdminPermissions =>
-	JSON.parse(JSON.stringify(ROLE_PERMISSION_PRESETS[role]));
+	getDefaultPermissionsForRole(role);
 
 const formatBytesToGbString = (value?: number | null) =>
 	value && value > 0 ? String(Math.floor(value / GB_IN_BYTES)) : "";
@@ -237,11 +99,15 @@ const adminPermissionsSchema: z.ZodType<AdminPermissions> = z.object({
 		can_view: z.boolean(),
 		can_edit: z.boolean(),
 		can_manage_sudo: z.boolean(),
+		manage_sessions: z.boolean(),
+		manage_2fa: z.boolean(),
 	}),
 	self_permissions: z.object({
 		self_myaccount: z.boolean(),
 		self_change_password: z.boolean(),
 		self_api_keys: z.boolean(),
+		self_sessions: z.boolean(),
+		self_2fa: z.boolean(),
 	}),
 	sections: z.object({
 		usage: z.boolean(),
@@ -252,6 +118,15 @@ const adminPermissionsSchema: z.ZodType<AdminPermissions> = z.object({
 		integrations: z.boolean(),
 		xray: z.boolean(),
 	}),
+	sudo: z.object({
+		nodes: z.boolean(),
+		xray: z.boolean(),
+		settings: z.boolean(),
+		subscriptions: z.boolean(),
+		backups: z.boolean(),
+		maintenance: z.boolean(),
+		phpmyadmin: z.boolean(),
+	}),
 });
 
 type AdminFormValues = {
@@ -259,6 +134,7 @@ type AdminFormValues = {
 	password?: string;
 	telegram_id?: string;
 	role: AdminRole;
+	require_2fa: boolean;
 	traffic_limit_mode: AdminTrafficLimitMode;
 	use_service_traffic_limits: boolean;
 	show_user_traffic: boolean;
@@ -309,6 +185,8 @@ export const AdminDialog: FC = () => {
 			};
 	const { userData } = useGetUser();
 	const canCreateFullAccess = userData.role === AdminRole.FullAccess;
+	const canManage2FA =
+		canCreateFullAccess || Boolean(userData.permissions.admin_management.manage_2fa);
 	const toast = useToast();
 	const {
 		admins,
@@ -332,15 +210,15 @@ export const AdminDialog: FC = () => {
 	const mode = useMemo(() => (admin ? "edit" : "create"), [admin]);
 	const statusLabels = useMemo(
 		() => ({
-			[AdminStatus.Active]: t("admins.statusActive", "Active"),
-			[AdminStatus.Disabled]: t("admins.statusDisabled", "Disabled"),
-			[AdminStatus.Deleted]: t("admins.statusDeleted", "Deleted"),
+			[AdminStatus.Active]: t("status.active"),
+			[AdminStatus.Disabled]: t("nodes.disabled"),
+			[AdminStatus.Deleted]: t("admins.statusDeleted"),
 		}),
 		[t],
 	);
 	const statusLabel = admin
 		? (statusLabels[admin.status] ?? admin.status)
-		: t("admins.statusNew", "New admin");
+		: t("admins.statusNew");
 
 	const schema = useMemo(() => {
 		const base = z
@@ -371,6 +249,7 @@ export const AdminDialog: FC = () => {
 						t("admins.validation.telegramNumeric"),
 					),
 				role: z.nativeEnum(AdminRole).optional(),
+				require_2fa: z.boolean().default(false),
 				traffic_limit_mode: z
 					.nativeEnum(AdminTrafficLimitMode)
 					.default(AdminTrafficLimitMode.UsedTraffic),
@@ -384,10 +263,7 @@ export const AdminDialog: FC = () => {
 					.transform((value) => (value === "" ? undefined : value))
 					.refine(
 						(value) => value === undefined || /^\d+$/.test(value),
-						t(
-							"admins.validation.deleteLimitNumeric",
-							"Delete cap must be a number",
-						),
+						t("admins.validation.deleteLimitNumeric"),
 					),
 				data_limit: z
 					.string()
@@ -396,10 +272,7 @@ export const AdminDialog: FC = () => {
 					.transform((value) => (value === "" ? undefined : value))
 					.refine(
 						(value) => value === undefined || /^\d+$/.test(value),
-						t(
-							"admins.validation.dataLimitNumeric",
-							"Data limit must be a number",
-						),
+						t("admins.validation.dataLimitNumeric"),
 					),
 				users_limit: z
 					.string()
@@ -408,10 +281,7 @@ export const AdminDialog: FC = () => {
 					.transform((value) => (value === "" ? undefined : value))
 					.refine(
 						(value) => value === undefined || /^\d+$/.test(value),
-						t(
-							"admins.validation.usersLimitNumeric",
-							"Users limit must be a number",
-						),
+						t("admins.validation.usersLimitNumeric"),
 					),
 				maxDataLimitPerUserGb: z
 					.string()
@@ -441,6 +311,7 @@ export const AdminDialog: FC = () => {
 			password: "",
 			telegram_id: "",
 			role: AdminRole.Standard,
+			require_2fa: false,
 			traffic_limit_mode: AdminTrafficLimitMode.UsedTraffic,
 			use_service_traffic_limits: false,
 			show_user_traffic: true,
@@ -469,6 +340,10 @@ export const AdminDialog: FC = () => {
 	const [permissionsModalOpen, setPermissionsModalOpen] = useState(false);
 	const [serviceOptions, setServiceOptions] = useState<ServiceSummary[]>([]);
 	const [adminExpireDate, setAdminExpireDate] = useState<Date | null>(null);
+	const [submitStatus, setSubmitStatus] =
+		useState<AnimatedSubmitStatus>("idle");
+	const submitResetTimerRef = useRef<number | null>(null);
+	const successCloseTimerRef = useRef<number | null>(null);
 	const adminExpireUnix = useMemo(
 		() => (adminExpireDate ? dayjs(adminExpireDate).utc().unix() : null),
 		[adminExpireDate],
@@ -546,6 +421,41 @@ export const AdminDialog: FC = () => {
 			shouldValidate: true,
 		});
 	}, [generateRandomString, setValue]);
+
+	const clearSubmitTimers = useCallback(() => {
+		if (submitResetTimerRef.current !== null) {
+			window.clearTimeout(submitResetTimerRef.current);
+			submitResetTimerRef.current = null;
+		}
+		if (successCloseTimerRef.current !== null) {
+			window.clearTimeout(successCloseTimerRef.current);
+			successCloseTimerRef.current = null;
+		}
+	}, []);
+
+	useEffect(() => clearSubmitTimers, [clearSubmitTimers]);
+
+	const showSubmitError = useCallback(() => {
+		if (successCloseTimerRef.current !== null) {
+			window.clearTimeout(successCloseTimerRef.current);
+			successCloseTimerRef.current = null;
+		}
+		if (submitResetTimerRef.current !== null) {
+			window.clearTimeout(submitResetTimerRef.current);
+		}
+		setSubmitStatus("error");
+		submitResetTimerRef.current = window.setTimeout(() => {
+			setSubmitStatus("idle");
+			submitResetTimerRef.current = null;
+		}, 900);
+	}, []);
+
+	const handleCloseAdminDialog = useCallback(() => {
+		clearSubmitTimers();
+		setSubmitStatus("idle");
+		closeAdminDialog();
+	}, [clearSubmitTimers, closeAdminDialog]);
+
 	const { errors, isSubmitting } = formState;
 	const watchRole = watch("role");
 	const watchTrafficLimitMode = watch("traffic_limit_mode");
@@ -698,6 +608,7 @@ export const AdminDialog: FC = () => {
 						? String(admin.telegram_id)
 						: "",
 				role: nextRole,
+				require_2fa: admin?.require_2fa ?? false,
 				traffic_limit_mode:
 					admin?.traffic_limit_mode ?? AdminTrafficLimitMode.UsedTraffic,
 				use_service_traffic_limits: admin?.use_service_traffic_limits ?? false,
@@ -784,45 +695,64 @@ export const AdminDialog: FC = () => {
 		}
 	}, [permissionsValue.users.delete, setValue]);
 
+	useEffect(() => {
+		if (isOpen) {
+			setSubmitStatus("idle");
+			clearSubmitTimers();
+		}
+	}, [clearSubmitTimers, isOpen]);
+
 	const handleFormSubmit = handleSubmit(async (values) => {
+		if (submitStatus !== "idle") return;
+		clearSubmitTimers();
+		setSubmitStatus("loading");
 		const selectedRole: AdminRole = values.role ?? AdminRole.Standard;
 		let permissionPayload: AdminPermissions | undefined;
 		if (selectedRole === AdminRole.Reseller) {
 			toast({
 				status: "warning",
-				title: t("common.comingSoon", "Coming soon"),
-				description: t(
-					"admins.roles.resellerDescription",
-					"Can create and manage their own admins.",
-				),
+				title: t("common.comingSoon"),
+				description: t("admins.roles.resellerDescription"),
 				isClosable: true,
 			});
+			showSubmitError();
 			return;
 		}
 
-		if (mode === "create") {
+		const buildPermissionsPayload = (): AdminPermissions => {
 			const computedPermissions: AdminPermissions = JSON.parse(
 				JSON.stringify(values.permissions ?? clonePermissions(selectedRole)),
 			);
 			const maxLimitInput = values.maxDataLimitPerUserGb?.trim();
-			if (maxLimitInput) {
+			if (computedPermissions.users.allow_unlimited_data) {
+				computedPermissions.users.max_data_limit_per_user = null;
+			} else if (maxLimitInput) {
 				const parsed = Number(maxLimitInput);
 				if (Number.isNaN(parsed) || parsed < 0) {
 					setError("maxDataLimitPerUserGb", {
 						type: "manual",
-						message: t(
-							"admins.validation.invalidMaxDataLimit",
-							"Enter a positive number or leave empty.",
-						),
+						message: t("admins.validation.invalidMaxDataLimit"),
 					});
-					return;
+					showSubmitError();
+					throw new Error("invalid_max_data_limit");
 				}
 				computedPermissions.users.max_data_limit_per_user =
 					parsed === 0 ? null : Math.round(parsed * GB_IN_BYTES);
 			} else {
 				computedPermissions.users.max_data_limit_per_user = null;
 			}
-			permissionPayload = computedPermissions;
+			return computedPermissions;
+		};
+
+		if (mode === "create" || selectedRole !== AdminRole.FullAccess) {
+			try {
+				permissionPayload = buildPermissionsPayload();
+			} catch (error) {
+				if ((error as Error).message === "invalid_max_data_limit") {
+					return;
+				}
+				throw error;
+			}
 		}
 
 		if (mode === "edit" && admin) {
@@ -840,6 +770,7 @@ export const AdminDialog: FC = () => {
 							active: currentActive,
 						}),
 					});
+					showSubmitError();
 					return;
 				}
 			}
@@ -873,11 +804,21 @@ export const AdminDialog: FC = () => {
 			const serviceLimitPayload = values.use_service_traffic_limits
 				? buildServiceLimitPayload()
 				: undefined;
+			const globalDataLimit = values.data_limit
+				? Number(values.data_limit) * GB_IN_BYTES
+				: null;
+			const globalUsersLimit = values.users_limit
+				? Number(values.users_limit)
+				: null;
+			const globalDeleteUserUsageLimit = values.delete_user_usage_limit
+				? Number(values.delete_user_usage_limit) * MB_IN_BYTES
+				: null;
 			if (mode === "create") {
 				const payload: AdminCreatePayload = {
 					username: values.username.trim(),
 					password: values.password ?? "",
 					role: selectedRole,
+					require_2fa: canManage2FA ? values.require_2fa : undefined,
 					permissions: permissionPayload ?? clonePermissions(selectedRole),
 					services: values.services || [],
 					telegram_id: values.telegram_id
@@ -885,9 +826,7 @@ export const AdminDialog: FC = () => {
 						: undefined,
 					data_limit: values.use_service_traffic_limits
 						? undefined
-						: values.data_limit
-							? Number(values.data_limit) * GB_IN_BYTES
-							: undefined,
+						: globalDataLimit,
 					traffic_limit_mode:
 						selectedRole === AdminRole.FullAccess ||
 						values.use_service_traffic_limits
@@ -908,15 +847,11 @@ export const AdminDialog: FC = () => {
 									permissionsValue.users.delete &&
 										values.delete_user_usage_limit_enabled,
 								),
-					delete_user_usage_limit: values.delete_user_usage_limit
-						? Number(values.delete_user_usage_limit) * MB_IN_BYTES
-						: undefined,
+					delete_user_usage_limit: globalDeleteUserUsageLimit,
 					expire: expireValue,
 					users_limit: values.use_service_traffic_limits
 						? undefined
-						: values.users_limit
-							? Number(values.users_limit)
-							: undefined,
+						: globalUsersLimit,
 				};
 				const createdAdmin = await createAdmin(payload);
 				let shouldFetch = true;
@@ -958,7 +893,7 @@ export const AdminDialog: FC = () => {
 					await fetchAdmins(undefined, { force: true });
 				}
 				generateSuccessMessage(
-					t("admins.createSuccess", "Admin created"),
+					t("admins.createSuccess"),
 					toast,
 				);
 				if (serviceSyncError) {
@@ -967,19 +902,18 @@ export const AdminDialog: FC = () => {
 			} else if (admin) {
 				const payload: AdminUpdatePayload = {
 					role: selectedRole,
+					require_2fa: canManage2FA ? values.require_2fa : undefined,
 					permissions:
 						selectedRole === AdminRole.FullAccess
 							? undefined
-							: values.permissions,
+							: permissionPayload,
 					services: values.services || [],
 					telegram_id: values.telegram_id
 						? Number(values.telegram_id)
 						: undefined,
 					data_limit: values.use_service_traffic_limits
 						? undefined
-						: values.data_limit
-							? Number(values.data_limit) * GB_IN_BYTES
-							: undefined,
+						: globalDataLimit,
 					traffic_limit_mode:
 						selectedRole === AdminRole.FullAccess ||
 						values.use_service_traffic_limits
@@ -1000,15 +934,11 @@ export const AdminDialog: FC = () => {
 									permissionsValue.users.delete &&
 										values.delete_user_usage_limit_enabled,
 								),
-					delete_user_usage_limit: values.delete_user_usage_limit
-						? Number(values.delete_user_usage_limit) * MB_IN_BYTES
-						: undefined,
+					delete_user_usage_limit: globalDeleteUserUsageLimit,
 					expire: expireValue,
 					users_limit: values.use_service_traffic_limits
 						? undefined
-						: values.users_limit
-							? Number(values.users_limit)
-							: undefined,
+						: globalUsersLimit,
 					service_limits: serviceLimitPayload,
 				};
 				if (values.password) {
@@ -1016,32 +946,40 @@ export const AdminDialog: FC = () => {
 				}
 				await updateAdmin(admin.username, payload);
 				generateSuccessMessage(
-					t("admins.updateSuccess", "Admin updated"),
+					t("admins.updateSuccess"),
 					toast,
 				);
 			}
-			closeAdminDialog();
+			setSubmitStatus("success");
+			successCloseTimerRef.current = window.setTimeout(() => {
+				successCloseTimerRef.current = null;
+				handleCloseAdminDialog();
+			}, 1000);
 		} catch (error) {
 			generateErrorMessage(error, toast, form);
+			showSubmitError();
 		}
+	}, () => {
+		if (submitStatus !== "idle") return;
+		showSubmitError();
 	});
 
 	const detailsForm = (
 		<VStack spacing={4} align="stretch">
 			<Box className="xray-dialog-section">
 				<Text fontSize="sm" fontWeight="semibold" mb={3}>
-					{t("admins.accountSection", "Account")}
+					{t("inbounds.accounts.label")}
 				</Text>
 				<VStack spacing={4} align="stretch">
 					{mode === "edit" && admin?.id !== undefined && (
 						<FormControl>
-							<FormLabel>{t("admins.idLabel", "Admin ID")}</FormLabel>
+							<FormLabel>{t("admins.idLabel")}</FormLabel>
 							<Input value={String(admin.id)} isReadOnly />
 						</FormControl>
 					)}
 					{mode === "edit" && (
 						<FormControl>
-							<FormLabel>{t("admins.status", "Status")}</FormLabel>
+							<FormLabel>{t("status")}</FormLabel>
 							<Input value={statusLabel} isReadOnly />
 						</FormControl>
 					)}
@@ -1049,7 +987,7 @@ export const AdminDialog: FC = () => {
 						<FormLabel>{t("username")}</FormLabel>
 						<InputGroup dir={isRTL ? "rtl" : "ltr"}>
 							<Input
-								placeholder={t("admins.usernamePlaceholder", "Admin username")}
+								placeholder={t("admins.usernamePlaceholder")}
 								{...register("username")}
 								isDisabled={mode === "edit"}
 								{...(mode === "create" ? endPadding : {})}
@@ -1062,7 +1000,7 @@ export const AdminDialog: FC = () => {
 									left={endAdornmentProps.left}
 								>
 									<IconButton
-										aria-label={t("admins.generateUsername", "Random")}
+										aria-label={t("admins.generateUsername")}
 										size="sm"
 										variant="ghost"
 										icon={<SparklesIcon width={20} />}
@@ -1080,7 +1018,7 @@ export const AdminDialog: FC = () => {
 						<HStack spacing={2}>
 							<InputGroup dir={isRTL ? "rtl" : "ltr"}>
 								<Input
-									placeholder={t("admins.passwordPlaceholder", "Password")}
+									placeholder={t("admins.passwordPlaceholder")}
 									type={showPassword ? "text" : "password"}
 									{...register("password")}
 									{...endPadding}
@@ -1094,8 +1032,8 @@ export const AdminDialog: FC = () => {
 									<IconButton
 										aria-label={
 											showPassword
-												? t("admins.hidePassword", "Hide")
-												: t("admins.showPassword", "Show")
+												? t("admins.hidePassword")
+												: t("admins.showPassword")
 										}
 										size="sm"
 										variant="ghost"
@@ -1111,7 +1049,7 @@ export const AdminDialog: FC = () => {
 								</InputRightElement>
 							</InputGroup>
 							<IconButton
-								aria-label={t("admins.generatePassword", "Random")}
+								aria-label={t("admins.generatePassword")}
 								size="md"
 								variant="outline"
 								icon={<SparklesIcon width={20} />}
@@ -1123,20 +1061,14 @@ export const AdminDialog: FC = () => {
 						</FormErrorMessage>
 						{mode === "edit" && (
 							<Text fontSize="xs" color="gray.500" mt={1}>
-								{t(
-									"admins.passwordOptionalHint",
-									"Leave empty to keep current password.",
-								)}
+								{t("admins.passwordOptionalHint")}
 							</Text>
 						)}
 					</FormControl>
 					<FormControl isInvalid={!!errors.telegram_id}>
-						<FormLabel>{t("admins.telegramId", "Telegram ID")}</FormLabel>
+						<FormLabel>{t("admins.telegramId")}</FormLabel>
 						<NumericInput
-							placeholder={t(
-								"admins.telegramPlaceholder",
-								"Optional numeric Telegram ID",
-							)}
+							placeholder={t("admins.telegramPlaceholder")}
 							value={telegramIdValue}
 							precision={0}
 							onChange={(value) =>
@@ -1154,11 +1086,11 @@ export const AdminDialog: FC = () => {
 			</Box>
 			<Box className="xray-dialog-section">
 				<Text fontSize="sm" fontWeight="semibold" mb={3}>
-					{t("admins.roleSection", "Role")}
+					{t("core.role")}
 				</Text>
 				<VStack spacing={4} align="stretch">
 					<FormControl>
-						<FormLabel>{t("admins.roleLabel", "Admin role")}</FormLabel>
+						<FormLabel>{t("admins.roleLabel")}</FormLabel>
 						<RadioGroup
 							value={watchRole ?? AdminRole.Standard}
 							onChange={(value) =>
@@ -1168,75 +1100,49 @@ export const AdminDialog: FC = () => {
 							<VStack align="flex-start" spacing={2}>
 								<Radio value={AdminRole.Standard}>
 									<Text fontWeight="medium">
-										{t("admins.roles.standard", "Standard")}
+										{t("admins.roles.standard")}
 									</Text>
 									<FormHelperText m={0}>
-										{t(
-											"admins.roles.standardDescription",
-											"Can manage own users; only user-related permissions are available.",
-										)}
+										{t("admins.roles.standardDescription")}
 									</FormHelperText>
 								</Radio>
 								<Radio value={AdminRole.Reseller} isDisabled>
 									<Text fontWeight="medium">
-										{t("admins.roles.reseller", "Reseller")}
+										{t("admins.roles.reseller")}
 										<Box as="span" ml={2} fontSize="xs" color="orange.500">
-											{t("common.comingSoon", "Coming soon")}
+											{t("common.comingSoon")}
 										</Box>
 									</Text>
 									<FormHelperText m={0}>
-										{t(
-											"admins.roles.resellerDescription",
-											"Can create and manage their own admins.",
-										)}
+										{t("admins.roles.resellerDescription")}
 									</FormHelperText>
 								</Radio>
 								<Radio value={AdminRole.Sudo}>
 									<Text fontWeight="medium">
-										{t("admins.roles.sudo", "Sudo")}
+										{t("admins.roles.sudo")}
 									</Text>
 									<FormHelperText m={0}>
-										{t(
-											"admins.roles.sudoDescription",
-											"Extended access to settings and other admins.",
-										)}
+										{t("admins.roles.sudoDescription")}
 									</FormHelperText>
 								</Radio>
 								{canCreateFullAccess && (
 									<Radio value={AdminRole.FullAccess}>
 										<Text fontWeight="medium">
-											{t("admins.roles.fullAccess", "Full access")}
+											{t("admins.roles.fullAccess")}
 										</Text>
 										<FormHelperText m={0}>
-											{t(
-												"admins.roles.fullAccessDescription",
-												"Complete control, including other sudo admins.",
-											)}
+											{t("admins.roles.fullAccessDescription")}
 										</FormHelperText>
 									</Radio>
 								)}
 							</VStack>
 						</RadioGroup>
 					</FormControl>
-					{mode === "edit" &&
-						(admin?.role === AdminRole.FullAccess ? (
-							<Text fontSize="sm" color="gray.500">
-								{t("admins.permissions.fullAccessLocked")}
-							</Text>
-						) : (
-							<Button
-								alignSelf="flex-start"
-								onClick={() => setPermissionsModalOpen(true)}
-								variant="outline"
-							>
-								{t("admins.editPermissionsButton", "Edit permissions")}
-							</Button>
-						))}
 				</VStack>
 			</Box>
 			<Box className="xray-dialog-section">
 				<Text fontSize="sm" fontWeight="semibold" mb={3}>
-					{t("admins.limitsSection", "Limits")}
+					{t("admins.limitsSection")}
 				</Text>
 				<VStack spacing={4} align="stretch">
 					{!isFullAccessRole && (
@@ -1249,21 +1155,15 @@ export const AdminDialog: FC = () => {
 									})
 								}
 							>
-								{t(
-									"admins.usePerServiceTrafficLimits",
-									"Use per-service traffic limits",
-								)}
+								{t("admins.usePerServiceTrafficLimits")}
 							</Checkbox>
 						</VStack>
 					)}
 					<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 						<FormControl isInvalid={!!errors.data_limit}>
-							<FormLabel>{t("admins.dataLimit", "Data Limit (GB)")}</FormLabel>
+							<FormLabel>{t("admins.dataLimit")}</FormLabel>
 							<NumericInput
-								placeholder={t(
-									"admins.dataLimitPlaceholder",
-									"e.g., 100 for 100GB (empty = unlimited)",
-								)}
+								placeholder={t("admins.dataLimitPlaceholder")}
 								value={dataLimitValue}
 								precision={0}
 								isDisabled={usePerServiceTrafficLimits}
@@ -1278,16 +1178,13 @@ export const AdminDialog: FC = () => {
 								{errors.data_limit?.message as string}
 							</FormErrorMessage>
 							<Text fontSize="xs" color="gray.500" mt={1}>
-								{t("admins.dataLimitHint", "Leave empty for unlimited data")}
+								{t("admins.dataLimitHint")}
 							</Text>
 						</FormControl>
 						<FormControl isInvalid={!!errors.users_limit}>
-							<FormLabel>{t("admins.usersLimit", "Users Limit")}</FormLabel>
+							<FormLabel>{t("admins.usersLimit")}</FormLabel>
 							<NumericInput
-								placeholder={t(
-									"admins.usersLimitPlaceholder",
-									"e.g., 100 (empty = unlimited)",
-								)}
+								placeholder={t("admins.usersLimitPlaceholder")}
 								value={usersLimitValue}
 								precision={0}
 								isDisabled={usePerServiceTrafficLimits}
@@ -1302,7 +1199,7 @@ export const AdminDialog: FC = () => {
 								{errors.users_limit?.message as string}
 							</FormErrorMessage>
 							<Text fontSize="xs" color="gray.500" mt={1}>
-								{t("admins.usersLimitHint", "Leave empty for unlimited users")}
+								{t("admins.usersLimitHint")}
 							</Text>
 						</FormControl>
 					</SimpleGrid>
@@ -1322,10 +1219,7 @@ export const AdminDialog: FC = () => {
 										)
 									}
 								>
-									{t(
-										"admins.limitByCreatedTraffic",
-										"Limit admin by created traffic",
-									)}
+									{t("admins.limitByCreatedTraffic")}
 								</Checkbox>
 								{isCreatedTrafficMode && (
 									<Stack spacing={2} pl={1}>
@@ -1337,10 +1231,7 @@ export const AdminDialog: FC = () => {
 												})
 											}
 										>
-											{t(
-												"admins.showUserTraffic",
-												"Admin can view user traffic",
-											)}
+											{t("admins.showUserTraffic")}
 										</Checkbox>
 										<Checkbox
 											isChecked={Boolean(permissionsValue.users.delete)}
@@ -1351,7 +1242,7 @@ export const AdminDialog: FC = () => {
 												)
 											}
 										>
-											{t("admins.permissions.deleteUser", "Delete user")}
+											{t("admins.permissions.deleteUser")}
 										</Checkbox>
 										<Checkbox
 											isChecked={Boolean(deleteUserUsageLimitEnabled)}
@@ -1364,18 +1255,12 @@ export const AdminDialog: FC = () => {
 												)
 											}
 										>
-											{t(
-												"admins.deleteUserUsageCap",
-												"Limit delete by user usage",
-											)}
+											{t("admins.deleteUserUsageCap")}
 										</Checkbox>
 										{deleteUserUsageLimitEnabled && (
 											<FormControl isInvalid={!!errors.delete_user_usage_limit}>
 												<FormLabel>
-													{t(
-														"admins.deleteUserUsageLimit",
-														"Max deletable user usage (MB)",
-													)}
+													{t("admins.deleteUserUsageLimit")}
 												</FormLabel>
 												<NumericInput
 													value={deleteUserUsageLimitValue}
@@ -1401,24 +1286,21 @@ export const AdminDialog: FC = () => {
 												)
 											}
 										>
-											{t("admins.permissions.resetUsage", "Reset usage")}
+											{t("admins.permissions.resetUsage")}
 										</Checkbox>
 										<Text fontSize="xs" color="gray.500">
-											{t(
-												"admins.createdTrafficModeHint",
-												"These options stay synced with the Permissions tab.",
-											)}
+											{t("admins.createdTrafficModeHint")}
 										</Text>
 									</Stack>
 								)}
 							</VStack>
 						)}
 					<FormControl>
-						<FormLabel>{t("admins.expireLabel", "Admin expire")}</FormLabel>
+						<FormLabel>{t("admins.expireLabel")}</FormLabel>
 						<DateTimePicker
 							value={adminExpireDate}
 							onChange={setAdminExpireDate}
-							placeholder={t("expires.selectDate", "Select expiration date")}
+							placeholder={t("expires.selectDate")}
 							minDate={new Date()}
 						/>
 						{adminExpireUnix && adminExpireInfo.time ? (
@@ -1427,7 +1309,7 @@ export const AdminDialog: FC = () => {
 							</FormHelperText>
 						) : (
 							<FormHelperText>
-								{t("admins.expireHint", "Leave empty for no time limit.")}
+								{t("admins.expireHint")}
 							</FormHelperText>
 						)}
 					</FormControl>
@@ -1435,7 +1317,7 @@ export const AdminDialog: FC = () => {
 			</Box>
 			<Box className="xray-dialog-section admin-services-section">
 				<Text fontSize="sm" fontWeight="semibold" mb={3}>
-					{t("services", "Services")}
+					{t("services.title")}
 				</Text>
 				<VStack spacing={3} align="stretch">
 					<FormControl>
@@ -1458,7 +1340,7 @@ export const AdminDialog: FC = () => {
 									onChange={handleToggleAllServices}
 									isDisabled={serviceOptions.length === 0}
 								>
-									{t("admins.selectAllServices", "Select all services")}
+									{t("admins.selectAllServices")}
 								</Checkbox>
 								<Badge borderRadius="md" variant="subtle" colorScheme="primary">
 									{selectedServices.length} / {serviceOptions.length}
@@ -1467,7 +1349,7 @@ export const AdminDialog: FC = () => {
 							<Input
 								value={serviceSearch}
 								onChange={(event) => setServiceSearch(event.target.value)}
-								placeholder={t("admins.searchServices", "Search services")}
+								placeholder={t("admins.searchServices")}
 								size="sm"
 							/>
 							<VStack
@@ -1482,14 +1364,11 @@ export const AdminDialog: FC = () => {
 							>
 								{serviceOptions.length === 0 ? (
 									<Text fontSize="sm" color="gray.500">
-										{t("admins.noServicesFound", "No services available")}
+										{t("services.noServicesAvailable")}
 									</Text>
 								) : filteredServices.length === 0 ? (
 									<Text fontSize="sm" color="gray.500">
-										{t(
-											"admins.noServicesMatching",
-											"No services match your search",
-										)}
+										{t("admins.noServicesMatching")}
 									</Text>
 								) : (
 									filteredServices.map((service) => {
@@ -1511,7 +1390,8 @@ export const AdminDialog: FC = () => {
 													borderColor: isSelected ? "primary.300" : "gray.600",
 													bg: isSelected ? "gray.700" : "transparent",
 												}}
-												transition="all 0.1s ease-in-out"
+												transition="background-color 140ms var(--rb-ease-out), border-color 140ms var(--rb-ease-out), box-shadow 140ms var(--rb-ease-out), transform 120ms var(--rb-ease-out)"
+												_active={{ transform: "scale(0.99)" }}
 												onClick={() => handleServiceToggle(service.id)}
 												onKeyDown={(event) => {
 													if (event.key === "Enter" || event.key === " ") {
@@ -1532,14 +1412,10 @@ export const AdminDialog: FC = () => {
 															{service.name}
 														</Text>
 														<Text fontSize="xs" color="gray.500">
-															{t(
-																"admins.serviceStats",
-																"{{users}} users | {{hosts}} hosts",
-																{
+															{t("admins.serviceStats", {
 																	users: service.user_count ?? 0,
 																	hosts: service.host_count ?? 0,
-																},
-															)}
+																})}
 														</Text>
 													</Box>
 													{isSelected && (
@@ -1549,7 +1425,7 @@ export const AdminDialog: FC = () => {
 															borderRadius="md"
 															flexShrink={0}
 														>
-															{t("admins.selectedService", "Selected")}
+															{t("services.selected")}
 														</Badge>
 													)}
 												</HStack>
@@ -1562,7 +1438,7 @@ export const AdminDialog: FC = () => {
 								<VStack align="stretch" spacing={2.5} pt={1}>
 									<HStack justify="space-between" align="center">
 										<Text fontWeight="semibold" fontSize="sm">
-											{t("admins.perServiceLimitsTitle", "Per-service limits")}
+											{t("admins.perServiceLimitsTitle")}
 										</Text>
 										<Badge borderRadius="md" variant="subtle">
 											{selectedServices.length}
@@ -1613,10 +1489,7 @@ export const AdminDialog: FC = () => {
 																	{service?.name ?? `#${serviceId}`}
 																</Text>
 																<Text color="gray.400" fontSize="xs">
-																	{t(
-																		"admins.deletedUserUsage",
-																		"Deleted-user usage",
-																	)}
+																	{t("admins.deletedUserUsage")}
 																	:{" "}
 																	{formatBytes(
 																		Number(item.deleted_users_usage ?? 0),
@@ -1635,7 +1508,7 @@ export const AdminDialog: FC = () => {
 																	{formatBytes(usageBytes, 2)} /{" "}
 																	{configuredLimitBytes > 0
 																		? formatBytes(configuredLimitBytes, 2)
-																		: t("common.unlimited", "Unlimited")}
+																		: t("nodes.unlimited")}
 																</Box>
 																<Box
 																	as="span"
@@ -1643,9 +1516,9 @@ export const AdminDialog: FC = () => {
 																	mt={0.5}
 																	color="gray.400"
 																>
-																	{t("admins.remaining", "Remaining")}:{" "}
+																	{t("myaccount.remainingData")}:{" "}
 																	{remainingBytes === null
-																		? t("common.unlimited", "Unlimited")
+																		? t("nodes.unlimited")
 																		: formatBytes(remainingBytes, 2)}
 																</Box>
 															</Text>
@@ -1660,10 +1533,7 @@ export const AdminDialog: FC = () => {
 																})
 															}
 														>
-															{t(
-																"admins.limitByCreatedTraffic",
-																"Limit admin by created traffic",
-															)}
+															{t("admins.limitByCreatedTraffic")}
 														</Checkbox>
 														<SimpleGrid
 															columns={{ base: 1, md: 2 }}
@@ -1671,7 +1541,7 @@ export const AdminDialog: FC = () => {
 														>
 															<FormControl>
 																<FormLabel>
-																	{t("admins.dataLimit", "Data Limit (GB)")}
+																	{t("admins.dataLimit")}
 																</FormLabel>
 																<NumericInput
 																	value={item.data_limit ?? ""}
@@ -1686,7 +1556,7 @@ export const AdminDialog: FC = () => {
 															</FormControl>
 															<FormControl>
 																<FormLabel>
-																	{t("admins.usersLimit", "Users Limit")}
+																	{t("admins.usersLimit")}
 																</FormLabel>
 																<NumericInput
 																	value={item.users_limit ?? ""}
@@ -1710,10 +1580,7 @@ export const AdminDialog: FC = () => {
 																		})
 																	}
 																>
-																	{t(
-																		"admins.showUserTraffic",
-																		"Admin can view user traffic",
-																	)}
+																	{t("admins.showUserTraffic")}
 																</Checkbox>
 																<Checkbox
 																	isChecked={
@@ -1728,18 +1595,12 @@ export const AdminDialog: FC = () => {
 																		})
 																	}
 																>
-																	{t(
-																		"admins.deleteUserUsageCap",
-																		"Limit delete by user usage",
-																	)}
+																	{t("admins.deleteUserUsageCap")}
 																</Checkbox>
 																{item.delete_user_usage_limit_enabled && (
 																	<FormControl>
 																		<FormLabel>
-																			{t(
-																				"admins.deleteUserUsageLimit",
-																				"Max deletable user usage (MB)",
-																			)}
+																			{t("admins.deleteUserUsageLimit")}
 																		</FormLabel>
 																		<NumericInput
 																			value={item.delete_user_usage_limit ?? ""}
@@ -1764,10 +1625,7 @@ export const AdminDialog: FC = () => {
 							)}
 						</VStack>
 						<FormHelperText>
-							{t(
-								"admins.servicesHelper",
-								"Assign services this admin can manage",
-							)}
+							{t("admins.servicesHelper")}
 						</FormHelperText>
 					</FormControl>
 				</VStack>
@@ -1775,11 +1633,43 @@ export const AdminDialog: FC = () => {
 		</VStack>
 	);
 
+	const permissionsPanel = (
+		<VStack align="stretch" spacing={4}>
+			<AdminPermissionsEditor
+				value={permissionsValue ?? clonePermissions(watchRole ?? AdminRole.Standard)}
+				onChange={handlePermissionsChange}
+				showReset
+				onReset={resetPermissionsToRole}
+				maxDataLimitValue={maxDataLimitValue}
+				onMaxDataLimitChange={handleMaxDataLimitChange}
+				maxDataLimitError={
+					errors.maxDataLimitPerUserGb?.message as string | undefined
+				}
+				hideExtendedSections={watchRole === AdminRole.Standard}
+				isReadOnly={watchRole === AdminRole.FullAccess}
+			/>
+			{canManage2FA && (
+				<Box className="xray-dialog-section">
+					<Checkbox
+						isChecked={watch("require_2fa")}
+						onChange={(event) =>
+							setValue("require_2fa", event.target.checked, {
+								shouldDirty: true,
+							})
+						}
+					>
+						{t("admins.security.require2FA")}
+					</Checkbox>
+				</Box>
+			)}
+		</VStack>
+	);
+
 	return (
 		<>
 			<Modal
 				isOpen={isOpen}
-				onClose={closeAdminDialog}
+				onClose={handleCloseAdminDialog}
 				size="3xl"
 				scrollBehavior="inside"
 			>
@@ -1815,63 +1705,55 @@ export const AdminDialog: FC = () => {
 				>
 					<XrayModalHeader dir={isRTL ? "rtl" : "ltr"}>
 						{mode === "create"
-							? t("admins.addAdminTitle", "Add admin")
-							: t("admins.editAdminTitle", "Edit admin")}
+							? t("admins.addAdminTitle")
+							: t("admins.editAdminTitle")}
 					</XrayModalHeader>
 					<ModalCloseButton />
 					<XrayModalBody>
-						{mode === "create" ? (
-							<Tabs
-								className="xray-dialog-auto-sections"
-								isFitted
-								variant="unstyled"
-							>
-								<TabList>
-									<Tab>{t("admins.detailsTabLabel", "Details")}</Tab>
-									<Tab>{t("admins.permissionsTabLabel", "Permissions")}</Tab>
-								</TabList>
-								<TabPanels>
-									<TabPanel px={0}>{detailsForm}</TabPanel>
-									<TabPanel px={0}>
-										<AdminPermissionsEditor
-											value={
-												permissionsValue ??
-												clonePermissions(watchRole ?? AdminRole.Standard)
-											}
-											onChange={handlePermissionsChange}
-											showReset
-											onReset={resetPermissionsToRole}
-											maxDataLimitValue={maxDataLimitValue}
-											onMaxDataLimitChange={handleMaxDataLimitChange}
-											maxDataLimitError={
-												errors.maxDataLimitPerUserGb?.message as
-													| string
-													| undefined
-											}
-											hideExtendedSections={watchRole === AdminRole.Standard}
-											isReadOnly={watchRole === AdminRole.FullAccess}
-										/>
-									</TabPanel>
-								</TabPanels>
-							</Tabs>
-						) : (
-							detailsForm
-						)}
+						<Tabs
+							className="xray-dialog-auto-sections"
+							variant="unstyled"
+							isLazy
+							w="full"
+						>
+							<TabList>
+								<Tab>{t("details")}</Tab>
+								<Tab>{t("admins.permissionsTabLabel")}</Tab>
+							</TabList>
+							<TabPanels>
+								<TabPanel px={0}>{detailsForm}</TabPanel>
+								<TabPanel px={0}>{permissionsPanel}</TabPanel>
+							</TabPanels>
+						</Tabs>
 					</XrayModalBody>
 					<XrayModalFooter>
-						<HStack spacing={3}>
-							<Button variant="ghost" onClick={closeAdminDialog}>
+						<HStack
+							spacing={3}
+							w="full"
+							justify="flex-end"
+							flexWrap="wrap"
+						>
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={handleCloseAdminDialog}
+							>
 								{t("cancel")}
 							</Button>
-							<Button
-								colorScheme="primary"
+							<AnimatedSubmitButton
 								onClick={handleFormSubmit}
-								isLoading={isSubmitting}
-							>
-								{mode === "create"
-									? t("admins.addAdmin", "Create")
-									: t("save", "Save")}
-							</Button>
+								status={submitStatus}
+								idleContent={
+									mode === "create"
+										? t("admins.addAdmin")
+										: t("save")
+								}
+								successLabel={t("userDialog.submitSuccess")}
+								isDisabled={isSubmitting}
+								containerProps={{
+									w: { base: "full", sm: "180px" },
+								}}
+							/>
 						</HStack>
 					</XrayModalFooter>
 				</XrayModalContent>

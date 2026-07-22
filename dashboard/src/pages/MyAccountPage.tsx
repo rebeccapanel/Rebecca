@@ -5,30 +5,21 @@ import {
 	chakra,
 	Flex,
 	HStack,
+	Icon,
 	IconButton,
 	Input,
 	InputGroup,
 	InputRightElement,
-	Modal,
-	ModalBody,
-	ModalCloseButton,
-	ModalContent,
-	ModalFooter,
-	ModalHeader,
-	ModalOverlay,
-	Select,
 	SimpleGrid,
 	Spinner,
-	Stat,
-	StatLabel,
-	StatNumber,
-	Table,
-	Tbody,
-	Td,
+	Stack,
+	StackDivider,
+	Tab,
+	TabList,
+	TabPanel,
+	TabPanels,
+	Tabs,
 	Text,
-	Th,
-	Thead,
-	Tr,
 	useClipboard,
 	useColorMode,
 	useColorModeValue,
@@ -37,22 +28,30 @@ import {
 	VStack,
 } from "@chakra-ui/react";
 import {
+	ChartBarIcon,
 	ClipboardIcon,
 	EyeIcon,
 	EyeSlashIcon,
+	KeyIcon,
 	SparklesIcon,
+	TrashIcon,
+	UserGroupIcon,
 } from "@heroicons/react/24/outline";
 import type { ApexOptions } from "apexcharts";
+import { AccountSecurity } from "components/AccountSecurity";
 import { ChartBox } from "components/common/ChartBox";
 import {
 	DateRangePicker,
 	type DateRangeValue,
 } from "components/common/DateRangePicker";
+import { PanelSelect as Select } from "components/common/PanelSelect";
+import { AppDialog } from "components/dialogs/AppDialog";
+import { PageHeader } from "components/ui";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import useGetUser from "hooks/useGetUser";
 import type React from "react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import ReactApexChart from "react-apexcharts";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "react-query";
@@ -74,9 +73,28 @@ import type {
 	MyAccountUsagePoint,
 } from "types/MyAccount";
 import { formatBytes } from "utils/formatByte";
+import { clearClientSession } from "utils/session";
 
 dayjs.extend(utc);
 const CopyIcon = chakra(ClipboardIcon, { baseStyle: { w: 4, h: 4 } });
+const DeleteIcon = chakra(TrashIcon, { baseStyle: { w: 4, h: 4 } });
+type AccountSection = "info" | "security" | "api_keys";
+
+const ACCOUNT_SECTION_HASH: Record<AccountSection, string> = {
+	info: "info",
+	security: "security",
+	api_keys: "api-keys",
+};
+
+const accountSectionFromHash = (): AccountSection | null => {
+	if (typeof window === "undefined") return null;
+	const hash = (window.location.hash || "").replace(/^#/, "").toLowerCase();
+	return (
+		(Object.entries(ACCOUNT_SECTION_HASH).find(
+			([, value]) => value === hash,
+		)?.[0] as AccountSection | undefined) ?? null
+	);
+};
 
 const formatTimeseriesLabel = (value: string) => {
 	if (!value) return value;
@@ -158,53 +176,44 @@ const buildDonutOptions = (
 	],
 });
 
+const normalizeApiKeys = (value: unknown): AdminApiKey[] => {
+	if (Array.isArray(value)) return value;
+	if (value && typeof value === "object") {
+		const payload = value as {
+			api_keys?: unknown;
+			apiKeys?: unknown;
+			keys?: unknown;
+			obj?: unknown;
+		};
+		if (Array.isArray(payload.api_keys))
+			return payload.api_keys as AdminApiKey[];
+		if (Array.isArray(payload.apiKeys)) return payload.apiKeys as AdminApiKey[];
+		if (Array.isArray(payload.keys)) return payload.keys as AdminApiKey[];
+		if (Array.isArray(payload.obj)) return payload.obj as AdminApiKey[];
+	}
+	return [];
+};
+
+const normalizeArray = <T,>(value: unknown): T[] =>
+	Array.isArray(value) ? (value as T[]) : [];
+
 type StatsCardProps = {
 	label: string;
 	value: string;
-	helper?: string;
-	accentColor?: string;
 };
 
-const StatsCard: React.FC<StatsCardProps> = ({
-	label,
-	value,
-	helper,
-	accentColor = "primary.400",
-}) => {
-	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
-	const bg = useColorModeValue("white", "whiteAlpha.50");
-	const labelColor = useColorModeValue("gray.500", "gray.400");
+const StatsCard: React.FC<StatsCardProps> = ({ label, value }) => {
+	const labelColor = useColorModeValue("panel.textMuted", "panel.textMuted");
 
 	return (
-		<Stat
-			p={4}
-			borderWidth="1px"
-			borderColor={borderColor}
-			borderRadius="md"
-			bg={bg}
-			position="relative"
-			overflow="hidden"
-		>
-			<Box
-				position="absolute"
-				insetInlineStart={0}
-				top={0}
-				bottom={0}
-				w="3px"
-				bg={accentColor}
-			/>
-			<StatLabel color={labelColor} fontSize="xs" fontWeight="semibold">
+		<Box minW={0} py={1}>
+			<Text color={labelColor} fontSize="xs" fontWeight="semibold">
 				{label}
-			</StatLabel>
-			<StatNumber mt={1} fontSize="xl" lineHeight="1.2">
+			</Text>
+			<Text mt={1} fontSize="lg" lineHeight="1.2" fontWeight="semibold">
 				{value}
-			</StatNumber>
-			{helper && (
-				<Text mt={2} fontSize="xs" color={labelColor}>
-					{helper}
-				</Text>
-			)}
-		</Stat>
+			</Text>
+		</Box>
 	);
 };
 
@@ -232,26 +241,26 @@ const getTrafficLabels = (
 	const isCreated = basis === "created_traffic";
 	return {
 		sectionTitle: isCreated
-			? t("myaccount.createdTrafficSection", "Created traffic")
+			? t("myaccount.createdTrafficSection")
 			: t("myaccount.dataUsage"),
 		usedLabel: isCreated
-			? t("myaccount.createdTraffic", "Created traffic")
+			? t("myaccount.createdTraffic")
 			: t("myaccount.usedData"),
 		remainingLabel: isCreated
-			? t("myaccount.remainingTraffic", "Remaining traffic")
+			? t("myaccount.remainingTraffic")
 			: t("myaccount.remainingData"),
 		totalLabel: isCreated
-			? t("myaccount.trafficLimit", "Traffic limit")
-			: t("myaccount.totalData"),
+			? t("myaccount.trafficLimit")
+			: t("total"),
 		dailyChartTitle: isCreated
-			? t("myaccount.dailyCreatedTraffic", "Daily created traffic")
+			? t("myaccount.dailyCreatedTraffic")
 			: t("myaccount.dailyUsage"),
 		dailyTotalLabel: isCreated
-			? t("myaccount.totalCreatedTraffic", "Total created traffic")
-			: t("nodes.totalUsage", "Total usage"),
+			? t("myaccount.selectedPeriodCreatedTraffic")
+			: t("myaccount.selectedPeriodUsage"),
 		modeLabel: isCreated
-			? t("myaccount.serviceModeCreated", "Created traffic")
-			: t("myaccount.serviceModeUsed", "Used traffic"),
+			? t("myaccount.serviceModeCreated")
+			: t("myaccount.serviceModeUsed"),
 	};
 };
 
@@ -295,7 +304,7 @@ const ServiceLimitPanel: React.FC<{
 						{service.service_name}
 					</Text>
 					<Text fontSize="xs" color={labelColor}>
-						{t("myaccount.serviceLimit", "Service limit")}
+						{t("myaccount.serviceLimit")}
 					</Text>
 				</Box>
 				<Box px={4} pt={4}>
@@ -406,7 +415,7 @@ const ServiceBalanceCard: React.FC<{
 			<HStack justify="space-between" align="start" spacing={3} mb={3}>
 				<Box minW={0}>
 					<Text fontSize="xs" color={labelColor} fontWeight="semibold">
-						{t("myaccount.service", "Service")}
+						{t("myaccount.service")}
 					</Text>
 					<Text fontWeight="semibold" fontSize="lg" noOfLines={1}>
 						{service.service_name}
@@ -425,7 +434,7 @@ const ServiceBalanceCard: React.FC<{
 				{remainingText}
 			</Text>
 			<Text fontSize="sm" color={labelColor}>
-				{t("myaccount.remainingFromService", "remaining from this service")}
+				{t("myaccount.remainingFromService")}
 			</Text>
 			<SimpleGrid columns={2} spacing={3} mt={4}>
 				<MiniMetric
@@ -499,93 +508,13 @@ const ChangePasswordModal: React.FC<{
 	};
 
 	return (
-		<Modal isOpen={isOpen} onClose={onClose} isCentered>
-			<ModalOverlay />
-			<ModalContent>
-				<ModalHeader>{t("myaccount.changePassword")}</ModalHeader>
-				<ModalCloseButton />
-				<ModalBody>
-					<VStack spacing={4} align="stretch">
-						<Box maxW="420px">
-							<InputGroup dir={isRTL ? "rtl" : "ltr"}>
-								<Input
-									placeholder={t("myaccount.currentPassword")}
-									type={showCurrent ? "text" : "password"}
-									value={currentPassword}
-									onChange={(e) => setCurrentPassword(e.target.value)}
-									paddingInlineEnd="2.75rem"
-								/>
-								<InputRightElement
-									insetInlineEnd="0.5rem"
-									right="auto"
-									left="auto"
-								>
-									<IconButton
-										aria-label={
-											showCurrent
-												? t("admins.hidePassword")
-												: t("admins.showPassword")
-										}
-										size="sm"
-										variant="ghost"
-										icon={
-											showCurrent ? (
-												<EyeSlashIcon width={16} />
-											) : (
-												<EyeIcon width={16} />
-											)
-										}
-										onClick={() => setShowCurrent(!showCurrent)}
-									/>
-								</InputRightElement>
-							</InputGroup>
-						</Box>
-						<Box maxW="420px">
-							<HStack spacing={2}>
-								<InputGroup dir={isRTL ? "rtl" : "ltr"}>
-									<Input
-										placeholder={t("myaccount.newPassword")}
-										type={showNew ? "text" : "password"}
-										value={newPassword}
-										onChange={(e) => setNewPassword(e.target.value)}
-										paddingInlineEnd="2.75rem"
-									/>
-									<InputRightElement
-										insetInlineEnd="0.5rem"
-										right="auto"
-										left="auto"
-									>
-										<IconButton
-											aria-label={
-												showNew
-													? t("admins.hidePassword")
-													: t("admins.showPassword")
-											}
-											size="sm"
-											variant="ghost"
-											icon={
-												showNew ? (
-													<EyeSlashIcon width={16} />
-												) : (
-													<EyeIcon width={16} />
-												)
-											}
-											onClick={() => setShowNew(!showNew)}
-										/>
-									</InputRightElement>
-								</InputGroup>
-								<IconButton
-									aria-label={t("admins.generatePassword")}
-									size="md"
-									variant="outline"
-									icon={<SparklesIcon width={20} />}
-									onClick={handleGeneratePassword}
-								/>
-							</HStack>
-						</Box>
-					</VStack>
-				</ModalBody>
-				<ModalFooter>
+		<AppDialog
+			isOpen={isOpen}
+			onClose={onClose}
+			isCentered
+			title={t("myaccount.changePassword")}
+			footer={
+				<>
 					<Button mr={3} onClick={onClose} variant="ghost">
 						{t("cancel")}
 					</Button>
@@ -597,9 +526,85 @@ const ChangePasswordModal: React.FC<{
 					>
 						{t("save")}
 					</Button>
-				</ModalFooter>
-			</ModalContent>
-		</Modal>
+				</>
+			}
+		>
+			<VStack spacing={4} align="stretch">
+				<Box maxW="420px">
+					<InputGroup dir={isRTL ? "rtl" : "ltr"}>
+						<Input
+							placeholder={t("myaccount.currentPassword")}
+							type={showCurrent ? "text" : "password"}
+							value={currentPassword}
+							onChange={(e) => setCurrentPassword(e.target.value)}
+							paddingInlineEnd="2.75rem"
+						/>
+						<InputRightElement insetInlineEnd="0.5rem" right="auto" left="auto">
+							<IconButton
+								aria-label={
+									showCurrent
+										? t("admins.hidePassword")
+										: t("admins.showPassword")
+								}
+								size="sm"
+								variant="ghost"
+								icon={
+									showCurrent ? (
+										<EyeSlashIcon width={16} />
+									) : (
+										<EyeIcon width={16} />
+									)
+								}
+								onClick={() => setShowCurrent(!showCurrent)}
+							/>
+						</InputRightElement>
+					</InputGroup>
+				</Box>
+				<Box maxW="420px">
+					<HStack spacing={2}>
+						<InputGroup dir={isRTL ? "rtl" : "ltr"}>
+							<Input
+								placeholder={t("myaccount.newPassword")}
+								type={showNew ? "text" : "password"}
+								value={newPassword}
+								onChange={(e) => setNewPassword(e.target.value)}
+								paddingInlineEnd="2.75rem"
+							/>
+							<InputRightElement
+								insetInlineEnd="0.5rem"
+								right="auto"
+								left="auto"
+							>
+								<IconButton
+									aria-label={
+										showNew
+											? t("admins.hidePassword")
+											: t("admins.showPassword")
+									}
+									size="sm"
+									variant="ghost"
+									icon={
+										showNew ? (
+											<EyeSlashIcon width={16} />
+										) : (
+											<EyeIcon width={16} />
+										)
+									}
+									onClick={() => setShowNew(!showNew)}
+								/>
+							</InputRightElement>
+						</InputGroup>
+						<IconButton
+							aria-label={t("admins.generatePassword")}
+							size="md"
+							variant="outline"
+							icon={<SparklesIcon width={20} />}
+							onClick={handleGeneratePassword}
+						/>
+					</HStack>
+				</Box>
+			</VStack>
+		</AppDialog>
 	);
 };
 
@@ -626,6 +631,9 @@ export const MyAccountPage: React.FC = () => {
 			key: "1m",
 		};
 	});
+	const [activeSection, setActiveSection] = useState<AccountSection>(
+		() => accountSectionFromHash() ?? "info",
+	);
 
 	const username = userData?.username;
 	const isFullAccess = userData?.role === AdminRole.FullAccess;
@@ -633,12 +641,78 @@ export const MyAccountPage: React.FC = () => {
 		self_myaccount: false,
 		self_change_password: false,
 		self_api_keys: false,
+		self_sessions: false,
+		self_2fa: false,
 	};
 	const baseSelfPermissions =
 		userData?.permissions?.self_permissions ?? defaultSelfPermissions;
 	const selfPermissions = isFullAccess
-		? { self_myaccount: true, self_change_password: true, self_api_keys: true }
+		? {
+				self_myaccount: true,
+				self_change_password: true,
+				self_api_keys: true,
+				self_sessions: true,
+				self_2fa: true,
+			}
 		: baseSelfPermissions;
+	const canViewSecurity =
+		selfPermissions.self_change_password ||
+		selfPermissions.self_sessions ||
+		selfPermissions.self_2fa;
+	const accountSections = useMemo<Array<{ id: AccountSection; label: string }>>(
+		() => [
+			{ id: "info", label: t("myaccount.info") },
+			...(canViewSecurity
+				? [
+						{
+							id: "security" as const,
+							label: t("myaccount.security"),
+						},
+					]
+				: []),
+			...(selfPermissions.self_api_keys
+				? [
+						{
+							id: "api_keys" as const,
+							label: t("myaccount.apiKeys"),
+						},
+					]
+				: []),
+		],
+		[canViewSecurity, selfPermissions.self_api_keys, t],
+	);
+
+	useEffect(() => {
+		const syncSectionFromHash = () => {
+			const requested = accountSectionFromHash();
+			const next =
+				requested && accountSections.some((section) => section.id === requested)
+					? requested
+					: "info";
+			setActiveSection(next);
+			const expectedHash = `#${ACCOUNT_SECTION_HASH[next]}`;
+			if (window.location.hash !== expectedHash) {
+				window.history.replaceState(
+					null,
+					"",
+					`${window.location.pathname}${window.location.search}${expectedHash}`,
+				);
+			}
+		};
+		syncSectionFromHash();
+		window.addEventListener("hashchange", syncSectionFromHash);
+		return () => window.removeEventListener("hashchange", syncSectionFromHash);
+	}, [accountSections]);
+	const activeSectionIndex = Math.max(
+		0,
+		accountSections.findIndex((section) => section.id === activeSection),
+	);
+	const handleAccountSectionChange = (index: number) => {
+		const next = accountSections[index]?.id ?? "info";
+		setActiveSection(next);
+		const hash = ACCOUNT_SECTION_HASH[next];
+		if (window.location.hash !== `#${hash}`) window.location.hash = hash;
+	};
 
 	const { data, isLoading, isFetching } = useQuery<MyAccountResponse>(
 		["myaccount", range.start, range.end],
@@ -682,7 +756,16 @@ export const MyAccountPage: React.FC = () => {
 	const apiKeysQuery = useQuery<AdminApiKey[]>(
 		["myaccount-api-keys"],
 		listApiKeys,
-		{ enabled: selfPermissions.self_api_keys && getUserIsSuccess },
+		{
+			enabled:
+				selfPermissions.self_api_keys &&
+				getUserIsSuccess &&
+				activeSection === "api_keys",
+		},
+	);
+	const apiKeys = useMemo(
+		() => normalizeApiKeys(apiKeysQuery.data),
+		[apiKeysQuery.data],
 	);
 	const createKeyMutation = useMutation(createApiKey, {
 		onSuccess: (data) => {
@@ -697,6 +780,23 @@ export const MyAccountPage: React.FC = () => {
 			setGeneratedKey(data?.api_key ?? "");
 		},
 	});
+	const [selectedLifetime, setSelectedLifetime] = useState<string>("1m");
+	const [generatedKey, setGeneratedKey] = useState<string>("");
+	const hasGeneratedKey = Boolean(generatedKey);
+	const deleteModal = useDisclosure();
+	const [deletePassword, setDeletePassword] = useState("");
+	const [deleteKeyId, setDeleteKeyId] = useState<number | null>(null);
+	const [showDeletePassword, setShowDeletePassword] = useState(false);
+	const closeApiKeyDialog = () => {
+		apiKeyModal.onClose();
+		setGeneratedKey("");
+	};
+	const closeDeleteKeyDialog = () => {
+		deleteModal.onClose();
+		setDeleteKeyId(null);
+		setDeletePassword("");
+		setShowDeletePassword(false);
+	};
 	const deleteKeyMutation = useMutation(
 		({ id, current_password }: { id: number; current_password: string }) =>
 			deleteApiKey(id, current_password),
@@ -707,30 +807,21 @@ export const MyAccountPage: React.FC = () => {
 					title: t("myaccount.apiKeyDeleted"),
 					status: "success",
 				});
-				deleteModal.onClose();
-				setDeleteKeyId(null);
-				setDeletePassword("");
-				setShowDeletePassword(false);
+				closeDeleteKeyDialog();
 			},
 		},
 	);
-	const [selectedLifetime, setSelectedLifetime] = useState<string>("1m");
-	const [generatedKey, setGeneratedKey] = useState<string>("");
-	const hasGeneratedKey = Boolean(generatedKey);
-	const deleteModal = useDisclosure();
-	const [deletePassword, setDeletePassword] = useState("");
-	const [deleteKeyId, setDeleteKeyId] = useState<number | null>(null);
-	const [showDeletePassword, setShowDeletePassword] = useState(false);
-
 	const handlePasswordChange = async (current: string, next: string) => {
 		await mutation.mutateAsync({
 			current_password: current,
 			new_password: next,
 		});
+		clearClientSession();
+		window.location.reload();
 	};
 
 	const dailyUsagePoints: MyAccountUsagePoint[] = useMemo(
-		() => data?.daily_usage ?? [],
+		() => normalizeArray<MyAccountUsagePoint>(data?.daily_usage),
 		[data?.daily_usage],
 	);
 	const dailyTotal = useMemo(
@@ -747,8 +838,8 @@ export const MyAccountPage: React.FC = () => {
 		() => [
 			{
 				name: isCreatedTrafficBasis
-					? t("myaccount.dailyCreatedTraffic", "Daily created traffic")
-					: t("myaccount.dailyUsage", "Daily usage"),
+					? t("myaccount.dailyCreatedTraffic")
+					: t("myaccount.dailyUsage"),
 				data: dailyUsagePoints.map((p) => p.used_traffic),
 			},
 		],
@@ -757,7 +848,9 @@ export const MyAccountPage: React.FC = () => {
 
 	// Map backend response (with uplink/downlink) to frontend format (with used_traffic)
 	const perNodeUsage: MyAccountNodeUsage[] = useMemo(() => {
-		const backendUsages = nodesData?.usages ?? data?.node_usages ?? [];
+		const backendUsages = normalizeArray<any>(
+			nodesData?.usages ?? data?.node_usages,
+		);
 		return backendUsages.map((item: any) => ({
 			node_id: item.node_id ?? null,
 			node_name: item.node_name || "Unknown",
@@ -814,411 +907,514 @@ export const MyAccountPage: React.FC = () => {
 	const remainingData = data.remaining_data ?? Math.max(totalData - used, 0);
 	const usersLimit = data.users_limit ?? 0;
 	const remainingUsers = data.remaining_users ?? 0;
-	const serviceLimits = data.service_limits ?? [];
+	const serviceLimits = normalizeArray<MyAccountServiceLimit>(
+		data.service_limits,
+	);
 	const trafficLabels = getTrafficLabels(t, trafficBasis);
 	const usageSectionTitle = isPerServiceLimits
-		? t("myaccount.serviceTrafficOverview", "Service traffic overview")
+		? t("myaccount.serviceTrafficOverview")
 		: trafficLabels.sectionTitle;
 	const usedLabel = isPerServiceLimits
-		? t("myaccount.totalServiceTraffic", "Total service traffic")
+		? t("myaccount.totalServiceTraffic")
 		: trafficLabels.usedLabel;
 	const remainingLabel = trafficLabels.remainingLabel;
 	const totalLabel = isPerServiceLimits
-		? t("myaccount.serviceTrafficLimit", "Service traffic limit")
+		? t("myaccount.serviceTrafficLimit")
 		: trafficLabels.totalLabel;
 	const dailyChartTitle = isPerServiceLimits
-		? t("myaccount.dailyServiceTraffic", "Daily service traffic")
+		? t("myaccount.dailyServiceTraffic")
 		: trafficLabels.dailyChartTitle;
 	const dailyTotalLabel = isPerServiceLimits
-		? t("myaccount.totalServiceTraffic", "Total service traffic")
+		? t("myaccount.selectedPeriodServiceTraffic")
 		: trafficLabels.dailyTotalLabel;
 	const showServiceBalances = isPerServiceLimits || serviceLimits.length > 0;
 
 	return (
 		<VStack spacing={4} align="stretch">
-			<Box
-				borderWidth="1px"
-				borderColor={borderColor}
-				borderRadius="md"
-				bg={panelBg}
-				p={{ base: 3, md: 4 }}
-			>
-				<Flex
-					justify="space-between"
-					align={{ base: "flex-start", md: "center" }}
-					gap={3}
-					flexWrap="wrap"
-				>
-					<Box minW={0}>
-						<Text as="h1" fontWeight="semibold" fontSize="2xl">
-							{t("myaccount.title")}
-						</Text>
-						<Text fontSize="sm" color={labelColor}>
-							{t("myaccount.subtitle")}
-						</Text>
-					</Box>
-					{isFetching && (
+			<PageHeader
+				title={t("myaccount.title")}
+				description={t("myaccount.subtitle")}
+				actions={
+					isFetching ? (
 						<HStack spacing={2} color={labelColor}>
 							<Spinner size="sm" />
 							<Text fontSize="sm">{t("loading")}</Text>
 						</HStack>
-					)}
-				</Flex>
-			</Box>
+					) : undefined
+				}
+			/>
 
-			<SimpleGrid columns={{ base: 1, xl: 2 }} spacing={4}>
-				<ChartBox title={usageSectionTitle}>
-					<SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
-						<StatsCard label={usedLabel} value={formatBytes(used, 2)} />
-						<StatsCard
-							label={remainingLabel}
-							value={
-								data.data_limit === null
-									? t("myaccount.unlimited")
-									: formatBytes(remainingData, 2)
-							}
-						/>
-						<StatsCard
-							label={totalLabel}
-							value={
-								data.data_limit === null
-									? t("myaccount.unlimited")
-									: formatBytes(totalData, 2)
-							}
-						/>
-					</SimpleGrid>
-				</ChartBox>
-				<ChartBox title={t("myaccount.userLimits")}>
-					<SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
-						<StatsCard
-							label={t("myaccount.createdUsers")}
-							value={`${data.current_users_count}`}
-						/>
-						<StatsCard
-							label={t("myaccount.remainingUsers")}
-							value={
-								data.users_limit === null
-									? t("myaccount.unlimited")
-									: `${Math.max(remainingUsers, 0)}`
-							}
-						/>
-						<StatsCard
-							label={t("myaccount.totalUsers")}
-							value={
-								data.users_limit === null
-									? t("myaccount.unlimited")
-									: `${usersLimit}`
-							}
-						/>
-					</SimpleGrid>
-				</ChartBox>
-			</SimpleGrid>
-
-			{showServiceBalances && (
-				<ChartBox title={t("myaccount.serviceBalances", "Service balances")}>
-					{serviceLimits.length ? (
-						<>
-							<Text fontSize="sm" color={labelColor} mb={3}>
-								{t(
-									"myaccount.serviceBalancesHint",
-									"Remaining traffic is shown separately for each assigned service.",
-								)}
-							</Text>
-							<SimpleGrid columns={{ base: 1, md: 2, xl: 3 }} spacing={4}>
-								{serviceLimits.map((service) => (
-									<ServiceBalanceCard
-										key={service.service_id}
-										service={service}
-										t={t}
-									/>
-								))}
-							</SimpleGrid>
-						</>
-					) : (
-						<Text color={labelColor}>{t("noData")}</Text>
-					)}
-				</ChartBox>
-			)}
-
-			<SimpleGrid
-				columns={{
-					base: 1,
-					lg: isCreatedTrafficBasis || isPerServiceLimits ? 1 : 2,
-				}}
-				spacing={4}
+			<Tabs
+				index={activeSectionIndex}
+				onChange={handleAccountSectionChange}
+				isLazy
+				lazyBehavior="keepMounted"
+				variant="unstyled"
 			>
-				<Box minW={0}>
-					<ChartBox
-						title={dailyChartTitle}
-						headerActions={
-							<DateRangePicker
-								value={range}
-								onChange={(next) => {
-									setRange(next);
-								}}
-							/>
-						}
-						minH="500px"
-					>
-						<Text fontSize="sm" color={labelColor} mb={3}>
-							{dailyTotalLabel}:{" "}
-							<chakra.span fontWeight="semibold">
-								{formatBytes(dailyTotal, 2)}
-							</chakra.span>
-						</Text>
-						{dailySeries[0].data.length ? (
-							<ReactApexChart
-								options={buildDailyUsageOptions(colorMode, dailyCategories)}
-								series={dailySeries as any}
-								type="area"
-								height={340}
-							/>
-						) : (
-							<Text color={labelColor}>{t("noData")}</Text>
-						)}
-					</ChartBox>
-				</Box>
-				{!isCreatedTrafficBasis && !isPerServiceLimits && (
-					<Box minW={0}>
-						<ChartBox title={t("myaccount.perNodeUsage")} minH="500px">
-							<Text fontSize="sm" color={labelColor} mb={3}>
-								{t("nodes.totalUsage", "Total usage")}:{" "}
-								<chakra.span fontWeight="semibold">
-									{formatBytes(perNodeTotal, 2)}
-								</chakra.span>
-							</Text>
-							{perNodeUsage.length > 0 &&
-							donutSeries.some((value: number) => value > 0) ? (
-								<ReactApexChart
-									type="donut"
-									height={360}
-									options={buildDonutOptions(colorMode, donutLabels)}
-									series={donutSeries}
-								/>
-							) : (
-								<Text color={labelColor}>{t("noData")}</Text>
-							)}
-						</ChartBox>
-					</Box>
-				)}
-			</SimpleGrid>
-
-			{isPerServiceLimits && (
-				<ChartBox title={t("myaccount.serviceTrafficLimits", "Service limits")}>
-					{serviceLimits.length ? (
-						<SimpleGrid columns={{ base: 1, xl: 2 }} spacing={4}>
-							{serviceLimits.map((service) => (
-								<ServiceLimitPanel
-									key={service.service_id}
-									service={service}
-									colorMode={colorMode}
-									t={t}
-								/>
-							))}
-						</SimpleGrid>
-					) : (
-						<Text color={labelColor}>{t("noData")}</Text>
-					)}
-				</ChartBox>
-			)}
-
-			{selfPermissions.self_api_keys && (
-				<ChartBox
-					title={t("myaccount.apiKeys")}
-					headerActions={
-						<Button
-							size="sm"
-							colorScheme="primary"
-							onClick={apiKeyModal.onOpen}
-						>
-							{t("myaccount.createApiKey")}
-						</Button>
-					}
-				>
-					{apiKeysQuery.isLoading ? (
-						<HStack>
-							<Spinner size="sm" />
-							<Text>{t("loading")}</Text>
-						</HStack>
-					) : (apiKeysQuery.data?.length ?? 0) === 0 ? (
-						<Text color={labelColor}>{t("myaccount.noApiKeys")}</Text>
-					) : (
-						<Box
-							overflowX="auto"
-							borderWidth="1px"
-							borderColor={borderColor}
-							borderRadius="md"
-						>
-							<Table size="sm">
-								<Thead bg={panelBg}>
-									<Tr>
-										<Th>{t("myaccount.apiKeyMasked")}</Th>
-										<Th>{t("createdAt")}</Th>
-										<Th>{t("expiresAt")}</Th>
-										<Th>{t("myaccount.lastUsed")}</Th>
-										<Th></Th>
-									</Tr>
-								</Thead>
-								<Tbody>
-									{apiKeysQuery.data?.map((key) => (
-										<Tr key={key.id}>
-											<Td fontWeight="semibold">{key.masked_key ?? "****"}</Td>
-											<Td>
-												{key.created_at
-													? dayjs(key.created_at).format("YYYY-MM-DD HH:mm")
-													: "-"}
-											</Td>
-											<Td>
-												{key.expires_at
-													? dayjs(key.expires_at).format("YYYY-MM-DD")
-													: t("myaccount.never")}
-											</Td>
-											<Td>
-												{key.last_used_at
-													? dayjs(key.last_used_at).format("YYYY-MM-DD HH:mm")
-													: t("myaccount.neverUsed")}
-											</Td>
-											<Td textAlign="right">
-												<Button
-													size="xs"
-													colorScheme="red"
-													variant="ghost"
-													isLoading={deleteKeyMutation.isLoading}
-													onClick={() => {
-														setDeleteKeyId(key.id);
-														setDeletePassword("");
-														setShowDeletePassword(false);
-														deleteModal.onOpen();
-													}}
-												>
-													{t("delete")}
-												</Button>
-											</Td>
-										</Tr>
-									))}
-								</Tbody>
-							</Table>
-						</Box>
-					)}
-				</ChartBox>
-			)}
-
-			{selfPermissions.self_change_password && (
-				<ChartBox title={t("myaccount.changePasswordCard")}>
-					<Flex
-						justify="space-between"
-						align={{ base: "stretch", md: "center" }}
-						gap={3}
-						flexWrap="wrap"
-					>
-						<Text fontSize="sm" color={labelColor} maxW="720px">
-							{t("myaccount.changePasswordHint")}
-						</Text>
-						<Button colorScheme="primary" onClick={modal.onOpen}>
-							{t("myaccount.changePassword")}
-						</Button>
-					</Flex>
-				</ChartBox>
-			)}
-
-			{selfPermissions.self_api_keys && (
-				<Modal
-					isOpen={apiKeyModal.isOpen}
-					onClose={() => {
-						apiKeyModal.onClose();
-						setGeneratedKey("");
+				<Box
+					overflowX="auto"
+					overflowY="hidden"
+					maxW="full"
+					css={{
+						scrollbarWidth: "none",
+						"&::-webkit-scrollbar": { display: "none" },
 					}}
-					isCentered
 				>
-					<ModalOverlay />
-					<ModalContent>
-						<ModalHeader>{t("myaccount.createApiKey")}</ModalHeader>
-						<ModalCloseButton />
-						<ModalBody>
-							<VStack spacing={4} align="stretch">
-								{!hasGeneratedKey && (
-									<Box>
-										<Text fontWeight="medium" mb={2}>
-											{t("myaccount.apiKeyLifetime")}
-										</Text>
-										<Select
-											value={selectedLifetime}
-											onChange={(e) => setSelectedLifetime(e.target.value)}
-										>
-											<option value="1m">{t("myaccount.lifetime1m")}</option>
-											<option value="3m">{t("myaccount.lifetime3m")}</option>
-											<option value="6m">{t("myaccount.lifetime6m")}</option>
-											<option value="12m">{t("myaccount.lifetime12m")}</option>
-											<option value="forever">
-												{t("myaccount.lifetimeForever")}
-											</option>
-										</Select>
-									</Box>
-								)}
-								{hasGeneratedKey && (
-									<Box>
-										<Text fontWeight="medium" mb={1}>
-											{t("myaccount.yourApiKey")}
-										</Text>
-										<HStack>
-											<Input value={generatedKey} isReadOnly />
-											<IconButton
-												aria-label={t("copy")}
-												icon={<CopyIcon />}
-												onClick={() => {
-													setClipboardValue(generatedKey);
-													onCopy();
-													toast({
-														title: t("copied"),
-														status: "success",
-														duration: 1200,
-													});
-												}}
+					<TabList
+						gap={6}
+						minH="10"
+						px={{ base: 2, md: 3 }}
+						w="max-content"
+						minW="full"
+					>
+						{accountSections.map((section) => (
+							<Tab
+								key={section.id}
+								flex="0 0 auto"
+								h="10"
+								px={0}
+								borderRadius="0"
+								borderBottomWidth="2px"
+								borderColor="transparent"
+								fontWeight="700"
+								color="panel.text"
+								_selected={{
+									borderColor: "panel.accent",
+									color: "panel.accent",
+								}}
+								_hover={{ bg: "transparent", color: "panel.accentHover" }}
+								_focusVisible={{
+									outline: "2px solid",
+									outlineColor: "panel.accent",
+									outlineOffset: "2px",
+								}}
+							>
+								{section.label}
+							</Tab>
+						))}
+					</TabList>
+				</Box>
+
+				<TabPanels mt={3} px={{ base: 0, md: 2 }}>
+					<TabPanel p={0}>
+						<VStack
+							spacing={4}
+							align="stretch"
+							w="full"
+							maxW="1200px"
+							mx="auto"
+						>
+							<ChartBox
+								title={t("myaccount.accountOverview")}
+							>
+								<SimpleGrid columns={{ base: 1, lg: 2 }} spacing={0}>
+									<Box
+										pe={{ lg: 4 }}
+										pb={{ base: 3, lg: 0 }}
+										borderBottomWidth={{ base: "1px", lg: "0" }}
+										borderColor="panel.border"
+									>
+										<HStack spacing={2} mb={2}>
+											<Icon
+												as={ChartBarIcon}
+												boxSize={4}
+												color="panel.accent"
+												aria-hidden="true"
 											/>
+											<Text fontSize="sm" fontWeight="semibold">
+												{usageSectionTitle}
+											</Text>
 										</HStack>
-										<Text fontSize="xs" color="orange.500" mt={2}>
-											{t("myaccount.apiKeyWarning")}
+										<SimpleGrid columns={3} spacing={2}>
+											<StatsCard
+												label={usedLabel}
+												value={formatBytes(used, 2)}
+											/>
+											<StatsCard
+												label={remainingLabel}
+												value={
+													data.data_limit === null
+														? t("myaccount.unlimited")
+														: formatBytes(remainingData, 2)
+												}
+											/>
+											<StatsCard
+												label={totalLabel}
+												value={
+													data.data_limit === null
+														? t("myaccount.unlimited")
+														: formatBytes(totalData, 2)
+												}
+											/>
+										</SimpleGrid>
+									</Box>
+									<Box
+										ps={{ lg: 4 }}
+										pt={{ base: 3, lg: 0 }}
+										borderInlineStartWidth={{ base: "0", lg: "1px" }}
+										borderColor="panel.border"
+									>
+										<HStack spacing={2} mb={2}>
+											<Icon
+												as={UserGroupIcon}
+												boxSize={4}
+												color="panel.accent"
+												aria-hidden="true"
+											/>
+											<Text fontSize="sm" fontWeight="semibold">
+												{t("myaccount.userLimits")}
+											</Text>
+										</HStack>
+										<SimpleGrid columns={3} spacing={2}>
+											<StatsCard
+												label={t("myaccount.createdUsers")}
+												value={`${data.current_users_count}`}
+											/>
+											<StatsCard
+												label={t("myaccount.remainingUsers")}
+												value={
+													data.users_limit === null
+														? t("myaccount.unlimited")
+														: `${Math.max(remainingUsers, 0)}`
+												}
+											/>
+											<StatsCard
+												label={t("myaccount.totalUsers")}
+												value={
+													data.users_limit === null
+														? t("myaccount.unlimited")
+														: `${usersLimit}`
+												}
+											/>
+										</SimpleGrid>
+									</Box>
+								</SimpleGrid>
+							</ChartBox>
+
+							{showServiceBalances && (
+								<ChartBox
+									title={t("myaccount.serviceBalances")}
+								>
+									{serviceLimits.length ? (
+										<>
+											<Text fontSize="sm" color={labelColor} mb={3}>
+												{t("myaccount.serviceBalancesHint")}
+											</Text>
+											<SimpleGrid
+												columns={{ base: 1, md: 2, xl: 3 }}
+												spacing={4}
+											>
+												{serviceLimits.map((service) => (
+													<ServiceBalanceCard
+														key={service.service_id}
+														service={service}
+														t={t}
+													/>
+												))}
+											</SimpleGrid>
+										</>
+									) : (
+										<Text color={labelColor}>{t("noData")}</Text>
+									)}
+								</ChartBox>
+							)}
+
+							<SimpleGrid
+								columns={{
+									base: 1,
+									lg: isCreatedTrafficBasis || isPerServiceLimits ? 1 : 2,
+								}}
+								spacing={4}
+							>
+								<Box minW={0}>
+									<ChartBox
+										title={dailyChartTitle}
+										headerActions={
+											<DateRangePicker
+												value={range}
+												onChange={(next) => setRange(next)}
+											/>
+										}
+										minH="500px"
+									>
+										<Text fontSize="sm" color={labelColor} mb={3}>
+											{dailyTotalLabel}:{" "}
+											<chakra.span fontWeight="semibold">
+												{formatBytes(dailyTotal, 2)}
+											</chakra.span>
 										</Text>
+										{dailySeries[0].data.length ? (
+											<ReactApexChart
+												options={buildDailyUsageOptions(
+													colorMode,
+													dailyCategories,
+												)}
+												series={dailySeries as any}
+												type="area"
+												height={340}
+											/>
+										) : (
+											<Text color={labelColor}>{t("noData")}</Text>
+										)}
+									</ChartBox>
+								</Box>
+								{!isCreatedTrafficBasis && !isPerServiceLimits && (
+									<Box minW={0}>
+										<ChartBox title={t("myaccount.perNodeUsage")} minH="500px">
+											<Text fontSize="sm" color={labelColor} mb={3}>
+												{t("myaccount.selectedPeriodNodeUsage")}
+												:{" "}
+												<chakra.span fontWeight="semibold">
+													{formatBytes(perNodeTotal, 2)}
+												</chakra.span>
+											</Text>
+											{perNodeUsage.length > 0 &&
+											donutSeries.some((value: number) => value > 0) ? (
+												<ReactApexChart
+													type="donut"
+													height={360}
+													options={buildDonutOptions(colorMode, donutLabels)}
+													series={donutSeries}
+												/>
+											) : (
+												<Text color={labelColor}>{t("noData")}</Text>
+											)}
+										</ChartBox>
 									</Box>
 								)}
-							</VStack>
-						</ModalBody>
-						<ModalFooter>
-							{hasGeneratedKey ? (
+							</SimpleGrid>
+
+							{isPerServiceLimits && (
+								<ChartBox
+									title={t("myaccount.serviceTrafficLimits")}
+								>
+									{serviceLimits.length ? (
+										<SimpleGrid columns={{ base: 1, xl: 2 }} spacing={4}>
+											{serviceLimits.map((service) => (
+												<ServiceLimitPanel
+													key={service.service_id}
+													service={service}
+													colorMode={colorMode}
+													t={t}
+												/>
+											))}
+										</SimpleGrid>
+									) : (
+										<Text color={labelColor}>{t("noData")}</Text>
+									)}
+								</ChartBox>
+							)}
+						</VStack>
+					</TabPanel>
+
+					{canViewSecurity && (
+						<TabPanel p={0}>
+							<AccountSecurity
+								totpEnabled={Boolean(userData.totp_enabled)}
+								canChangePassword={Boolean(
+									selfPermissions.self_change_password,
+								)}
+								canManageSessions={Boolean(selfPermissions.self_sessions)}
+								canManage2FA={Boolean(selfPermissions.self_2fa)}
+								onChangePassword={modal.onOpen}
+							/>
+						</TabPanel>
+					)}
+
+					{selfPermissions.self_api_keys && (
+						<TabPanel p={0}>
+							<Stack w="full" maxW="960px" mx="auto">
+								<ChartBox
+									title={t("myaccount.apiKeys")}
+									headerActions={
+										<Button
+											size="sm"
+											h="10"
+											colorScheme="primary"
+											onClick={apiKeyModal.onOpen}
+										>
+											{t("myaccount.createApiKey")}
+										</Button>
+									}
+								>
+									<Text color="panel.textSecondary" fontSize="sm" mb={3}>
+										{t("myaccount.apiKeysHint")}
+									</Text>
+									{apiKeysQuery.isLoading ? (
+										<Flex justify="center" py={6}>
+											<Spinner size="sm" />
+										</Flex>
+									) : apiKeys.length === 0 ? (
+										<Text color={labelColor}>{t("myaccount.noApiKeys")}</Text>
+									) : (
+										<Stack
+											spacing={0}
+											divider={<StackDivider borderColor="panel.border" />}
+										>
+											{apiKeys.map((key) => (
+												<Flex
+													as="article"
+													key={key.id}
+													align="center"
+													justify="space-between"
+													gap={3}
+													py={2.5}
+												>
+													<HStack minW={0} spacing={3} align="start">
+														<Flex
+															align="center"
+															justify="center"
+															w="9"
+															h="9"
+															flexShrink={0}
+															borderRadius="6px"
+															bg="panel.elevated"
+															color="panel.accent"
+															aria-hidden="true"
+														>
+															<KeyIcon width={18} />
+														</Flex>
+														<Box minW={0}>
+															<Text
+																fontFamily="mono"
+																fontWeight="semibold"
+																fontSize="sm"
+																wordBreak="break-all"
+															>
+																{key.masked_key ?? "****"}
+															</Text>
+															<HStack
+																spacing={2.5}
+																color="panel.textMuted"
+																fontSize="xs"
+																flexWrap="wrap"
+																mt={1}
+															>
+																<Text>
+																	{t("myaccount.apiKeyCreatedAt")}:{" "}
+																	{dayjs(key.created_at).format("YYYY-MM-DD")}
+																</Text>
+																<Text>
+																	{t("myaccount.apiKeyExpiresAt")}:{" "}
+																	{key.expires_at
+																		? dayjs(key.expires_at).format("YYYY-MM-DD")
+																		: t("myaccount.never")}
+																</Text>
+																<Text>
+																	{t("myaccount.lastUsed")}:{" "}
+																	{key.last_used_at
+																		? dayjs(key.last_used_at).format(
+																				"YYYY-MM-DD HH:mm",
+																			)
+																		: t("myaccount.neverUsed")}
+																</Text>
+															</HStack>
+														</Box>
+													</HStack>
+													<IconButton
+														aria-label={`${t("delete")} ${key.masked_key ?? "API key"}`}
+														icon={<DeleteIcon />}
+														size="sm"
+														variant="ghost"
+														colorScheme="red"
+														isLoading={
+															deleteKeyMutation.isLoading &&
+															deleteKeyMutation.variables?.id === key.id
+														}
+														onClick={() => {
+															setDeleteKeyId(key.id);
+															setDeletePassword("");
+															setShowDeletePassword(false);
+															deleteModal.onOpen();
+														}}
+													/>
+												</Flex>
+											))}
+										</Stack>
+									)}
+								</ChartBox>
+							</Stack>
+						</TabPanel>
+					)}
+				</TabPanels>
+			</Tabs>
+
+			{selfPermissions.self_api_keys && (
+				<AppDialog
+					isOpen={apiKeyModal.isOpen}
+					onClose={closeApiKeyDialog}
+					isCentered
+					title={t("myaccount.createApiKey")}
+					footer={
+						hasGeneratedKey ? (
+							<Button colorScheme="primary" onClick={closeApiKeyDialog}>
+								{t("close")}
+							</Button>
+						) : (
+							<>
+								<Button variant="ghost" mr={3} onClick={closeApiKeyDialog}>
+									{t("cancel")}
+								</Button>
 								<Button
 									colorScheme="primary"
-									onClick={() => {
-										apiKeyModal.onClose();
-										setGeneratedKey("");
-									}}
+									isLoading={createKeyMutation.isLoading}
+									onClick={() => createKeyMutation.mutate(selectedLifetime)}
+									isDisabled={hasGeneratedKey}
 								>
-									{t("close")}
+									{t("create")}
 								</Button>
-							) : (
-								<>
-									<Button
-										variant="ghost"
-										mr={3}
+							</>
+						)
+					}
+				>
+					<VStack spacing={4} align="stretch">
+						{!hasGeneratedKey && (
+							<Box>
+								<Text fontWeight="medium" mb={2}>
+									{t("myaccount.apiKeyLifetime")}
+								</Text>
+								<Select
+									value={selectedLifetime}
+									onChange={(e) => setSelectedLifetime(e.target.value)}
+								>
+									<option value="1m">{t("myaccount.lifetime1m")}</option>
+									<option value="3m">{t("myaccount.lifetime3m")}</option>
+									<option value="6m">{t("myaccount.lifetime6m")}</option>
+									<option value="12m">{t("myaccount.lifetime12m")}</option>
+									<option value="forever">
+										{t("myaccount.lifetimeForever")}
+									</option>
+								</Select>
+							</Box>
+						)}
+						{hasGeneratedKey && (
+							<Box>
+								<Text fontWeight="medium" mb={1}>
+									{t("myaccount.yourApiKey")}
+								</Text>
+								<HStack>
+									<Input value={generatedKey} isReadOnly />
+									<IconButton
+										aria-label={t("copy")}
+										icon={<CopyIcon />}
 										onClick={() => {
-											apiKeyModal.onClose();
-											setGeneratedKey("");
+											setClipboardValue(generatedKey);
+											onCopy();
+											toast({
+												title: t("copied"),
+												status: "success",
+												duration: 1200,
+											});
 										}}
-									>
-										{t("cancel")}
-									</Button>
-									<Button
-										colorScheme="primary"
-										isLoading={createKeyMutation.isLoading}
-										onClick={() => createKeyMutation.mutate(selectedLifetime)}
-										isDisabled={hasGeneratedKey}
-									>
-										{t("create")}
-									</Button>
-								</>
-							)}
-						</ModalFooter>
-					</ModalContent>
-				</Modal>
+									/>
+								</HStack>
+								<Text fontSize="xs" color="orange.500" mt={2}>
+									{t("myaccount.apiKeyWarning")}
+								</Text>
+							</Box>
+						)}
+					</VStack>
+				</AppDialog>
 			)}
 
 			<ChangePasswordModal
@@ -1228,75 +1424,14 @@ export const MyAccountPage: React.FC = () => {
 			/>
 
 			{selfPermissions.self_api_keys && (
-				<Modal
+				<AppDialog
 					isOpen={deleteModal.isOpen}
-					onClose={() => {
-						deleteModal.onClose();
-						setDeleteKeyId(null);
-						setDeletePassword("");
-						setShowDeletePassword(false);
-					}}
+					onClose={closeDeleteKeyDialog}
 					isCentered
-				>
-					<ModalOverlay />
-					<ModalContent>
-						<ModalHeader>{t("myaccount.deleteApiKey")}</ModalHeader>
-						<ModalCloseButton />
-						<ModalBody>
-							<VStack spacing={3} align="stretch">
-								<Text color={labelColor}>
-									{t("myaccount.deleteApiKeyPrompt")}
-								</Text>
-								<InputGroup dir={isRTL ? "rtl" : "ltr"}>
-									<Input
-										placeholder={t("myaccount.currentPassword")}
-										type={showDeletePassword ? "text" : "password"}
-										value={deletePassword}
-										onChange={(e) => setDeletePassword(e.target.value)}
-										paddingInlineEnd="2.75rem"
-									/>
-									<InputRightElement
-										insetInlineEnd="0.5rem"
-										right="auto"
-										left="auto"
-									>
-										<IconButton
-											aria-label={
-												showDeletePassword
-													? t("admins.hidePassword")
-													: t("admins.showPassword")
-											}
-											size="sm"
-											variant="ghost"
-											icon={
-												showDeletePassword ? (
-													<EyeSlashIcon width={16} />
-												) : (
-													<EyeIcon width={16} />
-												)
-											}
-											onClick={() => setShowDeletePassword(!showDeletePassword)}
-										/>
-									</InputRightElement>
-								</InputGroup>
-								{deleteKeyMutation.isError && (
-									<Text color="red.500" fontSize="sm">
-										{t("myaccount.incorrectPassword")}
-									</Text>
-								)}
-							</VStack>
-						</ModalBody>
-						<ModalFooter>
-							<Button
-								variant="ghost"
-								mr={3}
-								onClick={() => {
-									deleteModal.onClose();
-									setDeleteKeyId(null);
-									setDeletePassword("");
-									setShowDeletePassword(false);
-								}}
-							>
+					title={t("myaccount.deleteApiKey")}
+					footer={
+						<>
+							<Button variant="ghost" mr={3} onClick={closeDeleteKeyDialog}>
 								{t("cancel")}
 							</Button>
 							<Button
@@ -1308,15 +1443,56 @@ export const MyAccountPage: React.FC = () => {
 										deleteKeyMutation.mutate({
 											id: deleteKeyId,
 											current_password: deletePassword,
-										} as any);
+										});
 									}
 								}}
 							>
 								{t("delete")}
 							</Button>
-						</ModalFooter>
-					</ModalContent>
-				</Modal>
+						</>
+					}
+				>
+					<VStack spacing={3} align="stretch">
+						<Text color={labelColor}>{t("myaccount.deleteApiKeyPrompt")}</Text>
+						<InputGroup dir={isRTL ? "rtl" : "ltr"}>
+							<Input
+								placeholder={t("myaccount.currentPassword")}
+								type={showDeletePassword ? "text" : "password"}
+								value={deletePassword}
+								onChange={(e) => setDeletePassword(e.target.value)}
+								paddingInlineEnd="2.75rem"
+							/>
+							<InputRightElement
+								insetInlineEnd="0.5rem"
+								right="auto"
+								left="auto"
+							>
+								<IconButton
+									aria-label={
+										showDeletePassword
+											? t("admins.hidePassword")
+											: t("admins.showPassword")
+									}
+									size="sm"
+									variant="ghost"
+									icon={
+										showDeletePassword ? (
+											<EyeSlashIcon width={16} />
+										) : (
+											<EyeIcon width={16} />
+										)
+									}
+									onClick={() => setShowDeletePassword(!showDeletePassword)}
+								/>
+							</InputRightElement>
+						</InputGroup>
+						{deleteKeyMutation.isError && (
+							<Text color="red.500" fontSize="sm">
+								{t("myaccount.incorrectPassword")}
+							</Text>
+						)}
+					</VStack>
+				</AppDialog>
 			)}
 		</VStack>
 	);

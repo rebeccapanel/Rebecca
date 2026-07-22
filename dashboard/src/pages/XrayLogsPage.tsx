@@ -1,23 +1,28 @@
 import {
 	Box,
+	Button,
 	chakra,
+	HStack,
 	IconButton,
 	Input,
 	InputGroup,
 	InputLeftElement,
 	InputRightElement,
-	Select,
 	Stack,
+	Tag,
 	Text,
 	useColorMode,
-	useColorModeValue,
 	VStack,
 } from "@chakra-ui/react";
+import {
+	PanelSelect as Select,
+	type PanelSelectProps as SelectProps,
+} from "components/common/PanelSelect";
 import { MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/24/outline";
-import { joinPaths } from "@remix-run/router";
+import { ResourceListCard } from "components/ui";
 import { useNodesQuery } from "contexts/NodesContext";
 import useGetUser from "hooks/useGetUser";
-import { debounce } from "lodash";
+import debounce from "lodash.debounce";
 import React, {
 	type FC,
 	useCallback,
@@ -29,38 +34,35 @@ import React, {
 import { useTranslation } from "react-i18next";
 import useWebSocket from "react-use-websocket";
 import { fetch } from "service/http";
-import { getAuthToken } from "utils/authStorage";
 import type { RawInbound } from "utils/inbounds";
+import { getAPIWebSocketURL } from "utils/websocket";
 
 const MAX_NUMBER_OF_LOGS = 500;
 
 const getWebsocketUrl = (nodeID: string) => {
-	try {
-		const baseURL = new URL(
-			import.meta.env.VITE_BASE_API.startsWith("/")
-				? window.location.origin + import.meta.env.VITE_BASE_API
-				: import.meta.env.VITE_BASE_API,
-		);
-
-		return (
-			(baseURL.protocol === "https:" ? "wss://" : "ws://") +
-			joinPaths([
-				baseURL.host + baseURL.pathname,
-				!nodeID ? "/core/logs" : `/node/${nodeID}/logs`,
-			]) +
-			"?interval=1&token=" +
-			getAuthToken()
-		);
-	} catch (e) {
-		console.error("Unable to generate websocket url");
-		console.error(e);
-		return null;
-	}
+	if (!nodeID) return null;
+	return getAPIWebSocketURL(`/node/${nodeID}/logs`, { interval: 1 });
 };
 
 interface XrayLogsPageProps {
 	showTitle?: boolean;
 }
+
+const CompactLogSelect = (props: SelectProps) => (
+	<Select
+		size="sm"
+		h="36px"
+		borderRadius="4px"
+		borderColor="panel.border"
+		bg="panel.input"
+		color="panel.text"
+		_focusVisible={{
+			borderColor: "panel.accent",
+			boxShadow: "0 0 0 1px var(--chakra-colors-panel-accent)",
+		}}
+		{...props}
+	/>
+);
 
 export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
 	const { t } = useTranslation();
@@ -97,14 +99,23 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
 
 	const handleLog = (id: string) => {
 		if (id === selectedNode) return;
-		if (!id) {
-			setNode("");
-			setLogs([]);
-			return;
-		}
 		setNode(id);
 		setLogs([]);
 	};
+
+	useEffect(() => {
+		if (!nodes?.length) {
+			if (selectedNode) {
+				setNode("");
+				setLogs([]);
+			}
+			return;
+		}
+		if (!selectedNode || !nodes.some((node) => String(node.id) === selectedNode)) {
+			setNode(String(nodes[0].id));
+			setLogs([]);
+		}
+	}, [nodes, selectedNode]);
 
 	const appendLog = useCallback(
 		debounce((line: string) => {
@@ -202,11 +213,15 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
 		};
 	}, [colorMode]);
 
-	const containerBg = useColorModeValue("#f5f7fb", "#1f2329");
-	const containerBorder = useColorModeValue("gray.200", "gray.600");
-	const badgeColor = useColorModeValue("gray.500", "gray.400");
-	const selectBg = useColorModeValue("white", "gray.700");
-	const inputBg = useColorModeValue("white", "gray.700");
+	const badgeColor = "panel.textMuted";
+	const socketColorScheme =
+		readyState === 1 ? "green" : readyState === 0 ? "yellow" : "gray";
+	const socketStatusLabel = useMemo(() => {
+		if (readyState === 0) return t("core.socket.connecting");
+		if (readyState === 1) return t("core.socket.connected");
+		if (readyState === 2 || readyState === 3) return t("core.socket.closed");
+		return t("core.socket.not_connected");
+	}, [readyState, t]);
 
 	// Get selected inbound tag
 	const selectedInboundTag = useMemo(() => {
@@ -318,92 +333,131 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
 			<VStack spacing={4} align="stretch">
 				{showTitle && (
 					<Text as="h1" fontWeight="semibold" fontSize="2xl">
-						{t("xrayLogs.title", "Xray logs")}
+						{t("xrayLogs.title")}
 					</Text>
 				)}
 				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-					{t(
-						"xrayLogs.noPermission",
-						"You do not have permission to view Xray logs.",
-					)}
+					{t("xrayLogs.noPermission")}
 				</Text>
 			</VStack>
 		);
 	}
 
 	return (
-		<VStack spacing={6} align="stretch">
+		<VStack spacing={4} align="stretch">
 			{showTitle && (
-				<Text as="h1" fontWeight="semibold" fontSize="2xl">
-					{t("header.xrayLogs")}
-				</Text>
+				<Box
+					borderWidth="1px"
+					borderColor="panel.border"
+					borderRadius="6px"
+					bg="panel.surface"
+					px={{ base: 3, md: 4 }}
+					py={4}
+				>
+					<Text as="h1" fontWeight="semibold" fontSize="2xl">
+						{t("header.xrayLogs")}
+					</Text>
+					<Text color="panel.textSecondary" fontSize="sm" mt={1}>
+						{t("xrayLogs.subtitle")}
+					</Text>
+				</Box>
 			)}
-			<Stack
-				direction={{ base: "column", sm: "row" }}
-				spacing={{ base: 3, sm: 4 }}
-				align={{ base: "stretch", sm: "center" }}
-				justify="space-between"
+			<ResourceListCard
+				title={t("xrayLogs.stream")}
+				summaryItems={[
+					{ label: t("total"), value: logs.length },
+					{
+						label: t("xrayLogs.visible"),
+						value: filteredLogs.length,
+						colorScheme: searchFilter || selectedInbound ? "blue" : "gray",
+					},
+					{
+						label: t("xrayLogs.socket"),
+						value: socketStatusLabel,
+						colorScheme: socketColorScheme,
+					},
+				]}
+				actions={
+					<HStack spacing={2} flexWrap="wrap" justify="flex-end">
+						<Tag
+							size="sm"
+							colorScheme={autoScroll ? "green" : "gray"}
+							variant="subtle"
+						>
+							{autoScroll
+								? t("core.autoScrollOn")
+								: t("core.autoScrollOff")}
+						</Tag>
+						<Button
+							size="sm"
+							variant="outline"
+							h="36px"
+							px={3}
+							isDisabled={logs.length === 0}
+							onClick={() => setLogs([])}
+						>
+							{t("clear")}
+						</Button>
+					</HStack>
+				}
 			>
 				<Stack
 					direction={{ base: "column", sm: "row" }}
-					spacing={3}
+					spacing={2}
 					align={{ base: "stretch", sm: "center" }}
-					flex={1}
+					flexWrap="wrap"
 				>
-					{nodes?.[0] && (
-						<Select
-							size="sm"
-							w={{ base: "full", sm: "auto" }}
-							bg={selectBg}
-							onChange={(e) => handleLog(e.target.value)}
-							value={selectedNode}
-						>
-							<option value="">{t("core.master")}</option>
-							{nodes.map((s) => (
-								<option key={s.address} value={String(s.id)}>
-									{t(s.name)}
+					<CompactLogSelect
+						w={{ base: "full", sm: "220px" }}
+						onChange={(e) => handleLog(e.target.value)}
+						value={selectedNode}
+						isDisabled={!nodes?.length}
+					>
+						{nodes?.length ? (
+							nodes.map((node) => (
+								<option key={node.id} value={String(node.id)}>
+									{node.name || node.address}
 								</option>
-							))}
-						</Select>
-					)}
-					<Select
-						size="sm"
-						w={{ base: "full", sm: "200px" }}
-						bg={selectBg}
+							))
+						) : (
+							<option value="">{t("nodes.noNodes")}</option>
+						)}
+					</CompactLogSelect>
+					<CompactLogSelect
+						w={{ base: "full", sm: "220px" }}
 						onChange={(e) => setSelectedInbound(e.target.value)}
 						value={selectedInbound}
-						placeholder={t("xrayLogs.selectInbound", "Select Inbound")}
 						isDisabled={inboundsLoading || inbounds.length === 0}
 					>
-						<option value="">
-							{t("xrayLogs.allInbounds", "All Inbounds")}
-						</option>
+						<option value="">{t("xrayLogs.allInbounds")}</option>
 						{inbounds.map((inbound) => (
 							<option key={inbound.tag} value={inbound.tag}>
 								{inbound.tag} ({inbound.protocol})
 							</option>
 						))}
-					</Select>
+					</CompactLogSelect>
 					<InputGroup
 						size="sm"
-						maxW={{ base: "full", sm: "300px" }}
-						bg={inputBg}
+						maxW={{ base: "full", md: "420px" }}
+						flex={{ base: "1 1 100%", md: "1 1 280px" }}
+						bg="panel.input"
 					>
 						<InputLeftElement pointerEvents="none">
 							<SearchIcon />
 						</InputLeftElement>
 						<Input
-							placeholder={t(
-								"xrayLogs.searchPlaceholder",
-								"Search logs (UUID, username, email, inbound tag...)",
-							)}
+							h="36px"
+							borderRadius="4px"
+							borderColor="panel.border"
+							bg="panel.input"
+							placeholder={t("xrayLogs.searchPlaceholder")}
 							value={searchFilter}
 							onChange={(e) => setSearchFilter(e.target.value)}
 						/>
 						{(searchFilter || selectedInbound) && (
-							<InputRightElement>
+							<InputRightElement h="36px">
 								<IconButton
-									aria-label="Clear filters"
+									aria-label={t("clear")}
 									size="xs"
 									variant="ghost"
 									onClick={() => {
@@ -415,31 +469,13 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
 							</InputRightElement>
 						)}
 					</InputGroup>
-					<Text fontSize="sm" color={badgeColor} whiteSpace="nowrap">
-						{t(`core.socket.${readyState}`)}
-					</Text>
 				</Stack>
-				<Stack direction="row" spacing={2} align="center">
-					{(searchFilter || selectedInbound) && (
-						<Text fontSize="xs" color={badgeColor} whiteSpace="nowrap">
-							{t("xrayLogs.filteredCount", "{{count}} of {{total}} logs", {
-								count: filteredLogs.length,
-								total: logs.length,
-							})}
-						</Text>
-					)}
-					<Text fontSize="xs" color={badgeColor} whiteSpace="nowrap">
-						{autoScroll
-							? t("core.autoScrollOn", "Auto-scroll: On")
-							: t("core.autoScrollOff", "Auto-scroll: Off")}
-					</Text>
-				</Stack>
-			</Stack>
+			</ResourceListCard>
 			<Box
-				border="1px solid"
-				borderColor={containerBorder}
-				bg={containerBg}
-				borderRadius="lg"
+				borderWidth="1px"
+				borderColor="panel.border"
+				bg="panel.surface"
+				borderRadius="6px"
 				minHeight="200px"
 				maxHeight="500px"
 				p={3}
@@ -452,11 +488,8 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
 					{filteredLogs.length === 0 ? (
 						<Box textAlign="center" py={8} color={badgeColor} fontSize="sm">
 							{searchFilter
-								? t(
-										"xrayLogs.noMatchingLogs",
-										"No logs match your search filter",
-									)
-								: t("xrayLogs.noLogs", "No logs available")}
+								? t("xrayLogs.noMatchingLogs")
+								: t("xrayLogs.noLogs")}
 						</Box>
 					) : (
 						logEntries.map(({ message, key }) => {
@@ -506,9 +539,7 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
 									borderLeftColor={palette.border}
 									px={3}
 									py={2}
-									borderRadius="md"
-									boxShadow="sm"
-									_dark={{ boxShadow: "none" }}
+									borderRadius="4px"
 								>
 									<chakra.pre
 										m={0}

@@ -1,27 +1,23 @@
 import {
-	Box,
 	Button,
 	FormControl,
 	FormErrorMessage,
 	FormHelperText,
 	FormLabel,
-	HStack,
 	Input,
 	Modal,
 	ModalCloseButton,
 	ModalOverlay,
-	Select,
-	Tag,
-	TagCloseButton,
-	TagLabel,
-	Text,
 	VStack,
-	Wrap,
-	WrapItem,
 } from "@chakra-ui/react";
-import { type FC, useEffect, useMemo, useState } from "react";
+import { type FC, useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
+import {
+	MultiValueAutocomplete,
+	splitMultiValueText,
+} from "./common/MultiValueAutocomplete";
+import { SearchableTagSelect } from "./common/SearchableTagSelect";
 import {
 	XrayDialogSection,
 	XrayModalBody,
@@ -43,6 +39,7 @@ interface BalancerModalProps {
 	mode: "create" | "edit";
 	initialBalancer?: BalancerFormValues | null;
 	outboundTags: string[];
+	excludedOutboundTags?: string[];
 	existingTags: string[];
 	onSubmit: (values: BalancerFormValues) => void;
 }
@@ -54,13 +51,8 @@ const DEFAULT_BALANCER: BalancerFormValues = {
 	fallbackTag: "",
 };
 
-const parseTags = (value: string) =>
-	value
-		.split(/[\s,]+/)
-		.map((item) => item.trim())
-		.filter(Boolean);
-
 const uniq = (values: string[]) => Array.from(new Set(values));
+const normalizeBalancerOutboundTag = (tag: string) => tag.trim().toLowerCase();
 
 export const BalancerModal: FC<BalancerModalProps> = ({
 	isOpen,
@@ -68,12 +60,11 @@ export const BalancerModal: FC<BalancerModalProps> = ({
 	mode,
 	initialBalancer,
 	outboundTags,
+	excludedOutboundTags = [],
 	existingTags,
 	onSubmit,
 }) => {
 	const { t } = useTranslation();
-	const [selectorInput, setSelectorInput] = useState("");
-	const [selectorPick, setSelectorPick] = useState("");
 
 	const modalForm = useForm<BalancerFormValues>({
 		defaultValues: DEFAULT_BALANCER,
@@ -84,7 +75,29 @@ export const BalancerModal: FC<BalancerModalProps> = ({
 	}, [modalForm]);
 
 	const tagValue = modalForm.watch("tag");
-	const selectorValue = modalForm.watch("selector") ?? [];
+	const rawSelectorValue = modalForm.watch("selector") ?? [];
+	const rawFallbackTagValue = modalForm.watch("fallbackTag") ?? "";
+	const excludedOutboundTagKeys = useMemo(
+		() =>
+			new Set(
+				excludedOutboundTags.map(normalizeBalancerOutboundTag).filter(Boolean),
+			),
+		[excludedOutboundTags],
+	);
+	const isExcludedBalancerOutbound = (tag: string) => {
+		const normalized = normalizeBalancerOutboundTag(tag);
+		return normalized === "blocked" || excludedOutboundTagKeys.has(normalized);
+	};
+	const selectableOutboundTags = useMemo(
+		() => outboundTags.filter((tag) => !isExcludedBalancerOutbound(tag)),
+		[excludedOutboundTagKeys, outboundTags],
+	);
+	const selectorValue = rawSelectorValue.filter(
+		(tag) => !isExcludedBalancerOutbound(tag),
+	);
+	const fallbackTagValue = isExcludedBalancerOutbound(rawFallbackTagValue)
+		? ""
+		: rawFallbackTagValue;
 	const normalizedTag = tagValue.trim();
 	const duplicateTag = !normalizedTag || existingTags.includes(normalizedTag);
 	const emptySelector = selectorValue.length === 0;
@@ -97,43 +110,32 @@ export const BalancerModal: FC<BalancerModalProps> = ({
 						...DEFAULT_BALANCER,
 						...initialBalancer,
 						tag: initialBalancer.tag ?? "",
-						selector: initialBalancer.selector ?? [],
-						fallbackTag: initialBalancer.fallbackTag ?? "",
+						selector: (initialBalancer.selector ?? []).filter(
+							(tag) => !isExcludedBalancerOutbound(tag),
+						),
+						fallbackTag: isExcludedBalancerOutbound(
+							initialBalancer.fallbackTag ?? "",
+						)
+							? ""
+							: initialBalancer.fallbackTag ?? "",
 					}
 				: DEFAULT_BALANCER,
 		);
-		setSelectorInput("");
-		setSelectorPick("");
-	}, [initialBalancer, isOpen, modalForm]);
-
-	const addSelectorTags = (value: string) => {
-		const tags = parseTags(value);
-		if (tags.length === 0) return;
-		const merged = uniq([...(selectorValue ?? []), ...tags]);
-		modalForm.setValue("selector", merged, { shouldDirty: true });
-	};
-
-	const removeSelectorTag = (tag: string) => {
-		modalForm.setValue(
-			"selector",
-			(selectorValue ?? []).filter((item) => item !== tag),
-			{ shouldDirty: true },
-		);
-	};
-
-	const addSelectedOutboundTag = (value: string) => {
-		if (!value) return;
-		addSelectorTags(value);
-		setSelectorPick("");
-	};
+	}, [excludedOutboundTagKeys, initialBalancer, isOpen, modalForm]);
 
 	const onSubmitInternal = modalForm.handleSubmit((data) => {
 		if (!isValid) return;
 		const payload: BalancerFormValues = {
 			tag: data.tag.trim(),
 			strategy: data.strategy,
-			selector: uniq(data.selector.map((item) => item.trim()).filter(Boolean)),
-			fallbackTag: data.fallbackTag ?? "",
+			selector: uniq(
+				data.selector
+					.map((item) => item.trim())
+					.filter((item) => item && !isExcludedBalancerOutbound(item)),
+			),
+			fallbackTag: isExcludedBalancerOutbound(data.fallbackTag ?? "")
+				? ""
+				: data.fallbackTag ?? "",
 		};
 		onSubmit(payload);
 	});
@@ -179,96 +181,40 @@ export const BalancerModal: FC<BalancerModalProps> = ({
 										<FormLabel>
 											{t("pages.xray.balancer.balancerStrategy")}
 										</FormLabel>
-										<Select {...modalForm.register("strategy")} size="sm">
-											{["random", "roundRobin", "leastLoad", "leastPing"].map(
-												(s) => (
-													<option key={s} value={s}>
-														{s}
-													</option>
-												),
-											)}
-										</Select>
+										<SearchableTagSelect
+											mode="single"
+											options={["random", "roundRobin", "leastLoad", "leastPing"]}
+											value={modalForm.watch("strategy") ?? ""}
+											onChange={(value) =>
+												modalForm.setValue("strategy", value as string, {
+													shouldDirty: true,
+												})
+											}
+											placeholder={t("pages.xray.balancer.balancerStrategy")}
+											searchPlaceholder={t("search")}
+										/>
 									</FormControl>
 									<FormControl isInvalid={emptySelector}>
 										<FormLabel>
 											{t("pages.xray.balancer.balancerSelectors")}
 										</FormLabel>
-										<VStack align="stretch" spacing={2}>
-											{outboundTags.length > 0 && (
-												<HStack>
-													<Select
-														size="sm"
-														placeholder={t(
-															"pages.xray.balancer.selectOutbound",
-															"Select outbound tag",
-														)}
-														value={selectorPick}
-														onChange={(event) =>
-															addSelectedOutboundTag(event.target.value)
-														}
-													>
-														{outboundTags.map((tag) => (
-															<option key={tag} value={tag}>
-																{tag}
-															</option>
-														))}
-													</Select>
-												</HStack>
-											)}
-											<HStack>
-												<Input
-													size="sm"
-													value={selectorInput}
-													onChange={(event) =>
-														setSelectorInput(event.target.value)
-													}
-													placeholder={t(
-														"pages.xray.balancer.selectorPlaceholder",
-														"tag1, tag2",
-													)}
-													onKeyDown={(event) => {
-														if (event.key === "Enter") {
-															event.preventDefault();
-															addSelectorTags(selectorInput);
-															setSelectorInput("");
-														}
-													}}
-												/>
-												<Button
-													size="xs"
-													variant="outline"
-													onClick={() => {
-														addSelectorTags(selectorInput);
-														setSelectorInput("");
-													}}
-												>
-													{t("core.add", "Add")}
-												</Button>
-											</HStack>
-											{selectorValue.length > 0 ? (
-												<Wrap>
-													{selectorValue.map((tag) => (
-														<WrapItem key={tag}>
-															<Tag size="sm" colorScheme="blue">
-																<TagLabel>{tag}</TagLabel>
-																<TagCloseButton
-																	onClick={() => removeSelectorTag(tag)}
-																/>
-															</Tag>
-														</WrapItem>
-													))}
-												</Wrap>
-											) : (
-												<Box>
-													<Text fontSize="sm" color="gray.500">
-														{t(
-															"pages.xray.balancer.selectorHint",
-															"Choose outbound tags or add custom tags.",
-														)}
-													</Text>
-												</Box>
-											)}
-										</VStack>
+										<MultiValueAutocomplete
+											options={selectableOutboundTags}
+											value={selectorValue.join(", ")}
+											onChange={(value) =>
+												modalForm.setValue(
+													"selector",
+													uniq(
+														splitMultiValueText(value).filter(
+															(tag) => !isExcludedBalancerOutbound(tag),
+														),
+													),
+													{ shouldDirty: true },
+												)
+											}
+											placeholder={t("pages.xray.balancer.selectorPlaceholder")}
+											emptyText={t("pages.xray.outbound.empty")}
+										/>
 										{emptySelector && (
 											<FormErrorMessage>
 												{t("pages.xray.balancer.selectorError")}
@@ -279,14 +225,19 @@ export const BalancerModal: FC<BalancerModalProps> = ({
 										<FormLabel>
 											{t("pages.xray.balancer.fallbackTag")}
 										</FormLabel>
-										<Select {...modalForm.register("fallbackTag")} size="sm">
-											<option value="">{t("core.none", "None")}</option>
-											{outboundTags.map((tag) => (
-												<option key={tag} value={tag}>
-													{tag}
-												</option>
-											))}
-										</Select>
+										<SearchableTagSelect
+											mode="single"
+											options={selectableOutboundTags}
+											value={fallbackTagValue}
+											onChange={(value) =>
+												modalForm.setValue("fallbackTag", value as string, {
+													shouldDirty: true,
+												})
+											}
+											placeholder={t("userDialog.flow.none")}
+											searchPlaceholder={t("search")}
+											emptyText={t("pages.xray.outbound.empty")}
+										/>
 									</FormControl>
 								</VStack>
 							</XrayDialogSection>

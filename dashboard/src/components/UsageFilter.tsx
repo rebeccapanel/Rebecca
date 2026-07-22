@@ -1,304 +1,94 @@
 import {
-	Box,
 	type ColorMode,
-	HStack,
-	Icon,
-	SimpleGrid,
-	Tab,
-	TabList,
-	TabPanel,
-	TabPanels,
-	Tabs,
-	Text,
-	type UseRadioProps,
-	useBreakpointValue,
-	useDisclosure,
-	useOutsideClick,
-	useRadio,
-	useRadioGroup,
-	VStack,
+	Box,
 } from "@chakra-ui/react";
-import { CalendarIcon, ChevronRightIcon } from "@heroicons/react/24/outline";
 import type { ApexOptions } from "apexcharts";
-import DatePicker from "components/common/DatePicker";
+import {
+	DateRangePicker,
+	type DateRangeValue,
+} from "components/common/DateRangePicker";
 import type { FilterUsageType } from "contexts/DashboardContext";
 import dayjs, { type ManipulateType } from "dayjs";
-import { type FC, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { type FC, useMemo, useState } from "react";
 import { generateDistinctColors } from "utils/color";
 import { formatBytes } from "utils/formatByte";
-
-type DateType = Date | null;
-
-const FilterItem: FC<UseRadioProps & { border?: boolean } & any> = ({
-	border,
-	...props
-}) => {
-	const { getInputProps, getRadioProps } = useRadio(props);
-	const fontSize = useBreakpointValue({ base: "xs", md: "sm" });
-	return (
-		<Box as="label">
-			<input {...getInputProps()} />
-			<Box
-				{...getRadioProps()}
-				minW="48px"
-				w="full"
-				h="full"
-				textAlign="center"
-				cursor="pointer"
-				fontSize={fontSize}
-				borderWidth={border ? "1px" : "0px"}
-				borderRadius="md"
-				_checked={{
-					bg: "primary.500",
-					color: "white",
-					borderColor: "primary.500",
-				}}
-				_focus={{
-					boxShadow: "outline",
-				}}
-				px={3}
-				py={1}
-			>
-				{props.children}
-			</Box>
-		</Box>
-	);
-};
 
 export type UsageFilterProps = {
 	onChange: (filter: string, query: FilterUsageType) => void;
 	defaultValue: string;
 };
 
-export const UsageFilter: FC<UsageFilterProps> = ({
-	onChange,
-	defaultValue,
-	...props
-}) => {
-	const { t, i18n } = useTranslation();
+const usagePresets = [
+	{ key: "7h", label: "7h", amount: 7, unit: "hour" as const },
+	{ key: "1d", label: "1d", amount: 1, unit: "day" as const },
+	{ key: "3d", label: "3d", amount: 3, unit: "day" as const },
+	{ key: "1w", label: "1w", amount: 1, unit: "week" as const },
+	{ key: "1m", label: "1m", amount: 1, unit: "month" as const },
+	{ key: "3m", label: "3m", amount: 3, unit: "month" as const },
+];
 
-	const filterOptions = useBreakpointValue({
-		base: ["7h", "1d", "3d", "1w"],
-		md: ["7h", "1d", "3d", "1w", "1m", "3m"],
-	})!;
-	const filterOptionTypes = {
+const parseRangeKey = (value: string) => {
+	const num = Number(value.substring(0, value.length - 1));
+	const unitBySuffix = {
 		h: "hour",
 		d: "day",
 		w: "week",
 		m: "month",
 		y: "year",
+	} as const;
+	const unit = unitBySuffix[value[value.length - 1] as keyof typeof unitBySuffix];
+	return Number.isFinite(num) && unit ? { num, unit } : null;
+};
+
+const buildRangeFromKey = (value: string): DateRangeValue => {
+	const parsed = parseRangeKey(value);
+	const unit = parsed?.unit ?? "month";
+	const amount = parsed?.num ?? 1;
+	const alignUnit: ManipulateType = unit === "hour" ? "hour" : "day";
+	const end = dayjs().utc().endOf(alignUnit).toDate();
+	const span = Math.max(amount - 1, 0);
+	const start = dayjs()
+		.utc()
+		.subtract(span, unit as ManipulateType)
+		.startOf(alignUnit)
+		.toDate();
+	return {
+		start,
+		end,
+		presetKey: value,
+		key: value,
+		unit: unit === "hour" ? "hour" : "day",
 	};
-	const customFilterOptions = useBreakpointValue({
-		base: [
-			{ title: "hours", options: ["1h", "3h", "6h", "12h"] },
-			{ title: "days", options: ["1d", "2d", "3d", "4d"] },
-			{ title: "weeks", options: ["1w", "2w", "3w", "4w"] },
-			{ title: "months", options: ["1m", "2m", "3m", "6m"] },
-		],
-		md: [
-			{ title: "hours", options: ["1h", "2h", "3h", "6h", "8h", "12h"] },
-			{ title: "days", options: ["1d", "2d", "3d", "4d", "5d", "6d"] },
-			{ title: "weeks", options: ["1w", "2w", "3w", "4w"] },
-			{ title: "months", options: ["1m", "2m", "3m", "6m", "8m"] },
-		],
-	})!;
-	const { getRootProps, getRadioProps } = useRadioGroup({
-		name: "filter",
-		defaultValue: defaultValue,
-		onChange: (value: string) => {
-			if (value === "custom") {
-				return;
-			}
+};
 
-			closeCustom();
+const toFilterQuery = (value: DateRangeValue): FilterUsageType => ({
+	start: dayjs(value.start).utc().format("YYYY-MM-DDTHH:mm:ss"),
+	end: dayjs(value.end).utc().format("YYYY-MM-DDTHH:mm:ss"),
+});
 
-			if (filterOptions.indexOf(value) >= 0) {
-				setCustomLabel(t("userDialog.custom"));
-				setCustom(false);
-			} else {
-				setCustomLabel(`${t("userDialog.custom")} (${value})`);
-				setCustom(true);
-			}
-
-			const num = Number(value.substring(0, value.length - 1));
-			const unit =
-				filterOptionTypes[
-					value[value.length - 1] as keyof typeof filterOptionTypes
-				];
-			onChange(value, {
-				start: dayjs()
-					.utc()
-					.subtract(num, unit as ManipulateType)
-					.format("YYYY-MM-DDTHH:00:00"),
-			});
-		},
-	});
-
-	const {
-		isOpen: isCustomOpen,
-		onOpen: openCustom,
-		onClose: closeCustom,
-	} = useDisclosure();
-	const customRef = useRef(null);
-	useOutsideClick({ ref: customRef, handler: closeCustom });
-
-	const [customLabel, setCustomLabel] = useState(t("userDialog.custom"));
-	const [custom, setCustom] = useState(false);
-	const [tabIndex, setTabIndex] = useState(0);
-
-	const monthsShown = useBreakpointValue({ base: 1, md: 2 });
-	const fontSize = useBreakpointValue({ base: "xs", md: "sm" });
-	const [startDate, setStartDate] = useState(null as DateType);
-	const [endDate, setEndDate] = useState(null as DateType);
-	const onDateChange = (dates: [DateType, DateType]) => {
-		const [start, end] = dates;
-		if (endDate && !end) {
-			setStartDate(null);
-			setEndDate(null);
-		} else {
-			setStartDate(start);
-			setEndDate(end);
-			if (start && end) {
-				closeCustom();
-				onChange("custom", {
-					start: dayjs(start).format("YYYY-MM-DDT00:00:00"),
-					end: dayjs(end).format("YYYY-MM-DDT23:59:59"),
-				});
-			}
-		}
-	};
+export const UsageFilter: FC<UsageFilterProps> = ({
+	onChange,
+	defaultValue,
+	...props
+}) => {
+	const initialRange = useMemo(
+		() => buildRangeFromKey(defaultValue || "1m"),
+		[defaultValue],
+	);
+	const [range, setRange] = useState<DateRangeValue>(initialRange);
 
 	return (
-		<VStack {...props}>
-			{tabIndex === 0 && (
-				<SimpleGrid
-					{...getRootProps()}
-					gap={0}
-					display="flex"
-					borderWidth="1px"
-					borderRadius="md"
-					minW={{ base: "320px", md: "400px" }}
-				>
-					{filterOptions.map((value) => {
-						return (
-							<FilterItem key={value} {...getRadioProps({ value })}>
-								{value}
-							</FilterItem>
-						);
-					})}
-					<Box
-						onClick={() => {
-							setStartDate(null);
-							setEndDate(null);
-							openCustom();
-						}}
-						cursor="pointer"
-						borderRadius="md"
-						w="full"
-						fontSize={fontSize}
-						px={3}
-						py={1}
-						bg={custom ? "primary.500" : "unset"}
-						color={custom ? "white" : "unset"}
-						borderColor={custom ? "primary.500" : "unset"}
-					>
-						<HStack>
-							<Text>{customLabel}</Text>
-							<Icon as={CalendarIcon} boxSize="18px" />
-						</HStack>
-					</Box>
-				</SimpleGrid>
-			)}
-			{tabIndex === 1 && (
-				<HStack
-					onClick={openCustom}
-					cursor="pointer"
-					fontSize={fontSize}
-					borderRadius="md"
-					px={3}
-					py={1}
-					minW={{ base: "320px", md: "400px" }}
-					borderWidth="1px"
-				>
-					<Text w="full" color={startDate ? "unset" : "gray.500"}>
-						{startDate
-							? dayjs(startDate).format("YYYY-MM-DD (00:00)")
-							: t("userDialog.startDate")}
-					</Text>
-					<Icon as={ChevronRightIcon} boxSize="18px" />
-					<Text w="full" color={endDate ? "unset" : "gray.500"}>
-						{endDate
-							? dayjs(endDate).format("YYYY-MM-DD (23:59)")
-							: t("userDialog.endDate")}
-					</Text>
-					<Icon as={CalendarIcon} boxSize="18px" />
-				</HStack>
-			)}
-			<VStack
-				ref={customRef}
-				marginTop="40px !important"
-				borderRadius="md"
-				borderWidth="1px"
-				position="absolute"
-				zIndex="1"
-				backgroundColor="white"
-				_dark={{
-					backgroundColor: "gray.700",
+		<Box {...props}>
+			<DateRangePicker
+				value={range}
+				presets={usagePresets}
+				defaultPreset={defaultValue || "1m"}
+				onChange={(nextRange) => {
+					setRange(nextRange);
+					onChange(nextRange.key || nextRange.presetKey || "custom", toFilterQuery(nextRange));
 				}}
-				display={isCustomOpen ? "unset" : "none"}
-			>
-				<Tabs onChange={(index) => setTabIndex(index)}>
-					<TabList>
-						<Tab fontSize={fontSize}>{t("userDialog.relative")}</Tab>
-						<Tab fontSize={fontSize}>{t("userDialog.absolute")}</Tab>
-					</TabList>
-
-					<TabPanels>
-						<TabPanel>
-							{customFilterOptions.map((row) => {
-								return (
-									<VStack key={row.title} alignItems="start" pl={2} pr={2}>
-										<HStack justifyItems="flex-start" mb={4}>
-											<Text fontSize={fontSize} minW="60px">
-												{t(`userDialog.${row.title}`)}
-											</Text>
-											{row.options.map((value: string) => {
-												return (
-													<FilterItem
-														key={`${value}.custom`}
-														border={true}
-														{...getRadioProps({ value })}
-													>
-														{value}
-													</FilterItem>
-												);
-											})}
-										</HStack>
-									</VStack>
-								);
-							})}
-						</TabPanel>
-						<TabPanel className="datepicker-panel">
-							<VStack>
-								<DatePicker
-									locale={i18n.language.toLocaleLowerCase()}
-									selected={startDate}
-									onChange={onDateChange}
-									startDate={startDate}
-									endDate={endDate}
-									selectsRange={true}
-									maxDate={new Date()}
-									monthsShown={monthsShown}
-									peekNextMonth={false}
-									inline
-								/>
-							</VStack>
-						</TabPanel>
-					</TabPanels>
-				</Tabs>
-			</VStack>
-		</VStack>
+			/>
+		</Box>
 	);
 };
 

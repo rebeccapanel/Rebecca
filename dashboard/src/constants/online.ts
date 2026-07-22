@@ -1,4 +1,4 @@
-// Keep this aligned with backend ONLINE_ACTIVE_WINDOW_SECONDS.
+// Frontend-only display window for online badges.
 const configuredWindow = Number(import.meta.env.VITE_ONLINE_ACTIVE_WINDOW_SECONDS);
 
 export const ONLINE_ACTIVE_WINDOW_SECONDS =

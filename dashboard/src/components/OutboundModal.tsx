@@ -3,13 +3,13 @@ import {
 	Button,
 	chakra,
 	FormControl,
+	FormErrorMessage,
 	FormLabel,
 	HStack,
 	IconButton,
 	Modal,
 	ModalCloseButton,
 	ModalOverlay,
-	Select,
 	Switch,
 	Tab,
 	TabList,
@@ -35,7 +35,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-import { useFieldArray, useForm, useWatch } from "react-hook-form";
+import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import {
 	ALPN_OPTION,
@@ -57,7 +57,9 @@ import {
 	XHTTPStreamSettings,
 } from "../utils/outbound";
 import { JsonEditor } from "./JsonEditor";
+import { SearchableTagSelect } from "./common/SearchableTagSelect";
 import {
+	XrayFieldGrid,
 	XrayModalBody,
 	XrayModalContent,
 	XrayModalFooter,
@@ -74,7 +76,8 @@ type StreamNetworkValue =
 	| "ws"
 	| "grpc"
 	| "httpupgrade"
-	| "xhttp";
+	| "xhttp"
+	| "hysteria";
 type OutboundSecurityValue = "none" | "tls" | "reality";
 type XhttpModeValue = (typeof MODE_OPTION)[keyof typeof MODE_OPTION];
 
@@ -95,17 +98,22 @@ interface OutboundFormValues {
 	id: string;
 	encryption: string;
 	flow: string;
+	reverseTag: string;
 	password: string;
 	user: string;
 	pass: string;
 	method: string;
 	ssIvCheck: boolean;
+	hysteriaVersion: number;
+	hysteriaAuth: string;
+	hysteriaUdpIdleTimeout: number;
 	tlsEnabled: boolean;
 	tlsServerName: string;
 	tlsFingerprint: string;
 	tlsAlpn: string;
-	tlsAllowInsecure: boolean;
 	tlsEchConfigList: string;
+	tlsPinnedPeerCertSha256: string;
+	tlsVerifyPeerCertByName: string;
 	realityEnabled: boolean;
 	realityServerName: string;
 	realityFingerprint: string;
@@ -162,6 +170,7 @@ interface OutboundModalProps {
 	onClose: () => void;
 	mode: "create" | "edit";
 	initialOutbound?: Record<string, unknown> | null;
+	existingTags: string[];
 	onSubmitOutbound: (outboundJson: unknown) => Promise<void> | void;
 }
 
@@ -174,17 +183,22 @@ const defaultValues: OutboundFormValues = {
 	id: "",
 	encryption: "none",
 	flow: "",
+	reverseTag: "",
 	password: "",
 	user: "",
 	pass: "",
 	method: SSMethods.AES_128_GCM,
 	ssIvCheck: false,
+	hysteriaVersion: 2,
+	hysteriaAuth: "",
+	hysteriaUdpIdleTimeout: 60,
 	tlsEnabled: false,
 	tlsServerName: "",
 	tlsFingerprint: "",
 	tlsAlpn: "",
-	tlsAllowInsecure: false,
 	tlsEchConfigList: "",
+	tlsPinnedPeerCertSha256: "",
+	tlsVerifyPeerCertByName: "",
 	realityEnabled: false,
 	realityServerName: "",
 	realityFingerprint: "",
@@ -252,6 +266,7 @@ const STREAM_NETWORK_OPTIONS_BY_PROTOCOL: Record<
 	[Protocols.VLESS]: ["tcp", "kcp", "ws", "grpc", "httpupgrade", "xhttp"],
 	[Protocols.Trojan]: ["tcp", "kcp", "ws", "grpc", "httpupgrade", "xhttp"],
 	[Protocols.Shadowsocks]: ["tcp", "kcp", "ws", "grpc", "httpupgrade", "xhttp"],
+	[Protocols.Hysteria]: ["hysteria"],
 	[Protocols.Freedom]: [],
 	[Protocols.Blackhole]: [],
 	[Protocols.DNS]: [],
@@ -301,19 +316,28 @@ const buildOutboundJson = (values: OutboundFormValues) => {
 			];
 			break;
 		case Protocols.VLESS:
-			settings.vnext = [
-				{
-					address: baseAddress,
-					port: basePort,
-					users: [
-						{
-							id: values.id || undefined,
-							encryption: values.encryption || undefined,
-							flow: values.flow || undefined,
-						},
-					],
-				},
-			];
+			if (values.reverseTag) {
+				settings.address = baseAddress;
+				settings.port = basePort;
+				settings.id = values.id || undefined;
+				settings.encryption = values.encryption || "none";
+				settings.flow = values.flow || undefined;
+				settings.reverse = { tag: values.reverseTag };
+			} else {
+				settings.vnext = [
+					{
+						address: baseAddress,
+						port: basePort,
+						users: [
+							{
+								id: values.id || undefined,
+								encryption: values.encryption || undefined,
+								flow: values.flow || undefined,
+							},
+						],
+					},
+				];
+			}
 			break;
 		case Protocols.Trojan:
 			settings.servers = [
@@ -334,6 +358,11 @@ const buildOutboundJson = (values: OutboundFormValues) => {
 					ivCheck: values.ssIvCheck || undefined,
 				},
 			];
+			break;
+		case Protocols.Hysteria:
+			settings.address = baseAddress;
+			settings.port = basePort || 443;
+			settings.version = Number(values.hysteriaVersion) || 2;
 			break;
 		case Protocols.Socks:
 		case Protocols.HTTP:
@@ -396,12 +425,18 @@ const buildOutboundJson = (values: OutboundFormValues) => {
 			break;
 	}
 
-	const security: OutboundSecurityValue = values.realityEnabled
-		? "reality"
-		: values.tlsEnabled
+	const security: OutboundSecurityValue =
+		values.protocol === Protocols.Hysteria
 			? "tls"
-			: "none";
-	const streamSettings = new StreamSettings(values.network, security);
+			: values.realityEnabled
+				? "reality"
+				: values.tlsEnabled
+					? "tls"
+					: "none";
+	const streamSettings = new StreamSettings(
+		values.protocol === Protocols.Hysteria ? "hysteria" : values.network,
+		security,
+	);
 
 	if (values.network === "tcp") {
 		streamSettings.tcp = new TcpStreamSettings(
@@ -443,14 +478,21 @@ const buildOutboundJson = (values: OutboundFormValues) => {
 			},
 		);
 	}
+	if (values.protocol === Protocols.Hysteria) {
+		streamSettings.hysteria.auth = values.hysteriaAuth || "";
+		streamSettings.hysteria.version = Number(values.hysteriaVersion) || 2;
+		streamSettings.hysteria.udpIdleTimeout =
+			Number(values.hysteriaUdpIdleTimeout) || 60;
+	}
 
 	if (values.tlsEnabled) {
 		streamSettings.tls = new TlsStreamSettings(
 			values.tlsServerName,
 			splitComma(values.tlsAlpn),
 			values.tlsFingerprint,
-			values.tlsAllowInsecure,
 			values.tlsEchConfigList,
+			values.tlsPinnedPeerCertSha256,
+			values.tlsVerifyPeerCertByName,
 		);
 	}
 
@@ -489,6 +531,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 	onClose,
 	mode,
 	initialOutbound,
+	existingTags,
 	onSubmitOutbound,
 }) => {
 	const { t } = useTranslation();
@@ -502,7 +545,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 		watch,
 		getValues,
 		setValue,
-		formState: { isValid },
+		formState: { errors, isValid },
 	} = useForm<OutboundFormValues>({
 		defaultValues,
 		mode: "onChange",
@@ -566,14 +609,20 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 	);
 
 	const capabilityProbe = useMemo(() => {
-		const stream = new StreamSettings(network ?? "tcp");
-		const security: OutboundSecurityValue = realityEnabled
-			? "reality"
-			: tlsEnabled
+		const stream = new StreamSettings(
+			typedProtocol === Protocols.Hysteria ? "hysteria" : (network ?? "tcp"),
+		);
+		const security: OutboundSecurityValue =
+			typedProtocol === Protocols.Hysteria
 				? "tls"
-				: "none";
+				: realityEnabled
+					? "reality"
+					: tlsEnabled
+						? "tls"
+						: "none";
 		stream.security = security;
-		stream.network = network ?? "tcp";
+		stream.network =
+			typedProtocol === Protocols.Hysteria ? "hysteria" : (network ?? "tcp");
 		const settings = Outbound.Settings.getSettings(typedProtocol) ?? {};
 		if (
 			typedProtocol === Protocols.VLESS &&
@@ -622,7 +671,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 		const streamSecurity =
 			(streamRaw?.security as OutboundSecurityValue | undefined) ?? "none";
 		mapped.network =
-			(streamRaw?.network as OutboundFormValues["network"]) ??
+			((streamRaw?.method ?? streamRaw?.network) as OutboundFormValues["network"]) ??
 			defaultValues.network;
 		mapped.tlsEnabled = streamSecurity === "tls";
 		mapped.realityEnabled = streamSecurity === "reality";
@@ -632,8 +681,10 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 		mapped.tlsAlpn = Array.isArray(tlsSettings?.alpn)
 			? tlsSettings.alpn.join(",")
 			: "";
-		mapped.tlsAllowInsecure = Boolean(tlsSettings?.allowInsecure);
 		mapped.tlsEchConfigList = tlsSettings?.echConfigList ?? "";
+		mapped.tlsPinnedPeerCertSha256 =
+			tlsSettings?.pinnedPeerCertSha256 ?? "";
+		mapped.tlsVerifyPeerCertByName = tlsSettings?.verifyPeerCertByName ?? "";
 
 		const realitySettings =
 			streamRaw?.reality ?? streamRaw?.realitySettings ?? {};
@@ -696,6 +747,20 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 					defaultValues.xhttpXmuxHKeepAlivePeriod,
 			);
 		}
+		if (mapped.network === "hysteria") {
+			const hysteriaSettings =
+				streamRaw?.hysteria ?? streamRaw?.hysteriaSettings ?? {};
+			mapped.hysteriaVersion = Number(
+				hysteriaSettings?.version ?? defaultValues.hysteriaVersion,
+			);
+			mapped.hysteriaAuth = hysteriaSettings?.auth ?? "";
+			mapped.hysteriaUdpIdleTimeout = Number(
+				hysteriaSettings?.udpIdleTimeout ??
+					defaultValues.hysteriaUdpIdleTimeout,
+			);
+			mapped.tlsEnabled = true;
+			mapped.realityEnabled = false;
+		}
 
 		if (outbound?.hasAddressPort()) {
 			mapped.address =
@@ -717,6 +782,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 			}
 			case Protocols.VLESS: {
 				const settings = outbound.settings as Outbound.VLESSSettings;
+				mapped.reverseTag = json?.settings?.reverse?.tag ?? "";
 				mapped.id = settings?.id ?? "";
 				mapped.flow = settings?.flow ?? "";
 				mapped.encryption = settings?.encryption ?? mapped.encryption;
@@ -738,6 +804,18 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 				mapped.address = settings?.address ?? mapped.address;
 				mapped.port = Number(settings?.port ?? mapped.port);
 				mapped.ssIvCheck = (settings as any)?.ivCheck ?? false;
+				break;
+			}
+			case Protocols.Hysteria: {
+				const settings = outbound.settings as Outbound.HysteriaSettings;
+				mapped.address = settings?.address ?? mapped.address;
+				mapped.port = Number(settings?.port ?? mapped.port);
+				mapped.hysteriaVersion = Number(
+					settings?.version ?? mapped.hysteriaVersion,
+				);
+				mapped.network = "hysteria";
+				mapped.tlsEnabled = true;
+				mapped.realityEnabled = false;
 				break;
 			}
 			case Protocols.Socks:
@@ -941,10 +1019,26 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 			setValue("tlsServerName", "");
 			setValue("tlsFingerprint", "");
 			setValue("tlsAlpn", "");
-			setValue("tlsAllowInsecure", false);
 			setValue("tlsEchConfigList", "");
+			setValue("tlsPinnedPeerCertSha256", "");
+			setValue("tlsVerifyPeerCertByName", "");
 		}
 	}, [canTls, setValue, tlsEnabled]);
+
+	useEffect(() => {
+		if (typedProtocol !== Protocols.Hysteria) {
+			return;
+		}
+		if (network !== "hysteria") {
+			setValue("network", "hysteria");
+		}
+		if (!tlsEnabled) {
+			setValue("tlsEnabled", true);
+		}
+		if (realityEnabled) {
+			setValue("realityEnabled", false);
+		}
+	}, [network, realityEnabled, setValue, tlsEnabled, typedProtocol]);
 
 	useEffect(() => {
 		if (!canReality && realityEnabled) {
@@ -990,6 +1084,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 			Protocols.VMess,
 			Protocols.Trojan,
 			Protocols.Shadowsocks,
+			Protocols.Hysteria,
 			Protocols.Socks,
 			Protocols.HTTP,
 			Protocols.Freedom,
@@ -1082,7 +1177,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 		const trimmed = configInput.trim();
 		if (!trimmed) {
 			setJsonError(
-				t("pages.outbound.configEmpty", "Please paste a config link"),
+				t("pages.outbound.configEmpty"),
 			);
 			return;
 		}
@@ -1095,28 +1190,22 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 				status: "success",
 				duration: 2000,
 				position: "top",
-				title: t("pages.outbound.configConvertedTitle", "Config converted"),
-				description: t(
-					"pages.outbound.configConvertedDesc",
-					"Configuration applied to the form.",
-				),
+				title: t("pages.outbound.configConvertedTitle"),
+				description: t("pages.outbound.configConvertedDesc"),
 			});
 			return;
 		}
 		const outboundFromLink = Outbound.fromLink(trimmed);
 		if (!outboundFromLink) {
 			setJsonError(
-				t("pages.outbound.invalidConfig", "Unsupported or invalid config link"),
+				t("pages.outbound.invalidConfig"),
 			);
 			toast({
 				status: "error",
 				duration: 2500,
 				position: "top",
-				title: t("pages.outbound.configParseFailedTitle", "Conversion failed"),
-				description: t(
-					"pages.outbound.configParseFailedDesc",
-					"Could not parse the provided config link.",
-				),
+				title: t("pages.outbound.configParseFailedTitle"),
+				description: t("pages.outbound.configParseFailedDesc"),
 			});
 			return;
 		}
@@ -1128,11 +1217,8 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 			status: "success",
 			duration: 2000,
 			position: "top",
-			title: t("pages.outbound.configConvertedTitle", "Config converted"),
-			description: t(
-				"pages.outbound.configConvertedDesc",
-				"Configuration applied to the form.",
-			),
+			title: t("pages.outbound.configConvertedTitle"),
+			description: t("pages.outbound.configConvertedDesc"),
 		});
 	};
 
@@ -1143,7 +1229,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 			toast({
 				title:
 					mode === "edit"
-						? t("pages.xray.outbound.updated", "Outbound updated")
+						? t("pages.xray.outbound.updated")
 						: t("pages.xray.outbound.addOutbound"),
 				status: "success",
 				duration: 2000,
@@ -1155,7 +1241,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 				title:
 					error?.data?.detail ||
 					error?.message ||
-					t("pages.xray.outbound.saveFailed", "Unable to save outbound"),
+					t("pages.xray.outbound.saveFailed"),
 				status: "error",
 				duration: 3000,
 				position: "top",
@@ -1189,7 +1275,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 			<XrayModalContent as="form" onSubmit={onSubmit}>
 				<XrayModalHeader>
 					{mode === "edit"
-						? t("pages.xray.outbound.editOutbound", "Edit Outbound")
+						? t("pages.xray.outbound.editOutbound")
 						: t("pages.xray.outbound.addOutbound")}
 				</XrayModalHeader>
 				<ModalCloseButton />
@@ -1209,27 +1295,48 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 								<VStack spacing={6} align="stretch">
 									<Box>
 										<Text fontWeight="semibold" mb={3}>
-											{t("pages.outbound.basicSettings", "Basic settings")}
+											{t("pages.outbound.basicSettings")}
 										</Text>
 										<VStack spacing={3} align="stretch">
-											<FormControl isRequired>
+											<FormControl isRequired isInvalid={Boolean(errors.tag)}>
 												<FormLabel>{t("pages.xray.outbound.tag")}</FormLabel>
 												<Input
 													size="sm"
 													placeholder="outbound-tag"
-													{...register("tag", { required: requiredMessage })}
+													{...register("tag", {
+														validate: (value) => {
+															const tag = value.trim();
+															if (!tag) return requiredMessage;
+															const originalTag = String(initialOutbound?.tag ?? "");
+															return (
+																!existingTags.includes(tag) ||
+																(mode === "edit" && tag === originalTag) ||
+																t("pages.xray.outbound.tagExists")
+															);
+														},
+													})}
 												/>
+												<FormErrorMessage>{errors.tag?.message}</FormErrorMessage>
 											</FormControl>
-											<HStack>
+											<XrayFieldGrid>
 												<FormControl isRequired>
 													<FormLabel>{t("protocol")}</FormLabel>
-													<Select size="sm" {...register("protocol")}>
-														{protocolOptions.map((item) => (
-															<option key={item} value={item}>
-																{item}
-															</option>
-														))}
-													</Select>
+													<Controller
+														control={control}
+														name="protocol"
+														render={({ field }) => (
+															<SearchableTagSelect
+																mode="single"
+																options={protocolOptions}
+																value={field.value ?? ""}
+																onChange={(value) =>
+																	field.onChange(value as string)
+																}
+																placeholder={t("protocol")}
+																searchPlaceholder={t("search")}
+															/>
+														)}
+													/>
 												</FormControl>
 												<FormControl>
 													<FormLabel>
@@ -1241,19 +1348,19 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 														{...register("sendThrough")}
 													/>
 												</FormControl>
-											</HStack>
+											</XrayFieldGrid>
 										</VStack>
 									</Box>
 
 									{requiresEndpoint && (
 										<Box>
 											<Text fontWeight="semibold" mb={3}>
-												{t("pages.outbound.endpoint", "Endpoint")}
+												{t("pages.outbound.endpoint")}
 											</Text>
 											<VStack spacing={3} align="stretch">
 												<FormControl isRequired={requiresEndpoint}>
 													<FormLabel>
-														{t("pages.outbound.address", "Address")}
+														{t("pages.outbound.address")}
 													</FormLabel>
 													<Input
 														size="sm"
@@ -1272,7 +1379,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 												>
 													<FormControl isRequired={requiresEndpoint}>
 														<FormLabel>
-															{t("pages.outbound.port", "Port")}
+															{t("port")}
 														</FormLabel>
 														<Input
 															size="sm"
@@ -1318,6 +1425,17 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																})}
 															/>
 														</FormControl>
+													) : typedProtocol === Protocols.Hysteria ? (
+														<FormControl>
+															<FormLabel>
+																{t("pages.outbound.hysteriaAuth")}
+															</FormLabel>
+															<Input
+																size="sm"
+																placeholder="auth"
+																{...register("hysteriaAuth")}
+															/>
+														</FormControl>
 													) : supportsUserPass ? (
 														<HStack flex="1" spacing={3} flexWrap="wrap">
 															<FormControl minW="180px">
@@ -1352,22 +1470,29 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 													<>
 														<FormControl isRequired={requiresMethod}>
 															<FormLabel>
-																{t("pages.outbound.method", "Method")}
+																{t("pages.outbound.method")}
 															</FormLabel>
-															<Select
-																size="sm"
-																{...register("method", {
+															<Controller
+																control={control}
+																name="method"
+																rules={{
 																	required: requiresMethod
 																		? requiredMessage
 																		: false,
-																})}
-															>
-																{Object.values(SSMethods).map((method) => (
-																	<option key={method} value={method}>
-																		{method}
-																	</option>
-																))}
-															</Select>
+																}}
+																render={({ field }) => (
+																	<SearchableTagSelect
+																		mode="single"
+																		options={Object.values(SSMethods)}
+																		value={field.value ?? ""}
+																		onChange={(value) =>
+																			field.onChange(value as string)
+																		}
+																		placeholder={t("pages.outbound.method")}
+																		searchPlaceholder={t("search")}
+																	/>
+																)}
+															/>
 														</FormControl>
 														<FormControl
 															display="flex"
@@ -1376,16 +1501,48 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 														>
 															<Switch size="sm" {...register("ssIvCheck")} />
 															<FormLabel mb="0">
-																{t("pages.outbound.ivCheck", "Enable IV Check")}
+																{t("pages.outbound.ivCheck")}
 															</FormLabel>
 														</FormControl>
 													</>
+												)}
+												{typedProtocol === Protocols.Hysteria && (
+													<HStack spacing={3} flexWrap="wrap">
+														<FormControl minW="180px">
+															<FormLabel>
+																{t("redisVersion")}
+															</FormLabel>
+															<Input
+																size="sm"
+																type="number"
+																min={1}
+																max={2}
+																{...register("hysteriaVersion", {
+																	valueAsNumber: true,
+																})}
+															/>
+														</FormControl>
+														<FormControl minW="180px">
+															<FormLabel>
+																{t("inbounds.hysteria.udpIdleTimeout")}
+															</FormLabel>
+															<Input
+																size="sm"
+																type="number"
+																min={2}
+																max={600}
+																{...register("hysteriaUdpIdleTimeout", {
+																	valueAsNumber: true,
+																})}
+															/>
+														</FormControl>
+													</HStack>
 												)}
 												{typedProtocol === Protocols.VLESS && (
 													<>
 														<FormControl>
 															<FormLabel>
-																{t("pages.outbound.encryption", "Encryption")}
+																{t("pages.outbound.encryption")}
 															</FormLabel>
 															<Input
 																size="sm"
@@ -1408,7 +1565,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 												{typedProtocol === Protocols.VMess && (
 													<FormControl>
 														<FormLabel>
-															{t("pages.outbound.security", "User security")}
+															{t("pages.outbound.security")}
 														</FormLabel>
 														<Input
 															size="sm"
@@ -1424,18 +1581,30 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 									{typedProtocol === Protocols.DNS && (
 										<Box>
 											<Text fontWeight="semibold" mb={3}>
-												{t("pages.outbound.dnsSettings", "DNS settings")}
+												{t("pages.outbound.dnsSettings")}
 											</Text>
-											<HStack>
+											<XrayFieldGrid>
 												<FormControl>
 													<FormLabel>{t("pages.outbound.network")}</FormLabel>
-													<Select size="sm" {...register("dnsNetwork")}>
-														<option value="udp">udp</option>
-														<option value="tcp">tcp</option>
-													</Select>
+													<Controller
+														control={control}
+														name="dnsNetwork"
+														render={({ field }) => (
+															<SearchableTagSelect
+																mode="single"
+																options={["udp", "tcp"]}
+																value={field.value ?? ""}
+																onChange={(value) =>
+																	field.onChange(value as string)
+																}
+																placeholder={t("pages.outbound.network")}
+																searchPlaceholder={t("search")}
+															/>
+														)}
+													/>
 												</FormControl>
 												<FormControl isRequired={requiresDnsServer}>
-													<FormLabel>{t("pages.outbound.port")}</FormLabel>
+													<FormLabel>{t("port")}</FormLabel>
 													<Input
 														size="sm"
 														type="number"
@@ -1454,7 +1623,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 														})}
 													/>
 												</FormControl>
-											</HStack>
+											</XrayFieldGrid>
 											<FormControl mt={3} isRequired={requiresDnsServer}>
 												<FormLabel>{t("pages.outbound.address")}</FormLabel>
 												<Input
@@ -1473,11 +1642,11 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 									{typedProtocol === Protocols.Freedom && (
 										<Box>
 											<Text fontWeight="semibold" mb={3}>
-												{t("pages.outbound.freedom", "Freedom options")}
+												{t("pages.outbound.freedom")}
 											</Text>
 											<FormControl>
 												<FormLabel>
-													{t("pages.outbound.strategy", "Strategy")}
+													{t("pages.outbound.strategy")}
 												</FormLabel>
 												<Input
 													size="sm"
@@ -1491,7 +1660,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 									{typedProtocol === Protocols.Blackhole && (
 										<Box>
 											<Text fontWeight="semibold" mb={3}>
-												{t("pages.outbound.blackhole", "Blackhole options")}
+												{t("pages.outbound.blackhole")}
 											</Text>
 											<FormControl>
 												<FormLabel>{t("pages.outbound.response")}</FormLabel>
@@ -1507,12 +1676,12 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 									{typedProtocol === Protocols.Wireguard && (
 										<Box>
 											<Text fontWeight="semibold" mb={3}>
-												{t("pages.outbound.wireguard", "Wireguard")}
+												{t("pages.outbound.wireguard")}
 											</Text>
 											<VStack spacing={3} align="stretch">
 												<FormControl>
 													<FormLabel>
-														{t("pages.outbound.secretKey", "Secret key")}
+														{t("pages.outbound.secretKey")}
 													</FormLabel>
 													<Input size="sm" {...register("wireguardSecret")} />
 												</FormControl>
@@ -1548,17 +1717,25 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 												</HStack>
 												<FormControl>
 													<FormLabel>Domain Strategy</FormLabel>
-													<Select
-														size="sm"
-														{...register("wireguardDomainStrategy")}
-													>
-														<option value="">{t("common.none", "None")}</option>
-														{WireguardDomainStrategy.map((strategy) => (
-															<option key={strategy} value={strategy}>
-																{strategy}
-															</option>
-														))}
-													</Select>
+													<Controller
+														control={control}
+														name="wireguardDomainStrategy"
+														render={({ field }) => (
+															<SearchableTagSelect
+																mode="single"
+																options={[
+																	{ value: "", label: t("userDialog.flow.none") },
+																	...WireguardDomainStrategy,
+																]}
+																value={field.value ?? ""}
+																onChange={(value) =>
+																	field.onChange(value as string)
+																}
+																placeholder={t("userDialog.flow.none")}
+																searchPlaceholder={t("search")}
+															/>
+														)}
+													/>
 												</FormControl>
 												<FormControl>
 													<FormLabel>Reserved</FormLabel>
@@ -1578,7 +1755,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 												<VStack spacing={3} align="stretch">
 													<HStack justify="space-between">
 														<Text fontWeight="semibold">
-															{t("pages.outbound.peer", "Peers")}
+															{t("pages.outbound.peer")}
 														</Text>
 														<IconButton
 															size="sm"
@@ -1606,10 +1783,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 															<HStack>
 																<FormControl>
 																	<FormLabel>
-																		{t(
-																			"pages.outbound.publicKey",
-																			"Public key",
-																		)}
+																		{t("pages.outbound.publicKey")}
 																	</FormLabel>
 																	<Input
 																		size="sm"
@@ -1631,10 +1805,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 															<HStack mt={2}>
 																<FormControl>
 																	<FormLabel>
-																		{t(
-																			"pages.outbound.allowedIPs",
-																			"Allowed IPs",
-																		)}
+																		{t("pages.outbound.allowedIPs")}
 																	</FormLabel>
 																	<Input
 																		size="sm"
@@ -1645,7 +1816,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																</FormControl>
 																<FormControl>
 																	<FormLabel>
-																		{t("pages.outbound.endpoint", "Endpoint")}
+																		{t("pages.outbound.endpoint")}
 																	</FormLabel>
 																	<Input
 																		size="sm"
@@ -1657,7 +1828,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 															</HStack>
 															<FormControl mt={2}>
 																<FormLabel>
-																	{t("pages.outbound.keepAlive", "Keep alive")}
+																	{t("pages.outbound.keepAlive")}
 																</FormLabel>
 																<Input
 																	size="sm"
@@ -1670,10 +1841,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 															</FormControl>
 															<FormControl mt={2}>
 																<FormLabel>
-																	{t(
-																		"pages.outbound.presharedKey",
-																		"Preshared key",
-																	)}
+																	{t("pages.outbound.presharedKey")}
 																</FormLabel>
 																<Input
 																	size="sm"
@@ -1692,68 +1860,124 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 									{canStream && (
 										<Box>
 											<Text fontWeight="semibold" mb={3}>
-												{t("pages.outbound.transport", "Transport")}
+												{t("pages.outbound.transport")}
 											</Text>
 											<VStack spacing={3} align="stretch">
-												<FormControl>
-													<FormLabel>{t("pages.outbound.network")}</FormLabel>
-													<Select size="sm" {...register("network")}>
-														{streamNetworkOptions.map((networkOption) => (
-															<option key={networkOption} value={networkOption}>
-																{networkOption}
-															</option>
-														))}
-													</Select>
-												</FormControl>
-												{network === "tcp" && (
-													<HStack>
+												<XrayFieldGrid>
+													<FormControl>
+														<FormLabel>{t("pages.outbound.network")}</FormLabel>
+														<Controller
+															control={control}
+															name="network"
+															render={({ field }) => (
+																<SearchableTagSelect
+																	mode="single"
+																	options={streamNetworkOptions}
+																	value={field.value ?? ""}
+																	onChange={(value) =>
+																		field.onChange(value as string)
+																	}
+																	placeholder={t("pages.outbound.network")}
+																	searchPlaceholder={t("search")}
+																/>
+															)}
+														/>
+													</FormControl>
+													{network === "tcp" && (
 														<FormControl>
 															<FormLabel>
-																{t("pages.outbound.tcpHeader", "Header")}
+																{t("pages.outbound.tcpHeader")}
 															</FormLabel>
-															<Select size="sm" {...register("tcpType")}>
-																<option value="none">none</option>
-																<option value="http">http</option>
-															</Select>
+															<Controller
+																control={control}
+																name="tcpType"
+																render={({ field }) => (
+																	<SearchableTagSelect
+																		mode="single"
+																		options={["none", "http"]}
+																		value={field.value ?? ""}
+																		onChange={(value) =>
+																			field.onChange(value as string)
+																		}
+																		placeholder={t("pages.outbound.tcpHeader")}
+																		searchPlaceholder={t("search")}
+																	/>
+																)}
+															/>
 														</FormControl>
-														{tcpType === "http" && (
-															<>
-																<FormControl>
-																	<FormLabel>{t("host")}</FormLabel>
-																	<Input size="sm" {...register("tcpHost")} />
-																</FormControl>
-																<FormControl>
-																	<FormLabel>{t("path")}</FormLabel>
-																	<Input size="sm" {...register("tcpPath")} />
-																</FormControl>
-															</>
-														)}
-													</HStack>
+													)}
+													{network === "kcp" && (
+														<FormControl>
+															<FormLabel>
+																{t("pages.outbound.kcpHeader")}
+															</FormLabel>
+															<Controller
+																control={control}
+																name="kcpType"
+																render={({ field }) => (
+																	<SearchableTagSelect
+																		mode="single"
+																		options={[...KCP_HEADER_TYPE_OPTIONS]}
+																		value={field.value ?? ""}
+																		onChange={(value) =>
+																			field.onChange(value as string)
+																		}
+																		placeholder={t("pages.outbound.kcpHeader")}
+																		searchPlaceholder={t("search")}
+																	/>
+																)}
+															/>
+														</FormControl>
+													)}
+													{network === "xhttp" && (
+														<FormControl>
+															<FormLabel>Mode</FormLabel>
+															<Controller
+																control={control}
+																name="xhttpMode"
+																render={({ field }) => (
+																	<SearchableTagSelect
+																		mode="single"
+																		options={[
+																			{ value: "", label: t("userDialog.flow.none") },
+																			...XHTTP_MODE_OPTIONS,
+																		]}
+																		value={field.value ?? ""}
+																		onChange={(value) =>
+																			field.onChange(value as string)
+																		}
+																		placeholder={t("userDialog.flow.none")}
+																		searchPlaceholder={t("search")}
+																	/>
+																)}
+															/>
+														</FormControl>
+													)}
+												</XrayFieldGrid>
+												{network === "tcp" && tcpType === "http" && (
+													<XrayFieldGrid>
+														<FormControl>
+															<FormLabel>{t("host")}</FormLabel>
+															<Input size="sm" {...register("tcpHost")} />
+														</FormControl>
+														<FormControl>
+															<FormLabel>{t("path")}</FormLabel>
+															<Input size="sm" {...register("tcpPath")} />
+														</FormControl>
+													</XrayFieldGrid>
 												)}
 												{network === "kcp" && (
-													<HStack>
+													<XrayFieldGrid>
 														<FormControl>
 															<FormLabel>
-																{t("pages.outbound.kcpHeader", "mKCP header")}
-															</FormLabel>
-															<Select size="sm" {...register("kcpType")}>
-																{KCP_HEADER_TYPE_OPTIONS.map((headerType) => (
-																	<option key={headerType} value={headerType}>
-																		{headerType}
-																	</option>
-																))}
-															</Select>
-														</FormControl>
-														<FormControl>
-															<FormLabel>
-																{t("pages.outbound.kcpSeed", "mKCP seed")}
+																{t("inbounds.kcp.seed")}
 															</FormLabel>
 															<Input size="sm" {...register("kcpSeed")} />
 														</FormControl>
-													</HStack>
+													</XrayFieldGrid>
 												)}
 												{network === "ws" && (
-													<HStack>
+													<XrayFieldGrid>
 														<FormControl>
 															<FormLabel>{t("host")}</FormLabel>
 															<Input size="sm" {...register("wsHost")} />
@@ -1762,11 +1986,11 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 															<FormLabel>{t("path")}</FormLabel>
 															<Input size="sm" {...register("wsPath")} />
 														</FormControl>
-													</HStack>
+													</XrayFieldGrid>
 												)}
 												{network === "grpc" && (
 													<>
-														<HStack>
+														<XrayFieldGrid>
 															<FormControl>
 																<FormLabel>{t("serviceName")}</FormLabel>
 																<Input
@@ -1781,7 +2005,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																	{...register("grpcAuthority")}
 																/>
 															</FormControl>
-														</HStack>
+														</XrayFieldGrid>
 														<FormControl
 															display="flex"
 															alignItems="center"
@@ -1792,13 +2016,13 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																{...register("grpcMultiMode")}
 															/>
 															<FormLabel mb="0">
-																{t("pages.outbound.multiMode", "Multi mode")}
+																{t("inbounds.grpc.multiMode")}
 															</FormLabel>
 														</FormControl>
 													</>
 												)}
 												{network === "httpupgrade" && (
-													<HStack>
+													<XrayFieldGrid>
 														<FormControl>
 															<FormLabel>{t("host")}</FormLabel>
 															<Input
@@ -1813,11 +2037,11 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																{...register("httpupgradePath")}
 															/>
 														</FormControl>
-													</HStack>
+													</XrayFieldGrid>
 												)}
 												{network === "xhttp" && (
 													<VStack spacing={3} align="stretch">
-														<HStack>
+														<XrayFieldGrid>
 															<FormControl>
 																<FormLabel>{t("host")}</FormLabel>
 																<Input size="sm" {...register("xhttpHost")} />
@@ -1826,20 +2050,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																<FormLabel>{t("path")}</FormLabel>
 																<Input size="sm" {...register("xhttpPath")} />
 															</FormControl>
-														</HStack>
-														<FormControl>
-															<FormLabel>Mode</FormLabel>
-															<Select size="sm" {...register("xhttpMode")}>
-																<option value="">
-																	{t("common.none", "None")}
-																</option>
-																{XHTTP_MODE_OPTIONS.map((modeOption) => (
-																	<option key={modeOption} value={modeOption}>
-																		{modeOption}
-																	</option>
-																))}
-															</Select>
-														</FormControl>
+														</XrayFieldGrid>
 														{(formValues?.xhttpMode === "stream-up" ||
 															formValues?.xhttpMode === "stream-one") && (
 															<FormControl
@@ -1863,7 +2074,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																/>
 															</FormControl>
 														)}
-														<HStack>
+														<XrayFieldGrid>
 															<FormControl>
 																<FormLabel>Max Concurrency</FormLabel>
 																<Input
@@ -1881,8 +2092,8 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																	})}
 																/>
 															</FormControl>
-														</HStack>
-														<HStack>
+														</XrayFieldGrid>
+														<XrayFieldGrid>
 															<FormControl>
 																<FormLabel>Max Reuse Times</FormLabel>
 																<Input
@@ -1900,8 +2111,8 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																	{...register("xhttpXmuxHMaxRequestTimes")}
 																/>
 															</FormControl>
-														</HStack>
-														<HStack>
+														</XrayFieldGrid>
+														<XrayFieldGrid>
 															<FormControl>
 																<FormLabel>Max Reusable Secs</FormLabel>
 																<Input
@@ -1919,7 +2130,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																	})}
 																/>
 															</FormControl>
-														</HStack>
+														</XrayFieldGrid>
 													</VStack>
 												)}
 											</VStack>
@@ -1935,8 +2146,17 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 												<FormLabel mb={1}>
 													{t("pages.outbound.security")}
 												</FormLabel>
-												<Select
-													size="sm"
+												<SearchableTagSelect
+													mode="single"
+													options={[
+														{ value: "none", label: t("userDialog.flow.none") },
+														{ value: "tls", label: "TLS", disabled: !canTls },
+														{
+															value: "reality",
+															label: "Reality",
+															disabled: !canReality,
+														},
+													]}
 													value={
 														realityEnabled && canReality
 															? "reality"
@@ -1944,17 +2164,17 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 																? "tls"
 																: "none"
 													}
-													onChange={(event) => {
-														const next = event.target
-															.value as OutboundSecurityValue;
+													onChange={(value) => {
+														const next = value as OutboundSecurityValue;
 														setValue("tlsEnabled", next === "tls");
 														setValue("realityEnabled", next === "reality");
 														if (next !== "tls") {
 															setValue("tlsServerName", "");
 															setValue("tlsFingerprint", "");
 															setValue("tlsAlpn", "");
-															setValue("tlsAllowInsecure", false);
 															setValue("tlsEchConfigList", "");
+															setValue("tlsPinnedPeerCertSha256", "");
+															setValue("tlsVerifyPeerCertByName", "");
 														}
 														if (next !== "reality") {
 															setValue("realityServerName", "");
@@ -1965,17 +2185,9 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 															setValue("realityMldsa65Verify", "");
 														}
 													}}
-												>
-													<option value="none">
-														{t("common.none", "None")}
-													</option>
-													<option value="tls" disabled={!canTls}>
-														TLS
-													</option>
-													<option value="reality" disabled={!canReality}>
-														Reality
-													</option>
-												</Select>
+													placeholder={t("pages.outbound.security")}
+													searchPlaceholder={t("search")}
+												/>
 											</FormControl>
 											{tlsEnabled && canTls && (
 												<VStack spacing={3} align="stretch" mt={3}>
@@ -1989,21 +2201,25 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 													</FormControl>
 													<FormControl>
 														<FormLabel>uTLS</FormLabel>
-														<Select size="sm" {...register("tlsFingerprint")}>
-															<option value="">
-																{t("common.none", "None")}
-															</option>
-															{TLS_FINGERPRINT_OPTIONS.map(
-																(fingerprintOption) => (
-																	<option
-																		key={fingerprintOption}
-																		value={fingerprintOption}
-																	>
-																		{fingerprintOption}
-																	</option>
-																),
+														<Controller
+															control={control}
+															name="tlsFingerprint"
+															render={({ field }) => (
+																<SearchableTagSelect
+																	mode="single"
+																	options={[
+																		{ value: "", label: t("userDialog.flow.none") },
+																		...TLS_FINGERPRINT_OPTIONS,
+																	]}
+																	value={field.value ?? ""}
+																	onChange={(value) =>
+																		field.onChange(value as string)
+																	}
+																	placeholder={t("userDialog.flow.none")}
+																	searchPlaceholder={t("search")}
+																/>
 															)}
-														</Select>
+														/>
 													</FormControl>
 													<FormControl>
 														<FormLabel>ALPN</FormLabel>
@@ -2020,16 +2236,20 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 															{...register("tlsEchConfigList")}
 														/>
 													</FormControl>
-													<FormControl
-														display="flex"
-														alignItems="center"
-														gap={2}
-													>
-														<Switch
+													<FormControl>
+														<FormLabel>Certificate SHA-256 pin</FormLabel>
+														<Input
 															size="sm"
-															{...register("tlsAllowInsecure")}
+															{...register("tlsPinnedPeerCertSha256")}
 														/>
-														<FormLabel mb="0">Allow Insecure</FormLabel>
+													</FormControl>
+													<FormControl>
+														<FormLabel>Verify certificate name</FormLabel>
+														<Input
+															size="sm"
+															placeholder="example.com"
+															{...register("tlsVerifyPeerCertByName")}
+														/>
 													</FormControl>
 												</VStack>
 											)}
@@ -2044,24 +2264,25 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 													</FormControl>
 													<FormControl>
 														<FormLabel>uTLS</FormLabel>
-														<Select
-															size="sm"
-															{...register("realityFingerprint")}
-														>
-															<option value="">
-																{t("common.none", "None")}
-															</option>
-															{TLS_FINGERPRINT_OPTIONS.map(
-																(fingerprintOption) => (
-																	<option
-																		key={fingerprintOption}
-																		value={fingerprintOption}
-																	>
-																		{fingerprintOption}
-																	</option>
-																),
+														<Controller
+															control={control}
+															name="realityFingerprint"
+															render={({ field }) => (
+																<SearchableTagSelect
+																	mode="single"
+																	options={[
+																		{ value: "", label: t("userDialog.flow.none") },
+																		...TLS_FINGERPRINT_OPTIONS,
+																	]}
+																	value={field.value ?? ""}
+																	onChange={(value) =>
+																		field.onChange(value as string)
+																	}
+																	placeholder={t("userDialog.flow.none")}
+																	searchPlaceholder={t("search")}
+																/>
 															)}
-														</Select>
+														/>
 													</FormControl>
 													<FormControl>
 														<FormLabel>
@@ -2130,14 +2351,22 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 													</FormControl>
 													<FormControl>
 														<FormLabel>xudp UDP 443</FormLabel>
-														<Select
-															size="sm"
-															{...register("muxXudpProxyUdp443")}
-														>
-															<option value="reject">reject</option>
-															<option value="allow">allow</option>
-															<option value="skip">skip</option>
-														</Select>
+														<Controller
+															control={control}
+															name="muxXudpProxyUdp443"
+															render={({ field }) => (
+																<SearchableTagSelect
+																	mode="single"
+																	options={["reject", "allow", "skip"]}
+																	value={field.value ?? ""}
+																	onChange={(value) =>
+																		field.onChange(value as string)
+																	}
+																	placeholder="reject"
+																	searchPlaceholder={t("search")}
+																/>
+															)}
+														/>
 													</FormControl>
 												</VStack>
 											)}
@@ -2149,16 +2378,13 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 								<VStack align="stretch" spacing={3}>
 									<FormControl>
 										<FormLabel>
-											{t("pages.outbound.configToJson", "Config to JSON")}
+											{t("pages.outbound.configToJson")}
 										</FormLabel>
 										<HStack align="start" spacing={3}>
 											<Textarea
 												value={configInput}
 												onChange={(e) => setConfigInput(e.target.value)}
-												placeholder={t(
-													"pages.outbound.configPlaceholder",
-													"Paste vmess/vless/trojan/ss link here",
-												)}
+												placeholder={t("pages.outbound.configPlaceholder")}
 												rows={3}
 												fontFamily="mono"
 												fontSize="sm"
@@ -2170,13 +2396,14 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 												colorScheme="primary"
 												onClick={handleConfigToJson}
 											>
-												{t("pages.outbound.convertConfig", "Convert")}
+												{t("pages.outbound.convertConfig")}
 											</Button>
 										</HStack>
 									</FormControl>
 									<Box height="420px">
 										<JsonEditor
 											json={jsonData}
+											canonicalContext="outbound"
 											onChange={handleJsonEditorChange}
 										/>
 									</Box>

@@ -5,13 +5,66 @@
 		}
 	],
 	"settings": {
-		"[python]": {
-			"editor.defaultFormatter": "ms-python.autopep8",
-			"editor.formatOnSave": true,
+		"go.useLanguageServer": true,
+		"go.toolsManagement.autoUpdate": true,
+		"go.testFlags": [
+			"-count=1"
+		],
+		"gopls": {
+			"staticcheck": true,
+			"ui.semanticTokens": true
 		},
-		"autopep8.args": [ "--max-line-length", "120" ],
-		"editor.codeActionsOnSave": {
-			"source.organizeImports": "never"
-		}
+		"[go]": {
+			"editor.defaultFormatter": "golang.go",
+			"editor.formatOnSave": true,
+			"editor.codeActionsOnSave": {
+				"source.organizeImports": "explicit"
+			}
+		},
+		"[typescript]": {
+			"editor.defaultFormatter": "biomejs.biome",
+			"editor.formatOnSave": true
+		},
+		"[typescriptreact]": {
+			"editor.defaultFormatter": "biomejs.biome",
+			"editor.formatOnSave": true
+		},
+		"[javascript]": {
+			"editor.defaultFormatter": "biomejs.biome",
+			"editor.formatOnSave": true
+		},
+		"[javascriptreact]": {
+			"editor.defaultFormatter": "biomejs.biome",
+			"editor.formatOnSave": true
+		},
+		"[json]": {
+			"editor.defaultFormatter": "biomejs.biome",
+			"editor.formatOnSave": true
+		},
+		"[jsonc]": {
+			"editor.defaultFormatter": "biomejs.biome",
+			"editor.formatOnSave": true
+		},
+		"files.exclude": {
+			"**/.tmp*": true,
+			"**/dist": true,
+			"**/tmp": true,
+			"dashboard/dist": true
+		},
+		"search.exclude": {
+			"**/.tmp*": true,
+			"**/dist": true,
+			"**/tmp": true,
+			"dashboard/dist": true
+		},
+		"files.watcherExclude": {
+			"**/.git/objects/**": true,
+			"**/.git/subtree-cache/**": true,
+			"**/.tmp*/**": true,
+			"**/dist/**": true,
+			"**/tmp/**": true,
+			"dashboard/node_modules/**": true
+		},
+		"typescript.tsdk": "dashboard/node_modules/typescript/lib"
 	}
 }

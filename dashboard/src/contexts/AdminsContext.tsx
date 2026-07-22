@@ -6,7 +6,6 @@ import type {
 	StandardAdminPermissionsBulkPayload,
 	StandardAdminPermissionsBulkResponse,
 } from "types/Admin";
-import { getAuthToken } from "utils/authStorage";
 import { getAdminsPerPageLimitSize } from "utils/userPreferenceStorage";
 import { create } from "zustand";
 
@@ -19,8 +18,10 @@ export type AdminFilters = {
 
 type AdminsStore = {
 	admins: Admin[];
+	adminOptions: Admin[];
 	total: number;
 	loading: boolean;
+	adminOptionsLoading: boolean;
 	lastFetchedAt: number | null;
 	cacheAuthToken: string | null;
 	currentRequestKey: string | null;
@@ -34,6 +35,10 @@ type AdminsStore = {
 		overrides?: Partial<AdminFilters>,
 		options?: { force?: boolean },
 	) => Promise<void>;
+	fetchAdminOptions: (
+		overrides?: Partial<AdminFilters>,
+		options?: { force?: boolean },
+	) => Promise<Admin[]>;
 	setFilters: (filters: Partial<AdminFilters>) => void;
 	onFilterChange: (filters: Partial<AdminFilters>) => void;
 	createAdmin: (payload: AdminCreatePayload) => Promise<Admin>;
@@ -105,15 +110,22 @@ const normalizeAdminsResponse = (
 
 let adminsFetchSequence = 0;
 let adminsAbortController: AbortController | null = null;
+let adminOptionsFetchSequence = 0;
+let adminOptionsAbortController: AbortController | null = null;
 
 export const clearAdminsCache = () => {
 	adminsFetchSequence += 1;
+	adminOptionsFetchSequence += 1;
 	adminsAbortController?.abort();
+	adminOptionsAbortController?.abort();
 	adminsAbortController = null;
+	adminOptionsAbortController = null;
 	useAdminsStore.setState({
 		admins: [],
+		adminOptions: [],
 		total: 0,
 		loading: false,
+		adminOptionsLoading: false,
 		lastFetchedAt: null,
 		cacheAuthToken: null,
 		currentRequestKey: null,
@@ -128,8 +140,10 @@ export const clearAdminsCache = () => {
 
 export const useAdminsStore = create<AdminsStore>((set, get) => ({
 	admins: [],
+	adminOptions: [],
 	total: 0,
 	loading: false,
+	adminOptionsLoading: false,
 	lastFetchedAt: null,
 	cacheAuthToken: null,
 	currentRequestKey: null,
@@ -150,7 +164,7 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 		} = get();
 		const now = Date.now();
 		const force = options?.force === true;
-		const currentAuthToken = getAuthToken();
+		const currentAuthToken = "session";
 
 		const filters = {
 			...stateFilters,
@@ -261,6 +275,87 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 		set({ inflight: promise, currentRequestKey: requestKey });
 		return promise;
 	},
+	async fetchAdminOptions(overrides, options) {
+		const currentAuthToken = "session";
+		const force = options?.force === true;
+		const filters: AdminFilters = {
+			search: "",
+			limit: 1000,
+			offset: 0,
+			sort: "username",
+			...overrides,
+		};
+		const query: Record<string, string | number> = {};
+		if (filters.search) {
+			query.username = filters.search;
+		}
+		if (filters.offset !== undefined) {
+			query.offset = filters.offset;
+		}
+		if (filters.limit !== undefined) {
+			query.limit = filters.limit;
+		}
+		if (filters.sort) {
+			query.sort = filters.sort;
+		}
+
+		if (
+			!force &&
+			get().adminOptions.length > 0 &&
+			get().cacheAuthToken === currentAuthToken &&
+			!filters.search
+		) {
+			return get().adminOptions;
+		}
+
+		const requestId = ++adminOptionsFetchSequence;
+		adminOptionsAbortController?.abort();
+		const abortController = new AbortController();
+		adminOptionsAbortController = abortController;
+		set({ adminOptionsLoading: true });
+		try {
+			const data = await fetch<{ admins: Admin[]; total: number } | Admin[]>(
+				"/admins",
+				{ query, signal: abortController.signal },
+			);
+			if (
+				requestId !== adminOptionsFetchSequence ||
+				abortController.signal.aborted
+			) {
+				return get().adminOptions;
+			}
+			const parsed = Array.isArray(data)
+				? { admins: data, total: data.length }
+				: { admins: data.admins || [], total: data.total || 0 };
+			const { admins } = normalizeAdminsResponse(
+				parsed.admins,
+				parsed.total,
+				filters,
+			);
+			set({
+				adminOptions: admins,
+				cacheAuthToken: currentAuthToken,
+			});
+			return admins;
+		} catch (error) {
+			if (
+				requestId === adminOptionsFetchSequence &&
+				!abortController.signal.aborted &&
+				!isAbortError(error)
+			) {
+				console.error("Failed to fetch admin options:", error);
+				set({ adminOptions: [] });
+			}
+			return get().adminOptions;
+		} finally {
+			if (requestId === adminOptionsFetchSequence) {
+				if (adminOptionsAbortController === abortController) {
+					adminOptionsAbortController = null;
+				}
+				set({ adminOptionsLoading: false });
+			}
+		}
+	},
 	setFilters(partial) {
 		set((state) => ({
 			filters: {
@@ -282,6 +377,7 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 			method: "POST",
 			body: payload,
 		});
+		await get().fetchAdminOptions(undefined, { force: true });
 		return created;
 	},
 	async updateAdmin(username, payload) {
@@ -290,18 +386,21 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 			body: payload,
 		});
 		await get().fetchAdmins(undefined, { force: true });
+		await get().fetchAdminOptions(undefined, { force: true });
 	},
 	async deleteAdmin(username) {
 		await fetch(`/admin/${encodeURIComponent(username)}`, {
 			method: "DELETE",
 		});
 		await get().fetchAdmins(undefined, { force: true });
+		await get().fetchAdminOptions(undefined, { force: true });
 	},
 	async resetUsage(username) {
 		await fetch(`/admin/usage/reset/${encodeURIComponent(username)}`, {
 			method: "POST",
 		});
 		await get().fetchAdmins(undefined, { force: true });
+		await get().fetchAdminOptions(undefined, { force: true });
 	},
 	async resetDeletedUsersUsage(username, serviceId) {
 		await fetch(
@@ -312,6 +411,7 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 			},
 		);
 		await get().fetchAdmins(undefined, { force: true });
+		await get().fetchAdminOptions(undefined, { force: true });
 	},
 	async disableAdmin(username, reason) {
 		await fetch(`/admin/${encodeURIComponent(username)}/disable`, {
@@ -319,12 +419,14 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 			body: { reason },
 		});
 		await get().fetchAdmins(undefined, { force: true });
+		await get().fetchAdminOptions(undefined, { force: true });
 	},
 	async enableAdmin(username) {
 		await fetch(`/admin/${encodeURIComponent(username)}/enable`, {
 			method: "POST",
 		});
 		await get().fetchAdmins(undefined, { force: true });
+		await get().fetchAdminOptions(undefined, { force: true });
 	},
 	async bulkUpdateStandardPermissions(payload) {
 		const response = await fetch<StandardAdminPermissionsBulkResponse>(
@@ -335,6 +437,7 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 			},
 		);
 		await get().fetchAdmins(undefined, { force: true });
+		await get().fetchAdminOptions(undefined, { force: true });
 		return response;
 	},
 	openAdminDialog(admin) {

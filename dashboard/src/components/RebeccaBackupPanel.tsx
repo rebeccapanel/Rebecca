@@ -6,13 +6,13 @@ import {
 	FormControl,
 	FormLabel,
 	HStack,
-	Select,
 	SimpleGrid,
 	Stack,
 	Text,
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
+import { PanelSelect as Select } from "components/common/PanelSelect";
 import {
 	ArrowDownTrayIcon,
 	ArrowUpTrayIcon,
@@ -30,11 +30,6 @@ import {
 	generateSuccessMessage,
 } from "utils/toastHandler";
 import { FileDropzone } from "./common/FileDropzone";
-
-const scopeLabels: Record<RebeccaBackupScope, string> = {
-	database: "Database only",
-	full: "Database + Rebecca files",
-};
 
 const buildBackupFilename = (scope: RebeccaBackupScope) => {
 	const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -60,15 +55,9 @@ export const RebeccaBackupPanel = ({
 
 	const importWarning = useMemo(() => {
 		if (importScope === "full") {
-			return t(
-				"settings.backup.fullImportWarning",
-				"Full import replaces the Rebecca database and restores /etc/rebecca plus /var/lib/rebecca from the backup.",
-			);
+			return t("settings.backup.fullImportWarning");
 		}
-		return t(
-			"settings.backup.databaseImportWarning",
-			"Database-only import replaces the current Rebecca database while leaving server files untouched.",
-		);
+		return t("settings.backup.databaseImportWarning");
 	}, [importScope, t]);
 
 	const exportMutation = useMutation(exportRebeccaBackup, {
@@ -82,7 +71,7 @@ export const RebeccaBackupPanel = ({
 			anchor.remove();
 			URL.revokeObjectURL(url);
 			generateSuccessMessage(
-				t("settings.backup.exportReady", "Rebecca backup is ready."),
+				t("settings.backup.exportReady"),
 				toast,
 			);
 		},
@@ -97,23 +86,16 @@ export const RebeccaBackupPanel = ({
 		{
 			onSuccess: (result) => {
 				generateSuccessMessage(
-					t(
-						"settings.backup.importDone",
-						"Backup imported. Restored {{tables}} tables and {{rows}} rows.",
-						{
+					t("settings.backup.importDone", {
 							tables: result.tables_restored,
 							rows: result.rows_restored,
-						},
-					),
+						}),
 					toast,
 				);
 				if (result.warnings.length) {
 					toast({
 						status: "warning",
-						title: t(
-							"settings.backup.importWarnings",
-							"Import completed with warnings",
-						),
+						title: t("settings.backup.importWarnings"),
 						description: result.warnings.join("\n"),
 						duration: 8000,
 						isClosable: true,
@@ -131,10 +113,7 @@ export const RebeccaBackupPanel = ({
 		if (!selectedFile) {
 			toast({
 				status: "warning",
-				title: t(
-					"settings.backup.fileRequired",
-					"Select a Rebecca backup file first.",
-				),
+				title: t("settings.backup.fileRequired"),
 			});
 			return;
 		}
@@ -146,13 +125,10 @@ export const RebeccaBackupPanel = ({
 		<Stack spacing={5} align="stretch">
 			<Box>
 				<Text fontWeight="semibold">
-					{t("settings.backup.title", "Rebecca backup and import")}
+					{t("settings.backup.title")}
 				</Text>
 				<Text fontSize="sm" color="gray.500">
-					{t(
-						"settings.backup.description",
-						"Export or restore Rebecca in a portable .rbbackup format that works across SQLite, MySQL and MariaDB installations.",
-					)}
+					{t("settings.backup.description")}
 				</Text>
 			</Box>
 
@@ -160,10 +136,7 @@ export const RebeccaBackupPanel = ({
 				<Alert status="warning" borderRadius="md">
 					<AlertIcon />
 					<Text fontSize="sm">
-						{t(
-							"settings.backup.binaryOnly",
-							"Rebecca backup and import are disabled in Docker mode. Migrate this panel to the binary version to use host-level backup and restore.",
-						)}
+						{t("settings.backup.binaryOnly")}
 					</Text>
 				</Alert>
 			) : null}
@@ -178,18 +151,15 @@ export const RebeccaBackupPanel = ({
 					<VStack align="stretch" spacing={4}>
 						<Box>
 							<Text fontWeight="semibold">
-								{t("settings.backup.exportTitle", "Export backup")}
+								{t("settings.backup.exportTitle")}
 							</Text>
 							<Text fontSize="sm" color="gray.500">
-								{t(
-									"settings.backup.exportHint",
-									"Database-only exports just Rebecca data. Full exports also include Rebecca configuration and data directories.",
-								)}
+								{t("settings.backup.exportHint")}
 							</Text>
 						</Box>
 						<FormControl>
 							<FormLabel>
-								{t("settings.backup.scope", "Backup scope")}
+								{t("settings.telegram.backupScope")}
 							</FormLabel>
 							<Select
 								value={exportScope}
@@ -199,10 +169,10 @@ export const RebeccaBackupPanel = ({
 								}
 							>
 								<option value="database">
-									{t("settings.backup.databaseOnly", scopeLabels.database)}
+									{t("settings.backup.databaseOnly")}
 								</option>
 								<option value="full">
-									{t("settings.backup.full", scopeLabels.full)}
+									{t("settings.backup.full")}
 								</option>
 							</Select>
 						</FormControl>
@@ -213,7 +183,7 @@ export const RebeccaBackupPanel = ({
 								isLoading={exportMutation.isLoading}
 								isDisabled={!backupActionsAvailable}
 							>
-								{t("settings.backup.download", "Download backup")}
+								{t("settings.backup.download")}
 							</Button>
 						</HStack>
 					</VStack>
@@ -228,13 +198,10 @@ export const RebeccaBackupPanel = ({
 					<VStack align="stretch" spacing={4}>
 						<Box>
 							<Text fontWeight="semibold">
-								{t("settings.backup.importTitle", "Import backup")}
+								{t("settings.backup.import")}
 							</Text>
 							<Text fontSize="sm" color="gray.500">
-								{t(
-									"settings.backup.importHint",
-									"Upload a Rebecca .rbbackup file created by this panel.",
-								)}
+								{t("settings.backup.importHint")}
 							</Text>
 						</Box>
 						<Alert status="warning" borderRadius="md">
@@ -243,7 +210,7 @@ export const RebeccaBackupPanel = ({
 						</Alert>
 						<FormControl>
 							<FormLabel>
-								{t("settings.backup.restoreScope", "Restore scope")}
+								{t("settings.backup.restoreScope")}
 							</FormLabel>
 							<Select
 								value={importScope}
@@ -253,30 +220,24 @@ export const RebeccaBackupPanel = ({
 								}
 							>
 								<option value="database">
-									{t("settings.backup.databaseOnly", scopeLabels.database)}
+									{t("settings.backup.databaseOnly")}
 								</option>
 								<option value="full">
-									{t("settings.backup.full", scopeLabels.full)}
+									{t("settings.backup.full")}
 								</option>
 							</Select>
 						</FormControl>
 						<FormControl>
 							<FormLabel>
-								{t("settings.backup.file", "Rebecca backup file")}
+								{t("settings.backup.file")}
 							</FormLabel>
 							<FileDropzone
 								accept=".rbbackup,application/vnd.rebecca.backup,application/gzip"
 								isDisabled={!backupActionsAvailable}
 								selectedFile={selectedFile}
-								title={t(
-									"settings.backup.dropTitle",
-									"Drop Rebecca backup here",
-								)}
-								description={t(
-									"settings.backup.dropHint",
-									"Drag a .rbbackup file here or select it from your device.",
-								)}
-								emptyText={t("settings.backup.selectFile", "Select file")}
+								title={t("settings.backup.dropTitle")}
+								description={t("settings.backup.dropHint")}
+								emptyText={t("settings.backup.selectFile")}
 								onFileSelect={setSelectedFile}
 							/>
 						</FormControl>
@@ -288,7 +249,7 @@ export const RebeccaBackupPanel = ({
 								isLoading={importMutation.isLoading}
 								isDisabled={!backupActionsAvailable}
 							>
-								{t("settings.backup.import", "Import backup")}
+								{t("settings.backup.import")}
 							</Button>
 						</HStack>
 					</VStack>

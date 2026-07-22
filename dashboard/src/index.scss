@@ -26,6 +26,67 @@
   --rb-font-stack: "Arad", "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", sans-serif;
   --rb-dialog-viewport-height: 100dvh;
   --rb-dialog-safe-bottom: max(0.75rem, env(safe-area-inset-bottom));
+  --rb-panel-bg: #101010;
+  --rb-panel-main: #111111;
+  --rb-panel-sidebar: #2b2b2b;
+  --rb-panel-surface: #242424;
+  --rb-panel-elevated: #2f2f2f;
+  --rb-panel-border: #3a3a3a;
+  --rb-panel-border-strong: #4a4a4a;
+  --rb-panel-text: #f5f5f5;
+  --rb-panel-text-secondary: #d0d0d0;
+  --rb-panel-text-muted: #8a8a8a;
+  --rb-panel-accent: #e0003c;
+  --rb-panel-accent-hover: #f01446;
+  --rb-panel-row-hover: #1b1b1b;
+  --rb-panel-row-selected: #181818;
+  --rb-sidebar-offset: 0px;
+  --primary-50: #ffe6ed;
+  --primary-100: #ffb8c9;
+  --primary-200: #ff88a5;
+  --primary-300: #fb5a82;
+  --primary-400: #f42d62;
+  --primary-500: #e0003c;
+  --primary-600: #bf0033;
+  --primary-700: #990029;
+  --primary-800: #73001f;
+  --primary-900: #4c0015;
+  --rb-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --rb-ease-standard: cubic-bezier(0.77, 0, 0.175, 1);
+  --rb-duration-fast: 140ms;
+  --rb-duration-ui: 180ms;
+}
+
+.rb-theme-dark,
+.chakra-ui-dark {
+  --rb-panel-bg: #101010;
+  --rb-panel-main: #111111;
+  --rb-panel-sidebar: #2b2b2b;
+  --rb-panel-surface: #242424;
+  --rb-panel-elevated: #2f2f2f;
+  --rb-panel-border: #3a3a3a;
+  --rb-panel-border-strong: #4a4a4a;
+  --rb-panel-text: #f5f5f5;
+  --rb-panel-text-secondary: #b8b8b8;
+  --rb-panel-text-muted: #8a8a8a;
+  --rb-panel-row-hover: #1b1b1b;
+  --rb-panel-row-selected: #181818;
+}
+
+.rb-theme-light,
+.chakra-ui-light {
+  --rb-panel-bg: #f4f5f7;
+  --rb-panel-main: #f7f8fa;
+  --rb-panel-sidebar: #ffffff;
+  --rb-panel-surface: #ffffff;
+  --rb-panel-elevated: #eef0f3;
+  --rb-panel-border: #d8dce2;
+  --rb-panel-border-strong: #c2c8d0;
+  --rb-panel-text: #17191c;
+  --rb-panel-text-secondary: #4f5661;
+  --rb-panel-text-muted: #7a828e;
+  --rb-panel-row-hover: #f0f2f5;
+  --rb-panel-row-selected: #ffffff;
 }
 
 @supports (height: 100svh) {
@@ -38,6 +99,8 @@
 html, body, #root {
   overflow-x: hidden;
   font-family: var(--rb-font-stack);
+  background: var(--rb-panel-bg);
+  color: var(--rb-panel-text);
 }
 
 * {
@@ -51,6 +114,731 @@ select,
 textarea,
 [role="button"] {
   -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  scrollbar-color: var(--rb-panel-border-strong) var(--rb-panel-main);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--rb-panel-main);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--rb-panel-border-strong);
+  border: 2px solid var(--rb-panel-main);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #5a5a5a;
+}
+
+.rb-sidebar-scroll {
+  scrollbar-width: none;
+  scrollbar-color: transparent transparent;
+  scrollbar-gutter: auto;
+}
+
+.rb-sidebar-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
+}
+
+.chakra-ui-dark .chakra-checkbox__control[data-checked],
+.chakra-checkbox__control[data-checked] {
+  background: var(--rb-panel-accent) !important;
+  border-color: var(--rb-panel-accent) !important;
+}
+
+.rb-data-table {
+  border-collapse: separate !important;
+  border-spacing: 0 6px !important;
+  direction: inherit;
+  table-layout: auto;
+  width: 100%;
+}
+
+.rb-data-table tr {
+  vertical-align: middle;
+}
+
+.rb-data-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.rb-data-table th {
+  height: 24px;
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--rb-panel-text-muted) !important;
+  background: transparent !important;
+  border: 0 !important;
+  padding-top: 0 !important;
+  padding-bottom: 3px !important;
+  padding-left: clamp(4px, 0.45vw, 8px) !important;
+  padding-right: clamp(4px, 0.45vw, 8px) !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  font-weight: 700 !important;
+  text-align: inherit;
+}
+
+.rb-data-table td {
+  background: var(--rb-panel-surface) !important;
+  border-top: 1px solid var(--rb-panel-border) !important;
+  border-bottom: 1px solid var(--rb-panel-border) !important;
+  border-left: 0 !important;
+  border-right: 0 !important;
+  height: 48px;
+  min-height: 48px;
+  min-width: 0;
+  overflow: hidden;
+  vertical-align: middle;
+  text-align: inherit;
+  padding-left: clamp(4px, 0.45vw, 8px) !important;
+  padding-right: clamp(4px, 0.45vw, 8px) !important;
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
+}
+
+.rb-data-table-row {
+  position: relative;
+}
+
+.rb-data-table-row > td {
+  transition:
+    background-color 140ms ease,
+    box-shadow 140ms ease,
+    border-color 140ms ease;
+  will-change: background-color, border-color, box-shadow;
+}
+
+.rb-data-table-row > td:first-child {
+  border-inline-start: 1px solid var(--rb-panel-border) !important;
+  border-start-start-radius: 6px;
+  border-end-start-radius: 6px;
+}
+
+.rb-data-table-row > td:last-child {
+  border-inline-end: 1px solid var(--rb-panel-border) !important;
+  border-start-end-radius: 6px;
+  border-end-end-radius: 6px;
+}
+
+.rb-data-table-row:hover > td {
+  background: var(--rb-panel-row-hover) !important;
+  border-color: var(--rb-panel-border-strong) !important;
+}
+
+.rb-data-table-row[data-selected="true"] > td {
+  background: var(--rb-panel-row-selected) !important;
+  border-top-color: var(--rb-panel-accent) !important;
+  border-bottom-color: var(--rb-panel-accent) !important;
+}
+
+.rb-data-table-row[data-selected="true"] > td:first-child {
+  border-inline-start-color: var(--rb-panel-accent) !important;
+  box-shadow: inset 2px 0 0 var(--rb-panel-accent);
+}
+
+.rb-data-table-row[data-selected="true"] > td:last-child {
+  border-inline-end-color: var(--rb-panel-accent) !important;
+}
+
+.rb-select-cell {
+  width: 32px !important;
+  min-width: 32px !important;
+  max-width: 32px !important;
+  padding-left: 4px !important;
+  padding-right: 4px !important;
+  text-align: center !important;
+  position: sticky;
+  inset-inline-start: 0;
+  z-index: 3;
+}
+
+.rb-select-cell .chakra-checkbox {
+  margin-inline: auto;
+}
+
+.rb-select-cell + .rb-primary-cell,
+.rb-select-cell + td {
+  padding-inline-start: clamp(8px, 0.65vw, 12px) !important;
+}
+
+.rb-primary-cell {
+  color: var(--rb-panel-text) !important;
+}
+
+.rb-meta-cell,
+.rb-data-table td:not(.rb-primary-cell) {
+  color: var(--rb-panel-text-secondary);
+}
+
+.rb-data-table .chakra-stack,
+.rb-data-table .chakra-hstack,
+.rb-data-table .chakra-vstack {
+  min-width: 0;
+}
+
+.rb-actions-cell {
+  width: var(--rb-actions-column-width, 64px) !important;
+  min-width: var(--rb-actions-column-width, 64px) !important;
+  max-width: var(--rb-actions-column-width, 64px) !important;
+  padding-left: 4px !important;
+  padding-right: 4px !important;
+  text-align: end !important;
+  direction: inherit;
+  white-space: nowrap;
+  overflow: visible;
+  position: sticky;
+  inset-inline-end: 0;
+  z-index: 3;
+}
+
+.rb-data-table th.rb-select-cell,
+.rb-data-table th.rb-actions-cell {
+  background: var(--rb-panel-main) !important;
+  z-index: 4;
+}
+
+.rb-actions-header-icon {
+  width: 100%;
+  min-height: 18px;
+  color: var(--rb-panel-text-muted);
+}
+
+.rb-cell-content {
+  display: flex;
+  direction: inherit;
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: start;
+  gap: 0.3rem;
+  overflow: hidden;
+}
+
+.rb-cell-content[data-align="center"] {
+  justify-content: center;
+  text-align: center;
+}
+
+.rb-cell-content[data-align="center"] .rb-cell-value {
+  flex: 0 1 auto;
+  text-align: center;
+}
+
+.rb-cell-content[data-align="end"] {
+  justify-content: flex-end;
+  text-align: end;
+}
+
+.rb-cell-content[data-align="end"] .rb-cell-value {
+  flex: 0 1 auto;
+  text-align: end;
+}
+
+.rb-cell-value {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-align: start;
+}
+
+.rb-cell-value > * {
+  max-width: 100%;
+}
+
+.rb-cell-content[data-truncate="true"] .rb-cell-value,
+.rb-resource-primary .rb-cell-content:not([data-multiline="true"]) .rb-cell-value,
+.rb-resource-meta-value .rb-cell-content:not([data-multiline="true"]) .rb-cell-value {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.rb-cell-content[data-multiline="true"] {
+  max-height: none;
+  overflow: visible;
+  align-items: center;
+}
+
+.rb-cell-content[data-multiline="true"] .rb-cell-value {
+  white-space: normal;
+  overflow: visible;
+}
+
+.rb-cell-copy {
+  color: var(--rb-panel-text-muted) !important;
+  opacity: 0.74;
+}
+
+.rb-cell-copy:hover {
+  color: var(--rb-panel-text) !important;
+  opacity: 1;
+}
+
+.rb-data-table-root[data-actions-display="menu"] .rb-actions-cell {
+  padding-left: 4px !important;
+  padding-right: 4px !important;
+}
+
+.rb-data-table-root[data-actions-display="inline"] .rb-actions-cell {
+  padding-left: 4px !important;
+  padding-right: 4px !important;
+}
+
+.rb-data-table-row:hover > td.rb-actions-cell,
+.rb-data-table-row[data-selected="true"] > td.rb-actions-cell {
+  z-index: 4;
+}
+
+.rb-actions-cell > button,
+.rb-actions-cell .rb-inline-actions {
+  margin-inline-start: auto;
+  margin-inline-end: 0;
+}
+
+.rb-actions-cell > .rb-inline-actions {
+  width: 100%;
+  justify-content: flex-end;
+}
+
+.rb-row-action {
+  color: var(--rb-panel-text-muted) !important;
+  opacity: 0.42;
+  transition:
+    opacity 120ms ease,
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+.rb-data-table-root[data-actions-hover="true"] .rb-row-action {
+  opacity: 0.38;
+}
+
+.rb-data-table-root[data-actions-always="true"] .rb-row-action,
+.rb-data-table-row:hover .rb-row-action,
+.rb-data-table-row[data-selected="true"] .rb-row-action,
+.rb-resource-card:hover .rb-row-action,
+.rb-resource-card[data-selected="true"] .rb-row-action,
+.rb-row-action[aria-expanded="true"] {
+  opacity: 1;
+  color: var(--rb-panel-text) !important;
+}
+
+.rb-inline-actions {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.rb-inline-actions .chakra-button,
+.rb-inline-actions .chakra-icon-button,
+.rb-inline-action {
+  color: var(--rb-panel-text-muted);
+}
+
+.rb-inline-actions .chakra-button:hover,
+.rb-inline-actions .chakra-icon-button:hover,
+.rb-inline-action:hover {
+  color: var(--rb-panel-text);
+}
+
+.rb-mobile-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.rb-mobile-actions .rb-inline-actions {
+  flex-wrap: wrap;
+  max-width: min(48vw, 14rem);
+}
+
+.rb-kbd-action {
+  text-transform: uppercase;
+  letter-spacing: 0;
+  font-size: 11px;
+}
+
+.rb-resource-list {
+  width: 100%;
+}
+
+  .rb-resource-card {
+    border: 1px solid var(--rb-panel-border);
+    border-radius: 6px;
+    background: var(--rb-panel-surface);
+    padding: 0.8rem;
+  overflow: hidden;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+      box-shadow 140ms ease;
+  }
+
+  .rb-resource-card[data-expanded="true"] {
+    border-color: var(--rb-panel-border-strong);
+    background: var(--rb-panel-row-hover);
+  }
+
+  .rb-resource-card-main {
+    width: 100%;
+  }
+
+.rb-resource-card:hover {
+  background: var(--rb-panel-row-hover);
+  border-color: var(--rb-panel-border-strong);
+}
+
+.rb-resource-card[data-selected="true"] {
+  border-color: var(--rb-panel-accent);
+  box-shadow: inset 2px 0 0 var(--rb-panel-accent);
+}
+
+.rb-resource-mobile-head {
+  min-width: 0;
+  width: 100%;
+  padding: 0 0.55rem 0.15rem;
+  color: var(--rb-panel-text-muted);
+  font-size: 0.66rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0;
+}
+
+.rb-resource-mobile-head-select {
+  width: auto;
+  min-width: 42px;
+  gap: 0.35rem;
+}
+
+.rb-resource-mobile-head-primary,
+.rb-resource-mobile-head-summary,
+.rb-resource-mobile-head-actions {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rb-resource-mobile-head-summary {
+  flex: 0 1 auto;
+  max-width: min(38vw, 9.5rem);
+  text-align: end;
+}
+
+.rb-resource-mobile-head-actions {
+  flex: 0 0 auto;
+  width: 34px;
+  display: flex;
+  justify-content: flex-end;
+  text-align: end;
+}
+
+.rb-resource-mobile-head-actions .rb-actions-header-icon {
+  justify-content: flex-end;
+}
+
+.rb-bulk-action-bar {
+  will-change: opacity, transform;
+  max-width: calc(100vw - 24px);
+  overflow: hidden;
+}
+
+.rb-bulk-action-bar .chakra-stack,
+.rb-bulk-action-bar .chakra-button__group {
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: wrap;
+}
+
+.rb-data-table-root,
+.rb-data-table-pagination {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.rb-data-table-pagination {
+  overflow: hidden;
+}
+
+.rb-data-table-pagination > *,
+.rb-data-table-pagination .chakra-stack,
+.rb-data-table-pagination .chakra-button__group {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.rb-data-table-pagination .chakra-stack {
+  flex-wrap: wrap;
+}
+
+.rb-data-table-pagination .chakra-button__group {
+  flex-wrap: wrap;
+  white-space: normal;
+}
+
+.rb-data-table-pagination .chakra-button {
+  min-width: 0;
+}
+
+@media (max-width: 767px) {
+  .rb-data-table-pagination .chakra-button__group {
+    width: 100%;
+    flex-wrap: nowrap;
+  }
+
+  .rb-data-table-pagination .chakra-button__group > .chakra-button {
+    min-width: 0;
+    white-space: nowrap;
+  }
+}
+
+.rb-resource-card:hover .rb-row-action,
+.rb-resource-card .rb-row-action[aria-expanded="true"] {
+  opacity: 1;
+  color: var(--rb-panel-text) !important;
+}
+
+  .rb-resource-primary {
+    color: var(--rb-panel-text);
+    font-weight: 700;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .rb-resource-summary {
+    color: var(--rb-panel-text);
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: min(38vw, 9.5rem);
+    overflow: hidden;
+    font-size: 0.82rem;
+    font-weight: 700;
+    text-align: end;
+  }
+
+  .rb-resource-summary .rb-cell-content {
+    justify-content: flex-end;
+  }
+
+  .rb-resource-summary .rb-cell-value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .rb-resource-expanded {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--rb-panel-border);
+  }
+
+  .rb-resource-details {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+
+  .rb-resource-details[data-density="compact"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 0.75rem;
+  }
+
+  .rb-resource-meta {
+    display: inline-flex;
+    min-width: 0;
+    max-width: 100%;
+  align-items: center;
+  gap: 0.35rem;
+  border: 0;
+  border-radius: 4px;
+  background: var(--rb-panel-elevated);
+  padding: 0.18rem 0.38rem;
+  font-size: 0.74rem;
+    line-height: 1.25;
+  }
+
+  .rb-resource-details .rb-resource-meta {
+    display: grid;
+    grid-template-columns: minmax(5.5rem, 34%) minmax(0, 1fr);
+    align-items: center;
+    gap: 0.6rem;
+    width: 100%;
+    background: transparent;
+    border-radius: 0;
+    border-bottom: 1px solid var(--rb-panel-border);
+    padding: 0.42rem 0;
+    font-size: 0.78rem;
+  }
+
+  .rb-resource-details[data-density="compact"] .rb-resource-meta {
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 0.4rem;
+    min-width: 0;
+  }
+
+  .rb-resource-details .rb-resource-meta:first-child {
+    padding-top: 0;
+  }
+
+  .rb-resource-details .rb-resource-meta:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
+  }
+
+  .rb-resource-details .rb-resource-meta > span {
+    color: var(--rb-panel-text-muted);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .rb-resource-details .rb-resource-meta-value {
+    justify-self: end;
+    text-align: end;
+  }
+
+  .rb-resource-details[data-density="compact"] .rb-resource-meta-value {
+    justify-self: start;
+    text-align: start;
+  }
+
+  .rb-resource-expanded-actions {
+    width: 100%;
+    margin-top: 0.75rem;
+    padding-top: 0.55rem;
+    border-top: 1px solid var(--rb-panel-border);
+  }
+
+  .rb-resource-expanded-actions .rb-inline-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    flex-direction: row-reverse;
+  }
+
+  [dir="rtl"] .rb-resource-expanded-actions .rb-inline-actions {
+    justify-content: flex-start;
+    flex-direction: row;
+  }
+
+  @media (max-width: 767px) {
+    .rb-resource-card-controls > .chakra-stack {
+      display: grid !important;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .rb-resource-card-controls > .chakra-stack > :first-child {
+      grid-column: 1 / -1;
+    }
+
+    .rb-resource-card-controls input,
+    .rb-resource-card-controls select,
+    .rb-resource-card-controls .chakra-select__wrapper,
+    .rb-resource-card-controls .chakra-input__group {
+      width: 100% !important;
+      min-width: 0 !important;
+    }
+  }
+
+.rb-resource-meta-value {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.circle {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  min-width: 10px;
+  min-height: 10px;
+  flex: 0 0 10px;
+  vertical-align: middle;
+}
+
+.rb-user-online-indicator .circle {
+  margin: 0;
+}
+
+.rb-status-badge-shell {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.rb-status-badge {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  flex-wrap: nowrap !important;
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap !important;
+  vertical-align: middle;
+}
+
+.rb-status-badge svg {
+  flex: 0 0 auto;
+}
+
+.rb-status-badge-text {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap !important;
+}
+
+.rb-resource-state {
+  width: 100%;
+  border: 1px solid var(--rb-panel-border);
+  border-radius: 6px;
+  background: var(--rb-panel-surface);
+  color: var(--rb-panel-text-muted);
+  padding: 1.25rem;
+  text-align: center;
+}
+
+.rb-confirm-dialog-content .rb-confirm-dialog-actions {
+  width: auto !important;
+  padding: 0.45rem 0 0 !important;
+  gap: 0.375rem !important;
+  box-shadow: none !important;
+}
+
+.rb-confirm-dialog-content .rb-confirm-dialog-actions .chakra-button,
+.rb-confirm-dialog-content .rb-confirm-dialog-actions button {
+  height: 34px !important;
+  min-height: 34px !important;
+  max-height: 34px !important;
+  padding-block: 0 !important;
+  padding-inline: 0.75rem !important;
+  line-height: 1.1 !important;
+  border-radius: 0.5rem !important;
 }
 
 @media (max-width: 768px) {
@@ -77,6 +865,29 @@ textarea,
     border-radius: 0 !important;
     display: flex;
     flex-direction: column;
+  }
+
+  .chakra-modal__content-container:has(.rb-confirm-dialog-content) {
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 1rem !important;
+  }
+
+  .chakra-modal__content.rb-confirm-dialog-content {
+    width: min(100%, 32rem) !important;
+    max-width: calc(100vw - 2rem) !important;
+    height: auto !important;
+    max-height: calc(var(--rb-dialog-viewport-height) - 2rem) !important;
+    margin: auto !important;
+    border-radius: 1rem !important;
+    display: block !important;
+  }
+
+  .chakra-modal__footer.rb-confirm-dialog-actions,
+  .rb-confirm-dialog-content .rb-confirm-dialog-actions {
+    width: auto !important;
+    padding: 0.45rem 0 0 !important;
+    box-shadow: none !important;
   }
 
   .chakra-modal__header {
@@ -147,7 +958,7 @@ textarea,
 
   .chakra-modal__body .chakra-numberinput__field {
     padding-inline-end: 0.75rem !important;
-    text-align: inherit;
+    text-align: left !important;
   }
 
   .chakra-modal__body .chakra-numberinput__stepper-group {
@@ -206,71 +1017,32 @@ textarea,
   }
 }
 
-/* Full RTL Support for Persian/Farsi Language */
-/* When dir="rtl" is set, the entire layout becomes right-to-left */
+/* Let native logical layout handle RTL; isolate only explicitly mixed text. */
 [dir="rtl"] {
   direction: rtl;
-  text-align: right;
+  text-align: start;
 }
 
-/* Fix Bidirectional Text Rendering Issue for Persian/English mixed content */
-[dir="rtl"] * {
-  unicode-bidi: embed;
+[dir="auto"] {
+  unicode-bidi: plaintext;
 }
 
-/* RTL Table Text Alignment - Only align text right, keep column order */
-/* Force table to remain LTR to preserve column order unless it opts out with .rb-rtl-table */
-[dir="rtl"] table:not(.rb-rtl-table) {
-  direction: ltr !important;
-}
-
-[dir="rtl"] table:not(.rb-rtl-table) th,
-[dir="rtl"] table:not(.rb-rtl-table) td {
-  text-align: right !important;
-}
-
-/* Actions column should remain on the right side in RTL */
-[dir="rtl"] table:not(.rb-rtl-table) th[data-actions="true"],
-[dir="rtl"] table:not(.rb-rtl-table) td[data-actions="true"] {
-  text-align: right !important;
-}
-
-/* Center-aligned columns should remain centered */
-[dir="rtl"] table:not(.rb-rtl-table) th[data-center="true"],
-[dir="rtl"] table:not(.rb-rtl-table) td[data-center="true"] {
+[dir="rtl"] th[data-center="true"],
+[dir="rtl"] td[data-center="true"] {
   text-align: center !important;
 }
 
-/* Keep username column left-aligned (next to ID) in RTL */
-[dir="rtl"] table:not(.rb-rtl-table) th[data-col="username"],
-[dir="rtl"] table:not(.rb-rtl-table) td[data-col="username"] {
-  text-align: left !important;
+[dir="rtl"] .rb-data-table-row[data-selected="true"] > td:first-child,
+[dir="rtl"] .rb-resource-card[data-selected="true"] {
+  box-shadow: inset -2px 0 0 var(--rb-panel-accent);
 }
 
-/* Opt-in RTL text alignment without flipping column order */
-[dir="rtl"] table.rb-rtl-table {
-  direction: ltr !important;
-}
-
-[dir="rtl"] table.rb-rtl-table th,
-[dir="rtl"] table.rb-rtl-table td {
-  text-align: right !important;
-}
-
-[dir="rtl"] table.rb-rtl-table th[data-actions="true"],
-[dir="rtl"] table.rb-rtl-table td[data-actions="true"] {
-  text-align: right !important;
-}
-
-[dir="rtl"] table.rb-rtl-table th[data-center="true"],
-[dir="rtl"] table.rb-rtl-table td[data-center="true"] {
-  text-align: center !important;
-}
-
-[dir="rtl"] table:not(.rb-rtl-table) th,
-[dir="rtl"] table:not(.rb-rtl-table) td {
-  border-left: 0 !important;
-  border-right: 0 !important;
+[dir="rtl"] .chakra-menu__menu-list,
+[dir="rtl"] .chakra-popover__content,
+[dir="rtl"] .chakra-modal__content,
+[dir="rtl"] .chakra-drawer__content {
+  direction: rtl;
+  text-align: start;
 }
 
 /* Mirror close buttons and form icons when switching direction */
@@ -282,16 +1054,14 @@ textarea,
   left: var(--chakra-space-3) !important;
 }
 
-[dir="rtl"] .chakra-input__left-element,
-[dir="rtl"] .chakra-input__left-addon {
+[dir="rtl"] .chakra-input__left-element {
   left: auto;
-  right: var(--chakra-space-3);
+  right: 0;
 }
 
-[dir="rtl"] .chakra-input__right-element,
-[dir="rtl"] .chakra-input__right-addon {
+[dir="rtl"] .chakra-input__right-element {
   right: auto;
-  left: var(--chakra-space-3);
+  left: 0;
 }
 
 [dir="rtl"] .chakra-input__field,
@@ -311,18 +1081,8 @@ textarea,
 }
 
 .bg-blue-animate {
-  animation: blur-animate 200ms ease-in;
   backdrop-filter: blur(10px);
-}
-
-@keyframes blur-animate {
-  from {
-    backdrop-filter: blur(1px);
-  }
-
-  to {
-    backdrop-filter: blur(10px);
-  }
+  -webkit-backdrop-filter: blur(10px);
 }
 
 .animate-spin {
@@ -374,7 +1134,11 @@ table thead {
 }
 
 .chakra-popover__popper {
-  z-index: 9999 !important;
+  z-index: 17020 !important;
+}
+
+.date-time-picker-popover {
+  z-index: 17020 !important;
 }
 
 .inbound-item .chakra-checkbox__label {
@@ -610,7 +1374,9 @@ table thead {
   width: 28px;
   height: 28px;
   border-radius: 6px;
-  transition: all 0.2s;
+  transition:
+    background-color var(--rb-duration-ui) var(--rb-ease-out),
+    color var(--rb-duration-ui) var(--rb-ease-out);
   border: none;
   display: flex;
   align-items: center;
@@ -662,7 +1428,10 @@ table thead {
   margin: 2px;
   border-radius: 6px;
   font-size: 0.9rem;
-  transition: all 0.2s;
+  transition:
+    background-color var(--rb-duration-ui) var(--rb-ease-out),
+    border-color var(--rb-duration-ui) var(--rb-ease-out),
+    color var(--rb-duration-ui) var(--rb-ease-out);
 }
 
 .datepicker-with-quickselect .react-datepicker__day:hover {
@@ -710,7 +1479,15 @@ table thead {
   background-color: transparent;
   border: 1.5px solid var(--chakra-colors-gray-300);
   color: var(--chakra-colors-gray-700);
-  transition: all 0.2s;
+  transition:
+    background-color var(--rb-duration-ui) var(--rb-ease-out),
+    border-color var(--rb-duration-ui) var(--rb-ease-out),
+    color var(--rb-duration-ui) var(--rb-ease-out),
+    transform 120ms var(--rb-ease-out);
+}
+
+.datepicker-quickselect-panel button:active {
+  transform: scale(0.97);
 }
 
 .chakra-ui-dark .datepicker-quickselect-panel button {
@@ -980,12 +1757,41 @@ table thead {
   }
 }
 
-img.twemoji-emoji {
-  display: inline-block;
-  height: 1.2em;
+.apple-emoji-glyph {
+  display: inline-grid;
+  grid-template: "emoji" 1.2em / 1.2em;
   width: 1.2em;
-  margin: 0 0.1em 0 0.1em;
+  height: 1.2em;
+  margin: 0 0.1em;
   vertical-align: -0.1em;
+  line-height: 1;
+}
+
+.apple-emoji-glyph > * {
+  grid-area: emoji;
+}
+
+.apple-emoji-native {
+  display: grid;
+  place-items: center;
+  font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+}
+
+img.apple-emoji {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  visibility: hidden;
+}
+
+.apple-emoji-glyph[data-loaded="true"] {
+  .apple-emoji-native {
+    visibility: hidden;
+  }
+
+  img.apple-emoji {
+    visibility: visible;
+  }
 }
 
 @keyframes green-pulse-animation {
@@ -1077,4 +1883,291 @@ img.twemoji-emoji {
 .rb-seasonal-christmas select,
 .rb-seasonal-christmas textarea {
   cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40' viewBox='0 0 40 40'%3E%3Cg transform='rotate(-18 20 20)'%3E%3Cpath d='M20 4l-4 6h8l-4-6z' fill='%23fff' stroke='%23c62828' stroke-width='1.6'/%3E%3Cpath d='M20 8l-5 7h10l-5-7z' fill='%23e8f5e9' stroke='%232e7d32' stroke-width='1.6'/%3E%3Cpath d='M20 12l-6 8h12l-6-8z' fill='%23c8e6c9' stroke='%232e7d32' stroke-width='1.6'/%3E%3Cpath d='M20 17l-7 9h14l-7-9z' fill='%23a5d6a7' stroke='%232e7d32' stroke-width='1.6'/%3E%3Crect x='17' y='26' width='6' height='7' rx='1.2' fill='%238d6e63'/%3E%3Ccircle cx='20' cy='10' r='1.4' fill='%23c62828'/%3E%3Ccircle cx='18' cy='15' r='1.4' fill='%23fbc02d'/%3E%3Ccircle cx='22' cy='17' r='1.4' fill='%2300acc1'/%3E%3Ccircle cx='16.5' cy='20' r='1.4' fill='%23ef6c00'/%3E%3Ccircle cx='23.5' cy='22' r='1.4' fill='%238e24aa'/%3E%3C/g%3E%3C/svg%3E") 10 4, auto;
+}
+
+/* ============================================================
+   Users section
+   Everything below is scoped to the Users page: either under the
+   .rb-users-section wrapper (overrides of shared rb-* pieces) or
+   via rb-user-* / rb-users-* classes that only the Users
+   components render. Other pages are intentionally unaffected.
+   ============================================================ */
+
+/* --- online dot ----------------------------------------------------- */
+
+/* Online indicator only: green (pulsing) while the user is connected,
+   neutral gray otherwise. Subscription status lives in the badge column. */
+.rb-user-status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  min-width: 10px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--rb-panel-border-strong);
+}
+
+.rb-user-status-dot[data-online="true"] {
+  background: #22c55e;
+}
+
+/* --- username meta row (admin chip + last-seen) --------------------- */
+
+.rb-user-username-meta {
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+/* both truncate/clip on their own single line instead of wrapping */
+.rb-user-username-meta > .rb-user-admin-chip {
+  flex: 0 1 auto;
+  min-width: 3.5em;
+}
+
+.rb-user-username-meta > span:not(.rb-user-admin-chip) {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  flex-wrap: nowrap !important;
+  white-space: nowrap;
+}
+
+/* --- "by admin" chip ---------------------------------------------- */
+
+/* inline-block (not flex) so text-overflow can ellipsize the admin name;
+   deliberately slim and uniformly muted (one neutral look for every
+   reseller) so it reads as quiet metadata, not a colored label */
+.rb-user-admin-chip {
+  display: inline-block;
+  vertical-align: middle;
+  border: 1px solid var(--rb-panel-border);
+  border-radius: 999px;
+  padding: 0 6px;
+  font-size: 0.62rem;
+  font-weight: 500;
+  line-height: 1.45;
+  white-space: nowrap;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: var(--rb-panel-elevated);
+  color: var(--rb-panel-text-secondary);
+}
+
+/* Mobile: the tag stays out of the collapsed card row (it re-appears as
+   an "Admin" row inside the expanded details instead). */
+.rb-users-section .rb-resource-card-main .rb-user-admin-chip {
+  display: none;
+}
+
+/* --- gradient usage meter ------------------------------------------ */
+
+.rb-user-usage-track {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--rb-panel-elevated);
+  overflow: hidden;
+}
+
+.rb-user-usage[data-variant="compact"] .rb-user-usage-track {
+  height: 5px;
+}
+
+.rb-user-usage-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.rb-user-usage[data-tone="unlimited"] .rb-user-usage-fill {
+  opacity: 0.55;
+  background-size: 200% 100%;
+}
+
+.rb-user-usage-pair {
+  color: var(--rb-panel-text-secondary);
+  font-weight: 600;
+}
+
+.rb-user-usage-percent {
+  color: var(--rb-panel-text-muted);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.rb-user-usage[data-tone="warn"] .rb-user-usage-percent {
+  color: #f59e0b;
+}
+
+.rb-user-usage[data-tone="critical"] .rb-user-usage-percent {
+  color: #ef4444;
+}
+
+/* --- page header accent --------------------------------------------- */
+
+.rb-users-section .rb-users-header {
+  position: relative;
+  overflow: hidden;
+}
+
+.rb-users-section .rb-users-header::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(
+    180deg,
+    var(--primary-400),
+    var(--primary-600)
+  );
+}
+
+/* --- shared-piece overrides, scoped to the Users page ---------------- */
+
+/* summary count tags read as colorful pills */
+.rb-users-section .chakra-tag {
+  border-radius: 999px;
+  font-weight: 700;
+}
+
+/* Data-usage summary cell (mobile card row + its column header): the
+   shared component sizes this box to fit its own content ("auto" basis),
+   which let the progress bar render at a different width on every row
+   depending on the usage/lifetime text length. Pin it to a fixed basis
+   instead so every row's bar is identical, while staying responsive.
+   Sized smaller than the shared default so it doesn't crowd out the
+   username column on narrow phones. */
+.rb-users-section .rb-resource-mobile-head-summary,
+.rb-users-section .rb-resource-summary {
+  flex-grow: 0;
+  flex-basis: min(30vw, 8rem);
+}
+
+/* softer corners on desktop rows */
+.rb-users-section .rb-data-table-row > td:first-child {
+  border-start-start-radius: 10px;
+  border-end-start-radius: 10px;
+}
+
+.rb-users-section .rb-data-table-row > td:last-child {
+  border-start-end-radius: 10px;
+  border-end-end-radius: 10px;
+}
+
+/* mobile cards: rounder, and glowing accent while expanded */
+.rb-users-section .rb-resource-card {
+  border-radius: 14px;
+  padding: 0.85rem;
+}
+
+.rb-users-section .rb-resource-card[data-expanded="true"] {
+  border-color: color-mix(in srgb, var(--rb-panel-accent) 45%, var(--rb-panel-border));
+  box-shadow: 0 12px 30px rgb(0 0 0 / 24%);
+}
+
+.rb-theme-light .rb-users-section .rb-resource-card[data-expanded="true"],
+.chakra-ui-light .rb-users-section .rb-resource-card[data-expanded="true"] {
+  box-shadow: 0 12px 26px rgb(15 23 42 / 12%);
+}
+
+/* crisp scale-in when a card expands */
+@media (prefers-reduced-motion: no-preference) {
+  .rb-users-section .rb-resource-expanded {
+    animation: rb-users-expand-in var(--rb-duration-ui) var(--rb-ease-out);
+    transform-origin: top center;
+  }
+}
+
+@keyframes rb-users-expand-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.97);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Lighter detail rows: drop the per-row divider lines in favour of plain
+   spacing. Scoped to the Users page so other resource cards keep dividers. */
+.rb-users-section .rb-resource-details .rb-resource-meta {
+  border-bottom: 0;
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+}
+
+/* Expanded-card actions: the full inline action strip, kept flat (ghost
+   line icons, no filled circles) and tightly grouped in a wrapping row. */
+.rb-users-section .rb-resource-expanded-actions .rb-inline-actions {
+  gap: 0.25rem;
+}
+
+.rb-users-section .rb-resource-expanded-actions .rb-inline-actions .chakra-button {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 8px;
+}
+
+.rb-users-section .rb-resource-expanded-actions .rb-inline-actions .chakra-button:active {
+  transform: scale(0.92);
+}
+
+/* floating bulk action bar: fast slide up, accent tint */
+.rb-users-section .rb-bulk-action-bar {
+  border-radius: 14px;
+  border-color: color-mix(in srgb, var(--rb-panel-accent) 35%, var(--rb-panel-border-strong));
+  background: color-mix(in srgb, var(--rb-panel-surface) 94%, var(--rb-panel-accent));
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.rb-users-section .rb-bulk-action-bar .chakra-button {
+  border-radius: 999px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rb-users-section .rb-bulk-action-bar[data-visible="true"] {
+    animation: rb-users-bulk-in 220ms var(--rb-ease-out);
+  }
+}
+
+@keyframes rb-users-bulk-in {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-blue-animate,
+  .rb-users-section .rb-resource-expanded,
+  .rb-users-section .rb-bulk-action-bar[data-visible="true"],
+  .rb-snow-layer,
+  .rb-snow-layer::after {
+    animation: none !important;
+    transition-duration: 1ms !important;
+  }
+
+  .rb-users-section .rb-resource-expanded,
+  .rb-users-section .rb-bulk-action-bar[data-visible="true"] {
+    transform: none !important;
+  }
+}
+
+/* skeleton loading rows: match the rounded look */
+.rb-users-section .chakra-skeleton {
+  border-radius: 8px;
 }

@@ -33,7 +33,21 @@ export const changeMyAccountPassword = async (
 };
 
 export const listApiKeys = async (): Promise<AdminApiKey[]> => {
-	return apiFetch("/myaccount/api-keys");
+	const response = await apiFetch("/myaccount/api-keys");
+	if (Array.isArray(response)) return response;
+	if (response && typeof response === "object") {
+		const payload = response as {
+			api_keys?: unknown;
+			apiKeys?: unknown;
+			keys?: unknown;
+			obj?: unknown;
+		};
+		if (Array.isArray(payload.api_keys)) return payload.api_keys as AdminApiKey[];
+		if (Array.isArray(payload.apiKeys)) return payload.apiKeys as AdminApiKey[];
+		if (Array.isArray(payload.keys)) return payload.keys as AdminApiKey[];
+		if (Array.isArray(payload.obj)) return payload.obj as AdminApiKey[];
+	}
+	return [];
 };
 
 export const createApiKey = async (lifetime: string): Promise<AdminApiKey> => {

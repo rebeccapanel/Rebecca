@@ -1,0 +1,2680 @@
+package user
+
+import (
+	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"database/sql"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"net/url"
+	"regexp"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/flosch/pongo2/v6"
+	"github.com/rebeccapanel/rebecca/internal/app/usage"
+)
+
+type SubscriptionClientConfig struct {
+	Format      string
+	Media       string
+	Base64      bool
+	Reverse     bool
+	TemplateKey string
+}
+
+type SubscriptionRenderRequest struct {
+	Identifier string
+	Username   string
+	Key        string
+	ClientType string
+	InboundTag string
+	HostTag    string
+	UserAgent  string
+	Accept     string
+	URL        string
+	Start      string
+	End        string
+	ReadOnly   bool
+	Usage      usage.Service
+}
+
+type SubscriptionHTTPResponse struct {
+	Status    int
+	MediaType string
+	Headers   map[string]string
+	Body      []byte
+	JSON      any
+}
+
+type subscriptionTokenPayload struct {
+	Username  string
+	CreatedAt time.Time
+}
+
+var subscriptionClientConfigs = map[string]SubscriptionClientConfig{
+	"clash-meta":   {Format: "clash-meta", Media: "text/yaml"},
+	"sing-box":     {Format: "sing-box", Media: "application/json"},
+	"clash":        {Format: "clash", Media: "text/yaml"},
+	"v2ray":        {Format: "v2ray", Media: "text/plain", Base64: true},
+	"outline":      {Format: "outline", Media: "application/json"},
+	"v2ray-json":   {Format: "v2ray-json", Media: "application/json", TemplateKey: "v2ray_subscription_template"},
+	"happ":         {Format: "v2ray-json", Media: "application/json", TemplateKey: "happ_subscription_template"},
+	"v2raytun":     {Format: "v2ray", Media: "text/plain", Base64: true},
+	"throne":       {Format: "v2ray", Media: "text/plain", Base64: true},
+	"shadowrocket": {Format: "v2ray", Media: "text/plain", Base64: true},
+	"karing":       {Format: "v2ray", Media: "text/plain", Base64: true},
+	"hiddify":      {Format: "v2ray", Media: "text/plain", Base64: true},
+	"clash-mi":     {Format: "clash-meta", Media: "text/yaml"},
+	"incy":         {Format: "v2ray-json", Media: "application/json", TemplateKey: "incy_subscription_template"},
+	"passwall":     {Format: "v2ray", Media: "text/plain", Base64: true},
+	"nekobox":      {Format: "v2ray", Media: "text/plain", Base64: true},
+	"openvpn":      {Format: "openvpn", Media: "application/x-openvpn-profile"},
+	"wireguard":    {Format: "wireguard", Media: "application/x-wireguard-profile"},
+}
+
+func NormalizeSubscriptionClientType(value string) (string, bool) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.ReplaceAll(value, "_", "-")
+	switch value {
+	case "json":
+		value = "v2ray-json"
+	case "clashmeta", "clash.meta", "mihomo", "clash-mihomo":
+		value = "clash-meta"
+	case "clashmi":
+		value = "clash-mi"
+	case "singbox", "sing":
+		value = "sing-box"
+	case "hiddify-next", "hiddifynext", "hiddifynextx":
+		value = "hiddify"
+	case "v2ray-tun", "v2ray-tunnel", "v2raytun-plus":
+		value = "v2raytun"
+	case "thron", "throne-vpn", "thronevpn":
+		value = "throne"
+	case "nekobox-plus", "nekoboxplus", "nekobox+":
+		value = "nekobox"
+	case "passwall2":
+		value = "passwall"
+	case "wg":
+		value = "wireguard"
+	}
+	_, ok := subscriptionClientConfigs[value]
+	return value, ok
+}
+
+func (s Service) RenderSubscription(ctx context.Context, req SubscriptionRenderRequest) (SubscriptionHTTPResponse, error) {
+	user, err := s.resolveSubscriptionUser(ctx, req)
+	if err != nil {
+		return SubscriptionHTTPResponse{}, err
+	}
+	if wantsSubscriptionHTML(req) && req.ClientType == "" {
+		settings := s.effectiveSettings(ctx, user.AdminID)
+		html, err := s.renderSubscriptionHTML(ctx, user, req, settings)
+		if err != nil {
+			return SubscriptionHTTPResponse{}, err
+		}
+		return SubscriptionHTTPResponse{
+			Status:    200,
+			MediaType: "text/html; charset=utf-8",
+			Body:      []byte(html),
+		}, nil
+	}
+	if !req.ReadOnly {
+		_ = s.repo.updateSubscriptionAccess(ctx, user.ID, req.UserAgent)
+	}
+	if req.ClientType == "openvpn" {
+		return s.generateOVProfile(ctx, user, req)
+	}
+	if req.ClientType == "wireguard" {
+		return s.generateWGProfile(ctx, user, req)
+	}
+	clientType := req.ClientType
+	if clientType == "" {
+		clientType = selectSubscriptionClientType(req.UserAgent, s.effectiveSettings(ctx, user.AdminID))
+	}
+	config, ok := subscriptionClientConfigs[clientType]
+	if !ok {
+		return SubscriptionHTTPResponse{}, clientError(404, "Unsupported client type")
+	}
+	body, err := s.generateSubscriptionConfig(ctx, user, config)
+	if err != nil {
+		return SubscriptionHTTPResponse{}, err
+	}
+	return SubscriptionHTTPResponse{
+		Status:    200,
+		MediaType: config.Media,
+		Headers:   subscriptionHeaders(user, req, s.effectiveSettings(ctx, user.AdminID)),
+		Body:      []byte(body),
+	}, nil
+}
+
+func wantsSubscriptionHTML(req SubscriptionRenderRequest) bool {
+	accept := strings.ToLower(req.Accept)
+	if strings.Contains(accept, "text/html") || strings.Contains(accept, "application/xhtml+xml") {
+		return true
+	}
+	if strings.TrimSpace(req.ClientType) != "" {
+		return false
+	}
+	ua := strings.ToLower(req.UserAgent)
+	for _, marker := range []string{"mozilla/", "chrome/", "safari/", "firefox/", "edg/", "opr/"} {
+		if strings.Contains(ua, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s Service) SubscriptionInfo(ctx context.Context, req SubscriptionRenderRequest) (map[string]any, error) {
+	user, err := s.resolveSubscriptionUser(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	vpnInfo, err := s.subscriptionVPNInfo(ctx, user, req.URL)
+	if err != nil {
+		return nil, err
+	}
+	info := map[string]any{
+		"user": user,
+	}
+	for key, value := range vpnInfo {
+		info[key] = value
+	}
+	return info, nil
+}
+
+func (s Service) subscriptionVPNInfo(ctx context.Context, user UserDetail, subscriptionURL string) (map[string]any, error) {
+	ovProfiles, err := s.OVDownloadProfiles(ctx, user, subscriptionURL)
+	if err != nil {
+		return nil, err
+	}
+	ovLinks := make([]string, 0, len(ovProfiles))
+	for _, profile := range ovProfiles {
+		if strings.TrimSpace(profile.DownloadURL) != "" {
+			ovLinks = append(ovLinks, profile.DownloadURL)
+		}
+	}
+	wgProfiles, err := s.WGDownloadProfiles(ctx, user, subscriptionURL)
+	if err != nil {
+		return nil, err
+	}
+	wgDownloads := make([]string, 0, len(wgProfiles))
+	wgLinks := make([]string, 0, len(wgProfiles))
+	for _, profile := range wgProfiles {
+		if strings.TrimSpace(profile.DownloadURL) != "" {
+			wgDownloads = append(wgDownloads, profile.DownloadURL)
+		}
+		if strings.TrimSpace(profile.Link) != "" {
+			wgLinks = append(wgLinks, profile.Link)
+		}
+	}
+	l2tpItems, err := s.L2TPInfos(ctx, user, subscriptionURL)
+	if err != nil {
+		return nil, err
+	}
+	pptpItems, err := s.PPTPInfos(ctx, user, subscriptionURL)
+	if err != nil {
+		return nil, err
+	}
+	ikev2Items, err := s.IKEv2Infos(ctx, user, subscriptionURL)
+	if err != nil {
+		return nil, err
+	}
+	anyConnectItems, err := s.AnyConnectInfos(ctx, user, subscriptionURL)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{
+		"openvpn": map[string]any{
+			"downloads": ovLinks,
+			"profiles":  ovProfiles,
+		},
+		"wireguard": map[string]any{
+			"downloads": wgDownloads,
+			"links":     wgLinks,
+			"profiles":  wgProfiles,
+		},
+		"l2tp":       l2tpItems,
+		"pptp":       pptpItems,
+		"ikev2":      ikev2Items,
+		"anyconnect": anyConnectItems,
+	}, nil
+}
+
+func (s Service) SubscriptionUsage(ctx context.Context, req SubscriptionRenderRequest) (map[string]any, error) {
+	user, err := s.resolveSubscriptionUser(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+	start, end, err := subscriptionUsageRange(req.Start, req.End)
+	if err != nil {
+		return nil, clientError(400, "Invalid date range or format")
+	}
+	daily, err := req.Usage.UserUsageTimeseries(ctx, usage.UsageRequest{
+		UserID:      user.ID,
+		Start:       start.Format(time.RFC3339Nano),
+		End:         end.Format(time.RFC3339Nano),
+		Granularity: "day",
+	})
+	if err != nil {
+		return nil, err
+	}
+	hourly := []map[string]any{}
+	if sameUTCDate(start, end) {
+		rows, err := req.Usage.UserUsageTimeseries(ctx, usage.UsageRequest{
+			UserID:      user.ID,
+			Start:       start.Format(time.RFC3339Nano),
+			End:         end.Format(time.RFC3339Nano),
+			Granularity: "hour",
+		})
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			hourly = append(hourly, map[string]any{"timestamp": row.Timestamp, "used_traffic": row.UsedTraffic})
+		}
+	}
+	nodes, err := req.Usage.UserUsageByNodes(ctx, usage.UsageRequest{
+		UserID: user.ID,
+		Start:  start.Format(time.RFC3339Nano),
+		End:    end.Format(time.RFC3339Nano),
+	})
+	if err != nil {
+		return nil, err
+	}
+	usages := make([]map[string]any, 0, len(daily))
+	for _, row := range daily {
+		date := row.Timestamp
+		if len(date) >= 10 {
+			date = date[:10]
+		}
+		usages = append(usages, map[string]any{"date": date, "used_traffic": row.UsedTraffic})
+	}
+	return map[string]any{
+		"username":      user.Username,
+		"start":         start.Format(time.RFC3339Nano),
+		"end":           end.Format(time.RFC3339Nano),
+		"usages":        usages,
+		"hourly_usages": hourly,
+		"node_usages":   nodes,
+	}, nil
+}
+
+func (s Service) ResolveSubscriptionAlias(ctx context.Context, path string, query url.Values) (SubscriptionRenderRequest, bool, error) {
+	settings, err := s.repo.subscriptionSettings(ctx)
+	if err != nil {
+		return SubscriptionRenderRequest{}, false, err
+	}
+	if req, ok := resolvePrefixedSubscriptionPath(path, "/sub/"); ok {
+		return req, true, nil
+	}
+	if configured := "/" + normalizePath(settings.SubscriptionPath) + "/"; configured != "/sub/" {
+		if req, ok := resolvePrefixedSubscriptionPath(path, configured); ok {
+			return req, true, nil
+		}
+	}
+	if clean := strings.TrimRight(path, "/"); clean == "/api/v1/client/subscribe" {
+		identifier := firstNonEmptyString(query.Get("token"), query.Get("key"), query.Get("identifier"))
+		if identifier == "" {
+			return SubscriptionRenderRequest{}, true, clientError(400, "Provide token, key, or identifier")
+		}
+		return SubscriptionRenderRequest{Identifier: identifier}, true, nil
+	}
+	if strings.HasPrefix(path, "/api/v1/client/subscribe/") {
+		identifier := strings.Trim(strings.TrimPrefix(path, "/api/v1/client/subscribe/"), "/")
+		if identifier != "" {
+			return SubscriptionRenderRequest{Identifier: identifier}, true, nil
+		}
+	}
+	for _, alias := range settings.SubscriptionAliases {
+		if identifier := matchSubscriptionQueryAlias(alias, path, query); identifier != "" {
+			return SubscriptionRenderRequest{Identifier: identifier}, true, nil
+		}
+		if identifier := matchSubscriptionPathAlias(alias, path); identifier != "" {
+			return SubscriptionRenderRequest{Identifier: identifier}, true, nil
+		}
+	}
+	return SubscriptionRenderRequest{}, false, nil
+}
+
+func (s Service) resolveSubscriptionUser(ctx context.Context, req SubscriptionRenderRequest) (UserDetail, error) {
+	if req.Username != "" || req.Key != "" {
+		return s.repo.subscriptionUserByUsernameKey(ctx, req.Username, req.Key)
+	}
+	for _, candidate := range candidateIdentifiers(req.Identifier) {
+		if user, err := s.resolveSubscriptionToken(ctx, candidate); err == nil {
+			return user, nil
+		}
+		if isCredentialKey(candidate) {
+			if user, err := s.repo.subscriptionUserByKeyOnly(ctx, candidate); err == nil {
+				return user, nil
+			}
+		}
+		if user, err := s.repo.subscriptionUserBySubadress(ctx, candidate); err == nil {
+			return user, nil
+		}
+	}
+	return UserDetail{}, clientError(404, "Not Found")
+}
+
+func (s Service) resolveSubscriptionToken(ctx context.Context, token string) (UserDetail, error) {
+	secret, err := s.repo.subscriptionSecretKey(ctx)
+	if err != nil {
+		return UserDetail{}, err
+	}
+	payload, ok := parseSubscriptionToken(token, secret)
+	if !ok {
+		return UserDetail{}, clientError(404, "Not Found")
+	}
+	user, err := s.repo.subscriptionUserByUsername(ctx, payload.Username)
+	if err != nil {
+		return UserDetail{}, err
+	}
+	created, ok := parseDBTime(user.CreatedAt)
+	if !ok || created.After(payload.CreatedAt) {
+		return UserDetail{}, clientError(404, "Not Found")
+	}
+	revoked, hasRevoked, err := s.repo.subscriptionRevokedAt(ctx, user.ID)
+	if err != nil {
+		return UserDetail{}, err
+	}
+	if hasRevoked && revoked.After(payload.CreatedAt) {
+		return UserDetail{}, clientError(404, "Not Found")
+	}
+	return user, nil
+}
+
+func (s Service) effectiveSettings(ctx context.Context, adminID *int64) SubscriptionSettings {
+	settings, err := s.repo.subscriptionSettings(ctx)
+	if err != nil {
+		return SubscriptionSettings{SubscriptionProfileTitle: "Subscription", SubscriptionSupportURL: "https://t.me/", SubscriptionUpdateInterval: "12", SubscriptionPath: "sub"}
+	}
+	admin := AdminLinkSettings{}
+	if adminID != nil && *adminID > 0 {
+		admins, err := s.repo.adminLinkSettings(ctx, []int64{*adminID})
+		if err == nil {
+			admin = admins[*adminID]
+		}
+	}
+	return effectiveSubscriptionSettings(settings, admin)
+}
+
+func (s Service) generateSubscriptionConfig(ctx context.Context, user UserDetail, config SubscriptionClientConfig) (string, error) {
+	links, err := s.ConfigLinks(ctx, ConfigLinksRequest{UserID: user.ID, Reverse: config.Reverse})
+	if err != nil {
+		return "", err
+	}
+	raw := links.Links
+	switch config.Format {
+	case "v2ray":
+		content := strings.Join(raw, "\n")
+		if config.Base64 {
+			return base64.StdEncoding.EncodeToString([]byte(content)), nil
+		}
+		return content, nil
+	case "outline":
+		servers := make([]string, 0, len(raw))
+		for _, link := range raw {
+			if strings.HasPrefix(strings.TrimSpace(link), "ss://") {
+				servers = append(servers, link)
+			}
+		}
+		return marshalPretty(map[string]any{"servers": servers})
+	case "v2ray-json":
+		templateKey := firstNonEmptyString(config.TemplateKey, "v2ray_subscription_template")
+		return renderV2RayJSONSubscriptionWithTemplate(raw, false, s.subscriptionTemplateContent(ctx, templateKey, user.AdminID))
+	case "sing-box":
+		return renderSingBoxJSON(raw)
+	case "clash", "clash-meta":
+		return renderClashLikeYAML(user.Username, raw, config.Format == "clash-meta"), nil
+	default:
+		return "", clientError(404, "Unsupported client type")
+	}
+}
+
+func (s Service) subscriptionTemplateContent(ctx context.Context, templateKey string, adminID *int64) string {
+	if s.templates == nil {
+		return ""
+	}
+	templateContent, err := s.templates.ReadTemplateContent(ctx, templateKey, adminID)
+	if err != nil {
+		return ""
+	}
+	return templateContent.Content
+}
+
+func (r Repository) subscriptionUserByUsername(ctx context.Context, username string) (UserDetail, error) {
+	return r.UserGet(ctx, UserGetRequest{
+		Username: strings.TrimSpace(username),
+		Admin:    AdminContext{Username: "__subscription__", Role: "sudo", CanViewTraffic: true, CanSortTraffic: true},
+	})
+}
+
+func (r Repository) subscriptionUserByUsernameKey(ctx context.Context, username string, key string) (UserDetail, error) {
+	user, err := r.subscriptionUserByUsername(ctx, username)
+	if err != nil {
+		return UserDetail{}, clientError(404, "Not Found")
+	}
+	normalizedKey, keyOK := normalizeSubscriptionKey(key)
+	if keyOK && user.CredentialKey != "" {
+		stored, storedOK := normalizeSubscriptionKey(user.CredentialKey)
+		if storedOK && stored == normalizedKey {
+			return user, nil
+		}
+		return UserDetail{}, clientError(404, "Not Found")
+	}
+	if strings.TrimSpace(key) != "" && strings.EqualFold(strings.TrimSpace(user.Subadress), strings.TrimSpace(key)) {
+		return user, nil
+	}
+	return UserDetail{}, clientError(404, "Not Found")
+}
+
+func (r Repository) subscriptionUserByKeyOnly(ctx context.Context, key string) (UserDetail, error) {
+	normalized, ok := normalizeSubscriptionKey(key)
+	if !ok {
+		return UserDetail{}, clientError(400, "Invalid credential key")
+	}
+	var username string
+	err := r.db.QueryRowContext(
+		ctx,
+		`SELECT username FROM users WHERE credential_key = ? AND status != 'deleted' ORDER BY created_at DESC, id DESC LIMIT 1`,
+		normalized,
+	).Scan(&username)
+	if err == nil {
+		return r.subscriptionUserByUsername(ctx, username)
+	}
+	if err != sql.ErrNoRows {
+		return UserDetail{}, err
+	}
+	err = r.db.QueryRowContext(
+		ctx,
+		`SELECT username FROM users WHERE credential_key IS NOT NULL AND REPLACE(LOWER(credential_key), '-', '') = ? AND status != 'deleted' ORDER BY created_at DESC, id DESC LIMIT 1`,
+		normalized,
+	).Scan(&username)
+	if err != nil {
+		return UserDetail{}, clientError(404, "Not Found")
+	}
+	return r.subscriptionUserByUsername(ctx, username)
+}
+
+func (r Repository) subscriptionUserBySubadress(ctx context.Context, subadress string) (UserDetail, error) {
+	subadress = strings.TrimSpace(subadress)
+	if subadress == "" {
+		return UserDetail{}, clientError(404, "Not Found")
+	}
+	rows, err := r.db.QueryContext(
+		ctx,
+		`SELECT username FROM users WHERE subadress = ? AND status != 'deleted' ORDER BY created_at DESC, id DESC LIMIT 2`,
+		subadress,
+	)
+	if err != nil {
+		return UserDetail{}, err
+	}
+	usernames, err := scanSubscriptionUsernames(rows)
+	if err != nil {
+		return UserDetail{}, err
+	}
+	if len(usernames) != 1 {
+		rows, err = r.db.QueryContext(
+			ctx,
+			`SELECT username FROM users WHERE subadress != '' AND LOWER(subadress) = LOWER(?) AND status != 'deleted' ORDER BY created_at DESC, id DESC LIMIT 2`,
+			subadress,
+		)
+		if err != nil {
+			return UserDetail{}, err
+		}
+		usernames, err = scanSubscriptionUsernames(rows)
+		if err != nil {
+			return UserDetail{}, err
+		}
+		if len(usernames) != 1 {
+			return UserDetail{}, clientError(404, "Not Found")
+		}
+	}
+	return r.subscriptionUserByUsername(ctx, usernames[0])
+}
+
+func scanSubscriptionUsernames(rows *sql.Rows) ([]string, error) {
+	defer rows.Close()
+	usernames := []string{}
+	for rows.Next() {
+		var username string
+		if err := rows.Scan(&username); err != nil {
+			return nil, err
+		}
+		usernames = append(usernames, username)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return usernames, nil
+}
+
+func (r Repository) subscriptionRevokedAt(ctx context.Context, userID int64) (time.Time, bool, error) {
+	var value any
+	err := r.db.QueryRowContext(ctx, `SELECT sub_revoked_at FROM users WHERE id = ? LIMIT 1`, userID).Scan(&value)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return time.Time{}, false, nil
+		}
+		return time.Time{}, false, err
+	}
+	parsed, ok := parseDBTime(value)
+	return parsed, ok, nil
+}
+
+func (r Repository) updateSubscriptionAccess(ctx context.Context, userID int64, userAgent string) error {
+	_, err := r.db.ExecContext(ctx, `UPDATE users SET sub_updated_at = ?, sub_last_user_agent = ? WHERE id = ?`, dbTime(time.Now().UTC()), strings.TrimSpace(userAgent), userID)
+	return err
+}
+
+func parseSubscriptionToken(token string, secret string) (subscriptionTokenPayload, bool) {
+	token = strings.TrimSpace(token)
+	if len(token) < 15 || strings.TrimSpace(secret) == "" {
+		return subscriptionTokenPayload{}, false
+	}
+	if strings.HasPrefix(token, "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.") {
+		return parseSubscriptionJWT(token, secret)
+	}
+	body := token[:len(token)-10]
+	signature := token[len(token)-10:]
+	if !subscriptionTokenSignatureMatches(body, signature, secret) {
+		return subscriptionTokenPayload{}, false
+	}
+	decoded, err := base64.RawURLEncoding.DecodeString(body)
+	if err != nil {
+		return subscriptionTokenPayload{}, false
+	}
+	parts := strings.Split(string(decoded), ",")
+	if len(parts) < 2 {
+		return subscriptionTokenPayload{}, false
+	}
+	createdUnix, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil {
+		return subscriptionTokenPayload{}, false
+	}
+	return subscriptionTokenPayload{Username: parts[0], CreatedAt: time.Unix(createdUnix, 0).UTC()}, true
+}
+
+func parseSubscriptionJWT(token string, secret string) (subscriptionTokenPayload, bool) {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return subscriptionTokenPayload{}, false
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(parts[0] + "." + parts[1]))
+	expected := base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+	if !hmac.Equal([]byte(expected), []byte(parts[2])) {
+		return subscriptionTokenPayload{}, false
+	}
+	payloadRaw, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return subscriptionTokenPayload{}, false
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(payloadRaw, &payload); err != nil {
+		return subscriptionTokenPayload{}, false
+	}
+	if stringValue(payload["access"]) != "subscription" {
+		return subscriptionTokenPayload{}, false
+	}
+	username := stringValue(payload["sub"])
+	iat := int64Value(payload["iat"])
+	if username == "" || iat <= 0 {
+		return subscriptionTokenPayload{}, false
+	}
+	if exp := int64Value(payload["exp"]); exp > 0 && time.Now().UTC().After(time.Unix(exp, 0).UTC()) {
+		return subscriptionTokenPayload{}, false
+	}
+	return subscriptionTokenPayload{Username: username, CreatedAt: time.Unix(iat, 0).UTC()}, true
+}
+
+func candidateIdentifiers(identifier string) []string {
+	raw := strings.TrimSpace(identifier)
+	if raw == "" {
+		return nil
+	}
+	result := []string{raw}
+	for _, sep := range []string{"+", ":", "|", " "} {
+		if strings.Contains(raw, sep) {
+			tail := strings.TrimSpace(raw[strings.LastIndex(raw, sep)+len(sep):])
+			if tail != "" && !containsString(result, tail) {
+				result = append(result, tail)
+			}
+		}
+	}
+	return result
+}
+
+func resolvePrefixedSubscriptionPath(path string, prefix string) (SubscriptionRenderRequest, bool) {
+	if !strings.HasPrefix(path, prefix) {
+		return SubscriptionRenderRequest{}, false
+	}
+	tail := strings.Trim(strings.TrimPrefix(path, prefix), "/")
+	if tail == "" {
+		return SubscriptionRenderRequest{}, false
+	}
+	segments := strings.Split(tail, "/")
+	if len(segments) == 1 {
+		return SubscriptionRenderRequest{Identifier: segments[0]}, true
+	}
+	if len(segments) == 2 {
+		if client, ok := NormalizeSubscriptionClientType(segments[1]); ok {
+			return SubscriptionRenderRequest{Identifier: segments[0], ClientType: client}, true
+		}
+		if segments[1] == "info" || segments[1] == "usage" {
+			return SubscriptionRenderRequest{Identifier: segments[0], ClientType: segments[1]}, true
+		}
+		return SubscriptionRenderRequest{Username: segments[0], Key: segments[1]}, true
+	}
+	if len(segments) == 3 {
+		if segments[1] == "ov" {
+			return SubscriptionRenderRequest{
+				Identifier: segments[0],
+				ClientType: "openvpn",
+				HostTag:    strings.TrimSuffix(segments[2], ".ovpn"),
+			}, true
+		}
+		if segments[1] == "wg" || segments[1] == "wireguard" {
+			return SubscriptionRenderRequest{
+				Identifier: segments[0],
+				ClientType: "wireguard",
+				HostTag:    strings.TrimSuffix(segments[2], ".conf"),
+			}, true
+		}
+		if segments[2] == "info" || segments[2] == "usage" {
+			return SubscriptionRenderRequest{Username: segments[0], Key: segments[1], ClientType: segments[2]}, true
+		}
+		if client, ok := NormalizeSubscriptionClientType(segments[2]); ok {
+			return SubscriptionRenderRequest{Username: segments[0], Key: segments[1], ClientType: client}, true
+		}
+	}
+	if len(segments) == 4 && segments[2] == "ov" {
+		return SubscriptionRenderRequest{
+			Username:   segments[0],
+			Key:        segments[1],
+			ClientType: "openvpn",
+			HostTag:    strings.TrimSuffix(segments[3], ".ovpn"),
+		}, true
+	}
+	if len(segments) == 4 && (segments[2] == "wg" || segments[2] == "wireguard") {
+		return SubscriptionRenderRequest{
+			Username:   segments[0],
+			Key:        segments[1],
+			ClientType: "wireguard",
+			HostTag:    strings.TrimSuffix(segments[3], ".conf"),
+		}, true
+	}
+	return SubscriptionRenderRequest{}, false
+}
+
+func matchSubscriptionPathAlias(alias string, path string) string {
+	parsed, err := url.Parse(alias)
+	if err != nil {
+		return ""
+	}
+	aliasPath := strings.TrimSpace(parsed.Path)
+	if aliasPath == "" {
+		return ""
+	}
+	if strings.Contains(aliasPath, "{") {
+		pattern := regexp.QuoteMeta(aliasPath)
+		for _, placeholder := range []string{"\\{identifier\\}", "\\{token\\}", "\\{key\\}"} {
+			pattern = strings.ReplaceAll(pattern, placeholder, "([^/]+)")
+		}
+		re := regexp.MustCompile("^" + pattern + "/?$")
+		match := re.FindStringSubmatch(path)
+		if len(match) > 1 {
+			return match[1]
+		}
+		return ""
+	}
+	prefix := aliasPath
+	if !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+	if !strings.HasPrefix(path, prefix) {
+		return ""
+	}
+	tail := strings.Trim(strings.TrimPrefix(path, prefix), "/")
+	if tail == "" {
+		return ""
+	}
+	return strings.Split(tail, "/")[0]
+}
+
+func matchSubscriptionQueryAlias(alias string, path string, query url.Values) string {
+	parsed, err := url.Parse(alias)
+	if err != nil || parsed.RawQuery == "" || strings.TrimRight(path, "/") != strings.TrimRight(parsed.Path, "/") {
+		return ""
+	}
+	template := parsed.Query()
+	for key, values := range template {
+		expected := ""
+		if len(values) > 0 {
+			expected = values[0]
+		}
+		actual := query.Get(key)
+		if expected == "{identifier}" || expected == "{token}" || expected == "{key}" || expected == "" {
+			if actual != "" {
+				return actual
+			}
+			return ""
+		}
+		if actual != expected {
+			return ""
+		}
+	}
+	return firstNonEmptyString(query.Get("token"), query.Get("key"), query.Get("identifier"))
+}
+
+func selectSubscriptionClientType(userAgent string, settings SubscriptionSettings) string {
+	ua := strings.TrimSpace(userAgent)
+	if regexp.MustCompile(`^([Cc]lash-verge|[Cc]lash[-\.]?[Mm]eta|[Ff][Ll][Cc]lash|[Mm]ihomo)`).MatchString(ua) {
+		return "clash-meta"
+	}
+	if regexp.MustCompile(`(?i)^clash\s*mi`).MatchString(ua) || regexp.MustCompile(`(?i)^clashmi`).MatchString(ua) {
+		return "clash-mi"
+	}
+	if regexp.MustCompile(`^([Cc]lash|[Ss]tash)`).MatchString(ua) {
+		return "clash"
+	}
+	if regexp.MustCompile(`(?i)^karing`).MatchString(ua) {
+		return "karing"
+	}
+	if regexp.MustCompile(`(?i)^hiddifynextx?`).MatchString(ua) {
+		return "hiddify"
+	}
+	if regexp.MustCompile(`^(SFA|SFI|SFM|SFT)`).MatchString(ua) {
+		return "sing-box"
+	}
+	if regexp.MustCompile(`(?i)^v2raytun`).MatchString(ua) {
+		return "v2raytun"
+	}
+	if regexp.MustCompile(`(?i)^shadowrocket`).MatchString(ua) {
+		return "shadowrocket"
+	}
+	if regexp.MustCompile(`(?i)^(nekobox|nekoboxforandroid)`).MatchString(ua) {
+		return "nekobox"
+	}
+	if regexp.MustCompile(`(?i)^passwall`).MatchString(ua) {
+		return "passwall"
+	}
+	if regexp.MustCompile(`(?i)^thron(e)?`).MatchString(ua) {
+		return "throne"
+	}
+	if regexp.MustCompile(`^(SS|SSR|SSD|SSS|Outline|Shadowsocks|SSconf)`).MatchString(ua) {
+		return "outline"
+	}
+	if (settings.UseCustomJSONDefault || settings.UseCustomJSONForV2rayN) && regexp.MustCompile(`^v2rayN/(\d+\.\d+)`).MatchString(ua) {
+		if versionAtLeast(firstVersion(ua), "6.40") {
+			return "v2ray-json"
+		}
+	}
+	if (settings.UseCustomJSONDefault || settings.UseCustomJSONForV2rayNG) && regexp.MustCompile(`(?i)^v2rayng/(\d+\.\d+)`).MatchString(ua) {
+		return "v2ray-json"
+	}
+	if (settings.UseCustomJSONDefault || settings.UseCustomJSONForHapp) && regexp.MustCompile(`^Happ/(\d+\.\d+\.\d+)`).MatchString(ua) {
+		if versionAtLeast(firstVersion(ua), "1.63.1") {
+			return "happ"
+		}
+	}
+	if (settings.UseCustomJSONDefault || settings.UseCustomJSONForIncy) && regexp.MustCompile(`(?i)^incy`).MatchString(ua) {
+		return "incy"
+	}
+	if (settings.UseCustomJSONDefault || settings.UseCustomJSONForStreisand) && strings.HasPrefix(ua, "Streisand") {
+		return "v2ray-json"
+	}
+	return "v2ray"
+}
+
+func subscriptionHeaders(user UserDetail, req SubscriptionRenderRequest, settings SubscriptionSettings) map[string]string {
+	return map[string]string{
+		"content-disposition":     `attachment; filename="` + user.Username + `"`,
+		"profile-web-page-url":    req.URL,
+		"support-url":             strings.TrimSpace(settings.SubscriptionSupportURL),
+		"profile-title":           "base64:" + base64.StdEncoding.EncodeToString([]byte(firstNonEmptyString(settings.SubscriptionProfileTitle, "Subscription"))),
+		"profile-update-interval": firstNonEmptyString(settings.SubscriptionUpdateInterval, "12"),
+		"subscription-userinfo":   fmt.Sprintf("upload=0; download=%d; total=%d; expire=%d", user.UsedTraffic, int64OrZero(user.DataLimit), int64OrZero(user.Expire)),
+	}
+}
+
+func (s Service) renderSubscriptionHTML(ctx context.Context, user UserDetail, req SubscriptionRenderRequest, settings SubscriptionSettings) (string, error) {
+	links, err := s.ConfigLinks(ctx, ConfigLinksRequest{UserID: user.ID})
+	if err != nil {
+		return "", err
+	}
+	path := req.URL
+	if parsed, err := url.Parse(req.URL); err == nil {
+		path = strings.TrimRight(parsed.Path, "/")
+	}
+	rawLinks := append([]string{}, links.Links...)
+	vpnInfo, err := s.subscriptionVPNInfo(ctx, user, req.URL)
+	if err != nil {
+		return "", err
+	}
+	if openvpn, ok := vpnInfo["openvpn"].(map[string]any); ok {
+		if downloadLinks, ok := openvpn["downloads"].([]string); ok {
+			rawLinks = append(rawLinks, downloadLinks...)
+		}
+	}
+	if wireguard, ok := vpnInfo["wireguard"].(map[string]any); ok {
+		if wgLinks, ok := wireguard["links"].([]string); ok {
+			rawLinks = append(rawLinks, wgLinks...)
+		}
+		if downloadLinks, ok := wireguard["downloads"].([]string); ok {
+			rawLinks = append(rawLinks, downloadLinks...)
+		}
+	}
+	content := fallbackSubscriptionPageTemplate
+	if s.templates != nil {
+		templateContent, err := s.templates.ReadTemplateContent(ctx, "subscription_page_template", user.AdminID)
+		if err != nil {
+			return "", err
+		}
+		if strings.TrimSpace(templateContent.Content) != "" {
+			content = templateContent.Content
+		}
+	}
+	return renderSubscriptionPageTemplate(content, user, rawLinks, path+"/usage", strings.TrimSpace(settings.SubscriptionSupportURL), req.Identifier, vpnInfo)
+}
+
+func renderClashLikeYAML(username string, links []string, meta bool) string {
+	var b strings.Builder
+	proxyNames := make([]string, 0, len(links))
+	b.WriteString("proxies:\n")
+	for i, link := range links {
+		name := fmt.Sprintf("%s-%d", username, i+1)
+		proxy, ok := clashProxyFromShareLink(name, link)
+		if !ok {
+			continue
+		}
+		proxyNames = append(proxyNames, name)
+		writeClashProxy(&b, proxy)
+	}
+	b.WriteString("proxy-groups:\n  - name: ")
+	b.WriteString(yamlQuote("♻️ Automatic"))
+	b.WriteString("\n    type: url-test\n    url: http://www.gstatic.com/generate_204\n    interval: 300\n")
+	b.WriteString("    proxies:\n")
+	for _, name := range proxyNames {
+		b.WriteString("      - ")
+		b.WriteString(yamlQuote(name))
+		b.WriteString("\n")
+	}
+	b.WriteString("  - name: ")
+	b.WriteString(yamlQuote(username))
+	if meta {
+		b.WriteString("\n    type: select\n")
+	} else {
+		b.WriteString("\n    type: url-test\n    url: http://www.gstatic.com/generate_204\n    interval: 300\n")
+	}
+	b.WriteString("    proxies:\n      - ")
+	b.WriteString(yamlQuote("♻️ Automatic"))
+	b.WriteString("\n")
+	for _, name := range proxyNames {
+		b.WriteString("      - ")
+		b.WriteString(yamlQuote(name))
+		b.WriteString("\n")
+	}
+	b.WriteString("rules:\n  - MATCH,")
+	b.WriteString(yamlQuote(username))
+	b.WriteString("\n")
+	return b.String()
+}
+
+func renderSingBoxJSON(links []string) (string, error) {
+	proxies := make([]map[string]any, 0, len(links))
+	tags := make([]string, 0, len(links))
+	for i, link := range links {
+		tag := fmt.Sprintf("proxy-%d", i+1)
+		outbound, ok := singBoxOutboundFromShareLink(link, tag)
+		if !ok {
+			continue
+		}
+		proxies = append(proxies, outbound)
+		tags = append(tags, tag)
+	}
+	outbounds := make([]map[string]any, 0, len(proxies)+1)
+	if len(tags) > 0 {
+		outbounds = append(outbounds, map[string]any{
+			"type":      "selector",
+			"tag":       "proxy",
+			"outbounds": tags,
+		})
+	}
+	outbounds = append(outbounds, proxies...)
+	return marshalPretty(map[string]any{"outbounds": outbounds})
+}
+
+func singBoxOutboundFromShareLink(link string, tag string) (map[string]any, bool) {
+	parsed, err := url.Parse(link)
+	if err != nil {
+		return nil, false
+	}
+	switch parsed.Scheme {
+	case "vless":
+		port, ok := parseURLPort(parsed)
+		if !ok || parsed.User == nil || parsed.User.Username() == "" {
+			return nil, false
+		}
+		query := parsed.Query()
+		outbound := map[string]any{
+			"type":        "vless",
+			"tag":         tag,
+			"server":      parsed.Hostname(),
+			"server_port": port,
+			"uuid":        parsed.User.Username(),
+		}
+		if flow := query.Get("flow"); flow != "" {
+			outbound["flow"] = flow
+		}
+		return outbound, applySingBoxStream(outbound, query)
+	case "trojan":
+		port, ok := parseURLPort(parsed)
+		if !ok || parsed.User == nil || parsed.User.Username() == "" {
+			return nil, false
+		}
+		outbound := map[string]any{
+			"type":        "trojan",
+			"tag":         tag,
+			"server":      parsed.Hostname(),
+			"server_port": port,
+			"password":    parsed.User.Username(),
+		}
+		return outbound, applySingBoxStream(outbound, parsed.Query())
+	case "ss":
+		return singBoxShadowsocksOutbound(parsed, tag)
+	case "vmess":
+		return singBoxVMessOutbound(link, tag)
+	case "hysteria", "hysteria2", "hy2":
+		return singBoxHysteriaOutbound(parsed, tag)
+	default:
+		return nil, false
+	}
+}
+
+func singBoxShadowsocksOutbound(parsed *url.URL, tag string) (map[string]any, bool) {
+	method, password, port, ok := parseShadowsocksURL(parsed)
+	if !ok {
+		return nil, false
+	}
+	outbound := map[string]any{
+		"type":        "shadowsocks",
+		"tag":         tag,
+		"server":      parsed.Hostname(),
+		"server_port": port,
+		"method":      method,
+		"password":    password,
+	}
+	query := parsed.Query()
+	plugin, _ := parseSIP003Plugin(query.Get("plugin"))
+	if plugin != "" {
+		outbound["plugin"] = plugin
+		if raw := query.Get("plugin"); strings.Contains(raw, ";") {
+			outbound["plugin_opts"] = strings.SplitN(raw, ";", 2)[1]
+		}
+		return outbound, true
+	}
+	network := firstNonEmptyString(query.Get("type"), "tcp")
+	if network != "tcp" && network != "raw" {
+		return nil, false
+	}
+	if security := query.Get("security"); security != "" && security != "none" {
+		return nil, false
+	}
+	return outbound, true
+}
+
+func singBoxVMessOutbound(link string, tag string) (map[string]any, bool) {
+	decoded, err := decodeFlexibleBase64(strings.TrimPrefix(link, "vmess://"))
+	if err != nil {
+		return nil, false
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(decoded, &payload); err != nil {
+		return nil, false
+	}
+	port, err := strconv.Atoi(stringValue(payload["port"]))
+	if err != nil || port <= 0 || stringValue(payload["add"]) == "" || stringValue(payload["id"]) == "" {
+		return nil, false
+	}
+	outbound := map[string]any{
+		"type":        "vmess",
+		"tag":         tag,
+		"server":      stringValue(payload["add"]),
+		"server_port": port,
+		"uuid":        stringValue(payload["id"]),
+		"security":    firstNonEmptyString(payload["scy"], "auto"),
+		"alter_id":    intValue(payload["aid"]),
+	}
+	query := url.Values{}
+	query.Set("type", firstNonEmptyString(payload["net"], "tcp"))
+	query.Set("security", stringValue(payload["tls"]))
+	query.Set("headerType", stringValue(payload["type"]))
+	query.Set("path", stringValue(payload["path"]))
+	query.Set("host", stringValue(payload["host"]))
+	query.Set("sni", firstNonEmptyString(payload["sni"], payload["host"]))
+	query.Set("fp", stringValue(payload["fp"]))
+	query.Set("alpn", stringValue(payload["alpn"]))
+	query.Set("pbk", stringValue(payload["pbk"]))
+	query.Set("sid", stringValue(payload["sid"]))
+	return outbound, applySingBoxStream(outbound, query)
+}
+
+func singBoxHysteriaOutbound(parsed *url.URL, tag string) (map[string]any, bool) {
+	port, ok := parseURLPort(parsed)
+	if !ok || parsed.User == nil || parsed.User.Username() == "" {
+		return nil, false
+	}
+	query := parsed.Query()
+	version2 := parsed.Scheme == "hysteria2" || parsed.Scheme == "hy2"
+	typeName := "hysteria"
+	if version2 {
+		typeName = "hysteria2"
+	}
+	outbound := map[string]any{
+		"type":   typeName,
+		"tag":    tag,
+		"server": parsed.Hostname(),
+	}
+	if ports := splitCommaLines(query.Get("mport")); len(ports) > 0 {
+		outbound["server_ports"] = ports
+	} else {
+		outbound["server_port"] = port
+	}
+	if version2 {
+		outbound["password"] = parsed.User.Username()
+		if obfs := query.Get("obfs"); obfs != "" {
+			outbound["obfs"] = map[string]any{"type": obfs, "password": query.Get("obfs-password")}
+		}
+	} else {
+		outbound["auth_str"] = parsed.User.Username()
+		outbound["up_mbps"] = firstPositiveInt(query.Get("upmbps"), 100)
+		outbound["down_mbps"] = firstPositiveInt(query.Get("downmbps"), 100)
+		if obfs := query.Get("obfs"); obfs != "" {
+			outbound["obfs"] = firstNonEmptyString(query.Get("obfs-password"), obfs)
+		}
+	}
+	outbound["tls"] = singBoxTLS(query)
+	return outbound, true
+}
+
+func firstPositiveInt(value string, fallback int) int {
+	parsed, err := strconv.Atoi(strings.TrimSpace(value))
+	if err != nil || parsed <= 0 {
+		return fallback
+	}
+	return parsed
+}
+
+func applySingBoxStream(outbound map[string]any, query url.Values) bool {
+	transport, ok := singBoxTransport(query)
+	if !ok {
+		return false
+	}
+	if transport != nil {
+		outbound["transport"] = transport
+	}
+	security := query.Get("security")
+	if security == "" || security == "none" {
+		return true
+	}
+	if security != "tls" && security != "reality" {
+		return false
+	}
+	outbound["tls"] = singBoxTLS(query)
+	return true
+}
+
+func singBoxTransport(query url.Values) (map[string]any, bool) {
+	network := firstNonEmptyString(query.Get("type"), "tcp")
+	if network == "raw" {
+		network = "tcp"
+	}
+	switch network {
+	case "tcp":
+		if query.Get("headerType") != "http" {
+			return nil, true
+		}
+		transport := map[string]any{"type": "http"}
+		if hosts := stringList(query.Get("host")); len(hosts) > 0 {
+			transport["host"] = hosts
+		}
+		if path := query.Get("path"); path != "" {
+			transport["path"] = path
+		}
+		return transport, true
+	case "ws":
+		transport := map[string]any{"type": "ws"}
+		if path := query.Get("path"); path != "" {
+			transport["path"] = path
+		}
+		if host := query.Get("host"); host != "" {
+			transport["headers"] = map[string]any{"Host": host}
+		}
+		return transport, true
+	case "grpc", "gun":
+		return map[string]any{"type": "grpc", "service_name": query.Get("serviceName")}, true
+	case "http", "h2", "h3":
+		transport := map[string]any{"type": "http"}
+		if hosts := stringList(query.Get("host")); len(hosts) > 0 {
+			transport["host"] = hosts
+		}
+		if path := query.Get("path"); path != "" {
+			transport["path"] = path
+		}
+		return transport, true
+	case "httpupgrade":
+		transport := map[string]any{"type": "httpupgrade", "path": firstNonEmptyString(query.Get("path"), "/")}
+		if host := query.Get("host"); host != "" {
+			transport["host"] = host
+		}
+		return transport, true
+	case "quic":
+		return map[string]any{"type": "quic"}, true
+	default:
+		return nil, false
+	}
+}
+
+func singBoxTLS(query url.Values) map[string]any {
+	tls := map[string]any{"enabled": true}
+	if serverName := query.Get("sni"); serverName != "" {
+		tls["server_name"] = serverName
+	}
+	if queryFlag(query, "allowInsecure", "insecure") {
+		tls["insecure"] = true
+	}
+	if alpn := stringList(query.Get("alpn")); len(alpn) > 0 {
+		tls["alpn"] = alpn
+	}
+	if fingerprint := query.Get("fp"); fingerprint != "" && fingerprint != "none" {
+		tls["utls"] = map[string]any{"enabled": true, "fingerprint": fingerprint}
+	}
+	if query.Get("security") == "reality" {
+		reality := map[string]any{"enabled": true}
+		if publicKey := query.Get("pbk"); publicKey != "" {
+			reality["public_key"] = publicKey
+		}
+		if shortID := query.Get("sid"); shortID != "" {
+			reality["short_id"] = shortID
+		}
+		tls["reality"] = reality
+	}
+	return tls
+}
+
+func renderV2RayJSONSubscription(links []string, reverse bool) (string, error) {
+	return renderV2RayJSONSubscriptionWithTemplate(links, reverse, "")
+}
+
+func renderV2RayJSONSubscriptionWithTemplate(links []string, reverse bool, templateContent string) (string, error) {
+	configs := make([]map[string]any, 0, len(links))
+	templateConfig := defaultV2RayClientConfig()
+	if strings.TrimSpace(templateContent) != "" {
+		if err := json.Unmarshal([]byte(templateContent), &templateConfig); err != nil {
+			return "", fmt.Errorf("invalid v2ray subscription template: %w", err)
+		}
+	}
+	for _, link := range links {
+		remark, outbound, ok := v2rayOutboundFromShareLink(link)
+		if !ok {
+			continue
+		}
+		config := cloneJSONMap(templateConfig)
+		config["remarks"] = remark
+		existing := listAny(config["outbounds"])
+		config["outbounds"] = append([]any{outbound}, existing...)
+		configs = append(configs, config)
+	}
+	if reverse {
+		for i, j := 0, len(configs)-1; i < j; i, j = i+1, j-1 {
+			configs[i], configs[j] = configs[j], configs[i]
+		}
+	}
+	return marshalPretty(configs)
+}
+
+func cloneJSONMap(source map[string]any) map[string]any {
+	if len(source) == 0 {
+		return map[string]any{}
+	}
+	raw, err := json.Marshal(source)
+	if err != nil {
+		return map[string]any{}
+	}
+	var cloned map[string]any
+	if err := json.Unmarshal(raw, &cloned); err != nil {
+		return map[string]any{}
+	}
+	return cloned
+}
+
+func defaultV2RayClientConfig() map[string]any {
+	return map[string]any{
+		"log": map[string]any{
+			"access":   "",
+			"error":    "",
+			"loglevel": "warning",
+		},
+		"inbounds": []any{
+			map[string]any{
+				"tag":      "socks",
+				"port":     10808,
+				"listen":   "::",
+				"protocol": "socks",
+				"sniffing": map[string]any{
+					"enabled":      true,
+					"destOverride": []any{"http", "tls"},
+					"routeOnly":    false,
+				},
+				"settings": map[string]any{
+					"auth":             "noauth",
+					"udp":              true,
+					"allowTransparent": false,
+				},
+			},
+			map[string]any{
+				"tag":      "http",
+				"port":     10809,
+				"listen":   "::",
+				"protocol": "http",
+				"sniffing": map[string]any{
+					"enabled":      true,
+					"destOverride": []any{"http", "tls"},
+					"routeOnly":    false,
+				},
+				"settings": map[string]any{
+					"auth":             "noauth",
+					"udp":              true,
+					"allowTransparent": false,
+				},
+			},
+		},
+		"outbounds": []any{},
+		"dns":       map[string]any{"servers": []any{"1.1.1.1", "8.8.8.8"}},
+		"routing": map[string]any{
+			"domainStrategy": "AsIs",
+			"rules":          []any{},
+		},
+	}
+}
+
+func v2rayOutboundFromShareLink(link string) (string, map[string]any, bool) {
+	parsed, err := url.Parse(link)
+	if err != nil {
+		return "", nil, false
+	}
+	switch parsed.Scheme {
+	case "vless":
+		return v2rayVLESSOutbound(parsed)
+	case "trojan":
+		return v2rayTrojanOutbound(parsed)
+	case "ss":
+		return v2rayShadowsocksOutbound(parsed)
+	case "vmess":
+		return v2rayVMessOutbound(link)
+	case "hysteria", "hysteria2", "hy2":
+		return v2rayHysteriaOutbound(parsed)
+	default:
+		return "", nil, false
+	}
+}
+
+func v2rayVLESSOutbound(parsed *url.URL) (string, map[string]any, bool) {
+	port, ok := parseURLPort(parsed)
+	id := strings.TrimSpace(parsed.User.Username())
+	if !ok || id == "" {
+		return "", nil, false
+	}
+	query := parsed.Query()
+	user := map[string]any{
+		"id":         id,
+		"encryption": firstNonEmptyString(query.Get("encryption"), "none"),
+		"level":      0,
+	}
+	if flow := query.Get("flow"); flow != "" {
+		user["flow"] = flow
+	}
+	outbound := map[string]any{
+		"tag":      "proxy",
+		"protocol": "vless",
+		"settings": map[string]any{
+			"vnext": []any{map[string]any{
+				"address": parsed.Hostname(),
+				"port":    port,
+				"users":   []any{user},
+			}},
+		},
+	}
+	if stream := v2rayStreamSettings(query); len(stream) > 0 {
+		outbound["streamSettings"] = stream
+	}
+	return v2rayLinkRemark(parsed), outbound, true
+}
+
+func v2rayTrojanOutbound(parsed *url.URL) (string, map[string]any, bool) {
+	port, ok := parseURLPort(parsed)
+	password := strings.TrimSpace(parsed.User.Username())
+	if !ok || password == "" {
+		return "", nil, false
+	}
+	outbound := map[string]any{
+		"tag":      "proxy",
+		"protocol": "trojan",
+		"settings": map[string]any{
+			"servers": []any{map[string]any{
+				"address":  parsed.Hostname(),
+				"port":     port,
+				"password": password,
+				"level":    0,
+			}},
+		},
+	}
+	if stream := v2rayStreamSettings(parsed.Query()); len(stream) > 0 {
+		outbound["streamSettings"] = stream
+	}
+	return v2rayLinkRemark(parsed), outbound, true
+}
+
+func v2rayShadowsocksOutbound(parsed *url.URL) (string, map[string]any, bool) {
+	method, password, port, ok := parseShadowsocksURL(parsed)
+	if !ok {
+		return "", nil, false
+	}
+	outbound := map[string]any{
+		"tag":      "proxy",
+		"protocol": "shadowsocks",
+		"settings": map[string]any{
+			"servers": []any{map[string]any{
+				"address":  parsed.Hostname(),
+				"port":     port,
+				"method":   method,
+				"password": password,
+			}},
+		},
+	}
+	query := parsed.Query()
+	if plugin, options := parseSIP003Plugin(query.Get("plugin")); plugin == "obfs-local" || plugin == "simple-obfs" {
+		if options["obfs"] == "http" {
+			query.Set("type", "tcp")
+			query.Set("headerType", "http")
+			query.Set("host", options["obfs-host"])
+		}
+	}
+	if stream := v2rayStreamSettings(query); len(stream) > 0 {
+		outbound["streamSettings"] = stream
+	}
+	return v2rayLinkRemark(parsed), outbound, true
+}
+
+func parseShadowsocksURL(parsed *url.URL) (string, string, int, bool) {
+	port, ok := parseURLPort(parsed)
+	if !ok || parsed.User == nil {
+		return "", "", 0, false
+	}
+	userInfo := parsed.User.Username()
+	if password, hasPassword := parsed.User.Password(); hasPassword {
+		userInfo += ":" + password
+	}
+	if decoded, err := decodeFlexibleBase64(userInfo); err == nil {
+		userInfo = string(decoded)
+	}
+	method, password, ok := strings.Cut(userInfo, ":")
+	if !ok || strings.TrimSpace(method) == "" || strings.TrimSpace(password) == "" {
+		return "", "", 0, false
+	}
+	return method, password, port, true
+}
+
+func parseSIP003Plugin(raw string) (string, map[string]string) {
+	parts := strings.Split(strings.TrimSpace(raw), ";")
+	if len(parts) == 0 || strings.TrimSpace(parts[0]) == "" {
+		return "", nil
+	}
+	options := make(map[string]string, len(parts)-1)
+	for _, part := range parts[1:] {
+		key, value, ok := strings.Cut(part, "=")
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if !ok {
+			options[key] = "true"
+			continue
+		}
+		options[key] = strings.TrimSpace(value)
+	}
+	return strings.TrimSpace(parts[0]), options
+}
+
+func queryFlag(query url.Values, keys ...string) bool {
+	for _, key := range keys {
+		value := query.Get(key)
+		if value == "1" || strings.EqualFold(value, "true") {
+			return true
+		}
+	}
+	return false
+}
+
+func v2rayHysteriaOutbound(parsed *url.URL) (string, map[string]any, bool) {
+	port, ok := parseURLPort(parsed)
+	if !ok || parsed.User == nil || parsed.User.Username() == "" {
+		return "", nil, false
+	}
+	query := parsed.Query()
+	version := 1
+	if parsed.Scheme == "hysteria2" || parsed.Scheme == "hy2" {
+		version = 2
+	}
+	tlsQuery := url.Values{}
+	for key, values := range query {
+		tlsQuery[key] = append([]string(nil), values...)
+	}
+	tlsQuery.Set("security", "tls")
+	if pin := query.Get("pinSHA256"); pin != "" {
+		tlsQuery.Set("pcs", pin)
+	}
+	stream := map[string]any{
+		"network":  "hysteria",
+		"security": "tls",
+		"hysteriaSettings": map[string]any{
+			"version":        version,
+			"auth":           parsed.User.Username(),
+			"udpIdleTimeout": 60,
+		},
+		"tlsSettings": v2rayTLSSettings(tlsQuery),
+	}
+	finalMask := map[string]any{}
+	if obfs := query.Get("obfs"); obfs != "" {
+		finalMask["udp"] = []any{map[string]any{
+			"type": obfs,
+			"settings": map[string]any{
+				"password": query.Get("obfs-password"),
+			},
+		}}
+	}
+	if ports := query.Get("mport"); ports != "" {
+		finalMask["quicParams"] = map[string]any{"udpHop": map[string]any{"ports": ports}}
+	}
+	if len(finalMask) > 0 {
+		stream["finalmask"] = finalMask
+	}
+	outbound := map[string]any{
+		"tag":      "proxy",
+		"protocol": "hysteria",
+		"settings": map[string]any{
+			"address": parsed.Hostname(),
+			"port":    port,
+			"version": version,
+		},
+		"streamSettings": stream,
+	}
+	return v2rayLinkRemark(parsed), outbound, true
+}
+
+func v2rayVMessOutbound(link string) (string, map[string]any, bool) {
+	raw := strings.TrimPrefix(link, "vmess://")
+	decoded, err := decodeFlexibleBase64(raw)
+	if err != nil {
+		return "", nil, false
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(decoded, &payload); err != nil {
+		return "", nil, false
+	}
+	port, err := strconv.Atoi(stringValue(payload["port"]))
+	if err != nil || port <= 0 || stringValue(payload["add"]) == "" || stringValue(payload["id"]) == "" {
+		return "", nil, false
+	}
+	user := map[string]any{
+		"id":       stringValue(payload["id"]),
+		"alterId":  intValue(payload["aid"]),
+		"security": firstNonEmptyString(payload["scy"], "auto"),
+		"level":    0,
+	}
+	outbound := map[string]any{
+		"tag":      "proxy",
+		"protocol": "vmess",
+		"settings": map[string]any{
+			"vnext": []any{map[string]any{
+				"address": stringValue(payload["add"]),
+				"port":    port,
+				"users":   []any{user},
+			}},
+		},
+	}
+	query := url.Values{}
+	query.Set("type", firstNonEmptyString(payload["net"], "tcp"))
+	query.Set("security", stringValue(payload["tls"]))
+	query.Set("headerType", stringValue(payload["type"]))
+	query.Set("path", stringValue(payload["path"]))
+	query.Set("host", stringValue(payload["host"]))
+	query.Set("sni", firstNonEmptyString(payload["sni"], payload["host"]))
+	query.Set("fp", stringValue(payload["fp"]))
+	query.Set("alpn", stringValue(payload["alpn"]))
+	query.Set("pbk", stringValue(payload["pbk"]))
+	query.Set("sid", stringValue(payload["sid"]))
+	query.Set("spx", stringValue(payload["spx"]))
+	query.Set("mode", stringValue(payload["mode"]))
+	query.Set("fragment", stringValue(payload["fragment"]))
+	query.Set("noise", stringValue(payload["noise"]))
+	if stream := v2rayStreamSettings(query); len(stream) > 0 {
+		outbound["streamSettings"] = stream
+	}
+	return firstNonEmptyString(payload["ps"], "proxy"), outbound, true
+}
+
+func v2rayStreamSettings(query url.Values) map[string]any {
+	network := firstNonEmptyString(query.Get("type"), "tcp")
+	if network == "raw" {
+		network = "tcp"
+	}
+	security := strings.TrimSpace(query.Get("security"))
+	stream := map[string]any{"network": network}
+	if security != "" && security != "none" {
+		stream["security"] = security
+		switch security {
+		case "tls":
+			stream["tlsSettings"] = v2rayTLSSettings(query)
+		case "reality":
+			stream["realitySettings"] = v2rayRealitySettings(query)
+		}
+	}
+	switch network {
+	case "ws":
+		settings := map[string]any{}
+		if path := query.Get("path"); path != "" {
+			settings["path"] = path
+		}
+		if host := query.Get("host"); host != "" {
+			settings["headers"] = map[string]any{"Host": host}
+		}
+		if heartbeat := intValue(query.Get("heartbeatPeriod")); heartbeat > 0 {
+			settings["heartbeatPeriod"] = heartbeat
+		}
+		if len(settings) > 0 {
+			stream["wsSettings"] = settings
+		}
+	case "grpc", "gun":
+		stream["network"] = "grpc"
+		settings := map[string]any{}
+		if service := query.Get("serviceName"); service != "" {
+			settings["serviceName"] = service
+		}
+		if authority := query.Get("authority"); authority != "" {
+			settings["authority"] = authority
+		}
+		settings["multiMode"] = query.Get("mode") == "multi"
+		stream["grpcSettings"] = settings
+	case "tcp":
+		if header := query.Get("headerType"); header == "http" {
+			settings := map[string]any{"header": map[string]any{"type": "http", "request": map[string]any{}}}
+			request := settings["header"].(map[string]any)["request"].(map[string]any)
+			if path := query.Get("path"); path != "" {
+				request["path"] = []any{path}
+			}
+			if host := query.Get("host"); host != "" {
+				request["headers"] = map[string]any{"Host": []any{host}}
+			}
+			stream["tcpSettings"] = settings
+		} else {
+			stream["tcpSettings"] = map[string]any{"header": map[string]any{"type": "none"}}
+		}
+	case "httpupgrade":
+		settings := map[string]any{
+			"path": firstNonEmptyString(query.Get("path"), "/"),
+		}
+		if host := query.Get("host"); host != "" {
+			settings["host"] = host
+		}
+		stream["httpupgradeSettings"] = settings
+	case "kcp":
+		settings := map[string]any{"header": map[string]any{"type": firstNonEmptyString(query.Get("headerType"), "none")}}
+		if seed := query.Get("seed"); seed != "" {
+			settings["seed"] = seed
+		}
+		stream["kcpSettings"] = settings
+	case "http", "h2", "h3":
+		settings := map[string]any{}
+		if path := query.Get("path"); path != "" {
+			settings["path"] = path
+		}
+		if host := query.Get("host"); host != "" {
+			settings["host"] = []any{host}
+		}
+		stream["httpSettings"] = settings
+	case "quic":
+		settings := map[string]any{
+			"security": firstNonEmptyString(query.Get("quicSecurity"), "none"),
+			"key":      query.Get("key"),
+			"header":   map[string]any{"type": firstNonEmptyString(query.Get("headerType"), "none")},
+		}
+		stream["quicSettings"] = settings
+	case "splithttp", "xhttp":
+		settings := map[string]any{}
+		if path := query.Get("path"); path != "" {
+			settings["path"] = path
+		}
+		if host := query.Get("host"); host != "" {
+			settings["host"] = host
+		}
+		if mode := query.Get("mode"); mode != "" {
+			settings["mode"] = mode
+		}
+		if extra := query.Get("extra"); extra != "" {
+			extraSettings := map[string]any{}
+			if err := json.Unmarshal([]byte(extra), &extraSettings); err == nil {
+				for _, key := range []string{
+					"scMaxBufferedPosts", "scMaxEachPostBytes", "scMaxConcurrentPosts", "scMinPostsIntervalMs",
+					"scStreamUpServerSecs", "xPaddingBytes", "noSSEHeader", "noGRPCHeader", "keepAlivePeriod", "xmux",
+				} {
+					if value, ok := extraSettings[key]; ok {
+						settings[key] = value
+					}
+				}
+			}
+		}
+		if len(settings) > 0 {
+			if network == "xhttp" {
+				stream["xhttpSettings"] = settings
+			} else {
+				stream["splithttpSettings"] = settings
+			}
+		}
+	}
+	applyV2RayFinalMask(stream, query)
+	return stream
+}
+
+func v2rayTLSSettings(query url.Values) map[string]any {
+	settings := map[string]any{"allowInsecure": false, "show": false}
+	if sni := query.Get("sni"); sni != "" {
+		settings["serverName"] = sni
+	}
+	if fp := query.Get("fp"); fp != "" {
+		settings["fingerprint"] = fp
+	}
+	if alpn := query.Get("alpn"); alpn != "" {
+		settings["alpn"] = stringList(alpn)
+	}
+	if ech := query.Get("ech"); ech != "" {
+		settings["echConfigList"] = ech
+	}
+	if vcn := query.Get("vcn"); vcn != "" {
+		settings["verifyPeerCertByName"] = vcn
+	}
+	if pcs := query.Get("pcs"); pcs != "" {
+		settings["pinnedPeerCertSha256"] = stringList(pcs)
+	}
+	if queryFlag(query, "allowInsecure", "insecure") {
+		settings["allowInsecure"] = true
+	}
+	return settings
+}
+
+func v2rayRealitySettings(query url.Values) map[string]any {
+	settings := map[string]any{"show": false}
+	if sni := query.Get("sni"); sni != "" {
+		settings["serverName"] = sni
+	}
+	if fp := query.Get("fp"); fp != "" {
+		settings["fingerprint"] = fp
+	}
+	if pbk := query.Get("pbk"); pbk != "" {
+		settings["publicKey"] = pbk
+	}
+	if sid := query.Get("sid"); sid != "" {
+		settings["shortId"] = sid
+	}
+	if spx := query.Get("spx"); spx != "" {
+		settings["spiderX"] = spx
+	}
+	return settings
+}
+
+func applyV2RayFinalMask(stream map[string]any, query url.Values) {
+	merged := mergeV2RayFinalMask(stream["finalmask"], nil)
+	if raw := query.Get("fm"); raw != "" {
+		var parsed map[string]any
+		if err := json.Unmarshal([]byte(raw), &parsed); err == nil {
+			merged = mergeV2RayFinalMask(merged, parsed)
+		}
+	}
+	if generated := finalMaskFromLinkParams(query); len(generated) > 0 {
+		merged = mergeV2RayFinalMask(merged, generated)
+	}
+	if len(merged) > 0 {
+		stream["finalmask"] = merged
+	}
+}
+
+func finalMaskFromLinkParams(query url.Values) map[string]any {
+	result := map[string]any{}
+	if fragment := fragmentFinalMask(query.Get("fragment")); len(fragment) > 0 {
+		result["tcp"] = []any{map[string]any{"type": "fragment", "settings": fragment}}
+	}
+	if noises := noiseFinalMask(query.Get("noise")); len(noises) > 0 {
+		result["udp"] = []any{map[string]any{"type": "noise", "settings": map[string]any{"noise": noises}}}
+	}
+	return result
+}
+
+func fragmentFinalMask(value string) map[string]any {
+	parts := splitCommaLines(value)
+	if len(parts) == 0 {
+		return nil
+	}
+	length := firstSliceValue(parts, 0)
+	if length == "" {
+		return nil
+	}
+	settings := map[string]any{"length": length}
+	if interval := firstSliceValue(parts, 1); interval != "" {
+		settings["delay"] = interval
+	}
+	if packets := firstSliceValue(parts, 2); packets != "" {
+		settings["packets"] = packets
+	}
+	if maxSplit := firstSliceValue(parts, 3); maxSplit != "" {
+		settings["maxSplit"] = maxSplit
+	}
+	return settings
+}
+
+func noiseFinalMask(value string) []any {
+	patterns := strings.Split(value, "&")
+	result := make([]any, 0, len(patterns))
+	for _, raw := range patterns {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		noiseType := "rand"
+		rest := raw
+		if before, after, ok := strings.Cut(raw, ":"); ok {
+			noiseType = strings.ToLower(strings.TrimSpace(before))
+			rest = after
+		}
+		switch noiseType {
+		case "rand", "str", "hex", "base64":
+		default:
+			noiseType = "rand"
+		}
+		parts := splitCommaLines(rest)
+		packet := firstSliceValue(parts, 0)
+		if packet == "" {
+			continue
+		}
+		item := map[string]any{"type": noiseType}
+		if noiseType == "rand" {
+			item["rand"] = packet
+		} else {
+			item["packet"] = packet
+		}
+		if delay := firstSliceValue(parts, 1); delay != "" {
+			item["delay"] = delay
+		}
+		result = append(result, item)
+	}
+	return result
+}
+
+func mergeV2RayFinalMask(base any, extra map[string]any) map[string]any {
+	merged := map[string]any{}
+	if baseMap, ok := base.(map[string]any); ok {
+		for key, value := range baseMap {
+			switch key {
+			case "tcp", "udp":
+				if items := listAny(value); len(items) > 0 {
+					merged[key] = append([]any(nil), items...)
+				}
+			default:
+				merged[key] = value
+			}
+		}
+	}
+	for key, value := range extra {
+		switch key {
+		case "tcp", "udp":
+			items := append(listAny(merged[key]), listAny(value)...)
+			if len(items) > 0 {
+				merged[key] = items
+			}
+		default:
+			merged[key] = value
+		}
+	}
+	return merged
+}
+
+func firstSliceValue(values []string, index int) string {
+	if index < 0 || index >= len(values) {
+		return ""
+	}
+	return strings.TrimSpace(values[index])
+}
+
+func v2rayLinkRemark(parsed *url.URL) string {
+	if parsed.Fragment == "" {
+		return "proxy"
+	}
+	remark, err := url.QueryUnescape(parsed.Fragment)
+	if err != nil {
+		return parsed.Fragment
+	}
+	return remark
+}
+
+func listAny(value any) []any {
+	switch typed := value.(type) {
+	case []any:
+		return typed
+	case []map[string]any:
+		result := make([]any, 0, len(typed))
+		for _, item := range typed {
+			result = append(result, item)
+		}
+		return result
+	default:
+		return nil
+	}
+}
+
+const fallbackSubscriptionPageTemplate = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Subscription Information</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        h1 { margin-top: 0; }
+        .link-input { margin-bottom: 10px; }
+        .copy-button { margin-left: 10px; }
+        .status { display: inline-block; padding: 3px 8px; border-radius: 3px; font-weight: bold; font-size: 16px; line-height: 1; }
+        .active { background-color: #4CAF50; color: white; }
+        .limited { background-color: #F44336; color: white; }
+        .expired { background-color: #FF9800; color: white; }
+        .disabled { background-color: #9E9E9E; color: white; }
+        .qr-popup { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background-color: white; padding: 10px 25px 25px 25px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,.1); display: none; z-index: 9999; }
+        .qr-close-button { text-align: right; margin-bottom: 5px; margin-right: -15px; }
+        input[type=text] { width: min(900px, 80vw); }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+    <h1>User Information</h1>
+    <p>Username: {{ user.username }}</p>
+    <p>Status: <span class="status {{ user.status_class }}">{{ user.status }}</span></p>
+    <p>Data Limit: {% if not user.data_limit %}∞{% else %}{{ user.data_limit | bytesformat }}{% endif %}</p>
+    <p>Data Used: {{ user.used_traffic | bytesformat }}{% if user.data_limit_reset_strategy != 'no_reset' %} (resets every {{ user.data_limit_reset_strategy }}){% endif %}</p>
+    <p>Expiration Date: {% if not user.expire %}∞{% else %}{{ user.expire | datetime }} ({{ remaining_days | int }} days remaining){% endif %}</p>
+    <p><a href="{{ usage_url }}">Usage</a>{% if support_url %} · <a href="{{ support_url }}">Support</a>{% endif %}</p>
+    {% if user.status == 'active' or user.status == 'on_hold' %}
+    <h2>Links:</h2>
+    <ul>
+        {% for link in user.links %}
+        <li class="link-input">
+            <input type="text" value="{{ link }}" readonly>
+            <button class="copy-button" onclick="copyLink(this.previousElementSibling.value, this)">Copy</button>
+            <button class="qr-button" data-link="{{ link }}">QR Code</button>
+        </li>
+        {% endfor %}
+    </ul>
+    <div class="qr-popup" id="qrPopup">
+        <div class="qr-close-button"><button onclick="closeQrPopup()">X</button></div>
+        <div id="qrCodeContainer"></div>
+    </div>
+    {% endif %}
+    <script>
+        function copyLink(link, button) {
+            const tempInput = document.createElement('input');
+            tempInput.setAttribute('value', link);
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+            button.textContent = 'Copied!';
+            setTimeout(function () { button.textContent = 'Copy'; }, 1500);
+        }
+        const qrButtons = document.querySelectorAll('.qr-button');
+        const qrPopup = document.getElementById('qrPopup');
+        const qrCodeContainer = document.getElementById('qrCodeContainer');
+        qrButtons.forEach((qrButton) => {
+            qrButton.addEventListener('click', () => {
+                const link = qrButton.dataset.link;
+                while (qrCodeContainer.firstChild) qrCodeContainer.removeChild(qrCodeContainer.firstChild);
+                new QRCode(qrCodeContainer, { text: link, width: 256, height: 256, correctLevel: QRCode.CorrectLevel.L });
+                qrPopup.style.display = 'block';
+            });
+        });
+        function closeQrPopup() { document.getElementById('qrPopup').style.display = 'none'; }
+    </script>
+</body>
+</html>`
+
+var (
+	subscriptionTemplateFiltersOnce        sync.Once
+	subscriptionTemplateFiltersErr         error
+	subscriptionTemplateTagPattern         = regexp.MustCompile(`(?s)(\{\{.*?\}\}|\{%.*?%\})`)
+	subscriptionCurrentTimeSetPattern      = regexp.MustCompile(`(?s)\{%\s*set\s+current_timestamp\s*=.*?%\}`)
+	subscriptionRemainingSetPattern        = regexp.MustCompile(`(?s)\{%\s*set\s+remaining_days\s*=.*?%\}`)
+	subscriptionPythonDatetimeFilter       = regexp.MustCompile(`\|\s*datetime\s*\([^)]*\)`)
+	subscriptionPythonBytesFormatFilter    = regexp.MustCompile(`\|\s*bytesformat\s*\([^)]*\)`)
+	subscriptionPythonIntFilter            = regexp.MustCompile(`\|\s*int\s*\([^)]*\)`)
+	subscriptionPythonDefaultFilterPattern = regexp.MustCompile(`\|\s*default\s*\(([^)]*)\)`)
+	subscriptionRemainingDaysClampPattern  = regexp.MustCompile(`\{\{\s*remaining_days\s*\|\s*int\s+if\s*\([^}]*remaining_days[^}]*\)\s*>\s*-?1\s+else\s+0\s*\}\}`)
+	subscriptionDirectUserLinksPattern     = regexp.MustCompile(`\{\{\s*user\.links\s*\}\}`)
+)
+
+func renderSubscriptionPageTemplate(content string, user UserDetail, links []string, usageURL string, supportURL string, token string, vpnInfo ...map[string]any) (string, error) {
+	if err := registerSubscriptionTemplateFilters(); err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(content) == "" {
+		content = fallbackSubscriptionPageTemplate
+	}
+	tpl, err := pongo2.FromString(normalizeLegacySubscriptionTemplate(content))
+	if err != nil {
+		return "", err
+	}
+	rendered, err := tpl.Execute(subscriptionTemplateContext(user, links, usageURL, supportURL, token, vpnInfo...))
+	if err != nil {
+		return "", err
+	}
+	return rendered, nil
+}
+
+func registerSubscriptionTemplateFilters() error {
+	subscriptionTemplateFiltersOnce.Do(func() {
+		for name, filter := range map[string]pongo2.FilterFunction{
+			"bytesformat": subscriptionBytesFilter,
+			"datetime":    subscriptionDatetimeFilter,
+			"int":         subscriptionIntFilter,
+		} {
+			if err := pongo2.RegisterFilter(name, filter); err != nil && !strings.Contains(strings.ToLower(err.Error()), "already") {
+				subscriptionTemplateFiltersErr = err
+				return
+			}
+		}
+	})
+	return subscriptionTemplateFiltersErr
+}
+
+func normalizeLegacySubscriptionTemplate(content string) string {
+	normalized := subscriptionTemplateTagPattern.ReplaceAllStringFunc(content, func(tag string) string {
+		return strings.Join(strings.Fields(tag), " ")
+	})
+	normalized = strings.ReplaceAll(normalized, "user.status.value", "user.status")
+	normalized = strings.ReplaceAll(normalized, "user.data_limit_reset_strategy.value", "user.data_limit_reset_strategy")
+	normalized = subscriptionCurrentTimeSetPattern.ReplaceAllString(normalized, "")
+	normalized = subscriptionRemainingSetPattern.ReplaceAllString(normalized, "")
+	normalized = strings.ReplaceAll(normalized, "now().timestamp()", "current_timestamp")
+	normalized = strings.ReplaceAll(normalized, "datetime.now().timestamp()", "current_timestamp")
+	normalized = subscriptionPythonDatetimeFilter.ReplaceAllString(normalized, "| datetime")
+	normalized = subscriptionPythonBytesFormatFilter.ReplaceAllString(normalized, "| bytesformat")
+	normalized = subscriptionPythonIntFilter.ReplaceAllString(normalized, "| int")
+	normalized = subscriptionPythonDefaultFilterPattern.ReplaceAllString(normalized, `| default:$1`)
+	normalized = subscriptionRemainingDaysClampPattern.ReplaceAllString(normalized, `{{ remaining_days | int }}`)
+	normalized = subscriptionDirectUserLinksPattern.ReplaceAllString(normalized, `{{ links_text|safe }}`)
+	normalized = strings.ReplaceAll(normalized, "user.status == 'active'", "user.status == 'active' or user.status == 'on_hold'")
+	normalized = strings.ReplaceAll(normalized, `user.status == "active"`, `user.status == "active" or user.status == "on_hold"`)
+	return normalized
+}
+
+func subscriptionTemplateContext(user UserDetail, links []string, usageURL string, supportURL string, token string, vpnInfo ...map[string]any) pongo2.Context {
+	var dataLimit any
+	if user.DataLimit != nil && *user.DataLimit > 0 {
+		dataLimit = *user.DataLimit
+	}
+	var expire any
+	if user.Expire != nil && *user.Expire > 0 {
+		expire = *user.Expire
+	}
+	resetStrategy := strings.TrimSpace(user.DataLimitResetStrategy)
+	if resetStrategy == "" {
+		resetStrategy = "no_reset"
+	}
+	vpn := map[string]any{}
+	if len(vpnInfo) > 0 && vpnInfo[0] != nil {
+		vpn = vpnInfo[0]
+	}
+	context := pongo2.Context{
+		"user": map[string]any{
+			"username":                  user.Username,
+			"status":                    user.Status,
+			"status_class":              subscriptionStatusClass(user.Status),
+			"data_limit":                dataLimit,
+			"used_traffic":              user.UsedTraffic,
+			"data_limit_reset_strategy": resetStrategy,
+			"expire":                    expire,
+			"created_at":                user.CreatedAt,
+			"online_at":                 user.OnlineAt,
+			"links":                     links,
+			"subscription_url":          user.SubscriptionURL,
+			"subscription_urls":         user.SubscriptionURLs,
+			"service_id":                user.ServiceID,
+			"service_name":              user.ServiceName,
+		},
+		"links":             links,
+		"links_text":        legacyTemplateStringList(links),
+		"usage_url":         usageURL,
+		"support_url":       supportURL,
+		"token":             token,
+		"current_timestamp": time.Now().UTC().Unix(),
+		"remaining_days":    subscriptionRemainingDaysInt(user.Expire),
+	}
+	for _, key := range []string{"openvpn", "wireguard", "l2tp", "pptp", "ikev2", "anyconnect"} {
+		if value, ok := vpn[key]; ok {
+			context[key] = value
+		}
+	}
+	context["vpn"] = vpn
+	return context
+}
+
+func legacyTemplateStringList(values []string) string {
+	if len(values) == 0 {
+		return "[]"
+	}
+	quoted := make([]string, 0, len(values))
+	for _, value := range values {
+		escaped := strings.ReplaceAll(value, `\`, `\\`)
+		escaped = strings.ReplaceAll(escaped, `'`, `\'`)
+		quoted = append(quoted, `'`+escaped+`'`)
+	}
+	return "[" + strings.Join(quoted, ", ") + "]"
+}
+
+func subscriptionBytesFilter(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
+	return pongo2.AsValue(formatBytes(int64(in.Integer()))), nil
+}
+
+func subscriptionDatetimeFilter(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
+	return pongo2.AsValue(time.Unix(int64(in.Integer()), 0).UTC().Format("2006-01-02 15:04:05")), nil
+}
+
+func subscriptionIntFilter(in *pongo2.Value, param *pongo2.Value) (*pongo2.Value, *pongo2.Error) {
+	return pongo2.AsValue(in.Integer()), nil
+}
+
+func subscriptionStatusClass(status string) string {
+	switch status {
+	case "active", "limited", "expired", "disabled":
+		return status
+	case "on_hold":
+		return "active"
+	default:
+		return "disabled"
+	}
+}
+
+func subscriptionRemainingDaysInt(value *int64) int64 {
+	if value == nil || *value <= 0 {
+		return 0
+	}
+	days := int64(time.Until(time.Unix(*value, 0).UTC()).Hours() / 24)
+	if days < 0 {
+		return 0
+	}
+	return days
+}
+
+func formatBytes(value int64) string {
+	if value < 0 {
+		value = 0
+	}
+	units := []string{"B", "KB", "MB", "GB", "TB", "PB"}
+	size := float64(value)
+	unit := 0
+	for size >= 1024 && unit < len(units)-1 {
+		size /= 1024
+		unit++
+	}
+	if unit == 0 {
+		return strconv.FormatInt(value, 10) + " " + units[unit]
+	}
+	return strconv.FormatFloat(size, 'f', 2, 64) + " " + units[unit]
+}
+
+func clashProxyFromShareLink(name string, link string) (map[string]any, bool) {
+	parsed, err := url.Parse(link)
+	if err != nil {
+		return nil, false
+	}
+	switch parsed.Scheme {
+	case "ss":
+		return clashShadowsocksProxy(name, parsed)
+	case "vless":
+		return clashVLESSProxy(name, parsed)
+	case "trojan":
+		return clashTrojanProxy(name, parsed)
+	case "vmess":
+		return clashVMessProxy(name, parsed)
+	case "hysteria", "hysteria2", "hy2":
+		return clashHysteriaProxy(name, parsed)
+	default:
+		return nil, false
+	}
+}
+
+func clashShadowsocksProxy(name string, parsed *url.URL) (map[string]any, bool) {
+	method, password, port, ok := parseShadowsocksURL(parsed)
+	if !ok {
+		return nil, false
+	}
+	proxy := map[string]any{
+		"name":     name,
+		"type":     "ss",
+		"server":   parsed.Hostname(),
+		"port":     port,
+		"cipher":   method,
+		"password": password,
+		"udp":      true,
+	}
+	query := parsed.Query()
+	plugin, options := parseSIP003Plugin(query.Get("plugin"))
+	switch plugin {
+	case "obfs-local", "simple-obfs":
+		proxy["plugin"] = "obfs"
+		pluginOpts := map[string]any{"mode": firstNonEmptyString(options["obfs"], "http")}
+		if host := options["obfs-host"]; host != "" {
+			pluginOpts["host"] = host
+		}
+		proxy["plugin-opts"] = pluginOpts
+	case "v2ray-plugin":
+		proxy["plugin"] = "v2ray-plugin"
+		pluginOpts := make(map[string]any, len(options))
+		for key, value := range options {
+			if value == "true" {
+				pluginOpts[key] = true
+			} else {
+				pluginOpts[key] = value
+			}
+		}
+		proxy["plugin-opts"] = pluginOpts
+	}
+	return proxy, true
+}
+
+func clashHysteriaProxy(name string, parsed *url.URL) (map[string]any, bool) {
+	port, ok := parseURLPort(parsed)
+	if !ok || parsed.User == nil {
+		return nil, false
+	}
+	password := strings.TrimSpace(parsed.User.Username())
+	if password == "" {
+		return nil, false
+	}
+	query := parsed.Query()
+	version2 := parsed.Scheme == "hysteria2" || parsed.Scheme == "hy2"
+	typeName := "hysteria"
+	if version2 {
+		typeName = "hysteria2"
+	}
+	proxy := map[string]any{
+		"name":   name,
+		"type":   typeName,
+		"server": parsed.Hostname(),
+		"port":   port,
+		"udp":    true,
+	}
+	if version2 {
+		proxy["password"] = password
+	} else {
+		proxy["auth-str"] = password
+		proxy["up"] = firstNonEmptyString(query.Get("up"), "100 Mbps")
+		proxy["down"] = firstNonEmptyString(query.Get("down"), "100 Mbps")
+	}
+	if ports := query.Get("mport"); ports != "" {
+		proxy["ports"] = ports
+	}
+	if obfs := query.Get("obfs"); obfs != "" {
+		proxy["obfs"] = obfs
+	}
+	if password := query.Get("obfs-password"); password != "" {
+		proxy["obfs-password"] = password
+	}
+	if sni := query.Get("sni"); sni != "" {
+		proxy["sni"] = sni
+	}
+	if fp := query.Get("fp"); fp != "" {
+		proxy["client-fingerprint"] = fp
+	}
+	if alpn := stringList(query.Get("alpn")); len(alpn) > 0 {
+		proxy["alpn"] = alpn
+	}
+	if queryFlag(query, "allowInsecure", "insecure") {
+		proxy["skip-cert-verify"] = true
+	}
+	return proxy, true
+}
+
+func clashVLESSProxy(name string, parsed *url.URL) (map[string]any, bool) {
+	port, ok := parseURLPort(parsed)
+	if !ok || strings.TrimSpace(parsed.User.Username()) == "" {
+		return nil, false
+	}
+	query := parsed.Query()
+	network := firstNonEmptyString(query.Get("type"), "tcp")
+	security := query.Get("security")
+	proxy := map[string]any{
+		"name":    name,
+		"type":    "vless",
+		"server":  parsed.Hostname(),
+		"port":    port,
+		"uuid":    parsed.User.Username(),
+		"network": network,
+		"udp":     true,
+	}
+	if security == "tls" || security == "reality" {
+		proxy["tls"] = true
+	}
+	if sni := query.Get("sni"); sni != "" {
+		proxy["servername"] = sni
+	}
+	if fp := query.Get("fp"); fp != "" {
+		proxy["client-fingerprint"] = fp
+	}
+	if flow := query.Get("flow"); flow != "" {
+		proxy["flow"] = flow
+	}
+	if queryFlag(query, "allowInsecure", "insecure") {
+		proxy["skip-cert-verify"] = true
+	}
+	if security == "reality" {
+		reality := map[string]any{}
+		if value := query.Get("pbk"); value != "" {
+			reality["public-key"] = value
+		}
+		if value := query.Get("sid"); value != "" {
+			reality["short-id"] = value
+		}
+		if value := query.Get("spx"); value != "" {
+			reality["spider-x"] = value
+		}
+		if len(reality) > 0 {
+			proxy["reality-opts"] = reality
+		}
+	}
+	appendClashNetworkOptions(proxy, network, query)
+	return proxy, true
+}
+
+func clashTrojanProxy(name string, parsed *url.URL) (map[string]any, bool) {
+	port, ok := parseURLPort(parsed)
+	if !ok || strings.TrimSpace(parsed.User.Username()) == "" {
+		return nil, false
+	}
+	query := parsed.Query()
+	network := firstNonEmptyString(query.Get("type"), "tcp")
+	proxy := map[string]any{
+		"name":     name,
+		"type":     "trojan",
+		"server":   parsed.Hostname(),
+		"port":     port,
+		"password": parsed.User.Username(),
+		"network":  network,
+		"udp":      true,
+	}
+	if query.Get("security") == "tls" || query.Get("security") == "reality" {
+		proxy["tls"] = true
+	}
+	if sni := query.Get("sni"); sni != "" {
+		proxy["sni"] = sni
+	}
+	if queryFlag(query, "allowInsecure", "insecure") {
+		proxy["skip-cert-verify"] = true
+	}
+	appendClashNetworkOptions(proxy, network, query)
+	return proxy, true
+}
+
+func clashVMessProxy(name string, parsed *url.URL) (map[string]any, bool) {
+	raw := strings.TrimPrefix(parsed.String(), "vmess://")
+	decoded, err := decodeFlexibleBase64(raw)
+	if err != nil {
+		return nil, false
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(decoded, &payload); err != nil {
+		return nil, false
+	}
+	port, err := strconv.Atoi(stringValue(payload["port"]))
+	if err != nil || port <= 0 {
+		return nil, false
+	}
+	network := firstNonEmptyString(payload["net"], "tcp")
+	proxy := map[string]any{
+		"name":    name,
+		"type":    "vmess",
+		"server":  stringValue(payload["add"]),
+		"port":    port,
+		"uuid":    stringValue(payload["id"]),
+		"alterId": intValue(payload["aid"]),
+		"cipher":  firstNonEmptyString(payload["scy"], "auto"),
+		"network": network,
+		"udp":     true,
+	}
+	if stringValue(payload["tls"]) == "tls" {
+		proxy["tls"] = true
+	}
+	if sni := firstNonEmptyString(payload["sni"], payload["host"]); sni != "" {
+		proxy["servername"] = sni
+	}
+	if fp := stringValue(payload["fp"]); fp != "" {
+		proxy["client-fingerprint"] = fp
+	}
+	query := url.Values{}
+	query.Set("path", stringValue(payload["path"]))
+	query.Set("host", stringValue(payload["host"]))
+	appendClashNetworkOptions(proxy, network, query)
+	return proxy, true
+}
+
+func appendClashNetworkOptions(proxy map[string]any, network string, query url.Values) {
+	switch network {
+	case "ws":
+		opts := map[string]any{}
+		if path := query.Get("path"); path != "" {
+			opts["path"] = path
+		}
+		if host := query.Get("host"); host != "" {
+			opts["headers"] = map[string]any{"Host": host}
+		}
+		if len(opts) > 0 {
+			proxy["ws-opts"] = opts
+		}
+	case "grpc":
+		opts := map[string]any{}
+		if service := query.Get("serviceName"); service != "" {
+			opts["grpc-service-name"] = service
+		}
+		if len(opts) > 0 {
+			proxy["grpc-opts"] = opts
+		}
+	case "http":
+		opts := map[string]any{}
+		if host := query.Get("host"); host != "" {
+			opts["headers"] = map[string]any{"Host": []string{host}}
+		}
+		if path := query.Get("path"); path != "" {
+			opts["path"] = []string{path}
+		}
+		if len(opts) > 0 {
+			proxy["http-opts"] = opts
+		}
+	}
+}
+
+func writeClashProxy(b *strings.Builder, proxy map[string]any) {
+	order := []string{
+		"name", "type", "server", "port", "cipher", "password", "uuid", "alterId",
+		"tls", "servername", "sni", "skip-cert-verify", "client-fingerprint",
+		"flow", "network", "udp", "plugin", "plugin-opts", "auth-str", "up", "down",
+		"ports", "obfs", "obfs-password", "alpn", "ws-opts", "grpc-opts", "http-opts", "reality-opts",
+	}
+	b.WriteString("  - ")
+	first := true
+	for _, key := range order {
+		value, ok := proxy[key]
+		if !ok || isEmptyYAMLValue(value) {
+			continue
+		}
+		if first {
+			b.WriteString(key)
+			b.WriteString(": ")
+			writeYAMLInlineValue(b, value)
+			b.WriteString("\n")
+			first = false
+			continue
+		}
+		b.WriteString("    ")
+		b.WriteString(key)
+		b.WriteString(":")
+		writeYAMLValue(b, value, 4)
+	}
+}
+
+func writeYAMLValue(b *strings.Builder, value any, indent int) {
+	switch typed := value.(type) {
+	case map[string]any:
+		b.WriteString("\n")
+		writeYAMLMap(b, typed, indent+2)
+	case map[string]string:
+		b.WriteString("\n")
+		mapped := make(map[string]any, len(typed))
+		for key, value := range typed {
+			mapped[key] = value
+		}
+		writeYAMLMap(b, mapped, indent+2)
+	default:
+		b.WriteString(" ")
+		writeYAMLInlineValue(b, value)
+		b.WriteString("\n")
+	}
+}
+
+func writeYAMLMap(b *strings.Builder, values map[string]any, indent int) {
+	keys := []string{"mode", "host", "path", "headers", "Host", "grpc-service-name", "public-key", "short-id", "spider-x"}
+	seen := map[string]bool{}
+	for _, key := range keys {
+		if value, ok := values[key]; ok && !isEmptyYAMLValue(value) {
+			writeYAMLMapItem(b, key, value, indent)
+			seen[key] = true
+		}
+	}
+	for key, value := range values {
+		if seen[key] || isEmptyYAMLValue(value) {
+			continue
+		}
+		writeYAMLMapItem(b, key, value, indent)
+	}
+}
+
+func writeYAMLMapItem(b *strings.Builder, key string, value any, indent int) {
+	b.WriteString(strings.Repeat(" ", indent))
+	b.WriteString(key)
+	b.WriteString(":")
+	writeYAMLValue(b, value, indent)
+}
+
+func writeYAMLInlineValue(b *strings.Builder, value any) {
+	switch typed := value.(type) {
+	case bool:
+		if typed {
+			b.WriteString("true")
+		} else {
+			b.WriteString("false")
+		}
+	case int:
+		b.WriteString(strconv.Itoa(typed))
+	case int64:
+		b.WriteString(strconv.FormatInt(typed, 10))
+	case []string:
+		b.WriteString("[")
+		for index, item := range typed {
+			if index > 0 {
+				b.WriteString(", ")
+			}
+			b.WriteString(yamlQuote(item))
+		}
+		b.WriteString("]")
+	default:
+		b.WriteString(yamlQuote(stringValue(typed)))
+	}
+}
+
+func yamlQuote(value string) string {
+	return strconv.Quote(value)
+}
+
+func isEmptyYAMLValue(value any) bool {
+	switch typed := value.(type) {
+	case nil:
+		return true
+	case string:
+		return typed == ""
+	case []string:
+		return len(typed) == 0
+	case map[string]any:
+		return len(typed) == 0
+	default:
+		return false
+	}
+}
+
+func parseURLPort(parsed *url.URL) (int, bool) {
+	port, err := strconv.Atoi(parsed.Port())
+	return port, err == nil && port > 0
+}
+
+func decodeFlexibleBase64(value string) ([]byte, error) {
+	value = strings.TrimSpace(value)
+	if decoded, err := base64.StdEncoding.DecodeString(value); err == nil {
+		return decoded, nil
+	}
+	if decoded, err := base64.RawStdEncoding.DecodeString(value); err == nil {
+		return decoded, nil
+	}
+	if decoded, err := base64.URLEncoding.DecodeString(value); err == nil {
+		return decoded, nil
+	}
+	return base64.RawURLEncoding.DecodeString(value)
+}
+
+func marshalPretty(value any) (string, error) {
+	raw, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+func subscriptionUsageRange(startRaw string, endRaw string) (time.Time, time.Time, error) {
+	end := time.Now().UTC()
+	start := end.Add(-30 * 24 * time.Hour)
+	if strings.TrimSpace(startRaw) != "" {
+		parsed, err := parseSubscriptionTime(startRaw)
+		if err != nil {
+			return time.Time{}, time.Time{}, err
+		}
+		start = parsed
+	}
+	if strings.TrimSpace(endRaw) != "" {
+		parsed, err := parseSubscriptionTime(endRaw)
+		if err != nil {
+			return time.Time{}, time.Time{}, err
+		}
+		end = parsed
+	}
+	if end.Before(start) {
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid range")
+	}
+	return start, end, nil
+}
+
+func parseSubscriptionTime(value string) (time.Time, error) {
+	value = strings.TrimSpace(value)
+	for _, layout := range []string{time.RFC3339Nano, time.RFC3339, "2006-01-02T15:04:05.999999", "2006-01-02T15:04:05", "2006-01-02 15:04:05.999999", "2006-01-02 15:04:05"} {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			return parsed.UTC(), nil
+		}
+	}
+	return time.Time{}, fmt.Errorf("invalid time")
+}
+
+func parseDBTime(value any) (time.Time, bool) {
+	switch typed := value.(type) {
+	case nil:
+		return time.Time{}, false
+	case time.Time:
+		return typed.UTC(), true
+	case string:
+		parsed, err := parseSubscriptionTime(typed)
+		return parsed, err == nil
+	case []byte:
+		parsed, err := parseSubscriptionTime(string(typed))
+		return parsed, err == nil
+	default:
+		parsed, err := parseSubscriptionTime(fmt.Sprint(typed))
+		return parsed, err == nil
+	}
+}
+
+func normalizeSubscriptionKey(value string) (string, bool) {
+	cleaned := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(value), "-", ""))
+	return cleaned, len(cleaned) == 32 && isHexString(cleaned)
+}
+
+func firstVersion(value string) string {
+	re := regexp.MustCompile(`(\d+(?:\.\d+){1,2})`)
+	match := re.FindStringSubmatch(value)
+	if len(match) > 1 {
+		return match[1]
+	}
+	return ""
+}
+
+func versionAtLeast(value string, minimum string) bool {
+	left := versionParts(value)
+	right := versionParts(minimum)
+	for len(left) < len(right) {
+		left = append(left, 0)
+	}
+	for len(right) < len(left) {
+		right = append(right, 0)
+	}
+	for i := range left {
+		if left[i] > right[i] {
+			return true
+		}
+		if left[i] < right[i] {
+			return false
+		}
+	}
+	return true
+}
+
+func versionParts(value string) []int {
+	parts := strings.Split(value, ".")
+	result := make([]int, 0, len(parts))
+	for _, part := range parts {
+		n, _ := strconv.Atoi(part)
+		result = append(result, n)
+	}
+	return result
+}
+
+func sameUTCDate(left time.Time, right time.Time) bool {
+	l := left.UTC()
+	r := right.UTC()
+	return l.Year() == r.Year() && l.YearDay() == r.YearDay()
+}
+
+func int64Value(value any) int64 {
+	switch typed := value.(type) {
+	case float64:
+		return int64(typed)
+	case int64:
+		return typed
+	case int:
+		return int64(typed)
+	case json.Number:
+		n, _ := typed.Int64()
+		return n
+	default:
+		n, _ := strconv.ParseInt(strings.TrimSpace(fmt.Sprint(value)), 10, 64)
+		return n
+	}
+}
+
+func htmlEscape(value string) string {
+	replacer := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&#34;")
+	return replacer.Replace(value)
+}

@@ -3,6 +3,7 @@ import {
 	type AdminPermissions,
 	AdminRole,
 	AdminSection,
+	AdminSudoScope,
 	UserPermissionToggle,
 } from "types/Admin";
 
@@ -30,6 +31,8 @@ const USER_ONLY_TEMPLATE: PermissionTemplate = {
 		[AdminManagementPermission.View]: false,
 		[AdminManagementPermission.Edit]: false,
 		[AdminManagementPermission.ManageSudo]: false,
+		[AdminManagementPermission.ManageSessions]: false,
+		[AdminManagementPermission.Manage2FA]: false,
 	},
 	sections: {
 		[AdminSection.Usage]: false,
@@ -44,6 +47,17 @@ const USER_ONLY_TEMPLATE: PermissionTemplate = {
 		self_myaccount: true,
 		self_change_password: true,
 		self_api_keys: true,
+		self_sessions: true,
+		self_2fa: true,
+	},
+	sudo: {
+		[AdminSudoScope.Nodes]: false,
+		[AdminSudoScope.Xray]: false,
+		[AdminSudoScope.Settings]: false,
+		[AdminSudoScope.Subscriptions]: false,
+		[AdminSudoScope.Backups]: false,
+		[AdminSudoScope.Maintenance]: false,
+		[AdminSudoScope.PHPMyAdmin]: false,
 	},
 };
 
@@ -66,6 +80,8 @@ const SUDO_TEMPLATE: PermissionTemplate = {
 		[AdminManagementPermission.View]: true,
 		[AdminManagementPermission.Edit]: true,
 		[AdminManagementPermission.ManageSudo]: false,
+		[AdminManagementPermission.ManageSessions]: false,
+		[AdminManagementPermission.Manage2FA]: false,
 	},
 	sections: {
 		[AdminSection.Usage]: true,
@@ -80,6 +96,17 @@ const SUDO_TEMPLATE: PermissionTemplate = {
 		self_myaccount: true,
 		self_change_password: true,
 		self_api_keys: true,
+		self_sessions: true,
+		self_2fa: true,
+	},
+	sudo: {
+		[AdminSudoScope.Nodes]: true,
+		[AdminSudoScope.Xray]: true,
+		[AdminSudoScope.Settings]: true,
+		[AdminSudoScope.Subscriptions]: true,
+		[AdminSudoScope.Backups]: true,
+		[AdminSudoScope.Maintenance]: true,
+		[AdminSudoScope.PHPMyAdmin]: true,
 	},
 };
 
@@ -102,6 +129,8 @@ const FULL_ACCESS_TEMPLATE: PermissionTemplate = {
 		[AdminManagementPermission.View]: true,
 		[AdminManagementPermission.Edit]: true,
 		[AdminManagementPermission.ManageSudo]: true,
+		[AdminManagementPermission.ManageSessions]: true,
+		[AdminManagementPermission.Manage2FA]: true,
 	},
 	sections: {
 		[AdminSection.Usage]: true,
@@ -116,6 +145,17 @@ const FULL_ACCESS_TEMPLATE: PermissionTemplate = {
 		self_myaccount: true,
 		self_change_password: true,
 		self_api_keys: true,
+		self_sessions: true,
+		self_2fa: true,
+	},
+	sudo: {
+		[AdminSudoScope.Nodes]: true,
+		[AdminSudoScope.Xray]: true,
+		[AdminSudoScope.Settings]: true,
+		[AdminSudoScope.Subscriptions]: true,
+		[AdminSudoScope.Backups]: true,
+		[AdminSudoScope.Maintenance]: true,
+		[AdminSudoScope.PHPMyAdmin]: true,
 	},
 };
 

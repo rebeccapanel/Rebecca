@@ -11,22 +11,16 @@ import {
 	HStack,
 	IconButton,
 	Input,
-	Modal,
-	ModalBody,
-	ModalCloseButton,
-	ModalContent,
-	ModalFooter,
-	ModalHeader,
-	ModalOverlay,
 	Radio,
 	RadioGroup,
-	Select,
 	SimpleGrid,
 	Stack,
 	Text,
 	Tooltip,
 	useColorModeValue,
 } from "@chakra-ui/react";
+import { PanelSelect as Select } from "components/common/PanelSelect";
+import { AppDialog } from "components/dialogs/AppDialog";
 import {
 	ArrowPathIcon,
 	MinusIcon,
@@ -246,9 +240,9 @@ export const GeoUpdateDialog = ({
 						</FormControl>
 					</SimpleGrid>
 					<HStack justify="flex-end" mt={3}>
-						<Tooltip label={t("nodes.geoDialog.removeFile")}>
+						<Tooltip label={t("remove")}>
 							<IconButton
-								aria-label="remove file"
+											aria-label={t("a11y.removeFile")}
 								icon={<IconMinus />}
 								variant="ghost"
 								size="sm"
@@ -272,12 +266,27 @@ export const GeoUpdateDialog = ({
 	);
 
 	return (
-		<Modal isOpen={isOpen} onClose={onClose} size="xl" isCentered>
-			<ModalOverlay />
-			<ModalContent>
-				<ModalHeader>{title}</ModalHeader>
-				<ModalCloseButton />
-				<ModalBody>
+		<AppDialog
+			isOpen={isOpen}
+			onClose={onClose}
+			isCentered
+			size="xl"
+			title={title}
+			footer={
+				<>
+					<Button variant="ghost" mr={3} onClick={onClose}>
+						{t("cancel")}
+					</Button>
+					<Button
+						colorScheme="primary"
+						onClick={handleSubmit}
+						isLoading={isSubmitting}
+					>
+						{t("nodes.geoDialog.confirmUpdate")}
+					</Button>
+				</>
+			}
+		>
 					<Stack spacing={4}>
 						<FormControl as="fieldset">
 							<FormLabel as="legend" fontSize="sm">
@@ -339,7 +348,7 @@ export const GeoUpdateDialog = ({
 										</Select>
 										<Tooltip label={t("nodes.geoDialog.refreshTemplates")}>
 											<IconButton
-												aria-label="refresh templates"
+												aria-label={t("a11y.refreshTemplates")}
 												icon={<IconRefresh />}
 												size="sm"
 												variant="outline"
@@ -394,21 +403,7 @@ export const GeoUpdateDialog = ({
 							</Alert>
 						)}
 					</Stack>
-				</ModalBody>
-				<ModalFooter>
-					<Button variant="ghost" mr={3} onClick={onClose}>
-						{t("cancel")}
-					</Button>
-					<Button
-						colorScheme="primary"
-						onClick={handleSubmit}
-						isLoading={isSubmitting}
-					>
-						{t("nodes.geoDialog.confirmUpdate")}
-					</Button>
-				</ModalFooter>
-			</ModalContent>
-		</Modal>
+		</AppDialog>
 	);
 };
 

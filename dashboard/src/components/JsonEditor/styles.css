@@ -13,6 +13,46 @@
 	border: 0;
 }
 
+.rebecca-json-editor .jsoneditor,
+.rebecca-json-editor .ace_editor {
+	border-radius: 0;
+	height: 100%;
+	min-height: 100%;
+	overscroll-behavior: contain;
+}
+
+.rebecca-json-editor .jsoneditor-outer {
+	height: 100%;
+}
+
+.rebecca-json-editor .jsoneditor-menu,
+.rebecca-json-editor .jsoneditor-statusbar {
+	display: none;
+}
+
+.rebecca-json-editor .ace_scrollbar {
+	overscroll-behavior: contain;
+	scrollbar-width: thin;
+}
+
+.rebecca-json-editor .ace_scroller {
+	overscroll-behavior: contain;
+}
+
+.rebecca-json-editor .ace_gutter {
+	border-right: 1px solid var(--rb-panel-border);
+}
+
+.rebecca-json-editor .ace_gutter-cell.ace_error {
+	background-image: none;
+	color: #ff6b7a;
+}
+
+.rebecca-json-error-line {
+	background: rgba(248, 113, 113, 0.16);
+	position: absolute;
+}
+
 .ace_editor,
 .jsoneditor {
 	font-family:

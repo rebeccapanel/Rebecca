@@ -5,6 +5,13 @@ export type Protocol =
 	| "vless"
 	| "trojan"
 	| "shadowsocks"
+	| "hysteria"
+	| "openvpn"
+	| "wireguard"
+	| "l2tp"
+	| "pptp"
+	| "ikev2"
+	| "anyconnect"
 	| "http"
 	| "socks";
 export type StreamNetwork =
@@ -16,7 +23,8 @@ export type StreamNetwork =
 	| "http"
 	| "httpupgrade"
 	| "splithttp"
-	| "xhttp";
+	| "xhttp"
+	| "hysteria";
 export type StreamSecurity = "none" | "tls" | "reality";
 
 export type RawInbound = {
@@ -64,6 +72,33 @@ export type HeaderForm = {
 	value: string;
 };
 
+export type HysteriaUdpMaskForm = {
+	type: "salamander";
+	mode: "salamander" | "gecko";
+	password: string;
+	packetSize: string;
+};
+
+export type HysteriaQuicParamsForm = {
+	enabled: boolean;
+	congestion: "" | "reno" | "bbr" | "brutal" | "force-brutal";
+	bbrProfile: "" | "conservative" | "standard" | "aggressive";
+	debug: boolean;
+	brutalUp: string;
+	brutalDown: string;
+	udpHopEnabled: boolean;
+	udpHopPorts: string;
+	udpHopInterval: string;
+	maxIdleTimeout: string;
+	keepAlivePeriod: string;
+	disablePathMTUDiscovery: boolean;
+	maxIncomingStreams: string;
+	initStreamReceiveWindow: string;
+	maxStreamReceiveWindow: string;
+	initConnectionReceiveWindow: string;
+	maxConnectionReceiveWindow: string;
+};
+
 export type SockoptFormValues = {
 	acceptProxyProtocol: boolean;
 	tcpFastOpen: boolean;
@@ -106,6 +141,21 @@ export type InboundFormValues = {
 	shadowsocksPassword: string;
 	shadowsocksIvCheck: boolean;
 
+	// Hysteria
+	hysteriaVersion: string;
+	hysteriaUdpIdleTimeout: string;
+	hysteriaMasqueradeEnabled: boolean;
+	hysteriaMasqueradeType: "" | "proxy" | "file" | "string";
+	hysteriaMasqueradeDir: string;
+	hysteriaMasqueradeUrl: string;
+	hysteriaMasqueradeRewriteHost: boolean;
+	hysteriaMasqueradeInsecure: boolean;
+	hysteriaMasqueradeContent: string;
+	hysteriaMasqueradeStatusCode: string;
+	hysteriaMasqueradeHeaders: HeaderForm[];
+	hysteriaUdpMasks: HysteriaUdpMaskForm[];
+	hysteriaQuicParams: HysteriaQuicParamsForm;
+
 	// sniffing
 	sniffingEnabled: boolean;
 	sniffingDestinations: string[];
@@ -128,7 +178,6 @@ export type InboundFormValues = {
 	tlsCertificates: TlsCertificateForm[];
 	tlsAlpn: string[];
 	tlsEchServerKeys: string;
-	tlsEchForceQuery: string;
 	tlsAllowInsecure: boolean;
 	tlsFingerprint: string;
 	tlsEchConfigList: string;
@@ -231,6 +280,133 @@ export type InboundFormValues = {
 	socksUdpEnabled: boolean;
 	socksUdpIp: string;
 
+	// OpenVPN virtual inbound
+	ovTransport: "udp" | "tcp";
+	ovTunnelPort: string;
+	ovIPv4Pool: string;
+	ovDNSServers: string;
+	ovRedirectGateway: boolean;
+	ovTproxyEnabled: boolean;
+	ovRequireDCO: boolean;
+	ovAccountingEnabled: boolean;
+	ovManagementPort: string;
+	ovCipher: string;
+	ovAuth: string;
+	ovInlineCA: boolean;
+	ovSetClientCertNone: boolean;
+	ovAuthNoCache: boolean;
+	ovEmbedCredentials: boolean;
+	ovRouteNoPull: boolean;
+	ovBlockOutsideDNS: boolean;
+	ovCA: string;
+	ovServerCertificate: string;
+	ovServerKey: string;
+	ovDH: string;
+	ovTlsCrypt: string;
+	ovTlsAuth: string;
+	ovExtraClientConfig: string;
+
+	// WireGuard virtual inbound
+	wgTunnelPort: string;
+	wgIPv4Pool: string;
+	wgServerAddress: string;
+	wgPrivateKey: string;
+	wgPublicKey: string;
+	wgMTU: string;
+	wgPersistentKeepalive: string;
+	wgTproxyEnabled: boolean;
+	wgNatEnabled: boolean;
+	wgAccountingEnabled: boolean;
+
+	l2tpTunnelPort: string;
+	l2tpIPv4Pool: string;
+	l2tpDNSServers: string;
+	l2tpIPSecPSK: string;
+	l2tpRedirectGateway: boolean;
+	l2tpTproxyEnabled: boolean;
+	l2tpAccountingEnabled: boolean;
+	l2tpMTU: string;
+	l2tpMRU: string;
+	l2tpLcpEchoInterval: string;
+	l2tpLcpEchoFailure: string;
+
+	// IKEv2 and Cisco AnyConnect remote-access inbounds
+	raAuthMode: "password" | "certificate" | "password+certificate";
+	raTunnelPort: string;
+	raIPv4Pool: string;
+	raDNSServers: string;
+	raTproxyEnabled: boolean;
+	raAccountingEnabled: boolean;
+	raRedirectGateway: boolean;
+	raCA: string;
+	raServerCertificate: string;
+	raServerKey: string;
+	raCertificateNames: string;
+	raServerIdentity: string;
+	raMTU: string;
+	ikeProposals: string;
+	ikeEspProposals: string;
+	ikeMobike: boolean;
+	ikeFragmentation: "yes" | "accept" | "no";
+	ikeReauth: boolean;
+	ikeSendCert: boolean;
+	ikeLifetime: string;
+	ikeChildLifetime: string;
+	ikeRekeyTime: string;
+	ikeDpdDelay: string;
+	ikeRoutes: string;
+	acUDPEnabled: boolean;
+	acUDPPort: string;
+	acListenHost: string;
+	acUDPListenHost: string;
+	acListenHostIsDynDNS: boolean;
+	acMaxClients: string;
+	acMaxSameClients: string;
+	acCookieTimeout: string;
+	acIdleTimeout: string;
+	acMobileIdleTimeout: string;
+	acSessionTimeout: string;
+	acKeepalive: string;
+	acDPD: string;
+	acMobileDPD: string;
+	acAuthTimeout: string;
+	acMinReauthTime: string;
+	acMaxBanScore: string;
+	acBanResetTime: string;
+	acRekeyTime: string;
+	acRekeyMethod: "ssl" | "new-tunnel";
+	acSwitchToTCPTimeout: string;
+	acStatsReportTime: string;
+	acRateLimitMs: string;
+	acRXDataPerSec: string;
+	acTXDataPerSec: string;
+	acOutputBuffer: string;
+	acNetPriority: string;
+	acNoCompressLimit: string;
+	acCompression: boolean;
+	acCiscoCompat: boolean;
+	acDTLSPSK: boolean;
+	acDTLSLegacy: boolean;
+	acCiscoSVCCompat: boolean;
+	acClientBypassProtocol: boolean;
+	acMatchTLSDTLSCiphers: boolean;
+	acDenyRoaming: boolean;
+	acPersistentCookies: boolean;
+	acTryMTUDiscovery: boolean;
+	acPingLeases: boolean;
+	acTunnelAllDNS: boolean;
+	acRestrictToRoutes: boolean;
+	acRestrictToPorts: string;
+	acRoutes: string;
+	acNoRoutes: string;
+	acNBNS: string;
+	acSplitDNS: string;
+	acBanner: string;
+	acPreLoginBanner: string;
+	acDefaultDomain: string;
+	acTLSPriorities: string;
+	acCertUserOID: string;
+
 	targetIds: string[];
 };
 
@@ -260,13 +436,19 @@ export const tlsCipherOptions = [
 	"TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256",
 ];
 export const tlsUsageOptions = ["encipherment", "verify", "issue"];
-export const tlsEchForceOptions = ["none", "half", "full"];
 
 export const protocolOptions: Protocol[] = [
 	"vmess",
 	"vless",
 	"trojan",
 	"shadowsocks",
+	"hysteria",
+	"openvpn",
+	"wireguard",
+	"l2tp",
+	"pptp",
+	"ikev2",
+	"anyconnect",
 	"http",
 	"socks",
 ];
@@ -282,6 +464,7 @@ export const streamNetworks: StreamNetwork[] = [
 	"httpupgrade",
 	"splithttp",
 	"xhttp",
+	"hysteria",
 ];
 export const streamSecurityOptions: StreamSecurity[] = [
 	"none",
@@ -321,6 +504,69 @@ const toInputValue = (value: unknown): string => {
 	return "";
 };
 
+const randomLowerAndNum = (length: number): string => {
+	const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+	const bytes = new Uint8Array(length);
+	if (globalThis.crypto?.getRandomValues) {
+		globalThis.crypto.getRandomValues(bytes);
+	} else {
+		for (let i = 0; i < bytes.length; i += 1) {
+			bytes[i] = Math.floor(Math.random() * 256);
+		}
+	}
+	return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
+};
+
+const randomPortText = (): string => {
+	const blocked = new Set([
+		21, 22, 23, 25, 53, 67, 68, 110, 111, 123, 137, 143, 161, 162, 993,
+	]);
+	for (let i = 0; i < 12; i += 1) {
+		const candidate = Math.floor(Math.random() * 55000) + 10000;
+		if (candidate <= 65535 && !blocked.has(candidate)) {
+			return String(candidate);
+		}
+	}
+	return "443";
+};
+
+const defaultPortText = (protocol: Protocol): string => {
+	if (protocol === "l2tp") return "1701";
+	if (protocol === "pptp") return "1723";
+	if (protocol === "ikev2") return "500";
+	if (protocol === "anyconnect") return "443";
+	return randomPortText();
+};
+
+const defaultL2TPPSK = (): string => `rb-l2tp-${randomLowerAndNum(24)}`;
+
+export const createDefaultHysteriaUdpMask = (): HysteriaUdpMaskForm => ({
+	type: "salamander",
+	mode: "salamander",
+	password: randomLowerAndNum(16),
+	packetSize: "",
+});
+
+const createDefaultHysteriaQuicParams = (): HysteriaQuicParamsForm => ({
+	enabled: false,
+	congestion: "bbr",
+	bbrProfile: "",
+	debug: false,
+	brutalUp: "",
+	brutalDown: "",
+	udpHopEnabled: false,
+	udpHopPorts: "20000-50000",
+	udpHopInterval: "5-10",
+	maxIdleTimeout: "30",
+	keepAlivePeriod: "10",
+	disablePathMTUDiscovery: false,
+	maxIncomingStreams: "1024",
+	initStreamReceiveWindow: "8388608",
+	maxStreamReceiveWindow: "8388608",
+	initConnectionReceiveWindow: "20971520",
+	maxConnectionReceiveWindow: "20971520",
+});
+
 const createDefaultSockopt = (): SockoptFormValues => ({
 	acceptProxyProtocol: false,
 	tcpFastOpen: false,
@@ -348,6 +594,506 @@ const parsePort = (value: string): number | string => {
 	}
 	return value.trim();
 };
+
+const isValidPortText = (value: string): boolean => {
+	const cleaned = value.trim();
+	if (!/^\d+$/.test(cleaned)) return false;
+	const port = Number(cleaned);
+	return Number.isInteger(port) && port >= 1 && port <= 65535;
+};
+
+const isHostPortTarget = (value: string): boolean => {
+	const cleaned = value.trim();
+	if (!cleaned || cleaned.includes("://") || cleaned.includes("/")) {
+		return false;
+	}
+	if (cleaned.startsWith("[")) {
+		const match = cleaned.match(/^\[[^\]]+\]:(\d+)$/);
+		return !!match && isValidPortText(match[1]);
+	}
+	const colon = cleaned.lastIndexOf(":");
+	if (colon <= 0 || colon === cleaned.length - 1) {
+		return false;
+	}
+	const host = cleaned.slice(0, colon).trim();
+	const port = cleaned.slice(colon + 1).trim();
+	return !!host && !host.includes(":") && isValidPortText(port);
+};
+
+const hasSchemePathOrPort = (value: string): boolean => {
+	const cleaned = value.trim();
+	if (!cleaned) return false;
+	if (cleaned.includes("://") || cleaned.includes("/")) return true;
+	if (cleaned.startsWith("[")) return /^\[[^\]]+\]:\d+$/.test(cleaned);
+	return /^[^:]+:\d+$/.test(cleaned);
+};
+
+const validatePath = (value: string, label: string): string | null => {
+	const cleaned = value.trim();
+	if (cleaned && !cleaned.startsWith("/")) {
+		return `${label} must start with /.`;
+	}
+	return null;
+};
+
+const validateXPadding = (value: string, label: string): string | null => {
+	const cleaned = value.trim();
+	if (!cleaned) return null;
+	const match = cleaned.match(/^(\d+)(?:-(\d+))?$/);
+	if (!match) {
+		return `${label} must look like 100 or 100-1000.`;
+	}
+	if (match[2] && Number(match[1]) > Number(match[2])) {
+		return `${label} range start must be less than or equal to end.`;
+	}
+	return null;
+};
+
+const validatePacketSizeRange = (value: string): boolean => {
+	const cleaned = value.trim();
+	const match = cleaned.match(/^(\d+)-(\d+)$/);
+	if (!match) return false;
+	const min = Number(match[1]);
+	const max = Number(match[2]);
+	return (
+		Number.isSafeInteger(min) &&
+		Number.isSafeInteger(max) &&
+		min >= 1 &&
+		max >= min &&
+		max <= 2048
+	);
+};
+
+export type InboundFormValidationErrors = Partial<
+	Record<keyof InboundFormValues, string>
+>;
+
+export const validateInboundFormFields = (
+	values: InboundFormValues,
+): InboundFormValidationErrors => {
+	const errors: InboundFormValidationErrors = {};
+	if (!values.tag?.trim()) {
+		errors.tag = "Inbound tag is required.";
+	}
+	if (!isValidPortText(values.port ?? "")) {
+		errors.port = "Port must be a number between 1 and 65535.";
+	}
+	if (values.protocol === "pptp" && values.port.trim() !== "1723") {
+		errors.port = "PPTP port must be 1723.";
+	}
+	if (values.protocol === "l2tp" && values.port.trim() !== "1701") {
+		errors.port = "L2TP/IPsec port must be 1701.";
+	}
+	if (values.protocol === "ikev2" && values.port.trim() !== "500") {
+		errors.port = "IKEv2 port must be 500.";
+	}
+	if (values.protocol === "shadowsocks") {
+		const keyBytes =
+			values.shadowsocksMethod === "2022-blake3-aes-128-gcm" ? 16 : 32;
+		if (values.shadowsocksMethod.startsWith("2022-")) {
+			try {
+				const decoded = atob(values.shadowsocksPassword.trim());
+				if (decoded.length !== keyBytes) throw new Error("invalid key length");
+			} catch {
+				errors.shadowsocksPassword = `Shadowsocks 2022 server password must be a base64-encoded ${keyBytes}-byte key.`;
+			}
+		}
+	}
+	if (values.streamNetwork === "ws") {
+		const error = validatePath(values.wsPath ?? "", "WebSocket path");
+		if (error) errors.wsPath = error;
+	}
+	if (values.streamNetwork === "httpupgrade") {
+		const error = validatePath(
+			values.httpupgradePath ?? "",
+			"HTTPUpgrade path",
+		);
+		if (error) errors.httpupgradePath = error;
+	}
+	if (values.streamNetwork === "splithttp") {
+		const pathError = validatePath(
+			values.splithttpPath ?? "",
+			"SplitHTTP path",
+		);
+		if (pathError) errors.splithttpPath = pathError;
+		const paddingError = validateXPadding(
+			values.splithttpXPaddingBytes ?? "",
+			"SplitHTTP xPaddingBytes",
+		);
+		if (paddingError) errors.splithttpXPaddingBytes = paddingError;
+	}
+	if (values.streamNetwork === "xhttp") {
+		const pathError = validatePath(values.xhttpPath ?? "", "XHTTP path");
+		if (pathError) errors.xhttpPath = pathError;
+		const paddingError = validateXPadding(
+			values.xhttpPaddingBytes ?? "",
+			"XHTTP xPaddingBytes",
+		);
+		if (paddingError) errors.xhttpPaddingBytes = paddingError;
+	}
+	if (values.protocol === "hysteria") {
+		if (values.streamNetwork !== "hysteria") {
+			errors.streamNetwork = "Hysteria requires the hysteria transport.";
+		}
+		if (values.streamSecurity !== "tls") {
+			errors.streamSecurity = "Hysteria requires TLS security.";
+		}
+		const idle = Number(values.hysteriaUdpIdleTimeout || "60");
+		if (!Number.isInteger(idle) || idle < 2 || idle > 600) {
+			errors.hysteriaUdpIdleTimeout =
+				"UDP idle timeout must be between 2 and 600 seconds.";
+		}
+		if (values.hysteriaMasqueradeEnabled) {
+			if (
+				values.hysteriaMasqueradeType === "proxy" &&
+				!/^https?:\/\//i.test(values.hysteriaMasqueradeUrl.trim())
+			) {
+				errors.hysteriaMasqueradeUrl =
+					"Proxy masquerade URL must start with http:// or https://.";
+			}
+			if (
+				values.hysteriaMasqueradeType === "file" &&
+				!values.hysteriaMasqueradeDir.trim()
+			) {
+				errors.hysteriaMasqueradeDir = "File masquerade directory is required.";
+			}
+		}
+		for (const mask of values.hysteriaUdpMasks ?? []) {
+			if (!mask.password.trim()) {
+				errors.hysteriaUdpMasks = "Salamander UDP mask password is required.";
+				break;
+			}
+			if (mask.mode === "gecko" && !validatePacketSizeRange(mask.packetSize)) {
+				errors.hysteriaUdpMasks =
+					"Gecko packet size must look like 512-1200 with max <= 2048.";
+				break;
+			}
+		}
+	}
+	if (values.protocol === "openvpn") {
+		if (!["udp", "tcp"].includes(values.ovTransport)) {
+			errors.ovTransport = "OpenVPN transport must be udp or tcp.";
+		}
+		if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(values.ovIPv4Pool.trim())) {
+			errors.ovIPv4Pool = "IPv4 pool must be a CIDR, for example 10.66.0.0/16.";
+		}
+		if (values.ovTproxyEnabled && !values.ovTunnelPort.trim()) {
+			errors.ovTunnelPort = "Tunnel port is required.";
+		}
+		if (values.ovTunnelPort.trim() && !isValidPortText(values.ovTunnelPort)) {
+			errors.ovTunnelPort = "Tunnel port must be a number between 1 and 65535.";
+		}
+		if (
+			values.ovTunnelPort.trim() &&
+			isValidPortText(values.ovTunnelPort) &&
+			values.ovTunnelPort.trim() === values.port.trim()
+		) {
+			errors.ovTunnelPort =
+				"Tunnel port must be different from the OpenVPN port.";
+		}
+		if (
+			values.ovManagementPort.trim() &&
+			!isValidPortText(values.ovManagementPort)
+		) {
+			errors.ovManagementPort =
+				"Management port must be a number between 1 and 65535.";
+		}
+		if (values.ovRequireDCO) {
+			const cipher = values.ovCipher.trim().toUpperCase();
+			if (
+				cipher &&
+				!["AES-256-GCM", "AES-128-GCM", "CHACHA20-POLY1305"].includes(cipher)
+			) {
+				errors.ovCipher =
+					"Require DCO only supports AES-256-GCM, AES-128-GCM, or CHACHA20-POLY1305.";
+			}
+		}
+		if (!values.ovCA.trim()) {
+			errors.ovCA = "CA certificate is required.";
+		}
+		if (!values.ovServerCertificate.trim()) {
+			errors.ovServerCertificate = "Server certificate is required.";
+		}
+		if (!values.ovServerKey.trim()) {
+			errors.ovServerKey = "Server key is required.";
+		}
+	}
+	if (values.protocol === "wireguard") {
+		if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(values.wgIPv4Pool.trim())) {
+			errors.wgIPv4Pool = "IPv4 pool must be a CIDR, for example 10.69.0.0/16.";
+		}
+		if (
+			!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(values.wgServerAddress.trim())
+		) {
+			errors.wgServerAddress =
+				"Server address must be a CIDR, for example 10.69.0.1/16.";
+		}
+		if (values.wgTproxyEnabled && !values.wgTunnelPort.trim()) {
+			errors.wgTunnelPort = "Tunnel port is required.";
+		}
+		if (values.wgTunnelPort.trim() && !isValidPortText(values.wgTunnelPort)) {
+			errors.wgTunnelPort = "Tunnel port must be a number between 1 and 65535.";
+		}
+		if (
+			values.wgTunnelPort.trim() &&
+			isValidPortText(values.wgTunnelPort) &&
+			values.wgTunnelPort.trim() === values.port.trim()
+		) {
+			errors.wgTunnelPort =
+				"Tunnel port must be different from the WireGuard port.";
+		}
+		if (!values.wgPrivateKey.trim()) {
+			errors.wgPrivateKey = "WireGuard private key is required.";
+		}
+		const validateWGNumber = (
+			key: "wgMTU" | "wgPersistentKeepalive",
+			label: string,
+			min: number,
+			max: number,
+		) => {
+			const raw = values[key].trim();
+			if (!raw) return;
+			const parsed = Number(raw);
+			if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+				errors[key] = `${label} must be a number between ${min} and ${max}.`;
+			}
+		};
+		validateWGNumber("wgMTU", "MTU", 576, 1500);
+		validateWGNumber("wgPersistentKeepalive", "Persistent keepalive", 0, 3600);
+	}
+	if (values.protocol === "l2tp" || values.protocol === "pptp") {
+		if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(values.l2tpIPv4Pool.trim())) {
+			errors.l2tpIPv4Pool =
+				"IPv4 pool must be a CIDR, for example 10.67.0.0/16.";
+		}
+		if (values.l2tpTproxyEnabled && !values.l2tpTunnelPort.trim()) {
+			errors.l2tpTunnelPort = "Tunnel port is required.";
+		}
+		if (
+			values.l2tpTunnelPort.trim() &&
+			!isValidPortText(values.l2tpTunnelPort)
+		) {
+			errors.l2tpTunnelPort =
+				"Tunnel port must be a number between 1 and 65535.";
+		}
+		if (
+			values.protocol === "l2tp" &&
+			values.l2tpTproxyEnabled &&
+			values.l2tpTunnelPort.trim() !== "1702"
+		) {
+			errors.l2tpTunnelPort = "L2TP tunnel port must be 1702.";
+		}
+		if (
+			values.l2tpTunnelPort.trim() &&
+			isValidPortText(values.l2tpTunnelPort) &&
+			values.l2tpTunnelPort.trim() === values.port.trim()
+		) {
+			errors.l2tpTunnelPort =
+				"Tunnel port must be different from the VPN port.";
+		}
+		if (values.protocol === "l2tp" && !values.l2tpIPSecPSK.trim()) {
+			errors.l2tpIPSecPSK = "IPsec pre-shared key is required.";
+		}
+		const validateL2TPNumber = (
+			key: "l2tpMTU" | "l2tpMRU" | "l2tpLcpEchoInterval" | "l2tpLcpEchoFailure",
+			label: string,
+			min: number,
+			max: number,
+		) => {
+			const raw = values[key].trim();
+			if (!raw) return;
+			const parsed = Number(raw);
+			if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+				errors[key] = `${label} must be a number between ${min} and ${max}.`;
+			}
+		};
+		validateL2TPNumber("l2tpMTU", "MTU", 576, 1500);
+		validateL2TPNumber("l2tpMRU", "MRU", 576, 1500);
+		validateL2TPNumber("l2tpLcpEchoInterval", "LCP echo interval", 1, 3600);
+		validateL2TPNumber("l2tpLcpEchoFailure", "LCP echo failure", 1, 20);
+	}
+	if (values.protocol === "ikev2" || values.protocol === "anyconnect") {
+		if (!/^\d{1,3}(\.\d{1,3}){3}\/\d{1,2}$/.test(values.raIPv4Pool.trim())) {
+			errors.raIPv4Pool = "IPv4 pool must be a valid CIDR.";
+		}
+		if (values.raTproxyEnabled && !isValidPortText(values.raTunnelPort)) {
+			errors.raTunnelPort = "Tunnel port must be between 1 and 65535.";
+		}
+		if (values.raTunnelPort.trim() === values.port.trim()) {
+			errors.raTunnelPort = "Tunnel port must differ from the public port.";
+		}
+		if (!values.raServerCertificate.trim())
+			errors.raServerCertificate = "Server certificate is required.";
+		if (!values.raServerKey.trim())
+			errors.raServerKey = "Server key is required.";
+		if (values.protocol === "ikev2" || values.raAuthMode !== "password") {
+			if (!values.raCA.trim()) errors.raCA = "CA certificate is required.";
+		}
+		if (values.protocol === "ikev2" && !values.raServerIdentity.trim()) {
+			errors.raServerIdentity = "Server identity is required.";
+		}
+		const validateRemoteNumber = (
+			key: keyof Pick<
+				InboundFormValues,
+				| "raMTU"
+				| "ikeLifetime"
+				| "ikeChildLifetime"
+				| "ikeRekeyTime"
+				| "ikeDpdDelay"
+				| "acMaxClients"
+				| "acMaxSameClients"
+				| "acCookieTimeout"
+				| "acIdleTimeout"
+				| "acMobileIdleTimeout"
+				| "acSessionTimeout"
+				| "acKeepalive"
+				| "acDPD"
+				| "acMobileDPD"
+				| "acAuthTimeout"
+				| "acMinReauthTime"
+				| "acMaxBanScore"
+				| "acBanResetTime"
+				| "acRekeyTime"
+				| "acSwitchToTCPTimeout"
+				| "acStatsReportTime"
+				| "acRateLimitMs"
+				| "acRXDataPerSec"
+				| "acTXDataPerSec"
+				| "acOutputBuffer"
+				| "acNetPriority"
+				| "acNoCompressLimit"
+			>,
+			label: string,
+			min: number,
+			max: number,
+		) => {
+			const raw = values[key].trim();
+			if (!raw) return;
+			const parsed = Number(raw);
+			if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+				errors[key] = `${label} must be between ${min} and ${max}.`;
+			}
+		};
+		if (values.protocol === "anyconnect")
+			validateRemoteNumber("raMTU", "MTU", 576, 1500);
+		if (values.protocol === "ikev2") {
+			if (
+				!values.raRedirectGateway &&
+				splitLines(values.ikeRoutes).length === 0
+			) {
+				errors.ikeRoutes =
+					"At least one route is required when Redirect gateway is disabled.";
+			}
+			validateRemoteNumber("ikeLifetime", "IKE lifetime", 60, 2592000);
+			validateRemoteNumber("ikeChildLifetime", "Child lifetime", 60, 2592000);
+			validateRemoteNumber("ikeRekeyTime", "Rekey time", 0, 2592000);
+			validateRemoteNumber("ikeDpdDelay", "DPD delay", 0, 86400);
+		} else {
+			if (values.acUDPEnabled && !isValidPortText(values.acUDPPort)) {
+				errors.acUDPPort = "UDP port must be between 1 and 65535.";
+			}
+			validateRemoteNumber("acMaxClients", "Max clients", 1, 1000000);
+			validateRemoteNumber("acMaxSameClients", "Max same clients", 0, 1000000);
+			for (const [key, label] of [
+				["acCookieTimeout", "Cookie timeout"],
+				["acIdleTimeout", "Idle timeout"],
+				["acMobileIdleTimeout", "Mobile idle timeout"],
+				["acSessionTimeout", "Session timeout"],
+				["acKeepalive", "Keepalive"],
+				["acDPD", "DPD"],
+				["acMobileDPD", "Mobile DPD"],
+			] as const) {
+				validateRemoteNumber(key, label, 0, 2592000);
+			}
+			validateRemoteNumber("acAuthTimeout", "Auth timeout", 1, 86400);
+			validateRemoteNumber("acMinReauthTime", "Min reauth time", 0, 2592000);
+			validateRemoteNumber("acMaxBanScore", "Max ban score", 0, 1000000);
+			validateRemoteNumber("acBanResetTime", "Ban reset time", 0, 2592000);
+			validateRemoteNumber("acRekeyTime", "Rekey time", 0, 2592000);
+			validateRemoteNumber(
+				"acSwitchToTCPTimeout",
+				"Switch to TCP timeout",
+				0,
+				86400,
+			);
+			validateRemoteNumber("acStatsReportTime", "Stats report time", 0, 86400);
+			validateRemoteNumber("acRateLimitMs", "Rate limit", 0, 60000);
+			validateRemoteNumber(
+				"acRXDataPerSec",
+				"RX bytes per second",
+				0,
+				2147483647,
+			);
+			validateRemoteNumber(
+				"acTXDataPerSec",
+				"TX bytes per second",
+				0,
+				2147483647,
+			);
+			validateRemoteNumber("acOutputBuffer", "Output buffer", 0, 100000);
+			validateRemoteNumber("acNetPriority", "Network priority", 0, 6);
+			validateRemoteNumber("acNoCompressLimit", "No-compress limit", 0, 65535);
+			if (!/^\d+(\.\d+)+$/.test(values.acCertUserOID.trim())) {
+				errors.acCertUserOID = "Certificate user OID is invalid.";
+			}
+			if (/\r|\n/.test(values.acTLSPriorities)) {
+				errors.acTLSPriorities = "TLS priorities must stay on one line.";
+			}
+			if (
+				values.acRestrictToPorts.trim() &&
+				!/^[a-zA-Z0-9!(),\- \t]+$/.test(values.acRestrictToPorts.trim())
+			) {
+				errors.acRestrictToPorts = "Restricted ports expression is invalid.";
+			}
+			if (
+				splitLines(values.acNBNS).some(
+					(value) => !/^\d{1,3}(\.\d{1,3}){3}$/.test(value),
+				)
+			) {
+				errors.acNBNS = "NBNS servers must be IPv4 addresses.";
+			}
+			if (splitLines(values.acSplitDNS).some((value) => /\s/.test(value))) {
+				errors.acSplitDNS = "Split DNS entries must be domain names.";
+			}
+		}
+	}
+	if (values.streamSecurity === "reality") {
+		if (!isHostPortTarget(values.realityTarget ?? "")) {
+			errors.realityTarget =
+				"REALITY target must be host:port, for example google.com:443.";
+		}
+		if (!values.realityPrivateKey?.trim()) {
+			errors.realityPrivateKey = "REALITY private key is required.";
+		}
+		const serverNames = splitLines(values.realityServerNames ?? "");
+		if (!serverNames.length) {
+			errors.realityServerNames = "REALITY server names are required.";
+		}
+		for (const serverName of serverNames) {
+			if (hasSchemePathOrPort(serverName)) {
+				errors.realityServerNames =
+					"REALITY server names must not include scheme, path, or port.";
+				break;
+			}
+		}
+		const shortIds = splitLines(values.realityShortIds ?? "");
+		if (!shortIds.length) {
+			errors.realityShortIds = "REALITY short IDs are required.";
+		}
+		for (const shortId of shortIds) {
+			if (!/^[0-9a-fA-F]{2,16}$/.test(shortId) || shortId.length % 2 !== 0) {
+				errors.realityShortIds =
+					"REALITY short IDs must be even-length hex with 2-16 characters.";
+				break;
+			}
+		}
+	}
+	return errors;
+};
+
+export const validateInboundFormValues = (
+	values: InboundFormValues,
+): string[] => Object.values(validateInboundFormFields(values));
 
 const cleanObject = (value: Record<string, any>) => {
 	Object.keys(value).forEach((key) => {
@@ -542,7 +1288,7 @@ export const createDefaultInboundForm = (
 ): InboundFormValues => ({
 	tag: "",
 	listen: "",
-	port: "",
+	port: defaultPortText(protocol),
 	protocol,
 	tcpAcceptProxyProtocol: false,
 	wsAcceptProxyProtocol: false,
@@ -555,26 +1301,48 @@ export const createDefaultInboundForm = (
 	shadowsocksMethod: "chacha20-ietf-poly1305",
 	shadowsocksPassword: "",
 	shadowsocksIvCheck: false,
-	sniffingEnabled: true,
+	hysteriaVersion: "2",
+	hysteriaUdpIdleTimeout: "60",
+	hysteriaMasqueradeEnabled: false,
+	hysteriaMasqueradeType: "",
+	hysteriaMasqueradeDir: "",
+	hysteriaMasqueradeUrl: "",
+	hysteriaMasqueradeRewriteHost: false,
+	hysteriaMasqueradeInsecure: false,
+	hysteriaMasqueradeContent: "",
+	hysteriaMasqueradeStatusCode: "",
+	hysteriaMasqueradeHeaders: [],
+	hysteriaUdpMasks:
+		protocol === "hysteria" ? [createDefaultHysteriaUdpMask()] : [],
+	hysteriaQuicParams: createDefaultHysteriaQuicParams(),
+	sniffingEnabled:
+		protocol !== "openvpn" &&
+		protocol !== "wireguard" &&
+		protocol !== "l2tp" &&
+		protocol !== "pptp" &&
+		protocol !== "ikev2" &&
+		protocol !== "anyconnect",
 	sniffingDestinations: ["http", "tls"],
 	sniffingRouteOnly: false,
 	sniffingMetadataOnly: false,
-	streamNetwork: "tcp",
-	streamSecurity: "none",
+	streamNetwork: protocol === "hysteria" ? "hysteria" : "tcp",
+	streamSecurity: protocol === "hysteria" ? "tls" : "none",
 	tlsServerName: "",
 	tlsMinVersion: "1.2",
 	tlsMaxVersion: "1.3",
 	tlsCipherSuites: "",
 	tlsRejectUnknownSni: false,
-	tlsVerifyPeerCertByName: "dns.google",
+	tlsVerifyPeerCertByName: "",
 	tlsDisableSystemRoot: false,
 	tlsEnableSessionResumption: false,
 	tlsCertificates: [createDefaultTlsCertificate()],
-	tlsAlpn: [ALPN_OPTION.H2, ALPN_OPTION.HTTP1],
+	tlsAlpn:
+		protocol === "hysteria"
+			? [ALPN_OPTION.H3]
+			: [ALPN_OPTION.H2, ALPN_OPTION.HTTP1],
 	tlsEchServerKeys: "",
-	tlsEchForceQuery: "none",
 	tlsAllowInsecure: false,
-	tlsFingerprint: UTLS_FINGERPRINT.UTLS_CHROME,
+	tlsFingerprint: protocol === "hysteria" ? "" : UTLS_FINGERPRINT.UTLS_CHROME,
 	tlsEchConfigList: "",
 	tlsRawSettings: {},
 	realityShow: false,
@@ -646,6 +1414,129 @@ export const createDefaultInboundForm = (
 	socksAccounts: [createDefaultProxyAccount()],
 	socksUdpEnabled: false,
 	socksUdpIp: "",
+	ovTransport: "udp",
+	ovTunnelPort: "",
+	ovIPv4Pool: "10.66.0.0/16",
+	ovDNSServers: "1.1.1.1\n8.8.8.8",
+	ovRedirectGateway: true,
+	ovTproxyEnabled: true,
+	ovRequireDCO: false,
+	ovAccountingEnabled: true,
+	ovManagementPort: "",
+	ovCipher: "AES-256-GCM",
+	ovAuth: "SHA256",
+	ovInlineCA: true,
+	ovSetClientCertNone: true,
+	ovAuthNoCache: true,
+	ovEmbedCredentials: true,
+	ovRouteNoPull: false,
+	ovBlockOutsideDNS: false,
+	ovCA: "",
+	ovServerCertificate: "",
+	ovServerKey: "",
+	ovDH: "",
+	ovTlsCrypt: "",
+	ovTlsAuth: "",
+	ovExtraClientConfig: "",
+	wgTunnelPort: "",
+	wgIPv4Pool: "10.69.0.0/16",
+	wgServerAddress: "10.69.0.1/16",
+	wgPrivateKey: "",
+	wgPublicKey: "",
+	wgMTU: "1420",
+	wgPersistentKeepalive: "25",
+	wgTproxyEnabled: true,
+	wgNatEnabled: false,
+	wgAccountingEnabled: true,
+	l2tpTunnelPort:
+		protocol === "l2tp" ? "1702" : protocol === "pptp" ? "41942" : "",
+	l2tpIPv4Pool: "10.67.0.0/16",
+	l2tpDNSServers: "1.1.1.1\n8.8.8.8",
+	l2tpIPSecPSK: protocol === "l2tp" ? defaultL2TPPSK() : "",
+	l2tpRedirectGateway: true,
+	l2tpTproxyEnabled: true,
+	l2tpAccountingEnabled: true,
+	l2tpMTU: "1410",
+	l2tpMRU: "1410",
+	l2tpLcpEchoInterval: "30",
+	l2tpLcpEchoFailure: "4",
+	raAuthMode: "password",
+	raTunnelPort: "",
+	raIPv4Pool: protocol === "ikev2" ? "10.70.0.0/16" : "10.71.0.0/16",
+	raDNSServers: "1.1.1.1\n8.8.8.8",
+	raTproxyEnabled: true,
+	raAccountingEnabled: true,
+	raRedirectGateway: true,
+	raCA: "",
+	raServerCertificate: "",
+	raServerKey: "",
+	raCertificateNames: "",
+	raServerIdentity: "",
+	raMTU: "1400",
+	ikeProposals:
+		"aes256-sha256-modp2048,aes256-sha384-modp3072,aes256gcm16-prfsha384-ecp384",
+	ikeEspProposals: "aes256-sha256,aes256gcm16-ecp384",
+	ikeMobike: true,
+	ikeFragmentation: "yes",
+	ikeReauth: false,
+	ikeSendCert: true,
+	ikeLifetime: "10800",
+	ikeChildLifetime: "3600",
+	ikeRekeyTime: "3000",
+	ikeDpdDelay: "30",
+	ikeRoutes: "",
+	acUDPEnabled: true,
+	acUDPPort: protocol === "anyconnect" ? "443" : "",
+	acListenHost: "",
+	acUDPListenHost: "",
+	acListenHostIsDynDNS: false,
+	acMaxClients: "1024",
+	acMaxSameClients: "0",
+	acCookieTimeout: "300",
+	acIdleTimeout: "1200",
+	acMobileIdleTimeout: "2400",
+	acSessionTimeout: "0",
+	acKeepalive: "300",
+	acDPD: "60",
+	acMobileDPD: "300",
+	acAuthTimeout: "240",
+	acMinReauthTime: "300",
+	acMaxBanScore: "80",
+	acBanResetTime: "1200",
+	acRekeyTime: "172800",
+	acRekeyMethod: "ssl",
+	acSwitchToTCPTimeout: "25",
+	acStatsReportTime: "0",
+	acRateLimitMs: "100",
+	acRXDataPerSec: "0",
+	acTXDataPerSec: "0",
+	acOutputBuffer: "0",
+	acNetPriority: "0",
+	acNoCompressLimit: "256",
+	acCompression: false,
+	acCiscoCompat: true,
+	acDTLSPSK: true,
+	acDTLSLegacy: true,
+	acCiscoSVCCompat: false,
+	acClientBypassProtocol: false,
+	acMatchTLSDTLSCiphers: false,
+	acDenyRoaming: false,
+	acPersistentCookies: false,
+	acTryMTUDiscovery: false,
+	acPingLeases: false,
+	acTunnelAllDNS: true,
+	acRestrictToRoutes: false,
+	acRestrictToPorts: "",
+	acRoutes: "",
+	acNoRoutes: "",
+	acNBNS: "",
+	acSplitDNS: "",
+	acBanner: "",
+	acPreLoginBanner: "",
+	acDefaultDomain: "",
+	acTLSPriorities:
+		"NORMAL:%SERVER_PRECEDENCE:%COMPAT:-VERS-SSL3.0:-VERS-TLS1.0:-VERS-TLS1.1",
+	acCertUserOID: "2.5.4.3",
 	targetIds: ["master"],
 });
 
@@ -693,6 +1584,41 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			? JSON.parse(JSON.stringify(stream.tlsSettings))
 			: {};
 	const realitySettings = stream.realitySettings ?? {};
+	const hysteriaSettings = stream.hysteriaSettings ?? {};
+	const hysteriaMasquerade =
+		hysteriaSettings && typeof hysteriaSettings.masquerade === "object"
+			? hysteriaSettings.masquerade
+			: {};
+	const finalmask =
+		stream.finalmask && typeof stream.finalmask === "object"
+			? stream.finalmask
+			: {};
+	const hysteriaUdpMasks = Array.isArray(finalmask.udp)
+		? finalmask.udp
+				.filter((mask: Record<string, any>) => mask?.type === "salamander")
+				.map((mask: Record<string, any>) => {
+					const settings =
+						mask.settings && typeof mask.settings === "object"
+							? mask.settings
+							: {};
+					const packetSize = toInputValue(settings.packetSize);
+					return {
+						type: "salamander" as const,
+						mode: packetSize ? ("gecko" as const) : ("salamander" as const),
+						password: settings.password?.toString() ?? "",
+						packetSize,
+					};
+				})
+		: [];
+	const hysteriaQuicSettings =
+		finalmask.quicParams && typeof finalmask.quicParams === "object"
+			? finalmask.quicParams
+			: null;
+	const hysteriaUdpHop =
+		hysteriaQuicSettings?.udpHop &&
+		typeof hysteriaQuicSettings.udpHop === "object"
+			? hysteriaQuicSettings.udpHop
+			: null;
 	const realitySettingsMeta =
 		realitySettings && typeof realitySettings.settings === "object"
 			? realitySettings.settings
@@ -708,7 +1634,25 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 		: base.tlsCertificates;
 	const tlsAlpn = parseStringList(tlsSettings.alpn);
 	const realityServerNames = parseStringList(realitySettings.serverNames);
+	if (!realityServerNames.length) {
+		realityServerNames.push(
+			...parseStringList(
+				realitySettings.serverName ??
+					realitySettingsMeta.serverName ??
+					realitySettingsMeta.sni,
+			),
+		);
+	}
 	const realityShortIds = parseStringList(realitySettings.shortIds);
+	if (!realityShortIds.length) {
+		realityShortIds.push(
+			...parseStringList(
+				realitySettings.shortId ??
+					realitySettingsMeta.shortIds ??
+					realitySettingsMeta.shortId,
+			),
+		);
+	}
 
 	return {
 		...base,
@@ -732,6 +1676,92 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 		shadowsocksMethod: settings.method ?? base.shadowsocksMethod,
 		shadowsocksPassword: settings.password ?? base.shadowsocksPassword,
 		shadowsocksIvCheck: Boolean(settings.ivCheck ?? base.shadowsocksIvCheck),
+		hysteriaVersion: toInputValue(
+			settings.version ?? hysteriaSettings.version ?? base.hysteriaVersion,
+		),
+		hysteriaUdpIdleTimeout: toInputValue(
+			hysteriaSettings.udpIdleTimeout ?? base.hysteriaUdpIdleTimeout,
+		),
+		hysteriaMasqueradeEnabled: Boolean(hysteriaMasquerade.type),
+		hysteriaMasqueradeType:
+			(hysteriaMasquerade.type as InboundFormValues["hysteriaMasqueradeType"]) ??
+			base.hysteriaMasqueradeType,
+		hysteriaMasqueradeDir: hysteriaMasquerade.dir ?? base.hysteriaMasqueradeDir,
+		hysteriaMasqueradeUrl: hysteriaMasquerade.url ?? base.hysteriaMasqueradeUrl,
+		hysteriaMasqueradeRewriteHost: Boolean(
+			hysteriaMasquerade.rewriteHost ?? base.hysteriaMasqueradeRewriteHost,
+		),
+		hysteriaMasqueradeInsecure: Boolean(
+			hysteriaMasquerade.insecure ?? base.hysteriaMasqueradeInsecure,
+		),
+		hysteriaMasqueradeContent:
+			hysteriaMasquerade.content ?? base.hysteriaMasqueradeContent,
+		hysteriaMasqueradeStatusCode: toInputValue(
+			hysteriaMasquerade.statusCode ?? base.hysteriaMasqueradeStatusCode,
+		),
+		hysteriaMasqueradeHeaders: hysteriaMasquerade.headers
+			? headersToForm(hysteriaMasquerade.headers)
+			: base.hysteriaMasqueradeHeaders,
+		hysteriaUdpMasks: hysteriaUdpMasks.length
+			? hysteriaUdpMasks
+			: base.hysteriaUdpMasks,
+		hysteriaQuicParams: hysteriaQuicSettings
+			? {
+					...base.hysteriaQuicParams,
+					enabled: true,
+					congestion:
+						hysteriaQuicSettings.congestion ??
+						base.hysteriaQuicParams.congestion,
+					bbrProfile:
+						hysteriaQuicSettings.bbrProfile ??
+						base.hysteriaQuicParams.bbrProfile,
+					debug: Boolean(
+						hysteriaQuicSettings.debug ?? base.hysteriaQuicParams.debug,
+					),
+					brutalUp:
+						hysteriaQuicSettings.brutalUp ?? base.hysteriaQuicParams.brutalUp,
+					brutalDown:
+						hysteriaQuicSettings.brutalDown ??
+						base.hysteriaQuicParams.brutalDown,
+					udpHopEnabled: Boolean(hysteriaUdpHop),
+					udpHopPorts:
+						hysteriaUdpHop?.ports ?? base.hysteriaQuicParams.udpHopPorts,
+					udpHopInterval:
+						hysteriaUdpHop?.interval ?? base.hysteriaQuicParams.udpHopInterval,
+					maxIdleTimeout: toInputValue(
+						hysteriaQuicSettings.maxIdleTimeout ??
+							base.hysteriaQuicParams.maxIdleTimeout,
+					),
+					keepAlivePeriod: toInputValue(
+						hysteriaQuicSettings.keepAlivePeriod ??
+							base.hysteriaQuicParams.keepAlivePeriod,
+					),
+					disablePathMTUDiscovery: Boolean(
+						hysteriaQuicSettings.disablePathMTUDiscovery ??
+							base.hysteriaQuicParams.disablePathMTUDiscovery,
+					),
+					maxIncomingStreams: toInputValue(
+						hysteriaQuicSettings.maxIncomingStreams ??
+							base.hysteriaQuicParams.maxIncomingStreams,
+					),
+					initStreamReceiveWindow: toInputValue(
+						hysteriaQuicSettings.initStreamReceiveWindow ??
+							base.hysteriaQuicParams.initStreamReceiveWindow,
+					),
+					maxStreamReceiveWindow: toInputValue(
+						hysteriaQuicSettings.maxStreamReceiveWindow ??
+							base.hysteriaQuicParams.maxStreamReceiveWindow,
+					),
+					initConnectionReceiveWindow: toInputValue(
+						hysteriaQuicSettings.initConnectionReceiveWindow ??
+							base.hysteriaQuicParams.initConnectionReceiveWindow,
+					),
+					maxConnectionReceiveWindow: toInputValue(
+						hysteriaQuicSettings.maxConnectionReceiveWindow ??
+							base.hysteriaQuicParams.maxConnectionReceiveWindow,
+					),
+				}
+			: base.hysteriaQuicParams,
 		sniffingEnabled: Boolean(sniffing.enabled ?? base.sniffingEnabled),
 		sniffingDestinations:
 			Array.isArray(sniffing.destOverride) && sniffing.destOverride.length
@@ -741,7 +1771,7 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 		sniffingMetadataOnly: Boolean(
 			sniffing.metadataOnly ?? base.sniffingMetadataOnly,
 		),
-		streamNetwork: stream.network ?? base.streamNetwork,
+		streamNetwork: stream.method ?? stream.network ?? base.streamNetwork,
 		streamSecurity: stream.security ?? base.streamSecurity,
 		tcpAcceptProxyProtocol: Boolean(
 			stream?.tcpSettings?.acceptProxyProtocol ?? base.tcpAcceptProxyProtocol,
@@ -780,7 +1810,6 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 		tlsCertificates: tlsCertificates,
 		tlsAlpn: tlsAlpn.length ? tlsAlpn : base.tlsAlpn,
 		tlsEchServerKeys: tlsSettings.echServerKeys ?? base.tlsEchServerKeys,
-		tlsEchForceQuery: tlsSettings.echForceQuery ?? base.tlsEchForceQuery,
 		tlsAllowInsecure: Boolean(
 			tlsSettingsMeta.allowInsecure ??
 				tlsSettings.allowInsecure ??
@@ -800,8 +1829,15 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 		realityFingerprint:
 			realitySettingsMeta.fingerprint ?? base.realityFingerprint,
 		realityTarget:
-			realitySettings.target ?? realitySettings.dest ?? base.realityTarget,
-		realityPrivateKey: realitySettings.privateKey ?? base.realityPrivateKey,
+			realitySettings.target ??
+			realitySettings.dest ??
+			realitySettingsMeta.target ??
+			realitySettingsMeta.dest ??
+			base.realityTarget,
+		realityPrivateKey:
+			realitySettings.privateKey ??
+			realitySettingsMeta.privateKey ??
+			base.realityPrivateKey,
 		realityServerNames: realityServerNames.length
 			? joinComma(realityServerNames)
 			: base.realityServerNames,
@@ -988,6 +2024,501 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			protocol === "socks" && settings.ip !== undefined && settings.ip !== null
 				? String(settings.ip)
 				: base.socksUdpIp,
+		ovTransport:
+			protocol === "openvpn" && settings.transport === "tcp"
+				? "tcp"
+				: base.ovTransport,
+		ovTunnelPort:
+			protocol === "openvpn"
+				? toInputValue(
+						settings.tunnel_port ??
+							settings.xray_tunnel_port ??
+							settings.tproxy_port,
+					)
+				: base.ovTunnelPort,
+		ovIPv4Pool:
+			protocol === "openvpn"
+				? (settings.ipv4_pool_cidr ?? settings.ipv4PoolCidr ?? base.ovIPv4Pool)
+				: base.ovIPv4Pool,
+		ovDNSServers:
+			protocol === "openvpn"
+				? joinLines(
+						parseStringList(settings.dns_servers ?? settings.dnsServers),
+					)
+				: base.ovDNSServers,
+		ovRedirectGateway:
+			protocol === "openvpn"
+				? Boolean(settings.redirect_gateway ?? base.ovRedirectGateway)
+				: base.ovRedirectGateway,
+		ovTproxyEnabled:
+			protocol === "openvpn"
+				? Boolean(settings.tproxy_enabled ?? base.ovTproxyEnabled)
+				: base.ovTproxyEnabled,
+		ovRequireDCO:
+			protocol === "openvpn"
+				? Boolean(settings.require_dco ?? base.ovRequireDCO)
+				: base.ovRequireDCO,
+		ovAccountingEnabled:
+			protocol === "openvpn"
+				? Boolean(settings.accounting_enabled ?? base.ovAccountingEnabled)
+				: base.ovAccountingEnabled,
+		ovManagementPort:
+			protocol === "openvpn"
+				? toInputValue(settings.management_port)
+				: base.ovManagementPort,
+		ovCipher:
+			protocol === "openvpn"
+				? (settings.cipher ?? base.ovCipher)
+				: base.ovCipher,
+		ovAuth:
+			protocol === "openvpn" ? (settings.auth ?? base.ovAuth) : base.ovAuth,
+		ovInlineCA:
+			protocol === "openvpn"
+				? Boolean(settings.inline_ca ?? base.ovInlineCA)
+				: base.ovInlineCA,
+		ovSetClientCertNone:
+			protocol === "openvpn"
+				? Boolean(settings.set_client_cert_none ?? base.ovSetClientCertNone)
+				: base.ovSetClientCertNone,
+		ovAuthNoCache:
+			protocol === "openvpn"
+				? Boolean(settings.auth_nocache ?? base.ovAuthNoCache)
+				: base.ovAuthNoCache,
+		ovEmbedCredentials:
+			protocol === "openvpn"
+				? Boolean(settings.embed_credentials ?? base.ovEmbedCredentials)
+				: base.ovEmbedCredentials,
+		ovRouteNoPull:
+			protocol === "openvpn"
+				? Boolean(settings.route_nopull ?? base.ovRouteNoPull)
+				: base.ovRouteNoPull,
+		ovBlockOutsideDNS:
+			protocol === "openvpn"
+				? Boolean(settings.block_outside_dns ?? base.ovBlockOutsideDNS)
+				: base.ovBlockOutsideDNS,
+		ovCA: protocol === "openvpn" ? (settings.ca ?? base.ovCA) : base.ovCA,
+		ovServerCertificate:
+			protocol === "openvpn"
+				? (settings.server_certificate ??
+					settings.serverCertificate ??
+					base.ovServerCertificate)
+				: base.ovServerCertificate,
+		ovServerKey:
+			protocol === "openvpn"
+				? (settings.server_key ?? settings.serverKey ?? base.ovServerKey)
+				: base.ovServerKey,
+		ovDH: protocol === "openvpn" ? (settings.dh ?? base.ovDH) : base.ovDH,
+		ovTlsCrypt:
+			protocol === "openvpn"
+				? (settings.tls_crypt ?? base.ovTlsCrypt)
+				: base.ovTlsCrypt,
+		ovTlsAuth:
+			protocol === "openvpn"
+				? (settings.tls_auth ?? base.ovTlsAuth)
+				: base.ovTlsAuth,
+		ovExtraClientConfig:
+			protocol === "openvpn"
+				? (settings.extra_client_config ?? base.ovExtraClientConfig)
+				: base.ovExtraClientConfig,
+		wgTunnelPort:
+			protocol === "wireguard"
+				? toInputValue(
+						settings.tunnel_port ??
+							settings.xray_tunnel_port ??
+							settings.tproxy_port,
+					)
+				: base.wgTunnelPort,
+		wgIPv4Pool:
+			protocol === "wireguard"
+				? (settings.address_pool ??
+					settings.ipv4_pool_cidr ??
+					settings.ipv4PoolCidr ??
+					base.wgIPv4Pool)
+				: base.wgIPv4Pool,
+		wgServerAddress:
+			protocol === "wireguard"
+				? (settings.server_address ??
+					settings.serverAddress ??
+					base.wgServerAddress)
+				: base.wgServerAddress,
+		wgPrivateKey:
+			protocol === "wireguard"
+				? (settings.private_key ?? settings.privateKey ?? base.wgPrivateKey)
+				: base.wgPrivateKey,
+		wgPublicKey:
+			protocol === "wireguard"
+				? (settings.public_key ?? settings.publicKey ?? base.wgPublicKey)
+				: base.wgPublicKey,
+		wgMTU:
+			protocol === "wireguard"
+				? toInputValue(settings.mtu ?? base.wgMTU)
+				: base.wgMTU,
+		wgPersistentKeepalive:
+			protocol === "wireguard"
+				? toInputValue(
+						settings.persistent_keepalive ??
+							settings.persistentKeepalive ??
+							base.wgPersistentKeepalive,
+					)
+				: base.wgPersistentKeepalive,
+		wgTproxyEnabled:
+			protocol === "wireguard"
+				? Boolean(settings.tproxy_enabled ?? base.wgTproxyEnabled)
+				: base.wgTproxyEnabled,
+		wgNatEnabled:
+			protocol === "wireguard"
+				? Boolean(settings.nat_enabled ?? base.wgNatEnabled)
+				: base.wgNatEnabled,
+		wgAccountingEnabled:
+			protocol === "wireguard"
+				? Boolean(settings.accounting_enabled ?? base.wgAccountingEnabled)
+				: base.wgAccountingEnabled,
+		l2tpTunnelPort:
+			protocol === "l2tp"
+				? "1702"
+				: protocol === "pptp"
+					? toInputValue(
+							settings.tunnel_port ??
+								settings.xray_tunnel_port ??
+								settings.tproxy_port,
+						)
+					: base.l2tpTunnelPort,
+		l2tpIPv4Pool:
+			protocol === "l2tp" || protocol === "pptp"
+				? (settings.ipv4_pool_cidr ??
+					settings.ipv4PoolCidr ??
+					base.l2tpIPv4Pool)
+				: base.l2tpIPv4Pool,
+		l2tpDNSServers:
+			protocol === "l2tp" || protocol === "pptp"
+				? joinLines(
+						parseStringList(settings.dns_servers ?? settings.dnsServers),
+					)
+				: base.l2tpDNSServers,
+		l2tpIPSecPSK:
+			protocol === "l2tp"
+				? (settings.ipsec_psk ?? base.l2tpIPSecPSK)
+				: base.l2tpIPSecPSK,
+		l2tpRedirectGateway:
+			protocol === "l2tp" || protocol === "pptp"
+				? Boolean(settings.redirect_gateway ?? base.l2tpRedirectGateway)
+				: base.l2tpRedirectGateway,
+		l2tpTproxyEnabled:
+			protocol === "l2tp" || protocol === "pptp"
+				? Boolean(settings.tproxy_enabled ?? base.l2tpTproxyEnabled)
+				: base.l2tpTproxyEnabled,
+		l2tpAccountingEnabled:
+			protocol === "l2tp" || protocol === "pptp"
+				? Boolean(settings.accounting_enabled ?? base.l2tpAccountingEnabled)
+				: base.l2tpAccountingEnabled,
+		l2tpMTU:
+			protocol === "l2tp" || protocol === "pptp"
+				? toInputValue(settings.mtu)
+				: base.l2tpMTU,
+		l2tpMRU:
+			protocol === "l2tp" || protocol === "pptp"
+				? toInputValue(settings.mru)
+				: base.l2tpMRU,
+		l2tpLcpEchoInterval:
+			protocol === "l2tp" || protocol === "pptp"
+				? toInputValue(settings.lcp_echo_interval)
+				: base.l2tpLcpEchoInterval,
+		l2tpLcpEchoFailure:
+			protocol === "l2tp" || protocol === "pptp"
+				? toInputValue(settings.lcp_echo_failure)
+				: base.l2tpLcpEchoFailure,
+		raAuthMode:
+			protocol === "ikev2" || protocol === "anyconnect"
+				? (settings.auth_mode ?? base.raAuthMode)
+				: base.raAuthMode,
+		raTunnelPort:
+			protocol === "ikev2" || protocol === "anyconnect"
+				? toInputValue(settings.tunnel_port)
+				: base.raTunnelPort,
+		raIPv4Pool:
+			protocol === "ikev2" || protocol === "anyconnect"
+				? (settings.ipv4_pool_cidr ?? base.raIPv4Pool)
+				: base.raIPv4Pool,
+		raDNSServers:
+			protocol === "ikev2" || protocol === "anyconnect"
+				? joinLines(parseStringList(settings.dns_servers))
+				: base.raDNSServers,
+		raTproxyEnabled:
+			protocol === "ikev2" || protocol === "anyconnect"
+				? Boolean(settings.tproxy_enabled ?? true)
+				: base.raTproxyEnabled,
+		raAccountingEnabled:
+			protocol === "ikev2" || protocol === "anyconnect"
+				? Boolean(settings.accounting_enabled ?? true)
+				: base.raAccountingEnabled,
+		raRedirectGateway:
+			protocol === "ikev2" || protocol === "anyconnect"
+				? Boolean(settings.redirect_gateway ?? true)
+				: base.raRedirectGateway,
+		raCA:
+			protocol === "ikev2" || protocol === "anyconnect"
+				? (settings.ca_certificate ?? "")
+				: base.raCA,
+		raServerCertificate:
+			protocol === "ikev2" || protocol === "anyconnect"
+				? (settings.server_certificate ?? "")
+				: base.raServerCertificate,
+		raServerKey:
+			protocol === "ikev2" || protocol === "anyconnect"
+				? (settings.server_key ?? "")
+				: base.raServerKey,
+		raCertificateNames:
+			protocol === "anyconnect"
+				? joinLines(parseStringList(settings.certificate_names))
+				: base.raCertificateNames,
+		raServerIdentity:
+			protocol === "ikev2"
+				? (settings.server_identity ?? "")
+				: base.raServerIdentity,
+		raMTU:
+			protocol === "ikev2" || protocol === "anyconnect"
+				? toInputValue(settings.mtu ?? 1400)
+				: base.raMTU,
+		ikeProposals:
+			protocol === "ikev2"
+				? (settings.ike_proposals ?? base.ikeProposals)
+				: base.ikeProposals,
+		ikeEspProposals:
+			protocol === "ikev2"
+				? (settings.esp_proposals ?? base.ikeEspProposals)
+				: base.ikeEspProposals,
+		ikeMobike:
+			protocol === "ikev2" ? Boolean(settings.mobike ?? true) : base.ikeMobike,
+		ikeFragmentation:
+			protocol === "ikev2"
+				? (settings.fragmentation ?? "yes")
+				: base.ikeFragmentation,
+		ikeReauth:
+			protocol === "ikev2" ? Boolean(settings.reauth ?? false) : base.ikeReauth,
+		ikeSendCert:
+			protocol === "ikev2"
+				? Boolean(settings.send_cert ?? true)
+				: base.ikeSendCert,
+		ikeLifetime:
+			protocol === "ikev2"
+				? toInputValue(settings.ike_lifetime ?? 10800)
+				: base.ikeLifetime,
+		ikeChildLifetime:
+			protocol === "ikev2"
+				? toInputValue(settings.child_lifetime ?? 3600)
+				: base.ikeChildLifetime,
+		ikeRekeyTime:
+			protocol === "ikev2"
+				? toInputValue(settings.rekey_time ?? 3000)
+				: base.ikeRekeyTime,
+		ikeDpdDelay:
+			protocol === "ikev2"
+				? toInputValue(settings.dpd_delay ?? 30)
+				: base.ikeDpdDelay,
+		ikeRoutes:
+			protocol === "ikev2"
+				? joinLines(parseStringList(settings.routes))
+				: base.ikeRoutes,
+		acUDPEnabled:
+			protocol === "anyconnect"
+				? Boolean(settings.udp_enabled ?? true)
+				: base.acUDPEnabled,
+		acUDPPort:
+			protocol === "anyconnect"
+				? toInputValue(settings.udp_port ?? raw.port ?? 443)
+				: base.acUDPPort,
+		acListenHost:
+			protocol === "anyconnect"
+				? (settings.listen_host ?? "")
+				: base.acListenHost,
+		acUDPListenHost:
+			protocol === "anyconnect"
+				? (settings.udp_listen_host ?? "")
+				: base.acUDPListenHost,
+		acListenHostIsDynDNS:
+			protocol === "anyconnect"
+				? Boolean(settings.listen_host_is_dyndns ?? false)
+				: base.acListenHostIsDynDNS,
+		acMaxClients:
+			protocol === "anyconnect"
+				? toInputValue(settings.max_clients ?? 1024)
+				: base.acMaxClients,
+		acMaxSameClients:
+			protocol === "anyconnect"
+				? toInputValue(settings.max_same_clients ?? 0)
+				: base.acMaxSameClients,
+		acCookieTimeout:
+			protocol === "anyconnect"
+				? toInputValue(settings.cookie_timeout ?? 300)
+				: base.acCookieTimeout,
+		acIdleTimeout:
+			protocol === "anyconnect"
+				? toInputValue(settings.idle_timeout ?? 1200)
+				: base.acIdleTimeout,
+		acMobileIdleTimeout:
+			protocol === "anyconnect"
+				? toInputValue(settings.mobile_idle_timeout ?? 2400)
+				: base.acMobileIdleTimeout,
+		acSessionTimeout:
+			protocol === "anyconnect"
+				? toInputValue(settings.session_timeout ?? 0)
+				: base.acSessionTimeout,
+		acKeepalive:
+			protocol === "anyconnect"
+				? toInputValue(settings.keepalive ?? 300)
+				: base.acKeepalive,
+		acDPD:
+			protocol === "anyconnect" ? toInputValue(settings.dpd ?? 60) : base.acDPD,
+		acMobileDPD:
+			protocol === "anyconnect"
+				? toInputValue(settings.mobile_dpd ?? 300)
+				: base.acMobileDPD,
+		acAuthTimeout:
+			protocol === "anyconnect"
+				? toInputValue(settings.auth_timeout ?? 240)
+				: base.acAuthTimeout,
+		acMinReauthTime:
+			protocol === "anyconnect"
+				? toInputValue(settings.min_reauth_time ?? 300)
+				: base.acMinReauthTime,
+		acMaxBanScore:
+			protocol === "anyconnect"
+				? toInputValue(settings.max_ban_score ?? 80)
+				: base.acMaxBanScore,
+		acBanResetTime:
+			protocol === "anyconnect"
+				? toInputValue(settings.ban_reset_time ?? 1200)
+				: base.acBanResetTime,
+		acRekeyTime:
+			protocol === "anyconnect"
+				? toInputValue(settings.rekey_time ?? 172800)
+				: base.acRekeyTime,
+		acRekeyMethod:
+			protocol === "anyconnect"
+				? (settings.rekey_method ?? "ssl")
+				: base.acRekeyMethod,
+		acSwitchToTCPTimeout:
+			protocol === "anyconnect"
+				? toInputValue(settings.switch_to_tcp_timeout ?? 25)
+				: base.acSwitchToTCPTimeout,
+		acStatsReportTime:
+			protocol === "anyconnect"
+				? toInputValue(settings.stats_report_time ?? 0)
+				: base.acStatsReportTime,
+		acRateLimitMs:
+			protocol === "anyconnect"
+				? toInputValue(settings.rate_limit_ms ?? 100)
+				: base.acRateLimitMs,
+		acRXDataPerSec:
+			protocol === "anyconnect"
+				? toInputValue(settings.rx_data_per_sec ?? 0)
+				: base.acRXDataPerSec,
+		acTXDataPerSec:
+			protocol === "anyconnect"
+				? toInputValue(settings.tx_data_per_sec ?? 0)
+				: base.acTXDataPerSec,
+		acOutputBuffer:
+			protocol === "anyconnect"
+				? toInputValue(settings.output_buffer ?? 0)
+				: base.acOutputBuffer,
+		acNetPriority:
+			protocol === "anyconnect"
+				? toInputValue(settings.net_priority ?? 0)
+				: base.acNetPriority,
+		acNoCompressLimit:
+			protocol === "anyconnect"
+				? toInputValue(settings.no_compress_limit ?? 256)
+				: base.acNoCompressLimit,
+		acCompression:
+			protocol === "anyconnect"
+				? Boolean(settings.compression ?? false)
+				: base.acCompression,
+		acCiscoCompat:
+			protocol === "anyconnect"
+				? Boolean(settings.cisco_client_compat ?? true)
+				: base.acCiscoCompat,
+		acDTLSPSK:
+			protocol === "anyconnect"
+				? Boolean(settings.dtls_psk ?? true)
+				: base.acDTLSPSK,
+		acDTLSLegacy:
+			protocol === "anyconnect"
+				? Boolean(settings.dtls_legacy ?? true)
+				: base.acDTLSLegacy,
+		acCiscoSVCCompat:
+			protocol === "anyconnect"
+				? Boolean(settings.cisco_svc_client_compat ?? false)
+				: base.acCiscoSVCCompat,
+		acClientBypassProtocol:
+			protocol === "anyconnect"
+				? Boolean(settings.client_bypass_protocol ?? false)
+				: base.acClientBypassProtocol,
+		acMatchTLSDTLSCiphers:
+			protocol === "anyconnect"
+				? Boolean(settings.match_tls_dtls_ciphers ?? false)
+				: base.acMatchTLSDTLSCiphers,
+		acDenyRoaming:
+			protocol === "anyconnect"
+				? Boolean(settings.deny_roaming ?? false)
+				: base.acDenyRoaming,
+		acPersistentCookies:
+			protocol === "anyconnect"
+				? Boolean(settings.persistent_cookies ?? false)
+				: base.acPersistentCookies,
+		acTryMTUDiscovery:
+			protocol === "anyconnect"
+				? Boolean(settings.try_mtu_discovery ?? false)
+				: base.acTryMTUDiscovery,
+		acPingLeases:
+			protocol === "anyconnect"
+				? Boolean(settings.ping_leases ?? false)
+				: base.acPingLeases,
+		acTunnelAllDNS:
+			protocol === "anyconnect"
+				? Boolean(settings.tunnel_all_dns ?? true)
+				: base.acTunnelAllDNS,
+		acRestrictToRoutes:
+			protocol === "anyconnect"
+				? Boolean(settings.restrict_user_to_routes ?? false)
+				: base.acRestrictToRoutes,
+		acRestrictToPorts:
+			protocol === "anyconnect"
+				? (settings.restrict_user_to_ports ?? "")
+				: base.acRestrictToPorts,
+		acRoutes:
+			protocol === "anyconnect"
+				? joinLines(parseStringList(settings.routes))
+				: base.acRoutes,
+		acNoRoutes:
+			protocol === "anyconnect"
+				? joinLines(parseStringList(settings.no_routes))
+				: base.acNoRoutes,
+		acNBNS:
+			protocol === "anyconnect"
+				? joinLines(parseStringList(settings.nbns_servers))
+				: base.acNBNS,
+		acSplitDNS:
+			protocol === "anyconnect"
+				? joinLines(parseStringList(settings.split_dns))
+				: base.acSplitDNS,
+		acBanner:
+			protocol === "anyconnect" ? (settings.banner ?? "") : base.acBanner,
+		acPreLoginBanner:
+			protocol === "anyconnect"
+				? (settings.pre_login_banner ?? "")
+				: base.acPreLoginBanner,
+		acDefaultDomain:
+			protocol === "anyconnect"
+				? (settings.default_domain ?? "")
+				: base.acDefaultDomain,
+		acTLSPriorities:
+			protocol === "anyconnect"
+				? (settings.tls_priorities ?? base.acTLSPriorities)
+				: base.acTLSPriorities,
+		acCertUserOID:
+			protocol === "anyconnect"
+				? (settings.cert_user_oid ?? "2.5.4.3")
+				: base.acCertUserOID,
 		targetIds: raw.targets?.length ? raw.targets : base.targetIds,
 	};
 };
@@ -1390,6 +2921,109 @@ const buildStreamSettings = (
 		}
 	}
 
+	if (values.streamNetwork === "hysteria") {
+		const masquerade = values.hysteriaMasqueradeEnabled
+			? cleanObject({
+					type: values.hysteriaMasqueradeType || undefined,
+					dir:
+						values.hysteriaMasqueradeType === "file"
+							? values.hysteriaMasqueradeDir.trim() || undefined
+							: undefined,
+					url:
+						values.hysteriaMasqueradeType === "proxy"
+							? values.hysteriaMasqueradeUrl.trim() || undefined
+							: undefined,
+					rewriteHost:
+						values.hysteriaMasqueradeType === "proxy"
+							? values.hysteriaMasqueradeRewriteHost || undefined
+							: undefined,
+					insecure:
+						values.hysteriaMasqueradeType === "proxy"
+							? values.hysteriaMasqueradeInsecure || undefined
+							: undefined,
+					content:
+						values.hysteriaMasqueradeType === "string"
+							? values.hysteriaMasqueradeContent || undefined
+							: undefined,
+					statusCode:
+						values.hysteriaMasqueradeType === "string"
+							? parseOptionalNumber(values.hysteriaMasqueradeStatusCode)
+							: undefined,
+					headers: headersFromForm(values.hysteriaMasqueradeHeaders),
+				})
+			: undefined;
+		stream.hysteriaSettings = cleanObject({
+			version: parseOptionalNumber(values.hysteriaVersion) || 2,
+			udpIdleTimeout: parseOptionalNumber(values.hysteriaUdpIdleTimeout) || 60,
+			masquerade,
+		});
+		const udpMasks = (values.hysteriaUdpMasks ?? [])
+			.map((mask) => {
+				const settings = cleanObject({
+					password: mask.password.trim() || undefined,
+					packetSize:
+						mask.mode === "gecko"
+							? mask.packetSize.trim() || undefined
+							: undefined,
+				});
+				if (!Object.keys(settings).length) return null;
+				return {
+					type: "salamander",
+					settings,
+				};
+			})
+			.filter(Boolean);
+		const quic = values.hysteriaQuicParams;
+		const quicParams = quic?.enabled
+			? cleanObject({
+					congestion: quic.congestion || undefined,
+					bbrProfile:
+						quic.congestion === "bbr"
+							? quic.bbrProfile || undefined
+							: undefined,
+					debug: quic.debug || undefined,
+					brutalUp:
+						quic.congestion === "brutal" || quic.congestion === "force-brutal"
+							? quic.brutalUp.trim() || undefined
+							: undefined,
+					brutalDown:
+						quic.congestion === "brutal" || quic.congestion === "force-brutal"
+							? quic.brutalDown.trim() || undefined
+							: undefined,
+					udpHop: quic.udpHopEnabled
+						? cleanObject({
+								ports: quic.udpHopPorts.trim() || undefined,
+								interval: quic.udpHopInterval.trim() || undefined,
+							})
+						: undefined,
+					maxIdleTimeout: parseOptionalNumber(quic.maxIdleTimeout),
+					keepAlivePeriod: parseOptionalNumber(quic.keepAlivePeriod),
+					disablePathMTUDiscovery: quic.disablePathMTUDiscovery || undefined,
+					maxIncomingStreams: parseOptionalNumber(quic.maxIncomingStreams),
+					initStreamReceiveWindow: parseOptionalNumber(
+						quic.initStreamReceiveWindow,
+					),
+					maxStreamReceiveWindow: parseOptionalNumber(
+						quic.maxStreamReceiveWindow,
+					),
+					initConnectionReceiveWindow: parseOptionalNumber(
+						quic.initConnectionReceiveWindow,
+					),
+					maxConnectionReceiveWindow: parseOptionalNumber(
+						quic.maxConnectionReceiveWindow,
+					),
+				})
+			: undefined;
+		const finalmask = cleanObject({
+			udp: udpMasks.length ? udpMasks : undefined,
+			quicParams:
+				quicParams && Object.keys(quicParams).length ? quicParams : undefined,
+		});
+		if (Object.keys(finalmask).length) {
+			stream.finalmask = finalmask;
+		}
+	}
+
 	if (values.streamSecurity === "tls") {
 		const tlsPayload =
 			values.tlsRawSettings && typeof values.tlsRawSettings === "object"
@@ -1410,7 +3044,6 @@ const buildStreamSettings = (
 		);
 		tlsPayload.alpn = values.tlsAlpn?.length ? values.tlsAlpn : undefined;
 		tlsPayload.echServerKeys = values.tlsEchServerKeys || undefined;
-		tlsPayload.echForceQuery = values.tlsEchForceQuery || undefined;
 		const settingsPayload =
 			tlsPayload.settings && typeof tlsPayload.settings === "object"
 				? { ...tlsPayload.settings }
@@ -1468,7 +3101,11 @@ const buildStreamSettings = (
 const buildSettings = (values: InboundFormValues): Record<string, any> => {
 	const base: Record<string, any> = {};
 
-	if (["vmess", "vless", "trojan", "shadowsocks"].includes(values.protocol)) {
+	if (
+		["vmess", "vless", "trojan", "shadowsocks", "hysteria"].includes(
+			values.protocol,
+		)
+	) {
 		base.clients = [];
 	}
 
@@ -1503,6 +3140,9 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 			base.password = values.shadowsocksPassword || undefined;
 			base.ivCheck = values.shadowsocksIvCheck || undefined;
 			break;
+		case "hysteria":
+			base.version = parseOptionalNumber(values.hysteriaVersion) || 2;
+			break;
 		case "http": {
 			const accounts = values.httpAccounts
 				.map(formToAccount)
@@ -1531,9 +3171,171 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 			}
 			break;
 		}
+		case "openvpn":
+			base.transport = values.ovTransport;
+			base.ipv4_pool_cidr = values.ovIPv4Pool.trim() || "10.66.0.0/16";
+			base.dns_servers = splitLines(values.ovDNSServers);
+			base.redirect_gateway = values.ovRedirectGateway;
+			base.tproxy_enabled = values.ovTproxyEnabled;
+			base.require_dco = values.ovRequireDCO;
+			base.accounting_enabled = values.ovAccountingEnabled;
+			base.tunnel_port = values.ovTproxyEnabled
+				? parseOptionalNumber(values.ovTunnelPort)
+				: undefined;
+			base.management_port = parseOptionalNumber(values.ovManagementPort);
+			base.cipher = values.ovCipher.trim() || undefined;
+			base.auth = values.ovAuth.trim() || undefined;
+			base.inline_ca = values.ovInlineCA;
+			base.set_client_cert_none = values.ovSetClientCertNone;
+			base.auth_nocache = values.ovAuthNoCache;
+			base.embed_credentials = values.ovEmbedCredentials;
+			base.route_nopull = values.ovRouteNoPull;
+			base.block_outside_dns = values.ovBlockOutsideDNS;
+			base.ca = values.ovCA.trim() || undefined;
+			base.server_certificate = values.ovServerCertificate.trim() || undefined;
+			base.server_key = values.ovServerKey.trim() || undefined;
+			base.dh = values.ovDH.trim() || undefined;
+			base.tls_crypt = values.ovTlsCrypt.trim() || undefined;
+			base.tls_auth = values.ovTlsAuth.trim() || undefined;
+			base.extra_client_config = values.ovExtraClientConfig.trim() || undefined;
+			break;
+		case "wireguard":
+			base.address_pool = values.wgIPv4Pool.trim() || "10.69.0.0/16";
+			base.ipv4_pool_cidr = base.address_pool;
+			base.server_address = values.wgServerAddress.trim() || "10.69.0.1/16";
+			base.private_key = values.wgPrivateKey.trim() || undefined;
+			base.public_key = values.wgPublicKey.trim() || undefined;
+			base.tunnel_port = values.wgTproxyEnabled
+				? parseOptionalNumber(values.wgTunnelPort)
+				: undefined;
+			base.mtu = parseOptionalNumber(values.wgMTU);
+			base.persistent_keepalive = parseOptionalNumber(
+				values.wgPersistentKeepalive,
+			);
+			base.tproxy_enabled = values.wgTproxyEnabled;
+			base.nat_enabled = !values.wgTproxyEnabled || values.wgNatEnabled;
+			base.accounting_enabled = values.wgAccountingEnabled;
+			break;
+		case "l2tp":
+		case "pptp":
+			base.ipv4_pool_cidr = values.l2tpIPv4Pool.trim() || "10.67.0.0/16";
+			base.dns_servers = splitLines(values.l2tpDNSServers);
+			if (values.protocol === "l2tp") {
+				base.ipsec_psk = values.l2tpIPSecPSK.trim() || undefined;
+				base.l2tp_port = 1701;
+				base.ipsec_ike_port = 500;
+				base.ipsec_nat_port = 4500;
+			} else {
+				base.pptp_port = parsePort(values.port) || 1723;
+			}
+			base.redirect_gateway = values.l2tpRedirectGateway;
+			base.tproxy_enabled = values.l2tpTproxyEnabled;
+			base.accounting_enabled = values.l2tpAccountingEnabled;
+			base.tunnel_port = values.l2tpTproxyEnabled
+				? values.protocol === "l2tp"
+					? 1702
+					: parseOptionalNumber(values.l2tpTunnelPort)
+				: undefined;
+			base.mtu = parseOptionalNumber(values.l2tpMTU);
+			base.mru = parseOptionalNumber(values.l2tpMRU);
+			base.lcp_echo_interval = parseOptionalNumber(values.l2tpLcpEchoInterval);
+			base.lcp_echo_failure = parseOptionalNumber(values.l2tpLcpEchoFailure);
+			break;
+		case "ikev2":
+		case "anyconnect":
+			base.auth_mode = values.raAuthMode;
+			base.ipv4_pool_cidr = values.raIPv4Pool.trim();
+			base.dns_servers = splitLines(values.raDNSServers);
+			base.tproxy_enabled = values.raTproxyEnabled;
+			base.accounting_enabled = values.raAccountingEnabled;
+			base.redirect_gateway = values.raRedirectGateway;
+			base.tunnel_port = values.raTproxyEnabled
+				? parseOptionalNumber(values.raTunnelPort)
+				: undefined;
+			base.ca_certificate = values.raCA.trim() || undefined;
+			base.server_certificate = values.raServerCertificate.trim() || undefined;
+			base.server_key = values.raServerKey.trim() || undefined;
+			if (values.protocol === "ikev2") {
+				base.server_identity = values.raServerIdentity.trim();
+				base.ike_proposals = values.ikeProposals.trim();
+				base.esp_proposals = values.ikeEspProposals.trim();
+				base.mobike = values.ikeMobike;
+				base.fragmentation = values.ikeFragmentation;
+				base.reauth = values.ikeReauth;
+				base.send_cert = values.ikeSendCert;
+				base.ike_lifetime = parseOptionalNumber(values.ikeLifetime);
+				base.child_lifetime = parseOptionalNumber(values.ikeChildLifetime);
+				base.rekey_time = parseOptionalNumber(values.ikeRekeyTime);
+				base.dpd_delay = parseOptionalNumber(values.ikeDpdDelay);
+				base.routes = splitLines(values.ikeRoutes);
+			} else {
+				base.certificate_names = splitLines(values.raCertificateNames);
+				base.mtu = parseOptionalNumber(values.raMTU);
+				base.udp_enabled = values.acUDPEnabled;
+				base.udp_port = values.acUDPEnabled
+					? parseOptionalNumber(values.acUDPPort)
+					: undefined;
+				base.listen_host = values.acListenHost.trim() || undefined;
+				base.udp_listen_host = values.acUDPEnabled
+					? values.acUDPListenHost.trim() || undefined
+					: undefined;
+				base.listen_host_is_dyndns = values.acListenHostIsDynDNS;
+				base.max_clients = parseOptionalNumber(values.acMaxClients);
+				base.max_same_clients = parseOptionalNumber(values.acMaxSameClients);
+				base.cookie_timeout = parseOptionalNumber(values.acCookieTimeout);
+				base.idle_timeout = parseOptionalNumber(values.acIdleTimeout);
+				base.mobile_idle_timeout = parseOptionalNumber(
+					values.acMobileIdleTimeout,
+				);
+				base.session_timeout = parseOptionalNumber(values.acSessionTimeout);
+				base.keepalive = parseOptionalNumber(values.acKeepalive);
+				base.dpd = parseOptionalNumber(values.acDPD);
+				base.mobile_dpd = parseOptionalNumber(values.acMobileDPD);
+				base.auth_timeout = parseOptionalNumber(values.acAuthTimeout);
+				base.min_reauth_time = parseOptionalNumber(values.acMinReauthTime);
+				base.max_ban_score = parseOptionalNumber(values.acMaxBanScore);
+				base.ban_reset_time = parseOptionalNumber(values.acBanResetTime);
+				base.rekey_time = parseOptionalNumber(values.acRekeyTime);
+				base.rekey_method = values.acRekeyMethod;
+				base.switch_to_tcp_timeout = parseOptionalNumber(
+					values.acSwitchToTCPTimeout,
+				);
+				base.stats_report_time = parseOptionalNumber(values.acStatsReportTime);
+				base.rate_limit_ms = parseOptionalNumber(values.acRateLimitMs);
+				base.rx_data_per_sec = parseOptionalNumber(values.acRXDataPerSec);
+				base.tx_data_per_sec = parseOptionalNumber(values.acTXDataPerSec);
+				base.output_buffer = parseOptionalNumber(values.acOutputBuffer);
+				base.net_priority = parseOptionalNumber(values.acNetPriority);
+				base.no_compress_limit = parseOptionalNumber(values.acNoCompressLimit);
+				base.compression = values.acCompression;
+				base.cisco_client_compat = values.acCiscoCompat;
+				base.dtls_psk = values.acDTLSPSK;
+				base.dtls_legacy = values.acDTLSLegacy;
+				base.cisco_svc_client_compat = values.acCiscoSVCCompat;
+				base.client_bypass_protocol = values.acClientBypassProtocol;
+				base.match_tls_dtls_ciphers = values.acMatchTLSDTLSCiphers;
+				base.deny_roaming = values.acDenyRoaming;
+				base.persistent_cookies = values.acPersistentCookies;
+				base.try_mtu_discovery = values.acTryMTUDiscovery;
+				base.ping_leases = values.acPingLeases;
+				base.tunnel_all_dns = values.acTunnelAllDNS;
+				base.restrict_user_to_routes = values.acRestrictToRoutes;
+				base.restrict_user_to_ports =
+					values.acRestrictToPorts.trim() || undefined;
+				base.routes = splitLines(values.acRoutes);
+				base.no_routes = splitLines(values.acNoRoutes);
+				base.nbns_servers = splitLines(values.acNBNS);
+				base.split_dns = splitLines(values.acSplitDNS);
+				base.banner = values.acBanner.trim() || undefined;
+				base.pre_login_banner = values.acPreLoginBanner.trim() || undefined;
+				base.default_domain = values.acDefaultDomain.trim() || undefined;
+				base.tls_priorities = values.acTLSPriorities.trim() || undefined;
+				base.cert_user_oid = values.acCertUserOID.trim() || undefined;
+			}
+			break;
 	}
 
-	return base;
+	return cleanObject(base);
 };
 
 export const buildInboundPayload = (
@@ -1541,7 +3343,14 @@ export const buildInboundPayload = (
 	options?: BuildInboundOptions,
 ): RawInbound => {
 	const supportsStream =
-		values.protocol !== "http" && values.protocol !== "socks";
+		values.protocol !== "http" &&
+		values.protocol !== "socks" &&
+		values.protocol !== "openvpn" &&
+		values.protocol !== "wireguard" &&
+		values.protocol !== "l2tp" &&
+		values.protocol !== "pptp" &&
+		values.protocol !== "ikev2" &&
+		values.protocol !== "anyconnect";
 	const streamSettings = supportsStream
 		? buildStreamSettings(values, options)
 		: undefined;
@@ -1557,7 +3366,16 @@ export const buildInboundPayload = (
 		payload.streamSettings = streamSettings;
 	}
 
-	if (values.sniffingEnabled) {
+	if (
+		values.protocol === "openvpn" ||
+		values.protocol === "wireguard" ||
+		values.protocol === "l2tp" ||
+		values.protocol === "pptp" ||
+		values.protocol === "ikev2" ||
+		values.protocol === "anyconnect"
+	) {
+		delete payload.sniffing;
+	} else if (values.sniffingEnabled) {
 		const initial = options?.initial ?? null;
 		const sniffing = cleanObject({
 			enabled: true,

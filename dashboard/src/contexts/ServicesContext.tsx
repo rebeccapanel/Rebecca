@@ -19,11 +19,14 @@ type QueryParams = {
 
 type ServicesStore = {
 	services: ServiceSummary[];
+	serviceOptions: ServiceSummary[];
 	total: number;
 	isLoading: boolean;
+	isOptionsLoading: boolean;
 	isSaving: boolean;
 	serviceDetail: ServiceDetail | null;
 	fetchServices: (params?: QueryParams) => Promise<void>;
+	fetchServiceOptions: (params?: QueryParams) => Promise<ServiceSummary[]>;
 	fetchServiceDetail: (id: number) => Promise<ServiceDetail>;
 	createService: (payload: ServiceCreatePayload) => Promise<ServiceDetail>;
 	updateService: (
@@ -44,22 +47,52 @@ type ServicesStore = {
 	) => Promise<{ detail: string; count?: number }>;
 };
 
+let servicesFetchSequence = 0;
+let serviceOptionsFetchSequence = 0;
+
 export const useServicesStore = create<ServicesStore>((set, get) => ({
 	services: [],
+	serviceOptions: [],
 	total: 0,
 	isLoading: false,
+	isOptionsLoading: false,
 	isSaving: false,
 	serviceDetail: null,
 
 	async fetchServices(params) {
+		const requestId = ++servicesFetchSequence;
 		set({ isLoading: true });
 		try {
 			const response = await fetch<ServiceListResponse>("/v2/services", {
 				query: params,
 			});
+			if (requestId !== servicesFetchSequence) {
+				return;
+			}
 			set({ services: response.services, total: response.total });
 		} finally {
-			set({ isLoading: false });
+			if (requestId === servicesFetchSequence) {
+				set({ isLoading: false });
+			}
+		}
+	},
+
+	async fetchServiceOptions(params) {
+		const requestId = ++serviceOptionsFetchSequence;
+		set({ isOptionsLoading: true });
+		try {
+			const response = await fetch<ServiceListResponse>("/v2/services", {
+				query: { limit: 1000, offset: 0, ...params },
+			});
+			if (requestId !== serviceOptionsFetchSequence) {
+				return get().serviceOptions;
+			}
+			set({ serviceOptions: response.services });
+			return response.services;
+		} finally {
+			if (requestId === serviceOptionsFetchSequence) {
+				set({ isOptionsLoading: false });
+			}
 		}
 	},
 
@@ -83,6 +116,7 @@ export const useServicesStore = create<ServicesStore>((set, get) => ({
 			});
 			set({ serviceDetail: detail });
 			await get().fetchServices();
+			await get().fetchServiceOptions();
 			return detail;
 		} finally {
 			set({ isSaving: false });
@@ -98,6 +132,7 @@ export const useServicesStore = create<ServicesStore>((set, get) => ({
 			});
 			set({ serviceDetail: detail });
 			await get().fetchServices();
+			await get().fetchServiceOptions();
 			return detail;
 		} finally {
 			set({ isSaving: false });
@@ -110,6 +145,7 @@ export const useServicesStore = create<ServicesStore>((set, get) => ({
 			await fetch(`/v2/services/${id}`, { method: "DELETE", body: payload });
 			set({ serviceDetail: null });
 			await get().fetchServices();
+			await get().fetchServiceOptions();
 		} finally {
 			set({ isSaving: false });
 		}
@@ -126,6 +162,7 @@ export const useServicesStore = create<ServicesStore>((set, get) => ({
 			);
 			set({ serviceDetail: detail });
 			await get().fetchServices();
+			await get().fetchServiceOptions();
 			return detail;
 		} finally {
 			set({ isSaving: false });
@@ -168,3 +205,17 @@ export const useServicesStore = create<ServicesStore>((set, get) => ({
 		);
 	},
 }));
+
+export const clearServicesCache = () => {
+	servicesFetchSequence += 1;
+	serviceOptionsFetchSequence += 1;
+	useServicesStore.setState({
+		services: [],
+		serviceOptions: [],
+		total: 0,
+		isLoading: false,
+		isOptionsLoading: false,
+		isSaving: false,
+		serviceDetail: null,
+	});
+};

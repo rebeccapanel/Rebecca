@@ -15,7 +15,7 @@ SCRIPT_NAME=$(basename "$0")
 SCRIPT_BASENAME="${SCRIPT_NAME%.*}"
 SCRIPT_DEFAULT_APP_NAME="${REBECCA_NODE_DEFAULT_APP_NAME:-$SCRIPT_BASENAME}"
 case "$SCRIPT_DEFAULT_APP_NAME" in
-    rebecca-node-binary)
+    rebecca-node-binary|@|bash|sh)
         SCRIPT_DEFAULT_APP_NAME="rebecca-node"
     ;;
 esac
@@ -54,6 +54,7 @@ set_app_context() {
     BRANCH_FILE="$APP_DIR/.branch"
     INSTALL_MODE_FILE="$APP_DIR/.install-mode"
     CERT_FILE="$DATA_DIR/cert.pem"
+    CERT_KEY_FILE="$DATA_DIR/cert.key"
     ENV_FILE="$APP_DIR/.env"
 
     BINARY_BIN_DIR="$APP_DIR/bin"
@@ -133,12 +134,14 @@ if [ -z "$NODE_IP" ]; then
     NODE_IP=$(curl -s -6 ifconfig.io)
 fi
 
-if [[ "$COMMAND" == "install" || "$COMMAND" == "install-script" ]] && [ -z "$APP_NAME" ]; then
-    APP_NAME="$SCRIPT_DEFAULT_APP_NAME"
-fi
-# Set script name if APP_NAME is not set
-if [ -z "$APP_NAME" ]; then
-    APP_NAME="$SCRIPT_DEFAULT_APP_NAME"
+if [ "$APP_NAME_FROM_ARG" -eq 0 ]; then
+    if [ -n "${REBECCA_NODE_APP_NAME:-}" ]; then
+        APP_NAME="$REBECCA_NODE_APP_NAME"
+    elif [[ "$COMMAND" == "install" || "$COMMAND" == "install-script" || "$COMMAND" == "script-install" ]]; then
+        APP_NAME="$SCRIPT_DEFAULT_APP_NAME"
+    elif [ -z "${APP_NAME:-}" ]; then
+        APP_NAME="$SCRIPT_DEFAULT_APP_NAME"
+    fi
 fi
 ensure_valid_app_name
 
@@ -146,11 +149,17 @@ LAST_XRAY_CORES=5
 
 REBECCA_REPO="${REBECCA_REPO:-rebeccapanel/Rebecca}"
 REBECCA_REF="${REBECCA_REF:-master}"
+REBECCA_SCRIPT_BASE_URL_EXPLICIT=0
+if [ -n "${REBECCA_SCRIPT_BASE_URL+x}" ]; then
+    REBECCA_SCRIPT_BASE_URL_EXPLICIT=1
+fi
 REBECCA_SCRIPT_BASE_URL="${REBECCA_SCRIPT_BASE_URL:-https://raw.githubusercontent.com/${REBECCA_REPO}/${REBECCA_REF}/scripts/rebecca}"
 REBECCA_NODE_RELEASE_REPO="${REBECCA_NODE_RELEASE_REPO:-rebeccapanel/Rebecca-node}"
 REBECCA_NODE_BINARY_DEV_BRANCH="${REBECCA_NODE_BINARY_DEV_BRANCH:-dev}"
+REBECCA_NODE_BINARY_DEV_RELEASE_TAG="${REBECCA_NODE_BINARY_DEV_RELEASE_TAG:-dev-binaries}"
 REBECCA_NODE_BINARY_WORKFLOW_NAME="${REBECCA_NODE_BINARY_WORKFLOW_NAME:-binary-build}"
 REBECCA_NODE_BINARY_ARTIFACT_PREFIX="${REBECCA_NODE_BINARY_ARTIFACT_PREFIX:-rebecca-node-binaries}"
+DEFAULT_XRAY_CORE_VERSION="${DEFAULT_XRAY_CORE_VERSION:-v26.7.11}"
 
 # Default node channel values
 BRANCH="master"
@@ -184,6 +193,186 @@ colorized_echo() {
             echo "${text}"
         ;;
     esac
+}
+
+ui_is_tty() {
+    [ -t 1 ] && [ -z "${NO_COLOR:-}" ]
+}
+
+ui_color() {
+    local code="$1"
+    shift || true
+    if ui_is_tty; then
+        printf "\033[%sm%s\033[0m" "$code" "$*"
+    else
+        printf "%s" "$*"
+    fi
+}
+
+ui_line() {
+    ui_color "38;5;39" "────────────────────────────────────────────────────────────"
+    printf "\n"
+}
+
+ui_header() {
+    local title="$1"
+    local subtitle="${2:-}"
+    printf "\n"
+    ui_color "38;5;45;1" "╭──────────────────────────────────────────────────────────╮"
+    printf "\n  "
+    ui_color "38;5;231;1" "$title"
+    printf "\n"
+    if [ -n "$subtitle" ]; then
+        printf "  "
+        ui_color "38;5;117" "$subtitle"
+        printf "\n"
+    fi
+    ui_color "38;5;45;1" "╰──────────────────────────────────────────────────────────╯"
+    printf "\n"
+}
+
+ui_section() {
+    printf "\n"
+    ui_color "38;5;45;1" "◆ $1"
+    printf "\n"
+    ui_line
+}
+
+ui_status_row() {
+    local label="$1"
+    local value="$2"
+    printf "  "
+    ui_color "38;5;245" "$(printf '%-14s' "$label")"
+    ui_color "38;5;231;1" "$value"
+    printf "\n"
+}
+
+ui_menu_item() {
+    local number="$1"
+    local command="$2"
+    local description="$3"
+    local selected="${4:-0}"
+    printf "  "
+    if [ "$selected" = "1" ]; then
+        ui_color "38;5;16;48;5;45;1" " ▶ "
+    else
+        printf "   "
+    fi
+    ui_color "38;5;45;1" "$(printf '%2s' "$number")"
+    printf "  "
+    if [ "$selected" = "1" ]; then
+        ui_color "38;5;231;1" "$(printf '%-18s' "$command")"
+        ui_color "38;5;231" "$description"
+    else
+        ui_color "38;5;231;1" "$(printf '%-18s' "$command")"
+        ui_color "38;5;245" "$description"
+    fi
+    printf "\n"
+}
+
+ui_menu_category() {
+    printf "\n"
+    ui_color "38;5;117;1" "  $1"
+    printf "\n"
+}
+
+ui_clear() {
+    if ui_is_tty; then
+        printf "\033[H\033[2J"
+    fi
+}
+
+ui_read_menu_choice() {
+    local selected="$1"
+    local total="$2"
+    local key rest digits
+
+    IFS= read -rsn1 key || return 1
+    case "$key" in
+        "")
+            echo "enter:$selected"
+            return
+        ;;
+        $'\033')
+            IFS= read -rsn2 -t 0.05 rest || true
+            case "$rest" in
+                "[A")
+                    selected=$((selected - 1))
+                    [ "$selected" -lt 1 ] && selected="$total"
+                    echo "move:$selected"
+                    return
+                ;;
+                "[B")
+                    selected=$((selected + 1))
+                    [ "$selected" -gt "$total" ] && selected=1
+                    echo "move:$selected"
+                    return
+                ;;
+            esac
+            echo "move:$selected"
+            return
+        ;;
+        [0-9])
+            digits="$key"
+            while IFS= read -rsn1 -t 0.35 rest; do
+                case "$rest" in
+                    [0-9]) digits="${digits}${rest}" ;;
+                    "") break ;;
+                    *) break ;;
+                esac
+            done
+            echo "value:$digits"
+            return
+        ;;
+        q|Q)
+            echo "quit:"
+            return
+        ;;
+        *)
+            IFS= read -r rest || true
+            echo "value:${key}${rest}"
+            return
+        ;;
+    esac
+}
+
+ui_spinner_run() {
+    local message="$1"
+    shift
+    if ! ui_is_tty; then
+        "$@"
+        return $?
+    fi
+
+    local log_file
+    log_file=$(mktemp)
+    "$@" >"$log_file" 2>&1 &
+    local pid=$!
+    local frames=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
+    local i=0
+    while kill -0 "$pid" >/dev/null 2>&1; do
+        printf "\r"
+        ui_color "38;5;45;1" "${frames[$((i % ${#frames[@]}))]}"
+        printf " %s" "$message"
+        sleep 0.08
+        i=$((i + 1))
+    done
+
+    local status=0
+    wait "$pid" || status=$?
+    printf "\r\033[K"
+    if [ "$status" -eq 0 ]; then
+        ui_color "38;5;82;1" "✓"
+        printf " %s\n" "$message"
+        rm -f "$log_file"
+        return 0
+    fi
+
+    ui_color "38;5;196;1" "✗"
+    printf " %s\n" "$message"
+    tail -n 80 "$log_file" >&2 || true
+    rm -f "$log_file"
+    return "$status"
 }
 
 ensure_env_file() {
@@ -329,7 +518,9 @@ set_branch_variables() {
     else
         REBECCA_REF="${REBECCA_SCRIPT_REF:-master}"
     fi
-    REBECCA_SCRIPT_BASE_URL="https://raw.githubusercontent.com/${REBECCA_REPO}/${REBECCA_REF}/scripts/rebecca"
+    if [ "${REBECCA_SCRIPT_BASE_URL_EXPLICIT:-0}" != "1" ]; then
+        REBECCA_SCRIPT_BASE_URL="https://raw.githubusercontent.com/${REBECCA_REPO}/${REBECCA_REF}/scripts/rebecca"
+    fi
     SCRIPT_URL="$REBECCA_SCRIPT_BASE_URL/$REBECCA_NODE_SCRIPT_SOURCE_FILE"
 }
 
@@ -562,24 +753,61 @@ detect_os() {
     fi
 }
 
+remove_broken_xanmod_apt_sources() {
+    local matches
+    matches=$(grep -RIlE 'deb\.xanmod\.org|xanmod\.org' /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null || true)
+    if [ -z "$matches" ]; then
+        return 1
+    fi
+    colorized_echo yellow "Removing broken XanMod apt source entries"
+    while IFS= read -r file; do
+        [ -n "$file" ] || continue
+        case "$file" in
+            /etc/apt/sources.list)
+                sed -i.bak '/deb\.xanmod\.org/d;/xanmod\.org/d' "$file"
+            ;;
+            /etc/apt/sources.list.d/*)
+                rm -f "$file"
+            ;;
+        esac
+    done <<< "$matches"
+    return 0
+}
+
+apt_update_with_repo_repair() {
+    local log_file
+    log_file=$(mktemp)
+    if DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a "$PKG_MANAGER" "$@" update -qq >"$log_file" 2>&1; then
+        rm -f "$log_file"
+        return 0
+    fi
+    cat "$log_file" >&2
+    if grep -qiE 'deb\.xanmod\.org|xanmod.*release file|does not have a release file' "$log_file" && remove_broken_xanmod_apt_sources; then
+        rm -f "$log_file"
+        DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a "$PKG_MANAGER" "$@" update -qq
+        return
+    fi
+    rm -f "$log_file"
+    return 1
+}
+
 detect_and_update_package_manager() {
-    colorized_echo blue "Updating package manager"
     if [[ "$OS" == "Ubuntu"* ]] || [[ "$OS" == "Debian"* ]]; then
         PKG_MANAGER="apt-get"
-        DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a $PKG_MANAGER update -qq >/dev/null 2>&1
+        ui_spinner_run "Updating package index" apt_update_with_repo_repair
     elif [[ "$OS" == "CentOS"* ]] || [[ "$OS" == "AlmaLinux"* ]]; then
         PKG_MANAGER="yum"
-        $PKG_MANAGER update -y -q >/dev/null 2>&1
-        $PKG_MANAGER install -y -q epel-release >/dev/null 2>&1
+        ui_spinner_run "Updating package index" "$PKG_MANAGER" update -y -q
+        ui_spinner_run "Installing EPEL repository" "$PKG_MANAGER" install -y -q epel-release
     elif [[ "$OS" == "Fedora"* ]]; then
         PKG_MANAGER="dnf"
-        $PKG_MANAGER update -q -y >/dev/null 2>&1
+        ui_spinner_run "Updating package index" "$PKG_MANAGER" update -q -y
     elif [[ "$OS" == "Arch"* ]]; then
         PKG_MANAGER="pacman"
-        $PKG_MANAGER -Sy --noconfirm --quiet >/dev/null 2>&1
+        ui_spinner_run "Updating package index" "$PKG_MANAGER" -Sy --noconfirm --quiet
     elif [[ "$OS" == "openSUSE"* ]]; then
         PKG_MANAGER="zypper"
-        $PKG_MANAGER refresh --quiet >/dev/null 2>&1
+        ui_spinner_run "Updating package index" "$PKG_MANAGER" refresh --quiet
     else
         colorized_echo red "Unsupported operating system"
         exit 1
@@ -599,30 +827,34 @@ detect_compose() {
     fi
 }
 
+install_package_impl() {
+    local PACKAGE="$1"
+    if [[ "$OS" == "Ubuntu"* ]] || [[ "$OS" == "Debian"* ]]; then
+        DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a $PKG_MANAGER -y -qq install "$PACKAGE" \
+            -o Dpkg::Options::="--force-confdef" \
+            -o Dpkg::Options::="--force-confold"
+    elif [[ "$OS" == "CentOS"* ]] || [[ "$OS" == "AlmaLinux"* ]]; then
+        $PKG_MANAGER install -y -q "$PACKAGE"
+    elif [[ "$OS" == "Fedora"* ]]; then
+        $PKG_MANAGER install -y -q "$PACKAGE"
+    elif [[ "$OS" == "Arch"* ]]; then
+        $PKG_MANAGER -S --noconfirm --quiet "$PACKAGE"
+    elif [[ "$OS" == "openSUSE"* ]]; then
+        PKG_MANAGER="zypper"
+        $PKG_MANAGER --quiet install -y "$PACKAGE"
+    else
+        colorized_echo red "Unsupported operating system"
+        exit 1
+    fi
+}
+
 install_package () {
     if [ -z "$PKG_MANAGER" ]; then
         detect_and_update_package_manager
     fi
 
-    PACKAGE=$1
-    colorized_echo blue "Installing $PACKAGE"
-    if [[ "$OS" == "Ubuntu"* ]] || [[ "$OS" == "Debian"* ]]; then
-        DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a $PKG_MANAGER -y -qq install "$PACKAGE" \
-            -o Dpkg::Options::="--force-confdef" \
-            -o Dpkg::Options::="--force-confold" >/dev/null 2>&1
-    elif [[ "$OS" == "CentOS"* ]] || [[ "$OS" == "AlmaLinux"* ]]; then
-        $PKG_MANAGER install -y -q "$PACKAGE" >/dev/null 2>&1
-    elif [[ "$OS" == "Fedora"* ]]; then
-        $PKG_MANAGER install -y -q "$PACKAGE" >/dev/null 2>&1
-    elif [[ "$OS" == "Arch"* ]]; then
-        $PKG_MANAGER -S --noconfirm --quiet "$PACKAGE" >/dev/null 2>&1
-    elif [[ "$OS" == "openSUSE"* ]]; then
-        PKG_MANAGER="zypper"
-        $PKG_MANAGER --quiet install -y "$PACKAGE" >/dev/null 2>&1
-    else
-        colorized_echo red "Unsupported operating system"
-        exit 1
-    fi
+    local PACKAGE="$1"
+    ui_spinner_run "Installing $PACKAGE" install_package_impl "$PACKAGE"
 }
 
 ensure_python3_venv() {
@@ -713,9 +945,15 @@ get_node_binary_release_asset_metadata() {
 
 get_node_binary_dev_artifact_metadata() {
     local binary_arch="$1"
+    local release_api
+    local release_payload
+    local release_asset_name
+    local release_asset_url
+    local release_target
     local workflow_runs_api
     local workflow_runs_payload
-    local latest_run_json
+    local matching_runs
+    local run_json
     local run_id
     local head_sha
     local artifacts_api
@@ -724,6 +962,25 @@ get_node_binary_dev_artifact_metadata() {
     local artifact_url
     local nightly_workflow
     local workflow_path
+
+    release_asset_name="rebecca-node-dev-linux-${binary_arch}"
+    release_api="https://api.github.com/repos/${REBECCA_NODE_RELEASE_REPO}/releases/tags/${REBECCA_NODE_BINARY_DEV_RELEASE_TAG}"
+    if release_payload=$(curl -fsSL "$release_api" 2>/dev/null); then
+        release_asset_url=$(echo "$release_payload" | jq -r --arg name "$release_asset_name" '
+            .assets[]?
+            | select(.name == $name)
+            | .browser_download_url
+        ' | head -n 1)
+        if [ -n "$release_asset_url" ] && [ "$release_asset_url" != "null" ]; then
+            release_target=$(echo "$release_payload" | jq -r '.target_commitish // empty')
+            if [[ "$release_target" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
+                printf '%s|%s\n' "dev-${release_target:0:7}" "$release_asset_url"
+            else
+                printf '%s|%s\n' "dev-${REBECCA_NODE_BINARY_DEV_BRANCH}" "$release_asset_url"
+            fi
+            return 0
+        fi
+    fi
 
     nightly_workflow="$REBECCA_NODE_BINARY_WORKFLOW_NAME"
     case "$nightly_workflow" in
@@ -737,40 +994,53 @@ get_node_binary_dev_artifact_metadata() {
         exit 1
     }
 
-    latest_run_json=$(echo "$workflow_runs_payload" | jq -c --arg branch "$REBECCA_NODE_BINARY_DEV_BRANCH" --arg workflow_path "$workflow_path" '
+    matching_runs=$(echo "$workflow_runs_payload" | jq -c --arg branch "$REBECCA_NODE_BINARY_DEV_BRANCH" --arg workflow_path "$workflow_path" '
         .workflow_runs[]?
-        | select(.head_branch == $branch and .event == "push" and .conclusion == "success" and .path == $workflow_path)
-    ' | head -n 1)
+        | select(
+            .head_branch == $branch
+            and (.event == "push" or .event == "workflow_dispatch")
+            and .conclusion == "success"
+            and .path == $workflow_path
+        )
+    ')
 
-    if [ -z "$latest_run_json" ]; then
+    if [ -z "$matching_runs" ]; then
         colorized_echo red "No successful Rebecca-node binary workflow run was found on branch ${REBECCA_NODE_BINARY_DEV_BRANCH}." >&2
         exit 1
     fi
 
-    run_id=$(echo "$latest_run_json" | jq -r '.id // empty')
-    head_sha=$(echo "$latest_run_json" | jq -r '.head_sha // empty')
-    artifacts_api="https://api.github.com/repos/${REBECCA_NODE_RELEASE_REPO}/actions/runs/${run_id}/artifacts"
-    artifacts_payload=$(curl -fsSL "$artifacts_api") || {
-        colorized_echo red "Unable to read Rebecca-node binary workflow artifacts: $artifacts_api" >&2
-        exit 1
-    }
+    while IFS= read -r run_json; do
+        [ -n "$run_json" ] || continue
 
-    artifact_name=$(echo "$artifacts_payload" | jq -r --arg preferred "${REBECCA_NODE_BINARY_ARTIFACT_PREFIX}-linux-${binary_arch}" --arg arch "linux-${binary_arch}" '
-        [
-            .artifacts[]?
-            | select((.expired | not) and (.name == $preferred or ((.name | startswith("rebecca-node")) and (.name | contains($arch)))))
-        ]
-        | sort_by(if .name == $preferred then 0 else 1 end, .created_at)
-        | .[0].name // empty
-    ')
+        run_id=$(echo "$run_json" | jq -r '.id // empty')
+        head_sha=$(echo "$run_json" | jq -r '.head_sha // empty')
+        artifacts_api="https://api.github.com/repos/${REBECCA_NODE_RELEASE_REPO}/actions/runs/${run_id}/artifacts"
+        if ! artifacts_payload=$(curl -fsSL "$artifacts_api"); then
+            colorized_echo yellow "Unable to read Rebecca-node binary artifacts for workflow run ${run_id}; checking an older successful run." >&2
+            continue
+        fi
 
-    if [ -z "$artifact_name" ]; then
-        colorized_echo red "No usable Rebecca-node binary dev artifact was found for workflow run ${run_id}." >&2
-        exit 1
-    fi
+        artifact_name=$(echo "$artifacts_payload" | jq -r --arg preferred "${REBECCA_NODE_BINARY_ARTIFACT_PREFIX}-linux-${binary_arch}" --arg arch "linux-${binary_arch}" '
+            [
+                .artifacts[]?
+                | select((.expired | not) and (.name == $preferred or ((.name | startswith("rebecca-node")) and (.name | contains($arch)))))
+            ]
+            | sort_by(if .name == $preferred then 0 else 1 end, .created_at)
+            | .[0].name // empty
+        ')
 
-    artifact_url="https://nightly.link/${REBECCA_NODE_RELEASE_REPO}/workflows/${nightly_workflow}/${REBECCA_NODE_BINARY_DEV_BRANCH}/${artifact_name}.zip"
-    printf '%s|%s\n' "dev-${head_sha:0:7}" "$artifact_url"
+        if [ -n "$artifact_name" ]; then
+            artifact_url="https://nightly.link/${REBECCA_NODE_RELEASE_REPO}/workflows/${nightly_workflow}/${REBECCA_NODE_BINARY_DEV_BRANCH}/${artifact_name}.zip"
+            printf '%s|%s\n' "dev-${head_sha:0:7}" "$artifact_url"
+            return 0
+        fi
+
+        colorized_echo yellow "Rebecca-node binary workflow run ${run_id} has no usable linux-${binary_arch} artifact; checking an older successful run." >&2
+    done <<< "$matching_runs"
+
+    colorized_echo red "No usable Rebecca-node linux-${binary_arch} dev artifact was found on branch ${REBECCA_NODE_BINARY_DEV_BRANCH}." >&2
+    colorized_echo yellow "The dev binary workflow must publish ${REBECCA_NODE_BINARY_ARTIFACT_PREFIX}-linux-${binary_arch} before this server can install the dev binary." >&2
+    exit 1
 }
 
 write_node_binary_release_metadata() {
@@ -826,83 +1096,122 @@ EOF
 
 install_latest_xray_for_binary_node() {
     mkdir -p "$APP_DIR/scripts" "$DATA_DIR/xray-core"
-    colorized_echo blue "Installing Xray core for binary node"
+    colorized_echo blue "Installing Xray core ${XRAY_CORE_VERSION:-$DEFAULT_XRAY_CORE_VERSION} for binary node"
     curl -fsSL "$REBECCA_SCRIPT_BASE_URL/install_latest_xray.sh" -o "$APP_DIR/scripts/install_latest_xray.sh"
+    sed -i 's/\r$//' "$APP_DIR/scripts/install_latest_xray.sh"
     chmod +x "$APP_DIR/scripts/install_latest_xray.sh"
-    REBECCA_DATA_DIR="$DATA_DIR" XRAY_INSTALL_DIR="$DATA_DIR/xray-core" XRAY_ASSETS_DIR="$DATA_DIR/xray-core" bash "$APP_DIR/scripts/install_latest_xray.sh"
+    REBECCA_DATA_DIR="$DATA_DIR" XRAY_INSTALL_DIR="$DATA_DIR/xray-core" XRAY_ASSETS_DIR="$DATA_DIR/xray-core" XRAY_CORE_VERSION="${XRAY_CORE_VERSION:-$DEFAULT_XRAY_CORE_VERSION}" bash "$APP_DIR/scripts/install_latest_xray.sh"
+}
+
+read_node_certificate_bundle() {
+    local bundle_file
+    local bundle_started=0
+    local bundle_completed=0
+    bundle_file=$(mktemp)
+    : > "$bundle_file"
+
+    echo -e "Paste the Node install bundle from the panel, press ENTER on a new line when finished: "
+    while IFS= read -r line; do
+        if [[ -z $line ]]; then
+            if [ "$bundle_started" -eq 0 ]; then
+                break
+            fi
+            if grep -q -- "-----END CERTIFICATE-----" "$bundle_file" && grep -Eq -- "-----END( [^-]+)? PRIVATE KEY-----" "$bundle_file"; then
+                bundle_completed=1
+                break
+            fi
+            continue
+        fi
+        bundle_started=1
+        echo "$line" >>"$bundle_file"
+        if grep -q -- "-----END CERTIFICATE-----" "$bundle_file" && grep -Eq -- "-----END( [^-]+)? PRIVATE KEY-----" "$bundle_file"; then
+            bundle_completed=1
+            break
+        fi
+    done
+
+    if [ "$bundle_completed" -ne 1 ]; then
+        colorized_echo red "Node install bundle is incomplete. Paste the full bundle shown by the panel."
+        rm -f "$bundle_file"
+        exit 1
+    fi
+
+    awk 'BEGIN{capture=0} /-----BEGIN CERTIFICATE-----/{capture=1} capture{print} /-----END CERTIFICATE-----/{exit}' "$bundle_file" >"$CERT_FILE"
+    awk 'BEGIN{capture=0} /-----BEGIN( [^-]+)? PRIVATE KEY-----/{capture=1} capture{print} /-----END( [^-]+)? PRIVATE KEY-----/{exit}' "$bundle_file" >"$CERT_KEY_FILE"
+    rm -f "$bundle_file"
+
+    if ! grep -q -- "-----END CERTIFICATE-----" "$CERT_FILE"; then
+        colorized_echo red "The bundle does not contain a valid PEM certificate."
+        rm -f "$CERT_FILE" "$CERT_KEY_FILE"
+        exit 1
+    fi
+    if ! grep -Eq -- "-----END( [^-]+)? PRIVATE KEY-----" "$CERT_KEY_FILE"; then
+        colorized_echo red "The bundle does not contain a valid PEM private key."
+        rm -f "$CERT_FILE" "$CERT_KEY_FILE"
+        exit 1
+    fi
+
+    chmod 600 "$CERT_KEY_FILE"
+    colorized_echo green "Node certificate bundle saved to $CERT_FILE and $CERT_KEY_FILE"
 }
 
 configure_binary_node_env() {
     mkdir -p "$DATA_DIR" "$APP_DIR"
     echo "$BRANCH" > "$BRANCH_FILE"
 
-    if [ ! -s "$CERT_FILE" ]; then
-        : > "$CERT_FILE"
-        echo -e "Please paste the content of the Client Certificate, press ENTER on a new line when finished: "
-        while IFS= read -r line; do
-            if [[ -z $line ]]; then
-                break
-            fi
-            echo "$line" >>"$CERT_FILE"
-        done
-        colorized_echo green "Certificate saved to $CERT_FILE"
+    if [ ! -s "$CERT_FILE" ] || [ ! -s "$CERT_KEY_FILE" ]; then
+        rm -f "$CERT_FILE" "$CERT_KEY_FILE"
+        read_node_certificate_bundle
     fi
 
     get_occupied_ports
 
-    if ! grep -qE '^[[:space:]]*SERVICE_PORT[[:space:]]*=' "$ENV_FILE" 2>/dev/null; then
-        while true; do
-            read -p "Enter the SERVICE_PORT (default 62050): " -r SERVICE_PORT
-            if [[ -z "$SERVICE_PORT" ]]; then
-                SERVICE_PORT=62050
-            fi
-            if [[ "$SERVICE_PORT" -ge 1 && "$SERVICE_PORT" -le 65535 ]]; then
-                if is_port_occupied "$SERVICE_PORT"; then
-                    colorized_echo red "Port $SERVICE_PORT is already in use. Please enter another port."
-                else
-                    break
-                fi
-            else
-                colorized_echo red "Invalid port. Please enter a port between 1 and 65535."
-            fi
-        done
-        set_env_value "SERVICE_PORT" "$SERVICE_PORT"
-    fi
-    SERVICE_PORT="${SERVICE_PORT:-$(get_env_value "SERVICE_PORT")}"
-    SERVICE_PORT="${SERVICE_PORT:-62050}"
+    SERVICE_PORT=$(prompt_node_port_setting "SERVICE_PORT" "SERVICE_PORT" "62050")
     set_env_value "SERVICE_PORT" "$SERVICE_PORT"
 
-    if ! grep -qE '^[[:space:]]*XRAY_API_PORT[[:space:]]*=' "$ENV_FILE" 2>/dev/null; then
-        while true; do
-            read -p "Enter the XRAY_API_PORT (default 62051): " -r XRAY_API_PORT
-            if [[ -z "$XRAY_API_PORT" ]]; then
-                XRAY_API_PORT=62051
-            fi
-            if [[ "$XRAY_API_PORT" -ge 1 && "$XRAY_API_PORT" -le 65535 ]]; then
-                if is_port_occupied "$XRAY_API_PORT"; then
-                    colorized_echo red "Port $XRAY_API_PORT is already in use. Please enter another port."
-                elif [[ "$XRAY_API_PORT" -eq "$SERVICE_PORT" ]]; then
-                    colorized_echo red "Port $XRAY_API_PORT cannot be the same as SERVICE_PORT. Please enter another port."
-                else
-                    break
-                fi
-            else
-                colorized_echo red "Invalid port. Please enter a port between 1 and 65535."
-            fi
-        done
-        set_env_value "XRAY_API_PORT" "$XRAY_API_PORT"
-    fi
-    XRAY_API_PORT="${XRAY_API_PORT:-$(get_env_value "XRAY_API_PORT")}"
-    XRAY_API_PORT="${XRAY_API_PORT:-62051}"
+    XRAY_API_PORT=$(prompt_node_port_setting "XRAY_API_PORT" "XRAY_API_PORT" "62051" "$SERVICE_PORT")
     set_env_value "XRAY_API_PORT" "$XRAY_API_PORT"
 
     set_env_value "REBECCA_DATA_DIR" "$DATA_DIR"
     set_env_value "SSL_CLIENT_CERT_FILE" "$CERT_FILE"
-    set_env_value "SSL_CERT_FILE" "$DATA_DIR/ssl_cert.pem"
-    set_env_value "SSL_KEY_FILE" "$DATA_DIR/ssl_key.pem"
+    set_env_value "SSL_CERT_FILE" "$CERT_FILE"
+    set_env_value "SSL_KEY_FILE" "$CERT_KEY_FILE"
     set_env_value "XRAY_EXECUTABLE_PATH" "$DATA_DIR/xray-core/xray"
     set_env_value "XRAY_ASSETS_PATH" "$DATA_DIR/xray-core"
     set_env_value "SERVICE_PROTOCOL" "rest"
+}
+
+normalize_node_dev_artifact() {
+    local tmp_dir="$1"
+    local binary_arch="$2"
+    local candidate
+
+    if [ -f "$tmp_dir/rebecca-node" ]; then
+        chmod +x "$tmp_dir/rebecca-node"
+        return 0
+    fi
+
+    while IFS= read -r archive; do
+        [ -n "$archive" ] || continue
+        tar -xzf "$archive" -C "$tmp_dir" >/dev/null 2>&1 || true
+    done < <(find "$tmp_dir" -maxdepth 3 -type f \( -name "*.tar.gz" -o -name "*.tgz" \) 2>/dev/null)
+
+    candidate=$(
+        find "$tmp_dir" -maxdepth 5 -type f \
+            \( -name "rebecca-node" -o -name "rebecca-node*linux-${binary_arch}" -o -name "rebecca-node-*" \) \
+            ! -name "*.sha256" ! -name "*.zip" ! -name "*.tar.gz" ! -name "*.tgz" 2>/dev/null \
+        | while IFS= read -r file; do
+            size=$(wc -c < "$file" 2>/dev/null || echo 0)
+            printf '%s\t%s\n' "$size" "$file"
+        done \
+        | sort -nr \
+        | cut -f2- \
+        | head -n 1
+    )
+
+    if [ -n "$candidate" ]; then
+        install -m 755 "$candidate" "$tmp_dir/rebecca-node"
+    fi
 }
 
 install_binary_rebecca_node() {
@@ -925,16 +1234,29 @@ install_binary_rebecca_node() {
     binary_arch=$(detect_node_binary_arch)
     tmp_dir=$(mktemp -d)
 
-    if [ "$node_version" = "dev" ]; then
+    if [ -n "${REBECCA_NODE_BINARY_OVERRIDE:-}" ]; then
+        if [ ! -f "$REBECCA_NODE_BINARY_OVERRIDE" ]; then
+            colorized_echo red "REBECCA_NODE_BINARY_OVERRIDE must point to an existing file." >&2
+            rm -rf "$tmp_dir"
+            exit 1
+        fi
+        ui_spinner_run "Installing Rebecca-node custom binary" install -m 755 "$REBECCA_NODE_BINARY_OVERRIDE" "$tmp_dir/rebecca-node"
+        resolved_version="${REBECCA_NODE_BINARY_OVERRIDE_VERSION:-custom}"
+        artifact_url="local-override"
+    elif [ "$node_version" = "dev" ]; then
         IFS='|' read -r resolved_version artifact_url < <(get_node_binary_dev_artifact_metadata "$binary_arch")
-        package_path="$tmp_dir/rebecca-node-binaries.zip"
-        colorized_echo blue "Downloading Rebecca-node binary dev artifact"
-        curl -fL "$artifact_url" -o "$package_path"
-        unzip -j -o "$package_path" -d "$tmp_dir" >/dev/null
+        if [[ "$artifact_url" == *.zip ]]; then
+            package_path="$tmp_dir/rebecca-node-binaries.zip"
+            ui_spinner_run "Downloading Rebecca-node dev binary artifact" curl -fL "$artifact_url" -o "$package_path"
+            ui_spinner_run "Extracting Rebecca-node dev artifact" unzip -j -o "$package_path" -d "$tmp_dir"
+            normalize_node_dev_artifact "$tmp_dir" "$binary_arch"
+        else
+            ui_spinner_run "Downloading Rebecca-node dev binary" curl -fL "$artifact_url" -o "$tmp_dir/rebecca-node"
+            chmod +x "$tmp_dir/rebecca-node"
+        fi
     else
         IFS='|' read -r resolved_version node_asset_url < <(get_node_binary_release_asset_metadata "$node_version" "$binary_arch")
-        colorized_echo blue "Downloading Rebecca-node binary release assets"
-        curl -fL "$node_asset_url" -o "$tmp_dir/rebecca-node"
+        ui_spinner_run "Downloading Rebecca-node binary" curl -fL "$node_asset_url" -o "$tmp_dir/rebecca-node"
     fi
 
     if [ ! -f "$tmp_dir/rebecca-node" ]; then
@@ -961,10 +1283,9 @@ install_binary_rebecca_node() {
 }
 
 install_rebecca_node_script() {
-    colorized_echo blue "Installing $APP_NAME script from $SCRIPT_URL"
     TARGET_PATH="/usr/local/bin/$APP_NAME"
     TEMP_SCRIPT=$(mktemp)
-    if ! curl -fsSL "$SCRIPT_URL" -o "$TEMP_SCRIPT"; then
+    if ! ui_spinner_run "Downloading $APP_NAME command script" curl -fsSL "$SCRIPT_URL" -o "$TEMP_SCRIPT"; then
         colorized_echo red "Failed to download script from $SCRIPT_URL"
         rm -f "$TEMP_SCRIPT"
         exit 1
@@ -974,7 +1295,7 @@ install_rebecca_node_script() {
         rm -f "$TEMP_SCRIPT"
         exit 1
     fi
-    install -m 755 "$TEMP_SCRIPT" "$TARGET_PATH"
+    ui_spinner_run "Installing $APP_NAME command script" install -m 755 "$TEMP_SCRIPT" "$TARGET_PATH"
     rm -f "$TEMP_SCRIPT"
     colorized_echo green "$APP_NAME script installed at $TARGET_PATH"
 }
@@ -1005,6 +1326,34 @@ is_port_occupied() {
     else
         return 1
     fi
+}
+
+prompt_node_port_setting() {
+    local key="$1"
+    local label="$2"
+    local fallback="$3"
+    local other_port="${4:-}"
+    local current_port
+    local value
+
+    current_port=$(get_env_value "$key")
+    fallback="${current_port:-$fallback}"
+
+    while true; do
+        printf "Enter the %s (default %s): " "$label" "$fallback" >&2
+        IFS= read -r value
+        value="${value:-$fallback}"
+        if ! [[ "$value" =~ ^[0-9]+$ ]] || [ "$value" -lt 1 ] || [ "$value" -gt 65535 ]; then
+            colorized_echo red "Invalid port. Please enter a port between 1 and 65535." >&2
+        elif [ -n "$other_port" ] && [ "$value" -eq "$other_port" ]; then
+            colorized_echo red "Port $value cannot be the same as SERVICE_PORT. Please enter another port." >&2
+        elif is_port_occupied "$value" && [ "$value" != "$current_port" ]; then
+            colorized_echo red "Port $value is already in use. Please enter another port." >&2
+        else
+            echo "$value"
+            return 0
+        fi
+    done
 }
 
 install_rebecca_node() {
@@ -1178,6 +1527,35 @@ update_rebecca_node_script() {
     install_rebecca_node_script
 }
 
+reexec_updated_node_script() {
+    local target_path="/usr/local/bin/$APP_NAME"
+    local args=("update")
+
+    if [ "${REBECCA_NODE_SKIP_REEXEC:-0}" = "1" ]; then
+        return
+    fi
+    if [ ! -x "$target_path" ]; then
+        return
+    fi
+
+    if [ "$NODE_VERSION_SET" -eq 1 ]; then
+        case "${NODE_VERSION_REQUESTED:-}" in
+            dev)
+                args+=("--dev")
+            ;;
+            "")
+                args+=("--version" "latest")
+            ;;
+            *)
+                args+=("--version" "$NODE_VERSION_REQUESTED")
+            ;;
+        esac
+    fi
+
+    colorized_echo blue "Reloading updated $APP_NAME script"
+    REBECCA_NODE_SKIP_REEXEC=1 exec "$target_path" "${args[@]}"
+}
+
 update_rebecca_node() {
     local requested_version="${1:-}"
     if is_binary_install; then
@@ -1222,6 +1600,9 @@ is_rebecca_node_up() {
     if is_binary_install; then
         systemctl is-active --quiet "$APP_NAME.service"
         return
+    fi
+    if [ -z "${COMPOSE:-}" ]; then
+        return 1
     fi
     if [ -z "$($COMPOSE -f $COMPOSE_FILE ps -q -a)" ]; then
         return 1
@@ -1286,10 +1667,10 @@ install_command() {
         echo "docker" > "$INSTALL_MODE_FILE"
     fi
     up_rebecca_node
-    follow_rebecca_node_logs
     SERVICE_PORT="${SERVICE_PORT:-$(get_env_value "SERVICE_PORT")}"
     XRAY_API_PORT="${XRAY_API_PORT:-$(get_env_value "XRAY_API_PORT")}"
-    echo "Use your IP: $NODE_IP and defaults ports: $SERVICE_PORT and $XRAY_API_PORT to setup your Rebecca Main Panel"
+    echo "Use your IP: $NODE_IP and selected ports: $SERVICE_PORT and $XRAY_API_PORT to setup your Rebecca Main Panel"
+    colorized_echo yellow "Run '$APP_NAME logs' if you want to follow live node logs."
 }
 
 uninstall_command() {
@@ -1581,6 +1962,7 @@ update_command() {
     fi
 
     update_rebecca_node_script
+    reexec_updated_node_script
 
     if is_binary_install; then
         colorized_echo blue "Updating Rebecca-node binary files"
@@ -1927,6 +2309,40 @@ edit_command() {
     fi
 }
 
+get_node_current_version() {
+    local version=""
+    if [ -f "$BINARY_METADATA_FILE" ]; then
+        version=$(sed -nE 's/.*"tag"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$BINARY_METADATA_FILE" | head -n 1)
+    fi
+    if [ -z "$version" ] && [ -f "$BRANCH_FILE" ]; then
+        version=$(tr -d '[:space:]' < "$BRANCH_FILE")
+    fi
+    printf '%s\n' "${version:-unknown}"
+}
+
+get_node_service_status() {
+    if is_rebecca_node_up; then
+        echo "running"
+    else
+        echo "stopped"
+    fi
+}
+
+print_node_menu_status_summary() {
+    local service_port xray_api_port
+    service_port=$(get_env_value "SERVICE_PORT")
+    xray_api_port=$(get_env_value "XRAY_API_PORT")
+    service_port="${service_port:-62050}"
+    xray_api_port="${xray_api_port:-62051}"
+    ui_status_row "Version" "$(get_node_current_version)"
+    ui_status_row "Service" "$(get_node_service_status)"
+    ui_status_row "Mode" "$(get_install_mode)"
+    ui_status_row "Node IP" "${NODE_IP:-unknown}"
+    ui_status_row "Service port" "$service_port"
+    ui_status_row "Xray API" "$xray_api_port"
+    ui_status_row "Cert" "$CERT_FILE"
+}
+
 usage() {
     colorized_echo blue "================================"
     colorized_echo magenta "       $APP_NAME Node CLI Help"
@@ -1936,19 +2352,19 @@ usage() {
     echo
 
     colorized_echo cyan "Commands:"
-    colorized_echo yellow "  up              $(tput sgr0)– Start services"
-    colorized_echo yellow "  down            $(tput sgr0)– Stop services"
-    colorized_echo yellow "  restart         $(tput sgr0)– Restart services"
-    colorized_echo yellow "  status          $(tput sgr0)– Show status"
-    colorized_echo yellow "  logs            $(tput sgr0)– Show logs"
-    colorized_echo yellow "  install         $(tput sgr0)- Install/reinstall Rebecca-node"
-    colorized_echo yellow "  update          $(tput sgr0)- Update to latest/dev or a specific version"
-    colorized_echo yellow "  uninstall       $(tput sgr0)- Uninstall Rebecca-node"
-    colorized_echo blue "  script-install  $(tput sgr0)- Install Rebecca-node script"
-    colorized_echo blue "  script-update   $(tput sgr0)- Update Rebecca-node CLI script"
-    colorized_echo blue "  script-uninstall  $(tput sgr0)- Uninstall Rebecca-node script"
-    colorized_echo yellow "  edit            $(tput sgr0)- Edit docker-compose.yml or binary .env (via nano or vi)"
-    colorized_echo yellow "  core-update     $(tput sgr0)– Update/Change Xray core"
+    colorized_echo yellow "  up              – Start services"
+    colorized_echo yellow "  down            – Stop services"
+    colorized_echo yellow "  restart         – Restart services"
+    colorized_echo yellow "  status          – Show status"
+    colorized_echo yellow "  logs            – Show logs"
+    colorized_echo yellow "  install         - Install/reinstall Rebecca-node"
+    colorized_echo yellow "  update          - Update to latest/dev or a specific version"
+    colorized_echo yellow "  uninstall       - Uninstall Rebecca-node"
+    colorized_echo blue "  script-install  - Install Rebecca-node script"
+    colorized_echo blue "  script-update   - Update Rebecca-node CLI script"
+    colorized_echo blue "  script-uninstall  - Uninstall Rebecca-node script"
+    colorized_echo yellow "  edit            - Edit docker-compose.yml or binary .env (via nano or vi)"
+    colorized_echo yellow "  core-update     – Update/Change Xray core"
     
     echo
     colorized_echo cyan "Node Information:"
@@ -1992,60 +2408,119 @@ usage() {
     echo
 }
 
+menu_commands() {
+    echo "up down restart status logs install update uninstall script-install script-update script-uninstall core-update edit help"
+}
+
+menu_category_for() {
+    case "$1" in
+        up|down|restart|status|logs) echo "Node runtime" ;;
+        install|update|uninstall) echo "Install and update" ;;
+        script-install|script-update|script-uninstall) echo "Script management" ;;
+        core-update|edit) echo "Tools" ;;
+        *) echo "Help" ;;
+    esac
+}
+
+menu_description_for() {
+    case "$1" in
+        up) echo "Start services" ;;
+        down) echo "Stop services" ;;
+        restart) echo "Restart services" ;;
+        status) echo "Show status" ;;
+        logs) echo "Show logs" ;;
+        install) echo "Install/reinstall Rebecca-node" ;;
+        update) echo "Update to latest version" ;;
+        uninstall) echo "Uninstall Rebecca-node" ;;
+        script-install) echo "Install Rebecca-node script" ;;
+        script-update) echo "Update Rebecca-node CLI script" ;;
+        script-uninstall) echo "Uninstall Rebecca-node script" ;;
+        core-update) echo "Update/Change Xray core" ;;
+        edit) echo "Edit docker-compose.yml or binary .env" ;;
+        help) echo "Show this help message" ;;
+        *) echo "" ;;
+    esac
+}
+
 print_menu() {
-    colorized_echo blue "================================"
-    colorized_echo magenta "       $APP_NAME Node Menu"
-    colorized_echo blue "================================"
-    local entries=(
-        "up:Start services"
-        "down:Stop services"
-        "restart:Restart services"
-        "status:Show status"
-        "logs:Show logs"
-        "install:Install/reinstall Rebecca-node"
-        "update:Update to latest version"
-        "uninstall:Uninstall Rebecca-node"
-        "script-install:Install Rebecca-node script"
-        "script-update:Update Rebecca-node CLI script"
-        "script-uninstall:Uninstall Rebecca-node script"
-        "core-update:Update/Change Xray core"
-        "edit:Edit docker-compose.yml or binary .env"
-        "help:Show this help message"
-    )
+    local selected="${1:-0}"
+    local previous_category=""
     local idx=1
-    for entry in "${entries[@]}"; do
-        local cmd="${entry%%:*}"
-        local desc="${entry#*:}"
-        local color="yellow"
-        if [[ "$cmd" == service-* ]]; then
-            color="green"
-        elif [[ "$cmd" == script-* ]]; then
-            color="blue"
+    local cmd category desc is_selected
+    ui_header "$APP_NAME" "Rebecca-node control center"
+    ui_section "Status"
+    print_node_menu_status_summary
+    ui_section "Actions"
+    for cmd in $(menu_commands); do
+        category=$(menu_category_for "$cmd")
+        if [ "$category" != "$previous_category" ]; then
+            ui_menu_category "$category"
+            previous_category="$category"
         fi
-        colorized_echo "$color" "$(printf " %2d) %-18s - %s" "$idx" "$cmd" "$desc")"
+        desc=$(menu_description_for "$cmd")
+        is_selected=0
+        [ "$idx" -eq "$selected" ] && is_selected=1
+        ui_menu_item "$idx" "$cmd" "$desc" "$is_selected"
         idx=$((idx + 1))
     done
+    printf "\n"
+    ui_color "38;5;245" "Tip: use ↑/↓ and Enter, or type a number/command directly. Press q to exit."
+    printf "\n"
     echo
 }
 
 map_choice_to_command() {
-    case "$1" in
-        1) echo "up" ;;
-        2) echo "down" ;;
-        3) echo "restart" ;;
-        4) echo "status" ;;
-        5) echo "logs" ;;
-        6) echo "install" ;;
-        7) echo "update" ;;
-        8) echo "uninstall" ;;
-        9) echo "script-install" ;;
-        10) echo "script-update" ;;
-        11) echo "script-uninstall" ;;
-        12) echo "core-update" ;;
-        13) echo "edit" ;;
-        14) echo "help" ;;
-        *) echo "$1" ;;
-    esac
+    local commands=($(menu_commands))
+    if [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 1 ] && [ "$1" -le "${#commands[@]}" ]; then
+        echo "${commands[$(($1 - 1))]}"
+        return
+    fi
+    echo "$1"
+}
+
+read_menu_command() {
+    MENU_COMMAND=""
+    if ! ui_is_tty; then
+        print_menu
+        ui_color "38;5;45;1" "Select option"
+        printf " "
+        ui_color "38;5;245" "(number or command): "
+        read -r user_choice
+        [ -z "$user_choice" ] && return 1
+        MENU_COMMAND=$(map_choice_to_command "$user_choice")
+        return
+    fi
+
+    local commands=($(menu_commands))
+    local selected=1
+    local action kind value mapped
+    while true; do
+        ui_clear
+        print_menu "$selected"
+        ui_color "38;5;45;1" "Select option"
+        printf " "
+        ui_color "38;5;245" "(↑/↓, Enter, number, command): "
+        action=$(ui_read_menu_choice "$selected" "${#commands[@]}") || return 1
+        kind="${action%%:*}"
+        value="${action#*:}"
+        case "$kind" in
+            move)
+                selected="$value"
+            ;;
+            enter)
+                MENU_COMMAND="${commands[$(($value - 1))]}"
+                return
+            ;;
+            value)
+                mapped=$(map_choice_to_command "$value")
+                [ -n "$mapped" ] && MENU_COMMAND="$mapped"
+                return
+            ;;
+            quit)
+                return 1
+            ;;
+        esac
+    done
 }
 
 dispatch_command() {
@@ -2078,12 +2553,8 @@ dispatch_command() {
 }
 
 if [ -z "${COMMAND:-}" ]; then
-    print_menu
-    read -rp "Select option (number or command): " user_choice
-    if [ -z "$user_choice" ]; then
-        exit 0
-    fi
-    COMMAND=$(map_choice_to_command "$user_choice")
+    read_menu_command || exit 0
+    COMMAND="$MENU_COMMAND"
 fi
 
 dispatch_command "$COMMAND"

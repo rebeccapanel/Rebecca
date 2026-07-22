@@ -34,7 +34,6 @@ $ admin [OPTIONS] COMMAND [ARGS]...
 * `create`: Creates an admin
 * `delete`: Deletes the specified admin
 * `change-role`: Changes the role of the specified admin
-* `import-from-env`: Imports the sudo admin from env
 * `list`: Displays a table of admins
 * `update`: Updates the specified admin
 
@@ -72,27 +71,6 @@ $ admin delete [OPTIONS]
 **Options**:
 
 * `-u, --username TEXT`: [required]
-* `-y, --yes`: Skips confirmations
-* `--help`: Show this message and exit.
-
-### `admin import-from-env`
-
-Imports the sudo admin from env
-
-Confirmations can be skipped using `--yes/-y` option.
-
-What does it do?
-  - Creates a sudo admin according to `SUDO_USERNAME` and `SUDO_PASSWORD`.
-  - Links any user which doesn't have an `admin_id` to the imported sudo admin.
-
-**Usage**:
-
-```console
-$ admin import-from-env [OPTIONS]
-```
-
-**Options**:
-
 * `-y, --yes`: Skips confirmations
 * `--help`: Show this message and exit.
 

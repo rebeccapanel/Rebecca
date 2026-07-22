@@ -5,30 +5,25 @@ import { useTranslation } from "react-i18next";
 import {
 	buildRelativeTimeParts,
 	formatRelativeTimeParts,
+	parseServerTimeToUnix,
 } from "utils/dateFormatter";
 
 type UserStatusProps = {
 	lastOnline: string | null;
 	withMargin?: boolean;
-};
-
-const convertDateFormat = (lastOnline: string | null): number | null => {
-	if (!lastOnline) {
-		return null;
-	}
-
-	const date = new Date(`${lastOnline}Z`);
-	return Math.floor(date.getTime() / 1000);
+	/** Render the relative time in short units (e.g. "2H, 4m") for tight cells. */
+	compact?: boolean;
 };
 
 export const OnlineStatus: FC<UserStatusProps> = ({
 	lastOnline,
 	withMargin = true,
+	compact = false,
 }) => {
 	const { t, i18n } = useTranslation();
 	const isRTL = i18n.language === "fa";
 	const currentTimeInSeconds = Math.floor(Date.now() / 1000);
-	const unixTime = convertDateFormat(lastOnline);
+	const unixTime = parseServerTimeToUnix(lastOnline);
 	const marginLeft = withMargin ? "2" : undefined;
 
 	const timeDifferenceInSeconds = unixTime
@@ -50,12 +45,21 @@ export const OnlineStatus: FC<UserStatusProps> = ({
 				gap={1}
 				alignItems="center"
 			>
-				{t("onlineStatus.notConnectedYet", "Not Connected Yet")}
+				{t("onlineStatus.notConnectedYet")}
 			</Text>
 		);
 	}
 
-	if (timeDifferenceInSeconds <= ONLINE_ACTIVE_WINDOW_SECONDS) {
+	const parts = buildRelativeTimeParts(unixTime, currentTimeInSeconds);
+	const formattedParts = formatRelativeTimeParts(parts, { compact });
+
+	// A user seen between the online window and one minute ago produces no
+	// non-zero hour/minute parts, so the relative string is empty. Treat that
+	// sub-minute case as "Online" instead of rendering a bare "ago".
+	if (
+		timeDifferenceInSeconds <= ONLINE_ACTIVE_WINDOW_SECONDS ||
+		formattedParts.trim() === ""
+	) {
 		return (
 			<Text
 				display="inline-flex"
@@ -70,13 +74,10 @@ export const OnlineStatus: FC<UserStatusProps> = ({
 				gap={1}
 				alignItems="center"
 			>
-				{t("onlineStatus.online", "Online")}
+				{t("onlineStatus.online")}
 			</Text>
 		);
 	}
-
-	const parts = buildRelativeTimeParts(unixTime, currentTimeInSeconds);
-	const formattedParts = formatRelativeTimeParts(parts);
 
 	return (
 		<Text
@@ -97,7 +98,7 @@ export const OnlineStatus: FC<UserStatusProps> = ({
 			<Box as="span" dir="ltr" sx={{ unicodeBidi: "isolate" }}>
 				{formattedParts}
 			</Box>
-			<Text as="span">{t("onlineStatus.ago", "ago")}</Text>
+			<Text as="span">{t("onlineStatus.ago")}</Text>
 		</Text>
 	);
 };

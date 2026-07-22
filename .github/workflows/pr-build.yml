@@ -22,17 +22,18 @@ jobs:
           cache: 'npm'
           cache-dependency-path: ${{ env.DASH_DIR }}/package-lock.json
 
+      - name: Setup Hugo
+        uses: peaceiris/actions-hugo@v3
+        with:
+          hugo-version: '0.147.7'
+          extended: true
+
       - name: Install dashboard dependencies
         working-directory: ${{ env.DASH_DIR }}
         run: npm ci
 
       - name: Build dashboard
-        working-directory: ${{ env.DASH_DIR }}
-        run: VITE_BASE_API=/api/ npm run build -- --outDir=build --assetsDir=statics
-
-      - name: Create 404.html
-        working-directory: ${{ env.DASH_DIR }}
-        run: cp ./build/index.html ./build/404.html
+        run: bash scripts/build_dashboard.sh
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3

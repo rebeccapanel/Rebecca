@@ -26,6 +26,7 @@ export function formatBytes(
 	return [value, sizes[i]];
 }
 
-export const numberWithCommas = (x: number) => {
-	if (x !== null) return x.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+export const numberWithCommas = (x?: number | null) => {
+	if (x === null || x === undefined || Number.isNaN(Number(x))) return "0";
+	return Number(x).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 };

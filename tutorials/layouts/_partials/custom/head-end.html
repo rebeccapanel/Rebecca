@@ -1,0 +1,18 @@
+<meta name="rb-tutorial-version" content="{{ site.Params.tutorialVersion }}" />
+<meta name="rb-admin-only" content="{{ .Params.adminOnly | default false }}" />
+<script>
+	(() => {
+		try {
+			const mode = localStorage.getItem("rb-theme") || localStorage.getItem("chakra-ui-color-mode");
+			if (mode === "light" || mode === "dark") {
+				localStorage.setItem("color-theme", mode);
+				setTheme(mode);
+			}
+			if (document.querySelector('meta[name="rb-admin-only"]')?.content === "true") {
+				document.documentElement.dataset.rbAdminPage = "true";
+			}
+		} catch {}
+	})();
+</script>
+{{- $panel := resources.Get "js/panel.js" | minify | fingerprint -}}
+<script defer src="{{ $panel.RelPermalink }}" integrity="{{ $panel.Data.Integrity }}"></script>

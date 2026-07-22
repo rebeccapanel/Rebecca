@@ -69,6 +69,7 @@ export const Protocols = Object.freeze({
 	VLESS: "vless",
 	Trojan: "trojan",
 	Shadowsocks: "shadowsocks",
+	Hysteria: "hysteria",
 	Socks: "socks",
 	HTTP: "http",
 	Wireguard: "wireguard",
@@ -458,22 +459,25 @@ export class TlsStreamSettings extends CommonClass {
 	serverName: string;
 	alpn: string[];
 	fingerprint: string;
-	allowInsecure: boolean;
 	echConfigList: string;
+	pinnedPeerCertSha256: string;
+	verifyPeerCertByName: string;
 
 	constructor(
 		serverName = "",
 		alpn: string[] = [],
 		fingerprint = "",
-		allowInsecure = false,
 		echConfigList = "",
+		pinnedPeerCertSha256 = "",
+		verifyPeerCertByName = "",
 	) {
 		super();
 		this.serverName = serverName ?? "";
 		this.alpn = alpn ?? [];
 		this.fingerprint = fingerprint ?? "";
-		this.allowInsecure = Boolean(allowInsecure);
 		this.echConfigList = echConfigList ?? "";
+		this.pinnedPeerCertSha256 = pinnedPeerCertSha256 ?? "";
+		this.verifyPeerCertByName = verifyPeerCertByName ?? "";
 	}
 
 	static override fromJson(json: any = {}): TlsStreamSettings {
@@ -481,8 +485,9 @@ export class TlsStreamSettings extends CommonClass {
 			json?.serverName ?? "",
 			Array.isArray(json?.alpn) ? json.alpn : [],
 			json?.fingerprint ?? "",
-			Boolean(json?.allowInsecure),
 			json?.echConfigList ?? "",
+			json?.pinnedPeerCertSha256 ?? "",
+			json?.verifyPeerCertByName ?? "",
 		);
 	}
 
@@ -491,8 +496,9 @@ export class TlsStreamSettings extends CommonClass {
 			serverName: this.serverName || undefined,
 			alpn: this.alpn?.length ? this.alpn : undefined,
 			fingerprint: this.fingerprint || undefined,
-			allowInsecure: this.allowInsecure,
 			echConfigList: this.echConfigList || undefined,
+			pinnedPeerCertSha256: this.pinnedPeerCertSha256 || undefined,
+			verifyPeerCertByName: this.verifyPeerCertByName || undefined,
 		};
 	}
 }
@@ -597,6 +603,47 @@ export class SockoptStreamSettings extends CommonClass {
 	}
 }
 
+export class HysteriaStreamSettings extends CommonClass {
+	version: number;
+	auth: string;
+	udpIdleTimeout: number;
+	masquerade?: JsonObject;
+
+	constructor(
+		version = 2,
+		auth = "",
+		udpIdleTimeout = 60,
+		masquerade?: JsonObject,
+	) {
+		super();
+		this.version = Number(version) || 2;
+		this.auth = auth ?? "";
+		this.udpIdleTimeout = Number(udpIdleTimeout) || 60;
+		this.masquerade = masquerade;
+	}
+
+	static override fromJson(json: any = {}): HysteriaStreamSettings {
+		return new HysteriaStreamSettings(
+			json?.version ?? 2,
+			json?.auth ?? "",
+			json?.udpIdleTimeout ?? 60,
+			json?.masquerade,
+		);
+	}
+
+	override toJson(): JsonObject {
+		return {
+			version: this.version || 2,
+			auth: ObjectUtil.isEmpty(this.auth) ? undefined : this.auth,
+			udpIdleTimeout: this.udpIdleTimeout || 60,
+			masquerade:
+				this.masquerade && Object.keys(this.masquerade).length
+					? this.masquerade
+					: undefined,
+		};
+	}
+}
+
 export class StreamSettings extends CommonClass {
 	network: string;
 	security: string;
@@ -608,6 +655,7 @@ export class StreamSettings extends CommonClass {
 	grpc: GrpcStreamSettings;
 	httpupgrade: HttpUpgradeStreamSettings;
 	xhttp: XHTTPStreamSettings;
+	hysteria: HysteriaStreamSettings;
 	sockopt?: SockoptStreamSettings;
 
 	constructor(
@@ -621,6 +669,7 @@ export class StreamSettings extends CommonClass {
 		grpcSettings = new GrpcStreamSettings(),
 		httpupgradeSettings = new HttpUpgradeStreamSettings(),
 		xhttpSettings = new XHTTPStreamSettings(),
+		hysteriaSettings = new HysteriaStreamSettings(),
 		sockopt?: SockoptStreamSettings,
 	) {
 		super();
@@ -634,6 +683,7 @@ export class StreamSettings extends CommonClass {
 		this.grpc = grpcSettings;
 		this.httpupgrade = httpupgradeSettings;
 		this.xhttp = xhttpSettings;
+		this.hysteria = hysteriaSettings;
 		this.sockopt = sockopt;
 	}
 
@@ -655,7 +705,7 @@ export class StreamSettings extends CommonClass {
 
 	static override fromJson(json: any = {}): StreamSettings {
 		return new StreamSettings(
-			json?.network ?? "tcp",
+			json?.method ?? json?.network ?? "tcp",
 			json?.security ?? "none",
 			TlsStreamSettings.fromJson(json?.tlsSettings),
 			RealityStreamSettings.fromJson(json?.realitySettings),
@@ -665,6 +715,7 @@ export class StreamSettings extends CommonClass {
 			GrpcStreamSettings.fromJson(json?.grpcSettings),
 			HttpUpgradeStreamSettings.fromJson(json?.httpupgradeSettings),
 			XHTTPStreamSettings.fromJson(json?.xhttpSettings),
+			HysteriaStreamSettings.fromJson(json?.hysteriaSettings),
 			SockoptStreamSettings.fromJson(json?.sockopt),
 		);
 	}
@@ -684,6 +735,8 @@ export class StreamSettings extends CommonClass {
 			httpupgradeSettings:
 				network === "httpupgrade" ? this.httpupgrade.toJson() : undefined,
 			xhttpSettings: network === "xhttp" ? this.xhttp.toJson() : undefined,
+			hysteriaSettings:
+				network === "hysteria" ? this.hysteria.toJson() : undefined,
 			sockopt: this.sockopt ? this.sockopt.toJson() : undefined,
 		};
 	}
@@ -772,9 +825,13 @@ export class Outbound extends CommonClass {
 				Protocols.VLESS,
 				Protocols.Trojan,
 				Protocols.Shadowsocks,
+				Protocols.Hysteria,
 			].includes(this.protocol as any)
 		) {
 			return false;
+		}
+		if (this.protocol === Protocols.Hysteria) {
+			return this.stream.network === "hysteria";
 		}
 		return ["tcp", "ws", "http", "grpc", "httpupgrade", "xhttp"].includes(
 			this.stream.network,
@@ -800,6 +857,7 @@ export class Outbound extends CommonClass {
 			Protocols.VLESS,
 			Protocols.Trojan,
 			Protocols.Shadowsocks,
+			Protocols.Hysteria,
 		].includes(this.protocol as any);
 	}
 
@@ -853,6 +911,7 @@ export class Outbound extends CommonClass {
 			Protocols.Shadowsocks,
 			Protocols.Socks,
 			Protocols.HTTP,
+			Protocols.Hysteria,
 		].includes(this.protocol as any);
 	}
 
@@ -907,6 +966,9 @@ export class Outbound extends CommonClass {
 				case Protocols.VLESS:
 				case Protocols.Trojan:
 				case "ss":
+				case "hysteria":
+				case "hysteria2":
+				case "hy2":
 					return Outbound.fromParamLink(link);
 				default:
 					return null;
@@ -957,7 +1019,9 @@ export class Outbound extends CommonClass {
 				json?.sni ?? "",
 				json?.alpn ? String(json.alpn).split(",") : [],
 				json?.fp ?? "",
-				Boolean(json?.allowInsecure),
+				json?.ech ?? "",
+				json?.pinSHA256 ?? json?.pcs ?? "",
+				json?.verifyPeerCertByName ?? json?.vcn ?? "",
 			);
 		}
 
@@ -997,8 +1061,15 @@ export class Outbound extends CommonClass {
 			return null;
 		}
 
-		const type = url.searchParams.get("type") ?? "tcp";
-		const security = url.searchParams.get("security") ?? "none";
+		const scheme = url.protocol.replace(":", "").toLowerCase();
+		const isHysteriaLink =
+			scheme === "hysteria" || scheme === "hysteria2" || scheme === "hy2";
+		const type = isHysteriaLink
+			? "hysteria"
+			: (url.searchParams.get("type") ?? "tcp");
+		const security = isHysteriaLink
+			? "tls"
+			: (url.searchParams.get("security") ?? "none");
 		const stream = new StreamSettings(type, security);
 
 		const headerType = url.searchParams.get("headerType") ?? undefined;
@@ -1035,20 +1106,31 @@ export class Outbound extends CommonClass {
 				host ?? "",
 				mode ?? "",
 			);
+		} else if (type === "hysteria") {
+			stream.hysteria = new HysteriaStreamSettings(
+				scheme === "hysteria" ? 1 : 2,
+				decodeURIComponent(url.username ?? ""),
+				Number(url.searchParams.get("udpIdleTimeout") ?? 60) || 60,
+			);
 		}
 
 		if (security === "tls") {
 			const fp = url.searchParams.get("fp") ?? "none";
 			const alpn = url.searchParams.get("alpn");
-			const allowInsecure = url.searchParams.get("allowInsecure");
 			const sni = url.searchParams.get("sni") ?? "";
 			const ech = url.searchParams.get("ech") ?? "";
+			const pinnedPeerCertSha256 =
+				url.searchParams.get("pcs") ??
+				url.searchParams.get("pinSHA256") ??
+				"";
+			const verifyPeerCertByName = url.searchParams.get("vcn") ?? "";
 			stream.tls = new TlsStreamSettings(
 				sni,
 				alpn ? alpn.split(",") : [],
 				fp,
-				allowInsecure === "1",
 				ech,
+				pinnedPeerCertSha256,
+				verifyPeerCertByName,
 			);
 		}
 
@@ -1073,6 +1155,10 @@ export class Outbound extends CommonClass {
 		if (protocol === "ss") {
 			protocol = Protocols.Shadowsocks;
 			userData = base64Decode(userData);
+		}
+		if (protocol === "hysteria" || protocol === "hysteria2" || protocol === "hy2") {
+			protocol = Protocols.Hysteria;
+			userData = decodeURIComponent(userData);
 		}
 
 		let settings: CommonClass | null = null;
@@ -1103,6 +1189,16 @@ export class Outbound extends CommonClass {
 				);
 				break;
 			}
+			case Protocols.Hysteria:
+				settings = new Outbound.HysteriaSettings(
+					address,
+					port,
+					scheme === "hysteria" ? 1 : 2,
+				);
+				stream.network = "hysteria";
+				stream.security = "tls";
+				stream.hysteria.auth = userData;
+				break;
 			default:
 				return null;
 		}
@@ -1138,6 +1234,8 @@ export class Outbound extends CommonClass {
 					return new Outbound.TrojanSettings();
 				case Protocols.Shadowsocks:
 					return new Outbound.ShadowsocksSettings();
+				case Protocols.Hysteria:
+					return new Outbound.HysteriaSettings();
 				case Protocols.Socks:
 					return new Outbound.SocksSettings();
 				case Protocols.HTTP:
@@ -1165,6 +1263,8 @@ export class Outbound extends CommonClass {
 					return Outbound.TrojanSettings.fromJson(json);
 				case Protocols.Shadowsocks:
 					return Outbound.ShadowsocksSettings.fromJson(json);
+				case Protocols.Hysteria:
+					return Outbound.HysteriaSettings.fromJson(json);
 				case Protocols.Socks:
 					return Outbound.SocksSettings.fromJson(json);
 				case Protocols.HTTP:
@@ -1411,6 +1511,18 @@ export class Outbound extends CommonClass {
 		}
 
 		static override fromJson(json: any = {}) {
+			if (
+				Object.hasOwn(json, "address") ||
+				json?.reverse
+			) {
+				return new Outbound.VLESSSettings(
+					json?.address ?? "",
+					json?.port ?? 0,
+					json?.id ?? "",
+					json?.flow ?? "",
+					json?.encryption ?? "none",
+				);
+			}
 			if (ObjectUtil.isArrEmpty(json?.vnext))
 				return new Outbound.VLESSSettings();
 			const server = json.vnext[0];
@@ -1532,6 +1644,35 @@ export class Outbound extends CommonClass {
 						UoTVersion: this.UoTVersion,
 					},
 				],
+			};
+		}
+	};
+
+	static HysteriaSettings = class HysteriaSettings extends CommonClass {
+		address: string;
+		port: number;
+		version: number;
+
+		constructor(address = "", port = 443, version = 2) {
+			super();
+			this.address = address ?? "";
+			this.port = port ?? 443;
+			this.version = Number(version) || 2;
+		}
+
+		static override fromJson(json: any = {}) {
+			return new Outbound.HysteriaSettings(
+				json?.address ?? "",
+				json?.port ?? 443,
+				json?.version ?? 2,
+			);
+		}
+
+		override toJson(): JsonObject {
+			return {
+				address: this.address,
+				port: this.port,
+				version: this.version || 2,
 			};
 		}
 	};
@@ -1777,6 +1918,7 @@ export namespace Outbound {
 	export type ShadowsocksSettings = InstanceType<
 		typeof Outbound.ShadowsocksSettings
 	>;
+	export type HysteriaSettings = InstanceType<typeof Outbound.HysteriaSettings>;
 	export type SocksSettings = InstanceType<typeof Outbound.SocksSettings>;
 	export type HttpSettings = InstanceType<typeof Outbound.HttpSettings>;
 	export type WireguardSettings = InstanceType<

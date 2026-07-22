@@ -113,7 +113,7 @@ export const FakeDnsModal: FC<FakeDnsModalProps> = ({
 				<form onSubmit={handleSubmit}>
 					<XrayModalBody>
 						<XrayDialogSection
-							title={t("pages.xray.fakedns.title", "Fake DNS")}
+							title={t("pages.xray.fakedns.title")}
 						>
 							<VStack spacing={4} align="stretch">
 								<FormControl>

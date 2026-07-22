@@ -52,7 +52,7 @@ export const AdminDetailsDrawer = () => {
 
 	const activeUsers = admin?.active_users ?? 0;
 	const usersLimit = admin?.users_limit ?? null;
-	const unlimitedLabel = t("admins.details.unlimited", "Unlimited");
+	const unlimitedLabel = t("admins.details.unlimited");
 	const usersLimitLabel =
 		usersLimit && usersLimit > 0 ? String(usersLimit) : unlimitedLabel;
 	const _totalUsers = admin?.users_count ?? 0;
@@ -80,12 +80,12 @@ export const AdminDetailsDrawer = () => {
 	const deletedUsersUsage = admin?.deleted_users_usage ?? 0;
 	const trafficModeLabel =
 		admin?.traffic_limit_mode === AdminTrafficLimitMode.CreatedTraffic
-			? t("admins.createdTrafficMode", "Created traffic")
-			: t("admins.usedTrafficMode", "Used traffic");
+			? t("myaccount.createdTraffic")
+			: t("nodes.usedTrafficSeries");
 	const showUserTrafficLabel =
 		admin?.show_user_traffic === false
-			? t("common.disabled", "Disabled")
-			: t("common.enabled", "Enabled");
+			? t("nodes.disabled")
+			: t("nodes.enabled");
 
 	return (
 		<Modal
@@ -109,7 +109,7 @@ export const AdminDetailsDrawer = () => {
 				>
 					<HStack spacing={2}>
 						<Text as="span">
-							{admin?.username ?? t("admins.details.title", "Admin details")}
+							{admin?.username ?? t("admins.details.title")}
 						</Text>
 						{admin && (
 							<Badge
@@ -126,10 +126,10 @@ export const AdminDetailsDrawer = () => {
 								}
 							>
 								{admin.role === AdminRole.FullAccess
-									? t("admins.roles.fullAccess", "Full access")
+									? t("admins.roles.fullAccess")
 									: admin.role === AdminRole.Sudo
-										? t("admins.roles.sudo", "Sudo")
-										: t("admins.roles.standard", "Standard")}
+										? t("admins.roles.sudo")
+										: t("admins.roles.standard")}
 							</Badge>
 						)}
 					</HStack>
@@ -141,48 +141,48 @@ export const AdminDetailsDrawer = () => {
 						<Stack spacing={8}>
 							<Box className="xray-dialog-section">
 								<Text fontWeight="semibold" mb={3}>
-									{t("admins.details.usersSection", "Users")}
+									{t("users")}
 								</Text>
 								<SimpleGrid columns={{ base: 2, md: 3 }} spacing={4}>
 									<StatCard
-										label={t("admins.details.activeLabel", "Active")}
+										label={t("admins.details.activeLabel")}
 										value={String(activeUsers)}
 										valueColor="blue.600"
 									/>
 									<StatCard
-										label={t("admins.details.onlineLabel", "Online")}
+										label={t("admins.details.onlineLabel")}
 										value={String(onlineUsers)}
 										valueColor="green.600"
 									/>
 									<StatCard
-										label={t("admins.details.limitedLabel", "Limited")}
+										label={t("admins.details.limitedLabel")}
 										value={String(limitedUsers)}
 										valueColor="orange.600"
 									/>
 									<StatCard
-										label={t("status.expired", "Expired")}
+										label={t("status.expired")}
 										value={String(expiredUsers)}
 										valueColor="red.600"
 									/>
 									<StatCard
-										label={t("status.on_hold", "On hold")}
+										label={t("status.on_hold")}
 										value={String(onHoldUsers)}
 										valueColor="yellow.600"
 									/>
 									<StatCard
-										label={t("status.disabled", "Disabled")}
+										label={t("status.disabled")}
 										value={String(disabledUsers)}
 										valueColor="gray.600"
 									/>
 								</SimpleGrid>
 								<SimpleGrid columns={{ base: 2, md: 2 }} spacing={4} mt={3}>
 									<StatCard
-										label={t("admins.details.totalUsers", "Total users")}
+										label={t("admins.details.totalUsers")}
 										value={String(admin.users_count ?? 0)}
 										valueColor="blue.600"
 									/>
 									<StatCard
-										label={t("admins.details.usersLimit", "Users limit")}
+										label={t("admins.details.usersLimit")}
 										value={formatLimit(usersLimit, unlimitedLabel)}
 									/>
 								</SimpleGrid>
@@ -190,36 +190,33 @@ export const AdminDetailsDrawer = () => {
 
 							<Box className="xray-dialog-section">
 								<Text fontWeight="semibold" mb={3}>
-									{t("admins.details.dataSection", "Data usage")}
+									{t("admins.details.dataSection")}
 								</Text>
 								<SimpleGrid columns={{ base: 2, md: 4 }} spacing={4}>
 									<StatCard
-										label={t("admins.details.used", "Used")}
+										label={t("admins.details.used")}
 										value={formatBytes(usedBytes, 2)}
 									/>
 									<StatCard
-										label={t(
-											"admins.details.createdTraffic",
-											"Created traffic",
-										)}
+										label={t("myaccount.createdTraffic")}
 										value={formatBytes(createdTrafficBytes, 2)}
 									/>
 									<StatCard
-										label={t("admins.details.limit", "Limit")}
+										label={t("admins.details.limit")}
 										value={formatBytesOrUnlimited(
 											dataLimitBytes,
 											unlimitedLabel,
 										)}
 									/>
 									<StatCard
-										label={t("admins.details.remaining", "Remaining")}
+										label={t("admins.details.remaining")}
 										value={formatBytesOrUnlimited(
 											remainingBytes,
 											unlimitedLabel,
 										)}
 									/>
 									<StatCard
-										label={t("admins.details.lifetime", "Lifetime usage")}
+										label={t("admins.details.lifetime")}
 										value={formatBytesOrUnlimited(
 											lifetimeUsageBytes,
 											undefined,
@@ -228,46 +225,34 @@ export const AdminDetailsDrawer = () => {
 								</SimpleGrid>
 								<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} mt={3}>
 									<StatCard
-										label={t(
-											"admins.details.trafficMode",
-											"Traffic limit mode",
-										)}
+										label={t("admins.details.trafficMode")}
 										value={trafficModeLabel}
 									/>
 									<StatCard
-										label={t(
-											"admins.details.showUserTraffic",
-											"View user traffic",
-										)}
+										label={t("admins.details.showUserTraffic")}
 										value={showUserTrafficLabel}
 									/>
 								</SimpleGrid>
 							</Box>
 							<Box className="xray-dialog-section">
 								<Text fontWeight="semibold" mb={3}>
-									{t("admins.details.allocationSection", "Data allocation")}
+									{t("admins.details.allocationSection")}
 								</Text>
 								<SimpleGrid columns={{ base: 2, md: 3 }} spacing={4}>
 									<StatCard
-										label={t("admins.details.dataAllocated", "Allocated data")}
+										label={t("admins.details.dataAllocated")}
 										value={formatBytes(dataLimitAllocated, 2)}
 									/>
 									<StatCard
-										label={t("admins.details.resetVolume", "Reset volume")}
+										label={t("admins.details.resetVolume")}
 										value={formatBytes(resetBytes, 2)}
 									/>
 									<StatCard
-										label={t(
-											"admins.details.unlimitedUsage",
-											"Unlimited users usage",
-										)}
+										label={t("admins.details.unlimitedUsage")}
 										value={formatBytes(unlimitedUsersUsage, 2)}
 									/>
 									<StatCard
-										label={t(
-											"admins.details.deletedUsersUsage",
-											"Deleted-user usage",
-										)}
+										label={t("admins.deletedUserUsage")}
 										value={formatBytes(deletedUsersUsage, 2)}
 									/>
 								</SimpleGrid>
@@ -276,7 +261,7 @@ export const AdminDetailsDrawer = () => {
 					) : (
 						<Box className="xray-dialog-section" py={8}>
 							<Text color="gray.500">
-								{t("admins.details.empty", "Select an admin to view details.")}
+								{t("admins.details.empty")}
 							</Text>
 						</Box>
 					)}
@@ -284,7 +269,7 @@ export const AdminDetailsDrawer = () => {
 
 				<XrayModalFooter justifyContent="flex-end">
 					<Button variant="outline" mr={3} onClick={closeAdminDetails}>
-						{t("close", "Close")}
+						{t("close")}
 					</Button>
 				</XrayModalFooter>
 			</XrayModalContent>

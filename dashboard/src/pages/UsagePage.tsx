@@ -1,69 +1,80 @@
-import {
-	Box,
-	Flex,
-	Spinner,
-	Tab,
-	TabList,
-	TabPanel,
-	TabPanels,
-	Tabs,
-	Text,
-	useColorModeValue,
-	VStack,
-} from "@chakra-ui/react";
+import { Box, Flex, Spinner, Text, VStack } from "@chakra-ui/react";
 import AdminsUsage from "components/AdminsUsage";
 import NodesUsageAnalytics from "components/NodesUsageAnalytics";
 import ServiceUsageAnalytics from "components/ServiceUsageAnalytics";
+import { PageHeader, ResourceListCard, TabSystem } from "components/ui";
 import { useServicesStore } from "contexts/ServicesContext";
 import useGetUser from "hooks/useGetUser";
 import { type FC, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useQuery } from "react-query";
+import { getRuntimeSettings } from "service/settings";
 
 export const UsagePage: FC = () => {
 	const { t } = useTranslation();
-	const panelBg = useColorModeValue("gray.50", "whiteAlpha.50");
-	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
-	const activeTabBg = useColorModeValue("primary.500", "whiteAlpha.200");
 	const { userData, getUserIsSuccess } = useGetUser();
 	const canViewUsage = Boolean(
 		getUserIsSuccess && userData.permissions?.sections.usage,
 	);
+	const { data: runtimeSettings, isLoading: isRuntimeSettingsLoading } =
+		useQuery("runtime-settings", getRuntimeSettings, {
+			refetchOnWindowFocus: false,
+			enabled: canViewUsage,
+		});
+	const recordNodeUsage = runtimeSettings?.record_node_usage ?? true;
+	const recordNodeUserUsages = runtimeSettings?.record_node_user_usages ?? true;
 
 	const services = useServicesStore((state) => state.services);
 	const fetchServices = useServicesStore((state) => state.fetchServices);
 	const [activeTab, setActiveTab] = useState<number>(0);
 	const tabKeys = useMemo(() => ["services", "admins", "nodes"], []);
-	const splitHash = useCallback(() => {
-		const hash = window.location.hash || "";
-		const idx = hash.indexOf("#", 1);
-		return {
-			base: idx >= 0 ? hash.slice(0, idx) : hash,
-			tab: idx >= 0 ? hash.slice(idx + 1) : "",
-		};
-	}, []);
+	const readHashTab = useCallback(
+		() => (window.location.hash || "").replace(/^#/, "").toLowerCase(),
+		[],
+	);
 
 	useEffect(() => {
 		const syncFromHash = () => {
-			const { tab } = splitHash();
-			const idx = tabKeys.indexOf(tab.toLowerCase());
+			const idx = tabKeys.indexOf(readHashTab());
 			if (idx >= 0) {
 				setActiveTab(idx);
 			} else {
 				setActiveTab(0);
-				const { base } = splitHash();
-				window.location.hash = `${base || "#"}#${tabKeys[0]}`;
+				window.history.replaceState(
+					null,
+					"",
+					`${window.location.pathname}${window.location.search}#${tabKeys[0]}`,
+				);
 			}
 		};
 		syncFromHash();
 		window.addEventListener("hashchange", syncFromHash);
 		return () => window.removeEventListener("hashchange", syncFromHash);
-	}, [splitHash, tabKeys]);
+	}, [readHashTab, tabKeys]);
+
+	useEffect(() => {
+		if (!runtimeSettings) {
+			return;
+		}
+		const tabEnabled = (index: number) =>
+			index === 2 ? recordNodeUsage : recordNodeUserUsages;
+		if (tabEnabled(activeTab)) {
+			return;
+		}
+		const nextIndex = tabKeys.findIndex((_, index) => tabEnabled(index));
+		setActiveTab(nextIndex >= 0 ? nextIndex : 0);
+	}, [
+		activeTab,
+		recordNodeUsage,
+		recordNodeUserUsages,
+		runtimeSettings,
+		tabKeys,
+	]);
 
 	const handleTabChange = (index: number) => {
 		setActiveTab(index);
 		const key = tabKeys[index] || "";
-		const { base } = splitHash();
-		window.location.hash = `${base || "#"}#${key}`;
+		if (readHashTab() !== key) window.location.hash = key;
 	};
 
 	useEffect(() => {
@@ -84,13 +95,31 @@ export const UsagePage: FC = () => {
 		return (
 			<VStack spacing={4} align="stretch">
 				<Text as="h1" fontWeight="semibold" fontSize="2xl">
-					{t("usage.title", "Usage Analytics")}
+					{t("usage.title")}
 				</Text>
 				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-					{t(
-						"usage.noPermission",
-						"You do not have permission to view usage analytics.",
-					)}
+					{t("usage.noPermission")}
+				</Text>
+			</VStack>
+		);
+	}
+
+	if (isRuntimeSettingsLoading) {
+		return (
+			<Flex justify="center" align="center" py={10}>
+				<Spinner />
+			</Flex>
+		);
+	}
+
+	if (!recordNodeUsage && !recordNodeUserUsages) {
+		return (
+			<VStack spacing={4} align="stretch">
+				<Text as="h1" fontWeight="semibold" fontSize="2xl">
+					{t("usage.title")}
+				</Text>
+				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+					{t("usage.recordingDisabled")}
 				</Text>
 			</VStack>
 		);
@@ -98,86 +127,63 @@ export const UsagePage: FC = () => {
 
 	return (
 		<VStack spacing={4} align="stretch">
-			<Box
-				borderWidth="1px"
-				borderColor={borderColor}
-				borderRadius="md"
-				bg={panelBg}
-				p={4}
-			>
-				<Text as="h1" fontWeight="semibold" fontSize="2xl">
-					{t("usage.title", "Usage Analytics")}
-				</Text>
-				<Text
-					mt={2}
-					fontSize="sm"
-					color="gray.500"
-					_dark={{ color: "gray.400" }}
-				>
-					{t(
-						"usage.description",
-						"Track usage trends across services, admins, and nodes from a single place.",
-					)}
-				</Text>
-			</Box>
+			<ResourceListCard
+				title={
+					<PageHeader
+						title={t("usage.title")}
+						description={t("usage.description")}
+					/>
+				}
+			/>
 
-			<Tabs variant="unstyled" index={activeTab} onChange={handleTabChange}>
-				<TabList
-					borderWidth="1px"
-					borderColor={borderColor}
-					borderRadius="md"
-					bg={panelBg}
-					p={{ base: 1, md: 2 }}
-					gap={{ base: 1.5, md: 2 }}
-					mb={4}
-					overflowX="auto"
-					overflowY="hidden"
-					flexWrap="nowrap"
-					maxW="full"
-					sx={{
-						WebkitOverflowScrolling: "touch",
-						overscrollBehaviorInline: "contain",
-						scrollbarWidth: "none",
-						scrollPaddingInline: "8px",
-						scrollSnapType: "x proximity",
-						"&::-webkit-scrollbar": { display: "none" },
-					}}
-				>
-					{[
-						t("usage.tabs.services", "Services"),
-						t("usage.tabs.admins", "Admins"),
-						t("usage.tabs.nodes", "Nodes"),
-					].map((label) => (
-						<Tab
-							key={label}
-							borderRadius="md"
-							px={{ base: 3, md: 4 }}
-							py={2}
-							minH={{ base: "40px", md: "36px" }}
-							flexShrink={0}
-							fontWeight="semibold"
-							color="gray.500"
-							whiteSpace="nowrap"
-							sx={{ scrollSnapAlign: "start" }}
-							_selected={{ bg: activeTabBg, color: "white" }}
-							_dark={{ color: "gray.300" }}
-						>
-							{label}
-						</Tab>
-					))}
-				</TabList>
-				<TabPanels>
-					<TabPanel px={0}>
-						<ServiceUsageAnalytics services={services} />
-					</TabPanel>
-					<TabPanel px={0}>
-						<AdminsUsage />
-					</TabPanel>
-					<TabPanel px={0}>
-						<NodesUsageAnalytics />
-					</TabPanel>
-				</TabPanels>
-			</Tabs>
+			<TabSystem
+				overflowX="auto"
+				overflowY="hidden"
+				maxW="full"
+				sx={{
+					WebkitOverflowScrolling: "touch",
+					scrollbarWidth: "none",
+					"&::-webkit-scrollbar": { display: "none" },
+					button: { flexShrink: 0 },
+				}}
+				tabs={[
+					...(recordNodeUserUsages
+						? [
+								{
+									value: "services",
+									isActive: activeTab === 0,
+									onClick: () => handleTabChange(0),
+									label: t("usage.tabs.services"),
+								},
+								{
+									value: "admins",
+									isActive: activeTab === 1,
+									onClick: () => handleTabChange(1),
+									label: t("usage.tabs.admins"),
+								},
+							]
+						: []),
+					...(recordNodeUsage
+						? [
+								{
+									value: "nodes",
+									isActive: activeTab === 2,
+									onClick: () => handleTabChange(2),
+									label: t("usage.tabs.nodes"),
+								},
+							]
+						: []),
+				]}
+			/>
+			<Box mt={3} display={activeTab === 0 ? "block" : "none"}>
+				<ServiceUsageAnalytics services={services} />
+			</Box>
+			<Box mt={3} display={activeTab === 1 ? "block" : "none"}>
+				<AdminsUsage />
+			</Box>
+			<Box mt={3} display={activeTab === 2 ? "block" : "none"}>
+				<NodesUsageAnalytics />
+			</Box>
 		</VStack>
 	);
 };

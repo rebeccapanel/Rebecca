@@ -23,6 +23,10 @@ CERTS_BASE="/var/lib/$APP_NAME/certs"
 REBECCA_REPO="${REBECCA_REPO:-rebeccapanel/Rebecca}"
 REBECCA_REF="${REBECCA_REF:-master}"
 REBECCA_RAW_BASE="${REBECCA_RAW_BASE:-https://raw.githubusercontent.com/${REBECCA_REPO}/${REBECCA_REF}}"
+REBECCA_SCRIPT_BASE_URL_EXPLICIT=0
+if [ -n "${REBECCA_SCRIPT_BASE_URL+x}" ]; then
+    REBECCA_SCRIPT_BASE_URL_EXPLICIT=1
+fi
 REBECCA_SCRIPT_BASE_URL="${REBECCA_SCRIPT_BASE_URL:-${REBECCA_RAW_BASE}/scripts/rebecca}"
 REBECCA_RELEASE_REPO="${REBECCA_RELEASE_REPO:-rebeccapanel/Rebecca}"
 REBECCA_BINARY_DEV_BRANCH="${REBECCA_BINARY_DEV_BRANCH:-dev}"
@@ -69,8 +73,264 @@ colorized_echo() {
     esac
 }
 
+ui_is_tty() {
+    [ -t 1 ] && [ -z "${NO_COLOR:-}" ]
+}
+
+ui_color() {
+    local code="$1"
+    shift || true
+    if ui_is_tty; then
+        printf "\033[%sm%s\033[0m" "$code" "$*"
+    else
+        printf "%s" "$*"
+    fi
+}
+
+ui_line() {
+    ui_color "38;5;39" "────────────────────────────────────────────────────────────"
+    printf "\n"
+}
+
+ui_header() {
+    local title="$1"
+    local subtitle="${2:-}"
+    printf "\n"
+    ui_color "38;5;45;1" "╭──────────────────────────────────────────────────────────╮"
+    printf "\n  "
+    ui_color "38;5;231;1" "$title"
+    printf "\n"
+    if [ -n "$subtitle" ]; then
+        printf "  "
+        ui_color "38;5;117" "$subtitle"
+        printf "\n"
+    fi
+    ui_color "38;5;45;1" "╰──────────────────────────────────────────────────────────╯"
+    printf "\n"
+}
+
+ui_section() {
+    printf "\n"
+    ui_color "38;5;45;1" "◆ $1"
+    printf "\n"
+    ui_line
+}
+
+ui_status_row() {
+    local label="$1"
+    local value="$2"
+    printf "  "
+    ui_color "38;5;245" "$(printf '%-14s' "$label")"
+    ui_color "38;5;231;1" "$value"
+    printf "\n"
+}
+
+ui_menu_item() {
+    local number="$1"
+    local command="$2"
+    local description="$3"
+    local selected="${4:-0}"
+    printf "  "
+    if [ "$selected" = "1" ]; then
+        ui_color "38;5;16;48;5;45;1" " ▶ "
+    else
+        printf "   "
+    fi
+    ui_color "38;5;45;1" "$(printf '%2s' "$number")"
+    printf "  "
+    if [ "$selected" = "1" ]; then
+        ui_color "38;5;231;1" "$(printf '%-18s' "$command")"
+        ui_color "38;5;231" "$description"
+    else
+        ui_color "38;5;231;1" "$(printf '%-18s' "$command")"
+        ui_color "38;5;245" "$description"
+    fi
+    printf "\n"
+}
+
+ui_menu_category() {
+    printf "\n"
+    ui_color "38;5;117;1" "  $1"
+    printf "\n"
+}
+
+ui_clear() {
+    if ui_is_tty; then
+        printf "\033[H\033[2J"
+    fi
+}
+
+ui_read_menu_choice() {
+    local selected="$1"
+    local total="$2"
+    local key rest digits
+
+    IFS= read -rsn1 key || return 1
+    case "$key" in
+        "")
+            echo "enter:$selected"
+            return
+        ;;
+        $'\033')
+            IFS= read -rsn2 -t 0.05 rest || true
+            case "$rest" in
+                "[A")
+                    selected=$((selected - 1))
+                    [ "$selected" -lt 1 ] && selected="$total"
+                    echo "move:$selected"
+                    return
+                ;;
+                "[B")
+                    selected=$((selected + 1))
+                    [ "$selected" -gt "$total" ] && selected=1
+                    echo "move:$selected"
+                    return
+                ;;
+            esac
+            echo "move:$selected"
+            return
+        ;;
+        [0-9])
+            digits="$key"
+            while IFS= read -rsn1 -t 0.35 rest; do
+                case "$rest" in
+                    [0-9]) digits="${digits}${rest}" ;;
+                    "") break ;;
+                    *) break ;;
+                esac
+            done
+            echo "value:$digits"
+            return
+        ;;
+        q|Q)
+            echo "quit:"
+            return
+        ;;
+        *)
+            IFS= read -r rest || true
+            echo "value:${key}${rest}"
+            return
+        ;;
+    esac
+}
+
+ui_read_yes_no() {
+    local prompt="$1"
+    local default_value="${2:-n}"
+    local answer suffix
+    if [ "$default_value" = "y" ]; then
+        suffix="Y/n"
+    else
+        suffix="y/N"
+    fi
+    while true; do
+        printf "%s [%s]: " "$prompt" "$suffix"
+        IFS= read -r answer
+        answer=$(echo "$answer" | tr '[:upper:]' '[:lower:]')
+        if [ -z "$answer" ]; then
+            answer="$default_value"
+        fi
+        case "$answer" in
+            y|yes) return 0 ;;
+            n|no) return 1 ;;
+            *) colorized_echo yellow "Please answer y or n." ;;
+        esac
+    done
+}
+
+ui_spinner_run() {
+    local message="$1"
+    shift
+    if ! ui_is_tty; then
+        "$@"
+        return $?
+    fi
+
+    local log_file
+    log_file=$(mktemp)
+    "$@" >"$log_file" 2>&1 &
+    local pid=$!
+    local frames=("⠋" "⠙" "⠹" "⠸" "⠼" "⠴" "⠦" "⠧" "⠇" "⠏")
+    local i=0
+    while kill -0 "$pid" >/dev/null 2>&1; do
+        printf "\r"
+        ui_color "38;5;45;1" "${frames[$((i % ${#frames[@]}))]}"
+        printf " %s" "$message"
+        sleep 0.08
+        i=$((i + 1))
+    done
+
+    local status=0
+    wait "$pid" || status=$?
+    printf "\r\033[K"
+    if [ "$status" -eq 0 ]; then
+        ui_color "38;5;82;1" "✓"
+        printf " %s\n" "$message"
+        rm -f "$log_file"
+        return 0
+    fi
+
+    ui_color "38;5;196;1" "✗"
+    printf " %s\n" "$message"
+    tail -n 80 "$log_file" >&2 || true
+    rm -f "$log_file"
+    return "$status"
+}
+
 format_rebecca_journal_logs() {
-    sed -u -E "s/^[0-9-]+[ T]([0-9]{2}:[0-9]{2}:[0-9]{2})(\\.[0-9]+)?([+-][0-9:]+|Z)? [^ ]+ [^:]+: /Rebecca-\1: /; s/^[A-Za-z]{3} [ 0-9][0-9] ([0-9]{2}:[0-9]{2}:[0-9]{2}) [^ ]+ [^:]+: /Rebecca-\1: /; s/^([0-9]{2}:[0-9]{2}:[0-9]{2}) [^ ]+ [^:]+: /Rebecca-\1: /"
+    while IFS= read -r line; do
+        local log_time=""
+        local message="$line"
+        if [[ "$line" =~ ^[0-9-]+[[:space:]T]([0-9]{2}:[0-9]{2}:[0-9]{2})(\.[0-9]+)?([+-][0-9:]+|Z)?[[:space:]][^[:space:]]+[[:space:]][^:]+:[[:space:]](.*)$ ]]; then
+            log_time="${BASH_REMATCH[1]}"
+            message="${BASH_REMATCH[4]}"
+        elif [[ "$line" =~ ^[A-Za-z]{3}[[:space:]][[:space:][:digit:]][[:digit:]][[:space:]]([0-9]{2}:[0-9]{2}:[0-9]{2})[[:space:]][^[:space:]]+[[:space:]][^:]+:[[:space:]](.*)$ ]]; then
+            log_time="${BASH_REMATCH[1]}"
+            message="${BASH_REMATCH[2]}"
+        elif [[ "$line" =~ ^([0-9]{2}:[0-9]{2}:[0-9]{2})[[:space:]][^[:space:]]+[[:space:]][^:]+:[[:space:]](.*)$ ]]; then
+            log_time="${BASH_REMATCH[1]}"
+            message="${BASH_REMATCH[2]}"
+        fi
+        if [[ "$message" =~ ^[0-9]{4}/[0-9]{2}/[0-9]{2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2}[[:space:]](.*)$ ]]; then
+            message="${BASH_REMATCH[1]}"
+        fi
+        if [ -z "$log_time" ]; then
+            printf "%s\n" "$message"
+            continue
+        fi
+        ui_color "38;5;208;1" "Rebecca"
+        printf "-"
+        ui_color "38;5;245" "$log_time"
+        printf ": "
+        if [[ "$message" =~ ^\[([^]]+)\][[:space:]](DEBUG|INFO|WARN|ERROR)[[:space:]](.*)$ ]]; then
+            local component="${BASH_REMATCH[1]}"
+            local level="${BASH_REMATCH[2]}"
+            local text="${BASH_REMATCH[3]}"
+            local component_color="38;5;45;1"
+            local level_color="38;5;250"
+            case "$component" in
+                Admin) component_color="38;5;141;1" ;;
+                Database) component_color="38;5;220;1" ;;
+                Node) component_color="38;5;45;1" ;;
+                Runtime) component_color="38;5;82;1" ;;
+                Telegram) component_color="38;5;39;1" ;;
+                User) component_color="38;5;213;1" ;;
+                Webhook) component_color="38;5;214;1" ;;
+            esac
+            case "$level" in
+                DEBUG) level_color="38;5;245" ;;
+                INFO) level_color="38;5;82" ;;
+                WARN) level_color="38;5;220;1" ;;
+                ERROR) level_color="38;5;196;1" ;;
+            esac
+            ui_color "$component_color" "$component"
+            printf " "
+            ui_color "$level_color" "$level"
+            printf " : %s\n" "$text"
+        else
+            printf "%s\n" "$message"
+        fi
+    done
 }
 
 journal_output_format() {
@@ -103,28 +363,45 @@ humanize_seconds() {
     fi
 }
 
+get_summary_compose() {
+    if docker compose version >/dev/null 2>&1; then
+        echo "docker compose"
+    elif docker-compose version >/dev/null 2>&1; then
+        echo "docker-compose"
+    else
+        echo ""
+    fi
+}
+
 get_current_rebecca_version() {
     local version=""
-    if [ -f "$BINARY_METADATA_FILE" ]; then
-        version=$(sed -nE 's/.*"tag"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$BINARY_METADATA_FILE" | head -n 1)
-    fi
-    if [ -z "$version" ] && [ -f "$CHANNEL_FILE" ]; then
+    if [ -f "$CHANNEL_FILE" ]; then
         version=$(tr -d '[:space:]' < "$CHANNEL_FILE")
+    fi
+    if [ -z "$version" ] && [ -f "$COMPOSE_FILE" ]; then
+        version=$(grep -E "image:.*rebeccapanel/rebecca:" "$COMPOSE_FILE" | head -n 1 | sed -E 's/.*rebeccapanel\/rebecca:([^"[:space:]]+).*/\1/')
     fi
     printf '%s\n' "${version:-unknown}"
 }
 
-get_binary_uptime() {
-    local started now started_epoch
-    if ! systemctl is-active --quiet "$APP_NAME.service"; then
+get_docker_container_id() {
+    local compose_cmd
+    compose_cmd=$(get_summary_compose)
+    if [ -z "$compose_cmd" ] || [ ! -f "$COMPOSE_FILE" ]; then
+        echo ""
+        return
+    fi
+    $compose_cmd -f "$COMPOSE_FILE" -p "$APP_NAME" ps -q rebecca 2>/dev/null | head -n 1
+}
+
+get_docker_uptime() {
+    local container_id started started_epoch now
+    container_id=$(get_docker_container_id)
+    if [ -z "$container_id" ]; then
         echo "-"
         return
     fi
-    started=$(systemctl show "$APP_NAME.service" -p ActiveEnterTimestamp --value 2>/dev/null || true)
-    if [ -z "$started" ]; then
-        echo "-"
-        return
-    fi
+    started=$(docker inspect -f '{{.State.StartedAt}}' "$container_id" 2>/dev/null || true)
     started_epoch=$(date -d "$started" +%s 2>/dev/null || echo "")
     now=$(date +%s)
     if [ -z "$started_epoch" ]; then
@@ -135,7 +412,9 @@ get_binary_uptime() {
 }
 
 get_xray_runtime_status() {
-    if pgrep -f "$DATA_DIR/xray-core/xray" >/dev/null 2>&1 || pgrep -f "xray run" >/dev/null 2>&1; then
+    local container_id
+    container_id=$(get_docker_container_id)
+    if [ -n "$container_id" ] && docker exec "$container_id" pgrep -x xray >/dev/null 2>&1; then
         echo "running"
     else
         echo "stopped"
@@ -143,27 +422,29 @@ get_xray_runtime_status() {
 }
 
 print_menu_status_summary() {
-    local service_status="stopped"
-    local xray_status="stopped"
-    local version uptime
-    if systemctl is-active --quiet "$APP_NAME.service"; then
+    local container_id service_status="stopped"
+    local version uptime xray_status
+    container_id=$(get_docker_container_id)
+    if [ -n "$container_id" ] && [ "$(docker inspect -f '{{.State.Running}}' "$container_id" 2>/dev/null)" = "true" ]; then
         service_status="running"
     fi
     version=$(get_current_rebecca_version)
-    uptime=$(get_binary_uptime)
+    uptime=$(get_docker_uptime)
     xray_status=$(get_xray_runtime_status)
-    colorized_echo cyan "Version: ${version}"
-    colorized_echo cyan "Rebecca: ${service_status}"
-    colorized_echo cyan "Xray: ${xray_status}"
-    colorized_echo cyan "Uptime: ${uptime}"
-    colorized_echo blue "=============================="
+    ui_status_row "Version" "${version}"
+    ui_status_row "Service" "${service_status}"
+    ui_status_row "Mode" "$(get_install_mode)"
+    ui_status_row "Xray" "${xray_status}"
+    ui_status_row "Uptime" "${uptime}"
 }
 
 set_rebecca_source_ref() {
     local ref="${1:-dev}"
     REBECCA_REF="$ref"
     REBECCA_RAW_BASE="https://raw.githubusercontent.com/${REBECCA_REPO}/${REBECCA_REF}"
-    REBECCA_SCRIPT_BASE_URL="${REBECCA_RAW_BASE}/scripts/rebecca"
+    if [ "${REBECCA_SCRIPT_BASE_URL_EXPLICIT:-0}" != "1" ]; then
+        REBECCA_SCRIPT_BASE_URL="${REBECCA_RAW_BASE}/scripts/rebecca"
+    fi
 }
 
 set_rebecca_source_for_version() {
@@ -206,25 +487,82 @@ detect_os() {
     fi
 }
 
+remove_broken_xanmod_apt_sources() {
+    local matches
+    matches=$(grep -RIlE 'deb\.xanmod\.org|xanmod\.org' /etc/apt/sources.list /etc/apt/sources.list.d 2>/dev/null || true)
+    if [ -z "$matches" ]; then
+        return 1
+    fi
+    colorized_echo yellow "Removing broken XanMod apt source entries"
+    while IFS= read -r file; do
+        [ -n "$file" ] || continue
+        case "$file" in
+            /etc/apt/sources.list)
+                sed -i.bak '/deb\.xanmod\.org/d;/xanmod\.org/d' "$file"
+            ;;
+            /etc/apt/sources.list.d/*)
+                rm -f "$file"
+            ;;
+        esac
+    done <<< "$matches"
+    return 0
+}
+
+apt_update_with_repo_repair() {
+    local log_file
+    log_file=$(mktemp)
+    if DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a "$PKG_MANAGER" "$@" update -qq >"$log_file" 2>&1; then
+        rm -f "$log_file"
+        return 0
+    fi
+    cat "$log_file" >&2
+    if grep -qiE 'deb\.xanmod\.org|xanmod.*release file|does not have a release file' "$log_file" && remove_broken_xanmod_apt_sources; then
+        rm -f "$log_file"
+        DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a "$PKG_MANAGER" "$@" update -qq
+        return
+    fi
+    rm -f "$log_file"
+    return 1
+}
+
 
 detect_and_update_package_manager() {
-    colorized_echo blue "Updating package manager"
     if [[ "$OS" == "Ubuntu"* ]] || [[ "$OS" == "Debian"* ]]; then
         PKG_MANAGER="apt-get"
-        DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a $PKG_MANAGER update -qq
+        ui_spinner_run "Updating package index" apt_update_with_repo_repair -o Acquire::AllowReleaseInfoChange=true -o Acquire::AllowReleaseInfoChange::Label=true
     elif [[ "$OS" == "CentOS"* ]] || [[ "$OS" == "AlmaLinux"* ]]; then
         PKG_MANAGER="yum"
-        $PKG_MANAGER update -y
-        $PKG_MANAGER install -y epel-release
+        ui_spinner_run "Updating package index" "$PKG_MANAGER" update -y -q
+        ui_spinner_run "Installing EPEL repository" "$PKG_MANAGER" install -y -q epel-release
     elif [ "$OS" == "Fedora"* ]; then
         PKG_MANAGER="dnf"
-        $PKG_MANAGER update
+        ui_spinner_run "Updating package index" "$PKG_MANAGER" update -q -y
     elif [ "$OS" == "Arch" ]; then
         PKG_MANAGER="pacman"
-        $PKG_MANAGER -Sy
+        ui_spinner_run "Updating package index" "$PKG_MANAGER" -Sy --noconfirm --quiet
     elif [[ "$OS" == "openSUSE"* ]]; then
         PKG_MANAGER="zypper"
-        $PKG_MANAGER refresh
+        ui_spinner_run "Updating package index" "$PKG_MANAGER" refresh --quiet
+    else
+        colorized_echo red "Unsupported operating system"
+        exit 1
+    fi
+}
+
+install_package_impl() {
+    local PACKAGE="$1"
+    if [[ "$OS" == "Ubuntu"* ]] || [[ "$OS" == "Debian"* ]]; then
+        DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a $PKG_MANAGER -y -qq install "$PACKAGE" \
+            -o Dpkg::Options::="--force-confdef" \
+            -o Dpkg::Options::="--force-confold"
+    elif [[ "$OS" == "CentOS"* ]] || [[ "$OS" == "AlmaLinux"* ]]; then
+        $PKG_MANAGER install -y -q "$PACKAGE"
+    elif [ "$OS" == "Fedora"* ]; then
+        $PKG_MANAGER install -y -q "$PACKAGE"
+    elif [ "$OS" == "Arch" ]; then
+        $PKG_MANAGER -S --noconfirm --quiet "$PACKAGE"
+    elif [[ "$OS" == "openSUSE"* ]]; then
+        $PKG_MANAGER --quiet install -y "$PACKAGE"
     else
         colorized_echo red "Unsupported operating system"
         exit 1
@@ -235,23 +573,9 @@ install_package () {
     if [ -z "$PKG_MANAGER" ]; then
         detect_and_update_package_manager
     fi
-    
-    PACKAGE=$1
-    colorized_echo blue "Installing $PACKAGE"
-    if [[ "$OS" == "Ubuntu"* ]] || [[ "$OS" == "Debian"* ]]; then
-        DEBIAN_FRONTEND=noninteractive NEEDRESTART_MODE=a $PKG_MANAGER -y -qq install "$PACKAGE" \
-            -o Dpkg::Options::="--force-confdef" \
-            -o Dpkg::Options::="--force-confold"
-    elif [[ "$OS" == "CentOS"* ]] || [[ "$OS" == "AlmaLinux"* ]]; then
-        $PKG_MANAGER install -y "$PACKAGE"
-    elif [ "$OS" == "Fedora"* ]; then
-        $PKG_MANAGER install -y "$PACKAGE"
-    elif [ "$OS" == "Arch" ]; then
-        $PKG_MANAGER -S --noconfirm "$PACKAGE"
-    else
-        colorized_echo red "Unsupported operating system"
-        exit 1
-    fi
+
+    local PACKAGE="$1"
+    ui_spinner_run "Installing $PACKAGE" install_package_impl "$PACKAGE"
 }
 
 ensure_python3_venv() {
@@ -481,14 +805,22 @@ get_installed_rebecca_channel() {
 
 install_rebecca_script() {
     local source_version="${1:-}"
+    local temp_script
     if [ -n "$source_version" ]; then
         set_rebecca_source_for_version "$source_version"
     elif is_rebecca_installed; then
         set_rebecca_source_for_version "$(get_installed_rebecca_channel)"
     fi
     SCRIPT_URL="$REBECCA_SCRIPT_BASE_URL/$REBECCA_SCRIPT_SOURCE_FILE"
-    colorized_echo blue "Installing rebecca script"
-    curl -fsSL "$SCRIPT_URL" | install -m 755 /dev/stdin "$REBECCA_SCRIPT_INSTALL_PATH"
+    temp_script=$(mktemp)
+    ui_spinner_run "Downloading Rebecca command script" curl -fsSL "$SCRIPT_URL" -o "$temp_script"
+    if head -n 1 "$temp_script" | grep -qi "<!DOCTYPE"; then
+        rm -f "$temp_script"
+        colorized_echo red "Unexpected HTML response while downloading script"
+        exit 1
+    fi
+    ui_spinner_run "Installing Rebecca command script" install -m 755 "$temp_script" "$REBECCA_SCRIPT_INSTALL_PATH"
+    rm -f "$temp_script"
     colorized_echo green "rebecca script installed successfully"
 }
 
@@ -866,6 +1198,360 @@ urlencode_value() {
     printf '%s' "$value"
 }
 
+normalize_url_path() {
+    local value="${1:-}"
+    local default_value="${2:-dashboard}"
+    value=$(echo "$value" | xargs)
+    value="${value#/}"
+    value="${value%/}"
+    if [ -z "$value" ]; then
+        value="$default_value"
+    fi
+    if ! [[ "$value" =~ ^[A-Za-z0-9._~/-]+$ ]]; then
+        return 1
+    fi
+    printf "/%s/" "$value"
+}
+
+validate_tcp_port() {
+    local value="$1"
+    [[ "$value" =~ ^[0-9]+$ ]] && [ "$value" -ge 1 ] && [ "$value" -le 65535 ]
+}
+
+is_tcp_port_listening() {
+    local port="$1"
+    if command -v ss >/dev/null 2>&1; then
+        ss -tuln 2>/dev/null | awk '{print $5}' | grep -Eq "(:|\\])${port}$"
+        return $?
+    fi
+    if command -v lsof >/dev/null 2>&1; then
+        lsof -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
+        return $?
+    fi
+    if command -v netstat >/dev/null 2>&1; then
+        netstat -tuln 2>/dev/null | awk '{print $4}' | grep -Eq "(:|\\])${port}$"
+        return $?
+    fi
+    return 1
+}
+
+prompt_tcp_port() {
+    local label="$1"
+    local default_value="$2"
+    local value
+    while true; do
+        printf "%s [%s]: " "$label" "$default_value" >&2
+        IFS= read -r value
+        value="${value:-$default_value}"
+        if validate_tcp_port "$value"; then
+            if is_tcp_port_listening "$value"; then
+                colorized_echo red "Port $value is already in use. Please choose another port." >&2
+                continue
+            fi
+            printf "%s" "$value"
+            return 0
+        fi
+        colorized_echo red "Port must be a number between 1 and 65535." >&2
+    done
+}
+
+prompt_url_path() {
+    local label="$1"
+    local default_value="$2"
+    local value normalized
+    while true; do
+        printf "%s [%s]: " "$label" "$default_value" >&2
+        IFS= read -r value
+        value="${value:-$default_value}"
+        if normalized=$(normalize_url_path "$value" "${default_value#/}"); then
+            printf "%s" "$normalized"
+            return 0
+        fi
+        colorized_echo red "Path can contain only letters, numbers, dots, underscores, dashes, slashes, and tildes." >&2
+    done
+}
+
+print_database_menu() {
+    local selected="$1"
+    local names=("MySQL" "SQLite" "MariaDB")
+    local descriptions=("(recommended)" "" "")
+    local idx
+    ui_header "Rebecca Database" "Choose storage backend for binary install"
+    for idx in 1 2 3; do
+        printf "  "
+        if [ "$idx" -eq "$selected" ]; then
+            ui_color "38;5;16;48;5;45;1" " ▶ "
+        else
+            printf "   "
+        fi
+        ui_color "38;5;45;1" "$(printf '%2s' "$idx")"
+        printf "  "
+        if [ "$idx" -eq 1 ]; then
+            ui_color "38;5;82;1" "$(printf '%-10s' "${names[$((idx - 1))]}")"
+        else
+            ui_color "38;5;231;1" "$(printf '%-10s' "${names[$((idx - 1))]}")"
+        fi
+        ui_color "38;5;245" "${descriptions[$((idx - 1))]}"
+        printf "\n"
+    done
+    printf "\n"
+    ui_color "38;5;245" "Use ↑/↓ and Enter, type 1-3, or press Enter for MySQL."
+    printf "\n"
+}
+
+select_database_type_interactive() {
+    local selected=1
+    local action kind value
+    if ! ui_is_tty; then
+        echo "mysql"
+        return
+    fi
+    while true; do
+        ui_clear >&2
+        print_database_menu "$selected" >&2
+        printf "Select database: " >&2
+        action=$(ui_read_menu_choice "$selected" 3) || {
+            echo "mysql"
+            return
+        }
+        kind="${action%%:*}"
+        value="${action#*:}"
+        case "$kind" in
+            move)
+                selected="$value"
+            ;;
+            enter)
+                selected="$value"
+                break
+            ;;
+            value)
+                if [[ "$value" =~ ^[1-3]$ ]]; then
+                    selected="$value"
+                    break
+                fi
+            ;;
+            quit)
+                echo "mysql"
+                return
+            ;;
+        esac
+    done
+    case "$selected" in
+        2) echo "sqlite" ;;
+        3) echo "mariadb" ;;
+        *) echo "mysql" ;;
+    esac
+}
+
+prompt_dashboard_bind_settings() {
+    local port
+    if [ ! -t 0 ]; then
+        upsert_env_assignment "UVICORN_PORT" "8000"
+        return
+    fi
+    ui_section "Dashboard"
+    port=$(prompt_tcp_port "Dashboard port" "8000")
+    echo
+    upsert_env_assignment "UVICORN_PORT" "$port"
+}
+
+mysql_password_is_strong() {
+    local password="$1"
+    [ "${#password}" -ge 12 ] || return 1
+    [[ "$password" =~ [A-Z] ]] || return 1
+    [[ "$password" =~ [a-z] ]] || return 1
+    [[ "$password" =~ [0-9] ]] || return 1
+    [[ "$password" =~ [^A-Za-z0-9] ]] || return 1
+    [[ "$password" != *" "* ]] || return 1
+    return 0
+}
+
+generate_secure_mysql_password() {
+    local candidate
+    while true; do
+        candidate="$(tr -dc 'A-Za-z0-9@#%_=+.-' </dev/urandom | head -c 28)"
+        if mysql_password_is_strong "$candidate"; then
+            printf "%s" "$candidate"
+            return
+        fi
+    done
+}
+
+read_secret() {
+    local prompt="$1"
+    local value
+    if [ -t 0 ]; then
+        IFS= read -rsp "$prompt" value
+        printf "\n" >&2
+    else
+        IFS= read -r value
+    fi
+    printf "%s" "$value"
+}
+
+prompt_confirmed_secret() {
+    local label="$1"
+    local first second
+    while true; do
+        first=$(read_secret "$label: ")
+        [ -n "$first" ] || {
+            colorized_echo red "Password cannot be empty." >&2
+            continue
+        }
+        second=$(read_secret "Confirm $label: ")
+        if [ "$first" = "$second" ]; then
+            printf "%s" "$first"
+            return
+        fi
+        colorized_echo red "Passwords do not match." >&2
+    done
+}
+
+prompt_initial_admin() {
+    INITIAL_ADMIN_CREATE=0
+    INITIAL_ADMIN_USERNAME=""
+    INITIAL_ADMIN_PASSWORD=""
+    [ -t 0 ] || return
+    ui_section "Initial admin"
+    if ! ui_read_yes_no "Create a full-access admin now?" "y"; then
+        return
+    fi
+    while true; do
+        IFS= read -r -p "Admin username [admin]: " INITIAL_ADMIN_USERNAME
+        INITIAL_ADMIN_USERNAME="${INITIAL_ADMIN_USERNAME:-admin}"
+        if [[ "$INITIAL_ADMIN_USERNAME" =~ ^[A-Za-z0-9_.@-]{3,64}$ ]]; then
+            break
+        fi
+        colorized_echo red "Username must be 3-64 chars and may contain letters, numbers, dot, underscore, dash, and @."
+    done
+    INITIAL_ADMIN_PASSWORD=$(prompt_confirmed_secret "Admin password")
+    INITIAL_ADMIN_CREATE=1
+}
+
+create_initial_admin_if_requested() {
+    if [ "${INITIAL_ADMIN_CREATE:-0}" != "1" ]; then
+        return
+    fi
+    ui_spinner_run "Running database migrations" rebecca_cli migrate up
+    ui_spinner_run "Creating full-access admin ${INITIAL_ADMIN_USERNAME}" rebecca_cli admin create "$INITIAL_ADMIN_USERNAME" --role full_access --password "$INITIAL_ADMIN_PASSWORD"
+}
+
+prompt_phpmyadmin_settings() {
+    PHPMYADMIN_PATH=$(prompt_url_path "phpMyAdmin path" "phpmyadmin")
+    echo
+}
+
+find_php_fpm_sock() {
+    local sock
+    sock=$(find /run/php -maxdepth 1 -type s -name 'php*-fpm.sock' 2>/dev/null | sort -V | tail -n 1)
+    [ -n "$sock" ] && printf "%s" "$sock"
+}
+
+install_phpmyadmin_blueberry_theme() {
+    local theme_dir="/usr/share/phpmyadmin/themes"
+    local theme_url="https://files.phpmyadmin.net/themes/blueberry/1.1.0/blueberry-1.1.0.zip"
+    local temp_zip
+
+    if [ ! -d "$theme_dir" ]; then
+        return 0
+    fi
+    if [ -d "$theme_dir/blueberry" ]; then
+        return 0
+    fi
+    install_package unzip
+    temp_zip=$(mktemp)
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$theme_url" -o "$temp_zip" || {
+            rm -f "$temp_zip"
+            colorized_echo yellow "Could not download phpMyAdmin blueberry theme."
+            return 0
+        }
+    elif command -v wget >/dev/null 2>&1; then
+        wget -q "$theme_url" -O "$temp_zip" || {
+            rm -f "$temp_zip"
+            colorized_echo yellow "Could not download phpMyAdmin blueberry theme."
+            return 0
+        }
+    else
+        rm -f "$temp_zip"
+        colorized_echo yellow "curl or wget is required to download phpMyAdmin blueberry theme."
+        return 0
+    fi
+    unzip -qo "$temp_zip" -d "$theme_dir" >/dev/null 2>&1 || colorized_echo yellow "Could not extract phpMyAdmin blueberry theme."
+    rm -f "$temp_zip"
+}
+
+configure_phpmyadmin_upload_limits() {
+    local ini_content
+    ini_content="upload_max_filesize=4096M
+post_max_size=4096M
+memory_limit=4096M
+max_execution_time=0
+max_input_time=0"
+    local wrote=0
+    local dir
+    for dir in /etc/php/*/fpm/conf.d /etc/php/*/cli/conf.d; do
+        [ -d "$dir" ] || continue
+        printf "%s\n" "$ini_content" > "$dir/99-rebecca-phpmyadmin-upload.ini" || true
+        wrote=1
+    done
+    if [ "$wrote" = "1" ]; then
+        systemctl reload php*-fpm >/dev/null 2>&1 || systemctl restart php*-fpm >/dev/null 2>&1 || true
+    fi
+}
+
+phpmyadmin_nginx_config_path() {
+    printf "/etc/nginx/sites-available/%s-phpmyadmin" "$APP_NAME"
+}
+
+enable_host_phpmyadmin() {
+    local database_type
+    local path="${1:-}"
+    local normalized_path
+    local fpm_sock
+
+    database_type=$(get_configured_database_type)
+    if [ "$database_type" = "sqlite" ]; then
+        colorized_echo red "phpMyAdmin is supported only with MySQL or MariaDB. Current database is SQLite."
+        return 1
+    fi
+
+    detect_os
+    for package in php-fpm php-mysql phpmyadmin; do
+        install_package "$package"
+    done
+    install_phpmyadmin_blueberry_theme
+    configure_phpmyadmin_upload_limits
+    systemctl enable --now php*-fpm >/dev/null 2>&1 || true
+
+    path="${path:-${PHPMYADMIN_PATH:-phpmyadmin}}"
+    normalized_path=$(normalize_url_path "$path" "phpmyadmin") || {
+        colorized_echo red "Invalid phpMyAdmin path."
+        return 1
+    }
+    path="$normalized_path"
+    path="${path%/}"
+    fpm_sock=$(find_php_fpm_sock)
+    if [ -z "$fpm_sock" ]; then
+        colorized_echo red "Could not find php-fpm socket under /run/php."
+        return 1
+    fi
+
+    rm -f "/etc/nginx/sites-enabled/${APP_NAME}-phpmyadmin" "$(phpmyadmin_nginx_config_path)"
+    if command -v nginx >/dev/null 2>&1; then
+        nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 || true
+    fi
+    colorized_echo green "phpMyAdmin is installed and will be served through Rebecca using local php-fpm."
+}
+
+disable_host_phpmyadmin() {
+    rm -f "/etc/nginx/sites-enabled/${APP_NAME}-phpmyadmin" "$(phpmyadmin_nginx_config_path)"
+    if command -v nginx >/dev/null 2>&1; then
+        nginx -t >/dev/null 2>&1 && systemctl reload nginx >/dev/null 2>&1 || true
+    fi
+    colorized_echo green "phpMyAdmin has been disabled."
+}
+
 add_phpmyadmin_to_compose() {
     local compose_file="$1"
 
@@ -908,6 +1594,25 @@ EOF
 
 enable_phpmyadmin() {
     check_running_as_root
+    local cli_path=""
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --port)
+                shift 2
+                ;;
+            --path)
+                cli_path="${2:-}"
+                shift 2
+                ;;
+            --yes|-y)
+                shift
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
 
     if ! is_rebecca_installed; then
         colorized_echo red "Rebecca is not installed. Please install Rebecca first."
@@ -915,17 +1620,30 @@ enable_phpmyadmin() {
     fi
 
     if ! is_binary_install; then
-        detect_compose
+        colorized_echo red "phpMyAdmin management from this TUI is available for binary installations only."
+        exit 1
     fi
 
-    colorized_echo blue "Adding phpMyAdmin to docker-compose.yml..."
-    add_phpmyadmin_to_compose "$COMPOSE_FILE"
-    colorized_echo green "phpMyAdmin service added to docker-compose.yml"
+    if [ "$(get_configured_database_type)" = "sqlite" ]; then
+        colorized_echo red "phpMyAdmin is not supported for SQLite installations."
+        return 0
+    fi
 
-    colorized_echo blue "Restarting Rebecca services..."
-    down_rebecca
-    up_rebecca
-    colorized_echo green "Rebecca restarted successfully."
+    if [ -n "$cli_path" ]; then
+        PHPMYADMIN_PATH="$cli_path"
+    else
+        prompt_phpmyadmin_settings
+    fi
+    enable_host_phpmyadmin "$PHPMYADMIN_PATH"
+}
+
+disable_phpmyadmin() {
+    check_running_as_root
+    if ! is_binary_install; then
+        colorized_echo red "phpMyAdmin management from this TUI is available for binary installations only."
+        exit 1
+    fi
+    disable_host_phpmyadmin
 }
 
 sync_ssl_env_paths() {
@@ -1610,7 +2328,8 @@ backup_service() {
 
     colorized_echo green "Backup service configuration saved in $ENV_FILE."
 
-    local backup_command="$(which bash) -c '$APP_NAME backup'"
+    local backup_command
+    backup_command="$(backup_cron_command)"
     add_cron_job "$cron_schedule" "$backup_command"
 
     colorized_echo green "Backup service successfully configured."
@@ -1629,7 +2348,7 @@ add_cron_job() {
     local temp_cron=$(mktemp)
 
     crontab -l 2>/dev/null > "$temp_cron" || true
-    grep -v "$command" "$temp_cron" > "${temp_cron}.tmp" && mv "${temp_cron}.tmp" "$temp_cron"
+    sed -i '/# rebecca-backup-service/d' "$temp_cron"
     echo "$schedule $command # rebecca-backup-service" >> "$temp_cron"
     
     if crontab "$temp_cron"; then
@@ -1666,6 +2385,116 @@ remove_backup_service() {
     colorized_echo green "Backup service has been removed."
 }
 
+backup_cron_command() {
+    local script_path="${REBECCA_SCRIPT_INSTALL_PATH:-}"
+    if [ -z "$script_path" ] || [ ! -x "$script_path" ]; then
+        script_path="$(command -v "$APP_NAME" 2>/dev/null || true)"
+    fi
+    if [ -z "$script_path" ]; then
+        script_path="/usr/local/bin/$APP_NAME"
+    fi
+    printf '%s backup' "$script_path"
+}
+
+backup_strip_quotes() {
+    local value="$1"
+    value="${value#\"}"
+    value="${value%\"}"
+    value="${value#\'}"
+    value="${value%\'}"
+    printf '%s' "$value"
+}
+
+backup_url_decode() {
+    local value="$1"
+    value="${value//%/\\x}"
+    printf '%b' "$value"
+}
+
+backup_parse_database_url() {
+    local raw
+    raw="$(backup_strip_quotes "$1")"
+    BACKUP_DB_TYPE=""
+    BACKUP_SQLITE_FILE=""
+    BACKUP_DB_USER=""
+    BACKUP_DB_PASSWORD=""
+    BACKUP_DB_HOST=""
+    BACKUP_DB_PORT=""
+    BACKUP_DB_NAME=""
+    BACKUP_DB_SOCKET=""
+
+    case "$raw" in
+        sqlite:///*)
+            BACKUP_DB_TYPE="sqlite"
+            BACKUP_SQLITE_FILE="${raw#sqlite:///}"
+            if [[ ! "$BACKUP_SQLITE_FILE" =~ ^/ ]]; then
+                BACKUP_SQLITE_FILE="/$BACKUP_SQLITE_FILE"
+            fi
+            return 0
+            ;;
+        mysql*://*|mariadb*://*)
+            BACKUP_DB_TYPE="mysql"
+            local rest="${raw#*://}"
+            local authority="${rest%%/*}"
+            local path_query="${rest#*/}"
+            local query=""
+            BACKUP_DB_NAME="${path_query%%\?*}"
+            if [[ "$path_query" == *"?"* ]]; then
+                query="${path_query#*\?}"
+            fi
+            if [[ "$authority" == *"@"* ]]; then
+                local credentials="${authority%@*}"
+                local hostport="${authority##*@}"
+                BACKUP_DB_USER="$(backup_url_decode "${credentials%%:*}")"
+                if [[ "$credentials" == *":"* ]]; then
+                    BACKUP_DB_PASSWORD="$(backup_url_decode "${credentials#*:}")"
+                fi
+                authority="$hostport"
+            fi
+            if [[ "$authority" == *":"* ]]; then
+                BACKUP_DB_HOST="${authority%%:*}"
+                BACKUP_DB_PORT="${authority##*:}"
+            else
+                BACKUP_DB_HOST="$authority"
+                BACKUP_DB_PORT="3306"
+            fi
+            BACKUP_DB_HOST="${BACKUP_DB_HOST:-127.0.0.1}"
+            BACKUP_DB_PORT="${BACKUP_DB_PORT:-3306}"
+            BACKUP_DB_NAME="$(backup_url_decode "$BACKUP_DB_NAME")"
+            if [ -n "$query" ]; then
+                IFS='&' read -ra query_parts <<< "$query"
+                for query_part in "${query_parts[@]}"; do
+                    case "$query_part" in
+                        unix_socket=*|socket=*)
+                            BACKUP_DB_SOCKET="$(backup_url_decode "${query_part#*=}")"
+                            ;;
+                    esac
+                done
+            fi
+            [ -n "$BACKUP_DB_NAME" ]
+            return
+            ;;
+    esac
+    return 1
+}
+
+write_mysql_backup_defaults() {
+    local defaults_file="$1"
+    {
+        echo "[client]"
+        [ -n "${BACKUP_DB_USER:-}" ] && printf 'user="%s"\n' "${BACKUP_DB_USER//\"/\\\"}"
+        [ -n "${BACKUP_DB_PASSWORD:-}" ] && printf 'password="%s"\n' "${BACKUP_DB_PASSWORD//\"/\\\"}"
+        if [ -n "${BACKUP_DB_SOCKET:-}" ]; then
+            printf 'socket="%s"\n' "${BACKUP_DB_SOCKET//\"/\\\"}"
+        else
+            printf 'host="%s"\n' "${BACKUP_DB_HOST:-127.0.0.1}"
+            printf 'port=%s\n' "${BACKUP_DB_PORT:-3306}"
+            echo "protocol=tcp"
+        fi
+    } > "$defaults_file"
+    chmod 600 "$defaults_file"
+}
+
 backup_command() {
     local backup_dir="$APP_DIR/backup"
     local temp_dir="/tmp/rebecca_backup"
@@ -1683,6 +2512,7 @@ backup_command() {
 
     rm -rf "$backup_dir"
     mkdir -p "$backup_dir"
+    rm -rf "$temp_dir"
     mkdir -p "$temp_dir"
 
     if [ -f "$ENV_FILE" ]; then
@@ -1707,13 +2537,17 @@ backup_command() {
 
     local db_type=""
     local sqlite_file=""
-    if grep -q "image: mariadb" "$COMPOSE_FILE"; then
+    local container_name=""
+    if [ -n "${SQLALCHEMY_DATABASE_URL:-}" ] && backup_parse_database_url "$SQLALCHEMY_DATABASE_URL"; then
+        db_type="$BACKUP_DB_TYPE"
+        sqlite_file="$BACKUP_SQLITE_FILE"
+    elif grep -q "image: mariadb" "$COMPOSE_FILE" 2>/dev/null; then
         db_type="mariadb"
-        container_name=$(docker compose -f "$COMPOSE_FILE" ps -q mariadb || echo "mariadb")
+        container_name=$(docker compose -f "$COMPOSE_FILE" ps -q mariadb 2>/dev/null || true)
 
-    elif grep -q "image: mysql" "$COMPOSE_FILE"; then
+    elif grep -q "image: mysql" "$COMPOSE_FILE" 2>/dev/null; then
         db_type="mysql"
-        container_name=$(docker compose -f "$COMPOSE_FILE" ps -q mysql || echo "mysql")
+        container_name=$(docker compose -f "$COMPOSE_FILE" ps -q mysql 2>/dev/null || true)
 
     elif grep -q "SQLALCHEMY_DATABASE_URL = .*sqlite" "$ENV_FILE"; then
         db_type="sqlite"
@@ -1728,13 +2562,41 @@ backup_command() {
         echo "Database detected: $db_type" >> "$log_file"
         case $db_type in
             mariadb)
-                if ! docker exec "$container_name" mariadb-dump -u root -p"$MYSQL_ROOT_PASSWORD" --all-databases --ignore-database=mysql --ignore-database=performance_schema --ignore-database=information_schema --ignore-database=sys --events --triggers > "$temp_dir/db_backup.sql" 2>>"$log_file"; then
-                    error_messages+=("MariaDB dump failed.")
+                if [ -n "$container_name" ]; then
+                    if ! docker exec "$container_name" mariadb-dump -u root -p"$MYSQL_ROOT_PASSWORD" --all-databases --ignore-database=mysql --ignore-database=performance_schema --ignore-database=information_schema --ignore-database=sys --events --triggers > "$temp_dir/db_backup.sql" 2>>"$log_file"; then
+                        error_messages+=("MariaDB dump failed.")
+                    fi
+                else
+                    local dump_bin
+                    dump_bin="$(command -v mariadb-dump 2>/dev/null || command -v mysqldump 2>/dev/null || true)"
+                    if [ -z "$dump_bin" ]; then
+                        error_messages+=("mariadb-dump or mysqldump is not installed.")
+                    else
+                        local defaults_file="$temp_dir/mysql-client.cnf"
+                        write_mysql_backup_defaults "$defaults_file"
+                        if ! "$dump_bin" --defaults-extra-file="$defaults_file" --single-transaction --quick --routines --triggers --events --hex-blob --default-character-set=utf8mb4 "$BACKUP_DB_NAME" > "$temp_dir/db_backup.sql" 2>>"$log_file"; then
+                            error_messages+=("MariaDB dump failed.")
+                        fi
+                    fi
                 fi
                 ;;
             mysql)
-                if ! docker exec "$container_name" mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" rebecca --events --triggers  > "$temp_dir/db_backup.sql" 2>>"$log_file"; then
-                    error_messages+=("MySQL dump failed.")
+                if [ -n "$container_name" ]; then
+                    if ! docker exec "$container_name" mysqldump -u root -p"$MYSQL_ROOT_PASSWORD" rebecca --events --triggers  > "$temp_dir/db_backup.sql" 2>>"$log_file"; then
+                        error_messages+=("MySQL dump failed.")
+                    fi
+                else
+                    local dump_bin
+                    dump_bin="$(command -v mysqldump 2>/dev/null || command -v mariadb-dump 2>/dev/null || true)"
+                    if [ -z "$dump_bin" ]; then
+                        error_messages+=("mysqldump or mariadb-dump is not installed.")
+                    else
+                        local defaults_file="$temp_dir/mysql-client.cnf"
+                        write_mysql_backup_defaults "$defaults_file"
+                        if ! "$dump_bin" --defaults-extra-file="$defaults_file" --single-transaction --quick --routines --triggers --events --hex-blob --default-character-set=utf8mb4 "$BACKUP_DB_NAME" > "$temp_dir/db_backup.sql" 2>>"$log_file"; then
+                            error_messages+=("MySQL dump failed.")
+                        fi
+                    fi
                 fi
                 ;;
             sqlite)
@@ -1749,11 +2611,13 @@ backup_command() {
         esac
     fi
 
-    cp "$APP_DIR/.env" "$temp_dir/" 2>>"$log_file"
-    cp "$APP_DIR/docker-compose.yml" "$temp_dir/" 2>>"$log_file"
-    rsync -av --exclude 'xray-core' --exclude 'mysql' "$DATA_DIR/" "$temp_dir/rebecca_data/" >>"$log_file" 2>&1
+    cp "$APP_DIR/.env" "$temp_dir/" 2>>"$log_file" || true
+    cp "$APP_DIR/docker-compose.yml" "$temp_dir/" 2>>"$log_file" || true
+    if ! rsync -a --delete --exclude 'xray-core' --exclude 'mysql' --exclude 'logs' "$DATA_DIR/" "$temp_dir/rebecca_data/" >>"$log_file" 2>&1; then
+        error_messages+=("Failed to copy Rebecca data files.")
+    fi
 
-    if ! tar -czf "$backup_file" -C "$temp_dir" .; then
+    if ! tar -C "$temp_dir" -cf - . | gzip -1 > "$backup_file"; then
         error_messages+=("Failed to create backup archive.")
         echo "Failed to create backup archive." >> "$log_file"
     fi
@@ -1883,31 +2747,9 @@ get_current_xray_core_version() {
     echo "Not installed"
 }
 
-# Function to update the Rebecca Main core
+# Function kept for legacy CLI compatibility. Xray core is managed by nodes now.
 update_core_command() {
-    check_running_as_root
-    get_xray_core
-    # Change the Rebecca core
-    xray_executable_path="XRAY_EXECUTABLE_PATH=\"/var/lib/rebecca/xray-core/xray\""
-    
-    echo "Changing the Rebecca core..."
-    # Check if the XRAY_EXECUTABLE_PATH string already exists in the .env file
-    if ! grep -q "^XRAY_EXECUTABLE_PATH=" "$ENV_FILE"; then
-        # If the string does not exist, add it
-        echo "${xray_executable_path}" >> "$ENV_FILE"
-    else
-        # Update the existing XRAY_EXECUTABLE_PATH line
-        sed -i "s~^XRAY_EXECUTABLE_PATH=.*~${xray_executable_path}~" "$ENV_FILE"
-    fi
-    
-    # Restart Rebecca
-    colorized_echo red "Restarting Rebecca..."
-    if restart_command -n >/dev/null 2>&1; then
-        colorized_echo green "Rebecca successfully restarted!"
-    else
-        colorized_echo red "Rebecca restart failed!"
-    fi
-    colorized_echo blue "Installation of Xray-core version $selected_version completed."
+    colorized_echo yellow "Master no longer runs a local Xray core. Update Xray from the Nodes page or the rebecca-node installer."
 }
 
 install_rebecca() {
@@ -1953,7 +2795,7 @@ services:
       - /var/lib/rebecca/logs:/var/lib/rebecca-node
     depends_on:
       mariadb:
-        condition: service_healthy
+        condition: service_started
 
   mariadb:
     image: mariadb:lts
@@ -1984,12 +2826,11 @@ services:
     volumes:
       - /var/lib/rebecca/mysql:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
-      start_period: 10s
-      start_interval: 3s
+      test: ["CMD-SHELL", "mariadb-admin ping -h 127.0.0.1 --protocol=tcp --silent || mysqladmin ping -h 127.0.0.1 --protocol=tcp --silent || exit 1"]
+      start_period: 30s
       interval: 10s
       timeout: 5s
-      retries: 3
+      retries: 30
 EOF
         echo "----------------------------"
         colorized_echo red "Using MariaDB as database"
@@ -2013,8 +2854,7 @@ EOF
         sed -i 's~\(XRAY_JSON = \).*~\1"/var/lib/rebecca/xray_config.json"~' "$APP_DIR/.env"
 
 
-        prompt_for_rebecca_password
-        MYSQL_ROOT_PASSWORD=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20)
+        ensure_docker_mysql_credentials
         MYSQL_PASSWORD_URL_ENCODED=$(urlencode_value "$MYSQL_PASSWORD")
         
         echo "" >> "$ENV_FILE"
@@ -2054,7 +2894,7 @@ services:
       - /var/lib/rebecca/logs:/var/lib/rebecca-node
     depends_on:
       mysql:
-        condition: service_healthy
+        condition: service_started
 
   mysql:
     image: mysql:8.4
@@ -2085,11 +2925,11 @@ services:
     volumes:
       - /var/lib/rebecca/mysql:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "rebecca", "--password=\${MYSQL_PASSWORD}"]
-      start_period: 5s
-      interval: 5s
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 --protocol=tcp --silent || exit 1"]
+      start_period: 30s
+      interval: 10s
       timeout: 5s
-      retries: 55
+      retries: 30
       
 EOF
         echo "----------------------------"
@@ -2114,8 +2954,7 @@ EOF
         sed -i 's~\(XRAY_JSON = \).*~\1"/var/lib/rebecca/xray_config.json"~' "$APP_DIR/.env"
 
 
-        prompt_for_rebecca_password
-        MYSQL_ROOT_PASSWORD=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20)
+        ensure_docker_mysql_credentials
         MYSQL_PASSWORD_URL_ENCODED=$(urlencode_value "$MYSQL_PASSWORD")
         
         echo "" >> "$ENV_FILE"
@@ -2226,8 +3065,6 @@ get_binary_release_asset_metadata() {
     local server_asset_url
     local cli_asset_url
     local package_asset_url
-    local os_asset_url
-    local legacy_asset_url
     local package_asset_name
     local server_asset_name
     local cli_asset_name
@@ -2259,17 +3096,6 @@ get_binary_release_asset_metadata() {
         return
     fi
 
-    os_asset_url=$(echo "$release_payload" | jq -r '
-        .assets[]?
-        | select(.name == "rebecca-os")
-        | .browser_download_url
-    ' | head -n 1)
-
-    if [ -n "$os_asset_url" ] && [ "$os_asset_url" != "null" ]; then
-        printf 'archive|%s|%s|\n' "${resolved_tag:-$rebecca_version}" "$os_asset_url"
-        return
-    fi
-
     server_asset_url=$(echo "$release_payload" | jq -r --arg name "$server_asset_name" '
         .assets[]?
         | select(.name == $name)
@@ -2287,19 +3113,9 @@ get_binary_release_asset_metadata() {
         return
     fi
 
-    legacy_asset_url=$(echo "$release_payload" | jq -r --arg arch "linux-${binary_arch}" '
-        .assets[]?
-        | select(.name | test($arch + "\\.tar\\.gz$"))
-        | .browser_download_url
-    ' | head -n 1)
-
-    if [ -z "$legacy_asset_url" ] || [ "$legacy_asset_url" = "null" ]; then
-        colorized_echo red "No binary release assets found for linux-${binary_arch}." >&2
-        colorized_echo yellow "Use Dockerized install or publish a binary release for this architecture." >&2
-        exit 1
-    fi
-
-    printf 'archive|%s|%s|\n' "${resolved_tag:-$rebecca_version}" "$legacy_asset_url"
+    colorized_echo red "No Go binary release assets found for linux-${binary_arch}." >&2
+    colorized_echo yellow "Publish rebecca-linux-${binary_arch}.tar.gz or split rebecca-server/rebecca-cli assets for this release." >&2
+    exit 1
 }
 
 get_binary_dev_manifest_url() {
@@ -2472,8 +3288,6 @@ Environment=REBECCA_ENV_FILE=$ENV_FILE
 Environment=REBECCA_INSTALL_MODE=binary
 Environment=REBECCA_BINARY_METADATA_FILE=$BINARY_METADATA_FILE
 Environment=REBECCA_DATA_DIR=$DATA_DIR
-Environment=XRAY_EXECUTABLE_PATH=$DATA_DIR/xray-core/xray
-Environment=XRAY_ASSETS_PATH=$DATA_DIR/xray-core
 ExecStart=$BINARY_SERVER
 Restart=always
 RestartSec=5
@@ -2512,22 +3326,31 @@ install_binary_rebecca() {
     binary_arch=$(detect_binary_arch)
     tmp_dir=$(mktemp -d)
 
-    if [[ "$rebecca_version" = "dev" || "$rebecca_version" == dev-* ]]; then
+    if [ -n "${REBECCA_BINARY_SERVER_OVERRIDE:-}" ] || [ -n "${REBECCA_BINARY_CLI_OVERRIDE:-}" ]; then
+        if [ ! -f "${REBECCA_BINARY_SERVER_OVERRIDE:-}" ] || [ ! -f "${REBECCA_BINARY_CLI_OVERRIDE:-}" ]; then
+            colorized_echo red "Both REBECCA_BINARY_SERVER_OVERRIDE and REBECCA_BINARY_CLI_OVERRIDE must point to existing files." >&2
+            rm -rf "$tmp_dir"
+            exit 1
+        fi
+        ui_spinner_run "Installing Rebecca custom server binary" install -m 755 "$REBECCA_BINARY_SERVER_OVERRIDE" "$tmp_dir/rebecca-server"
+        ui_spinner_run "Installing Rebecca custom CLI binary" install -m 755 "$REBECCA_BINARY_CLI_OVERRIDE" "$tmp_dir/rebecca-cli"
+        resolved_version="${REBECCA_BINARY_OVERRIDE_VERSION:-custom}"
+        artifact_url="local-override"
+    elif [[ "$rebecca_version" = "dev" || "$rebecca_version" == dev-* ]]; then
         IFS='|' read -r resolved_version artifact_url artifact_name < <(get_binary_dev_artifact_metadata "$binary_arch" "$rebecca_version")
         artifact_name="${artifact_name:-rebecca-binaries.zip}"
         package_path="$tmp_dir/$artifact_name"
-        colorized_echo blue "Downloading Rebecca binary dev artifact"
-        curl -fL "$artifact_url" -o "$package_path"
+        ui_spinner_run "Downloading Rebecca dev binary artifact" curl -fL "$artifact_url" -o "$package_path"
         if [[ "$package_path" == *.zip ]]; then
-            unzip -j -o "$package_path" -d "$tmp_dir" >/dev/null
+            ui_spinner_run "Extracting Rebecca dev artifact" unzip -j -o "$package_path" -d "$tmp_dir"
             dev_package_path="$tmp_dir/rebecca-linux-${binary_arch}.tar.gz"
             if [ -f "$dev_package_path" ]; then
-                tar -xzf "$dev_package_path" -C "$tmp_dir"
+                ui_spinner_run "Unpacking Rebecca binary package" tar -xzf "$dev_package_path" -C "$tmp_dir"
             elif ls "$tmp_dir"/rebecca-*.tar.gz >/dev/null 2>&1; then
-                tar -xzf "$(ls "$tmp_dir"/rebecca-*.tar.gz | head -n 1)" -C "$tmp_dir"
+                ui_spinner_run "Unpacking Rebecca binary package" tar -xzf "$(ls "$tmp_dir"/rebecca-*.tar.gz | head -n 1)" -C "$tmp_dir"
             fi
         elif [[ "$package_path" == *.tar.gz ]]; then
-            tar -xzf "$package_path" -C "$tmp_dir"
+            ui_spinner_run "Unpacking Rebecca binary package" tar -xzf "$package_path" -C "$tmp_dir"
         else
             colorized_echo red "Unsupported dev binary asset format: $artifact_name" >&2
             rm -rf "$tmp_dir"
@@ -2536,14 +3359,12 @@ install_binary_rebecca() {
     else
         IFS='|' read -r binary_source_type resolved_version server_asset_url cli_asset_url < <(get_binary_release_asset_metadata "$rebecca_version" "$binary_arch")
         if [ "$binary_source_type" = "split" ]; then
-            colorized_echo blue "Downloading Rebecca binary release assets"
-            curl -fL "$server_asset_url" -o "$tmp_dir/rebecca-server"
-            curl -fL "$cli_asset_url" -o "$tmp_dir/rebecca-cli"
+            ui_spinner_run "Downloading Rebecca server binary" curl -fL "$server_asset_url" -o "$tmp_dir/rebecca-server"
+            ui_spinner_run "Downloading Rebecca CLI binary" curl -fL "$cli_asset_url" -o "$tmp_dir/rebecca-cli"
         else
             package_path="$tmp_dir/rebecca-binary.tar.gz"
-            colorized_echo blue "Downloading Rebecca binary release package"
-            curl -fL "$server_asset_url" -o "$package_path"
-            tar -xzf "$package_path" -C "$tmp_dir"
+            ui_spinner_run "Downloading Rebecca binary package" curl -fL "$server_asset_url" -o "$package_path"
+            ui_spinner_run "Unpacking Rebecca binary package" tar -xzf "$package_path" -C "$tmp_dir"
         fi
     fi
 
@@ -2559,34 +3380,20 @@ install_binary_rebecca() {
     install_binary_cli_launcher
 
     if [ ! -f "$ENV_FILE" ]; then
-        colorized_echo blue "Fetching .env file"
-        curl -fsSL "$REBECCA_RAW_BASE/.env.example" -o "$ENV_FILE"
+        ui_spinner_run "Fetching default .env file" curl -fsSL "$REBECCA_RAW_BASE/.env.example" -o "$ENV_FILE"
     fi
 
     upsert_env_assignment "REBECCA_DATA_DIR" "$DATA_DIR"
     upsert_env_assignment "XRAY_JSON" "$DATA_DIR/xray_config.json"
-    upsert_env_assignment "XRAY_EXECUTABLE_PATH" "$DATA_DIR/xray-core/xray"
-    upsert_env_assignment "XRAY_ASSETS_PATH" "$DATA_DIR/xray-core"
     if [ "$configure_database" = "1" ]; then
         configure_binary_database "$database_type"
     fi
 
     if [ ! -f "$DATA_DIR/xray_config.json" ]; then
-        colorized_echo blue "Fetching xray config file"
         curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$REBECCA_RAW_BASE/xray_config.json" -o "$DATA_DIR/xray_config.json" 2>/dev/null || {
             rm -f "$DATA_DIR/xray_config.json"
             colorized_echo yellow "No bundled xray_config.json found; Rebecca will use its built-in default."
         }
-    fi
-
-    if curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$REBECCA_SCRIPT_BASE_URL/install_latest_xray.sh" -o "$APP_DIR/scripts/install_latest_xray.sh"; then
-        chmod +x "$APP_DIR/scripts/install_latest_xray.sh"
-        if [ ! -x "$DATA_DIR/xray-core/xray" ]; then
-            REBECCA_DATA_DIR="$DATA_DIR" XRAY_INSTALL_DIR="$DATA_DIR/xray-core" XRAY_ASSETS_DIR="$DATA_DIR/xray-core" bash "$APP_DIR/scripts/install_latest_xray.sh"
-        fi
-    else
-        rm -f "$APP_DIR/scripts/install_latest_xray.sh"
-        colorized_echo yellow "Could not fetch Xray installer script; Rebecca will start and Xray can be installed later with core-update."
     fi
 
     write_binary_release_metadata "${resolved_version:-$rebecca_version}" "$binary_arch" "${artifact_url:-${server_asset_url:-}}"
@@ -2602,7 +3409,39 @@ up_rebecca() {
         return
     fi
 
+    repair_docker_compose_startup_gates
     $COMPOSE -f $COMPOSE_FILE -p "$APP_NAME" up -d --remove-orphans
+}
+
+schedule_binary_service_restart() {
+    local delay_seconds="${1:-1}"
+    local unit_name="${APP_NAME}-delayed-restart-$(date +%s%N)"
+    local restart_script="sleep ${delay_seconds}; systemctl restart ${APP_NAME}.service"
+
+    if command -v systemd-run >/dev/null 2>&1; then
+        systemd-run \
+            --unit "$unit_name" \
+            --collect \
+            --description "Rebecca delayed service restart" \
+            -- /bin/sh -c "$restart_script" >/dev/null
+        return
+    fi
+
+    nohup /bin/sh -c "$restart_script" >/dev/null 2>&1 &
+}
+
+restart_binary_service_now() {
+    systemctl restart "$APP_NAME.service"
+}
+
+repair_docker_compose_startup_gates() {
+    if [ ! -f "$COMPOSE_FILE" ]; then
+        return
+    fi
+
+    if grep -q "condition:[[:space:]]*service_healthy" "$COMPOSE_FILE" 2>/dev/null; then
+        sed -i -E 's/condition:[[:space:]]*service_healthy/condition: service_started/g' "$COMPOSE_FILE"
+    fi
 }
 
 follow_rebecca_logs() {
@@ -2660,28 +3499,62 @@ status_command() {
 
 prompt_for_rebecca_password() {
     if [ -n "${MYSQL_PASSWORD:-}" ]; then
+        if ! mysql_password_is_strong "$MYSQL_PASSWORD"; then
+            colorized_echo red "MYSQL_PASSWORD is not strong enough. Use at least 12 chars with uppercase, lowercase, digit, and symbol."
+            exit 1
+        fi
+        return
+    fi
+    MYSQL_PASSWORD=$(get_env_value "MYSQL_PASSWORD")
+    if [ -n "${MYSQL_PASSWORD:-}" ]; then
+        if ! mysql_password_is_strong "$MYSQL_PASSWORD"; then
+            colorized_echo red "MYSQL_PASSWORD in .env is not strong enough. Use at least 12 chars with uppercase, lowercase, digit, and symbol."
+            exit 1
+        fi
         return
     fi
     if [ ! -t 0 ]; then
-        MYSQL_PASSWORD=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)
+        MYSQL_PASSWORD=$(generate_secure_mysql_password)
         colorized_echo green "A secure database password has been generated automatically."
         return
     fi
     colorized_echo cyan "This password will be used to access the database and should be strong."
-    colorized_echo cyan "If you do not enter a custom password, a secure 20-character password will be generated automatically."
-
-    # Запрашиваем ввод пароля
-    IFS= read -r -p "Enter the password for the rebecca user (or press Enter to generate a secure default password): " MYSQL_PASSWORD
-
-    # Генерация 20-значного пароля, если пользователь оставил поле пустым
-    if [ -z "$MYSQL_PASSWORD" ]; then
-        MYSQL_PASSWORD=$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20)
-        colorized_echo green "A secure password has been generated automatically."
-    fi
+    colorized_echo cyan "Leave it empty to generate a secure password automatically."
+    while true; do
+        MYSQL_PASSWORD=$(read_secret "Database password: ")
+        if [ -z "$MYSQL_PASSWORD" ]; then
+            MYSQL_PASSWORD=$(generate_secure_mysql_password)
+            colorized_echo green "A secure password has been generated automatically."
+            break
+        fi
+        if mysql_password_is_strong "$MYSQL_PASSWORD"; then
+            local confirm_password
+            confirm_password=$(read_secret "Confirm database password: ")
+            if [ "$MYSQL_PASSWORD" = "$confirm_password" ]; then
+                break
+            fi
+            colorized_echo red "Passwords do not match."
+        else
+            colorized_echo red "Password must be at least 12 chars and include uppercase, lowercase, digit, and symbol. Press Enter for auto-generation."
+        fi
+    done
     colorized_echo green "This password will be recorded in the .env file for future use."
+}
 
-    # Пауза 3 секунды перед продолжением
-    sleep 3
+ensure_docker_mysql_credentials() {
+    local existing_root_password
+
+    prompt_for_rebecca_password
+
+    existing_root_password=$(get_env_value "MYSQL_ROOT_PASSWORD")
+    if [ -n "${MYSQL_ROOT_PASSWORD:-}" ]; then
+        return
+    fi
+    if [ -n "$existing_root_password" ]; then
+        MYSQL_ROOT_PASSWORD="$existing_root_password"
+    else
+        MYSQL_ROOT_PASSWORD=$(generate_secure_mysql_password)
+    fi
 }
 
 sql_escape_literal() {
@@ -2774,8 +3647,8 @@ EOF
     if [ -z "${MYSQL_PASSWORD:-}" ]; then
         prompt_for_rebecca_password
     fi
-    MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)}"
-    MYSQL_PASSWORD="${MYSQL_PASSWORD:-$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 32)}"
+    MYSQL_ROOT_PASSWORD="${MYSQL_ROOT_PASSWORD:-$(generate_secure_mysql_password)}"
+    MYSQL_PASSWORD="${MYSQL_PASSWORD:-$(generate_secure_mysql_password)}"
     local escaped_password
     escaped_password=$(sql_escape_literal "$MYSQL_PASSWORD")
 
@@ -2811,7 +3684,7 @@ EOF
 }
 
 configure_binary_database() {
-    local database_type="${1:-sqlite}"
+    local database_type="${1:-mysql}"
     case "$database_type" in
         sqlite|"")
             upsert_env_assignment "REBECCA_DATABASE_FLAVOR" "sqlite"
@@ -2831,10 +3704,12 @@ install_command() {
     check_running_as_root
 
     # Default values
-    database_type="sqlite"
+    database_type=""
+    database_type_set="false"
     rebecca_version="latest"
     rebecca_version_set="false"
     install_mode=""
+    install_phpmyadmin="false"
 
     # Parse options
     while [[ $# -gt 0 ]]; do
@@ -2842,6 +3717,7 @@ install_command() {
         case $key in
             --database)
                 database_type="$2"
+                database_type_set="true"
                 shift 2
             ;;
             --dev)
@@ -2899,6 +3775,21 @@ install_command() {
         fi
     fi
     install_mode=$(select_install_mode "$install_mode")
+    if [ "$install_mode" = "binary" ]; then
+        if [ "$database_type_set" != "true" ]; then
+            database_type=$(select_database_type_interactive)
+        fi
+        database_type="${database_type:-mysql}"
+        case "$database_type" in
+            mysql|mariadb)
+                if [ -t 0 ] && ui_read_yes_no "Install phpMyAdmin for this ${database_type} database?" "n"; then
+                    install_phpmyadmin="true"
+                fi
+            ;;
+        esac
+    else
+        database_type="${database_type:-sqlite}"
+    fi
     if [[ "$rebecca_version_set" != "true" ]]; then
         rebecca_version=$(select_rebecca_version "" "$install_mode")
     fi
@@ -2949,6 +3840,13 @@ install_command() {
         if check_version_exists "$rebecca_version"; then
             if [ "$install_mode" = "binary" ]; then
                 install_binary_rebecca "$rebecca_version" "$database_type"
+                prompt_dashboard_bind_settings
+                prompt_initial_admin
+                if [ "$install_phpmyadmin" = "true" ]; then
+                    ui_section "phpMyAdmin"
+                    prompt_phpmyadmin_settings
+                    enable_host_phpmyadmin "$PHPMYADMIN_PATH"
+                fi
             else
                 install_rebecca "$rebecca_version" "$database_type"
                 echo "docker" > "$INSTALL_MODE_FILE"
@@ -2964,6 +3862,9 @@ install_command() {
         exit 1
     fi
     prompt_ssl_setup
+    if [ "$install_mode" = "binary" ]; then
+        create_initial_admin_if_requested
+    fi
     up_rebecca
     follow_rebecca_logs
 }
@@ -3224,6 +4125,17 @@ restart_command() {
         detect_compose
     fi
     
+    if is_binary_install; then
+        if [ "$no_logs" = true ]; then
+            schedule_binary_service_restart 1
+            colorized_echo green "Rebecca restart scheduled."
+            return
+        fi
+        restart_binary_service_now
+        follow_rebecca_logs
+        return
+    fi
+
     down_rebecca
     up_rebecca
     if [ "$no_logs" = false ]; then
@@ -3436,10 +4348,14 @@ update_command() {
     write_rebecca_channel "$rebecca_version"
     
     colorized_echo blue "Restarting Rebecca's services"
-    down_rebecca
-    if ! is_binary_install; then
-        prune_unused_docker_images
+    if is_binary_install; then
+        schedule_binary_service_restart 1
+        colorized_echo blue "Rebecca updated successfully; restart scheduled."
+        return
     fi
+
+    down_rebecca
+    prune_unused_docker_images
     up_rebecca
     
     colorized_echo blue "Rebecca updated successfully"
@@ -3447,6 +4363,7 @@ update_command() {
 
 update_rebecca_script() {
     local source_version="${1:-}"
+    local temp_script
     if [ -n "$source_version" ]; then
         set_rebecca_source_for_version "$source_version"
     elif is_rebecca_installed; then
@@ -3454,7 +4371,15 @@ update_rebecca_script() {
     fi
     SCRIPT_URL="$REBECCA_SCRIPT_BASE_URL/$REBECCA_SCRIPT_SOURCE_FILE"
     colorized_echo blue "Updating rebecca script"
-    curl -fsSL "$SCRIPT_URL" | install -m 755 /dev/stdin "$REBECCA_SCRIPT_INSTALL_PATH"
+    temp_script=$(mktemp)
+    curl -fsSL "$SCRIPT_URL" -o "$temp_script"
+    if head -n 1 "$temp_script" | grep -qi "<!DOCTYPE"; then
+        rm -f "$temp_script"
+        colorized_echo red "Unexpected HTML response while downloading script"
+        exit 1
+    fi
+    install -m 755 "$temp_script" "$REBECCA_SCRIPT_INSTALL_PATH"
+    rm -f "$temp_script"
     colorized_echo green "rebecca script updated successfully"
 }
 
@@ -3734,57 +4659,129 @@ edit_env_command() {
     fi
 }
 
+menu_commands() {
+    echo "up down restart status logs cli migrate backup backup-service install update uninstall script-install script-update script-uninstall core-update enable-phpmyadmin disable-phpmyadmin edit edit-env ssl help"
+}
+
+menu_category_for() {
+    case "$1" in
+        up|down|restart|status|logs) echo "Panel runtime" ;;
+        cli|migrate|backup|backup-service) echo "Administration and data" ;;
+        install|update|uninstall) echo "Install and update" ;;
+        script-install|script-update|script-uninstall) echo "Script management" ;;
+        core-update|enable-phpmyadmin|disable-phpmyadmin|edit|edit-env|ssl) echo "Tools and legacy" ;;
+        *) echo "Help" ;;
+    esac
+}
+
+menu_description_for() {
+    case "$1" in
+        up) echo "Start services" ;;
+        down) echo "Stop services" ;;
+        restart) echo "Restart services" ;;
+        status) echo "Show status" ;;
+        logs) echo "Show logs" ;;
+        cli) echo "Rebecca CLI" ;;
+        migrate) echo "Run database migrations" ;;
+        backup) echo "Manual backup launch" ;;
+        backup-service) echo "Backup service (Telegram + cron job)" ;;
+        install) echo "Install Rebecca" ;;
+        update) echo "Update to latest version" ;;
+        uninstall) echo "Uninstall Rebecca" ;;
+        script-install) echo "Install Rebecca script" ;;
+        script-update) echo "Update Rebecca CLI script" ;;
+        script-uninstall) echo "Uninstall Rebecca script" ;;
+        core-update) echo "Deprecated; Xray is managed by nodes" ;;
+        enable-phpmyadmin) echo "Enable phpMyAdmin on local MySQL/MariaDB" ;;
+        disable-phpmyadmin) echo "Disable phpMyAdmin panel bridge" ;;
+        edit) echo "Edit docker-compose.yml" ;;
+        edit-env) echo "Edit environment file" ;;
+        ssl) echo "Issue or renew SSL certificates" ;;
+        help) echo "Show this help message" ;;
+        *) echo "" ;;
+    esac
+}
+
 print_menu() {
-    colorized_echo blue "=============================="
-    colorized_echo magenta "           Rebecca Menu"
-    colorized_echo blue "=============================="
-    print_menu_status_summary
-    local entries=(
-        "up:Start services"
-        "down:Stop services"
-        "restart:Restart services"
-        "status:Show status"
-        "logs:Show logs"
-        "cli:Rebecca CLI"
-        "install:Install Rebecca"
-        "update:Update to latest version"
-        "uninstall:Uninstall Rebecca"
-        "script-install:Install Rebecca script"
-        "script-update:Update Rebecca CLI script"
-        "script-uninstall:Uninstall Rebecca script"
-        "core-update:Update/Change Xray core"
-        "edit-env:Edit environment file"
-        "ssl:Issue or renew SSL certificates"
-        "help:Show this help message"
-    )
+    local selected="${1:-0}"
+    local previous_category=""
     local idx=1
-    for entry in "${entries[@]}"; do
-        local cmd="${entry%%:*}"
-        local desc="${entry#*:}"
-        local color="yellow"
-        if [[ "$cmd" == service-* ]]; then
-            color="green"
-        elif [[ "$cmd" == script-* ]]; then
-            color="blue"
+    local cmd category desc is_selected
+    ui_header "Rebecca Panel" "Control center"
+    ui_section "Status"
+    print_menu_status_summary
+    ui_section "Actions"
+    for cmd in $(menu_commands); do
+        category=$(menu_category_for "$cmd")
+        if [ "$category" != "$previous_category" ]; then
+            ui_menu_category "$category"
+            previous_category="$category"
         fi
-        colorized_echo "$color" "$(printf " %2d) %-18s - %s" "$idx" "$cmd" "$desc")"
+        desc=$(menu_description_for "$cmd")
+        is_selected=0
+        [ "$idx" -eq "$selected" ] && is_selected=1
+        ui_menu_item "$idx" "$cmd" "$desc" "$is_selected"
         idx=$((idx + 1))
     done
+    printf "\n"
+    ui_color "38;5;245" "Tip: use ↑/↓ and Enter, or type a number/command directly. Press q to exit."
+    printf "\n"
     echo
 }
 
 map_choice_to_command() {
-    local commands=(
-        up down restart status logs cli install update uninstall
-        script-install script-update script-uninstall
-        core-update edit-env ssl help
-    )
+    local commands=($(menu_commands))
 
     if [[ "$1" =~ ^[0-9]+$ ]] && [ "$1" -ge 1 ] && [ "$1" -le "${#commands[@]}" ]; then
         echo "${commands[$(($1 - 1))]}"
         return
     fi
     echo "$1"
+}
+
+read_menu_command() {
+    MENU_COMMAND=""
+    if ! ui_is_tty; then
+        print_menu
+        ui_color "38;5;45;1" "Select option"
+        printf " "
+        ui_color "38;5;245" "(number or command): "
+        read -r user_choice
+        [ -z "$user_choice" ] && return 1
+        MENU_COMMAND=$(map_choice_to_command "$user_choice")
+        return
+    fi
+
+    local commands=($(menu_commands))
+    local selected=1
+    local action kind value mapped
+    while true; do
+        ui_clear
+        print_menu "$selected"
+        ui_color "38;5;45;1" "Select option"
+        printf " "
+        ui_color "38;5;245" "(↑/↓, Enter, number, command): "
+        action=$(ui_read_menu_choice "$selected" "${#commands[@]}") || return 1
+        kind="${action%%:*}"
+        value="${action#*:}"
+        case "$kind" in
+            move)
+                selected="$value"
+            ;;
+            enter)
+                MENU_COMMAND="${commands[$(($value - 1))]}"
+                return
+            ;;
+            value)
+                mapped=$(map_choice_to_command "$value")
+                [ -n "$mapped" ] && MENU_COMMAND="$mapped"
+                return
+            ;;
+            quit)
+                return 1
+            ;;
+        esac
+    done
 }
 
 usage() {
@@ -3797,22 +4794,28 @@ usage() {
     echo
 
     colorized_echo cyan "Commands:"
-    colorized_echo yellow "  up              $(tput sgr0)– Start services"
-    colorized_echo yellow "  down            $(tput sgr0)– Stop services"
-    colorized_echo yellow "  restart         $(tput sgr0)– Restart services"
-    colorized_echo yellow "  status          $(tput sgr0)– Show status"
-    colorized_echo yellow "  logs            $(tput sgr0)- Show logs"
-    colorized_echo yellow "  cli             $(tput sgr0)- Rebecca CLI"
-    colorized_echo yellow "  install         $(tput sgr0)- Install Rebecca"
-    colorized_echo yellow "  update          $(tput sgr0)- Update to latest/dev or a specific release"
-    colorized_echo yellow "  uninstall       $(tput sgr0)- Uninstall Rebecca"
-    colorized_echo yellow "  script-install  $(tput sgr0)- Install Rebecca script"
-    colorized_echo yellow "  script-update   $(tput sgr0)- Update Rebecca CLI script"
-    colorized_echo yellow "  script-uninstall  $(tput sgr0)- Uninstall Rebecca script"
-    colorized_echo yellow "  core-update     $(tput sgr0)- Update/Change Xray core"
-    colorized_echo yellow "  edit-env        $(tput sgr0)- Edit environment file (via nano or vi editor)"
-    colorized_echo yellow "  ssl             $(tput sgr0)- Issue or renew SSL certificates"
-    colorized_echo yellow "  help            $(tput sgr0)- Show this help message"
+    colorized_echo yellow "  up              – Start services"
+    colorized_echo yellow "  down            – Stop services"
+    colorized_echo yellow "  restart         – Restart services"
+    colorized_echo yellow "  status          – Show status"
+    colorized_echo yellow "  logs            - Show logs"
+    colorized_echo yellow "  cli             - Rebecca CLI"
+    colorized_echo yellow "  migrate         - Run database migrations"
+    colorized_echo yellow "  install         - Install Rebecca"
+    colorized_echo yellow "  update          - Update to latest/dev or a specific release"
+    colorized_echo yellow "  uninstall       - Uninstall Rebecca"
+    colorized_echo yellow "  script-install  - Install Rebecca script"
+    colorized_echo yellow "  script-update   - Update Rebecca CLI script"
+    colorized_echo yellow "  script-uninstall  - Uninstall Rebecca script"
+    colorized_echo yellow "  backup          - Manual backup launch"
+    colorized_echo yellow "  backup-service  - Rebecca Backupservice to backup to TG, and a new job in crontab"
+    colorized_echo yellow "  core-update     - Deprecated; Xray is managed by nodes"
+    colorized_echo yellow "  enable-phpmyadmin - Enable phpMyAdmin for local MySQL/MariaDB"
+    colorized_echo yellow "  disable-phpmyadmin - Disable phpMyAdmin"
+    colorized_echo yellow "  edit            - Edit docker-compose.yml (via nano or vi editor)"
+    colorized_echo yellow "  edit-env        - Edit environment file (via nano or vi editor)"
+    colorized_echo yellow "  ssl             - Issue or renew SSL certificates"
+    colorized_echo yellow "  help            - Show this help message"
     
     
     echo
@@ -3855,6 +4858,9 @@ dispatch_command() {
         status) status_command "$@" ;;
         logs) logs_command "$@" ;;
         cli) cli_command "$@" ;;
+        migrate) cli_command migrate "$@" ;;
+        backup) backup_command "$@" ;;
+        backup-service) backup_service "$@" ;;
         install) install_command "$@" ;;
         update) update_command "$@" ;;
         uninstall) uninstall_command "$@" ;;
@@ -3862,7 +4868,10 @@ dispatch_command() {
         script-update|update-script) install_rebecca_script "$@" ;;
         script-uninstall|uninstall-script) uninstall_rebecca_script "$@" ;;
         core-update) update_core_command "$@" ;;
+        enable-phpmyadmin) enable_phpmyadmin "$@" ;;
+        disable-phpmyadmin) disable_phpmyadmin "$@" ;;
         ssl) ssl_command "$@" ;;
+        edit) edit_command "$@" ;;
         edit-env) edit_env_command "$@" ;;
         help) usage ;;
         *) usage ;;
@@ -3870,13 +4879,8 @@ dispatch_command() {
 }
 
 if [ $# -eq 0 ]; then
-    print_menu
-    read -rp "Select option (number or command): " user_choice
-    if [ -z "$user_choice" ]; then
-        exit 0
-    fi
-    mapped_command=$(map_choice_to_command "$user_choice")
-    set -- $mapped_command
+    read_menu_command || exit 0
+    set -- $MENU_COMMAND
 fi
 
 dispatch_command "$@"

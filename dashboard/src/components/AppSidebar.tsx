@@ -1,6 +1,5 @@
 import {
 	Box,
-	Collapse,
 	chakra,
 	HStack,
 	Text,
@@ -10,21 +9,26 @@ import {
 	VStack,
 } from "@chakra-ui/react";
 import {
+	BellAlertIcon,
 	BookOpenIcon,
-	ChartPieIcon,
-	ChevronDownIcon,
+	BriefcaseIcon,
+	ChartBarIcon,
+	CircleStackIcon,
+	CodeBracketSquareIcon,
 	Cog6ToothIcon,
-	GlobeAltIcon,
+	Cog8ToothIcon,
+	DocumentTextIcon,
+	EyeIcon,
 	HomeIcon,
-	ServerIcon,
-	ShieldCheckIcon,
-	Square3Stack3DIcon,
+	LinkIcon,
+	QueueListIcon,
+	ServerStackIcon,
 	Squares2X2Icon,
 	UserCircleIcon,
-	UsersIcon,
+	UserGroupIcon,
+	WrenchScrewdriverIcon,
 } from "@heroicons/react/24/outline";
 import logoUrl from "assets/logo.svg";
-import useAds from "hooks/useAds";
 import useGetUser from "hooks/useGetUser";
 import {
 	type ElementType,
@@ -35,18 +39,18 @@ import {
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { AdminRole, AdminSection } from "types/Admin";
-import { pickLocalizedAd } from "utils/ads";
+import { NavLink, useHref, useLocation, useNavigate } from "react-router-dom";
 import {
-	getTutorialAssetUrl,
-	isTutorialUpdated,
+	AdminManagementPermission,
+	AdminRole,
+	AdminSection,
+	UserPermissionToggle,
+} from "types/Admin";
+import {
+	getTutorialManifestUrl,
+	getTutorialSeenKey,
 	normalizeTutorialLang,
-	readTutorialStorage,
-	TUTORIALS_UPDATED_EVENT,
-	writeTutorialStorage,
-} from "utils/tutorialUpdates";
-import { AdvertisementCard } from "./AdvertisementCard";
+} from "utils/tutorials";
 
 const iconProps = {
 	baseStyle: {
@@ -56,17 +60,28 @@ const iconProps = {
 };
 
 const HomeIconStyled = chakra(HomeIcon, iconProps);
-const UsersIconStyled = chakra(UsersIcon, iconProps);
-const ServerIconStyled = chakra(ServerIcon, iconProps);
+const UsersIconStyled = chakra(UserGroupIcon, iconProps);
+const BulkActionsIconStyled = chakra(QueueListIcon, iconProps);
 const SettingsIconStyled = chakra(Cog6ToothIcon, iconProps);
-const NetworkIconStyled = chakra(Square3Stack3DIcon, iconProps);
-const AdminIconStyled = chakra(ShieldCheckIcon, iconProps);
-const ChevronDownIconStyled = chakra(ChevronDownIcon, iconProps);
+const MasterSettingsIconStyled = chakra(Cog8ToothIcon, iconProps);
+const NodeIconStyled = chakra(ServerStackIcon, iconProps);
+const AdminIconStyled = chakra(BriefcaseIcon, iconProps);
 const ServicesIconStyled = chakra(Squares2X2Icon, iconProps);
-const UsageIconStyled = chakra(ChartPieIcon, iconProps);
+const HostsIconStyled = chakra(LinkIcon, iconProps);
+const UsageIconStyled = chakra(ChartBarIcon, iconProps);
 const MyAccountIconStyled = chakra(UserCircleIcon, iconProps);
-const InsightsIconStyled = chakra(GlobeAltIcon, iconProps);
+const InsightsIconStyled = chakra(EyeIcon, iconProps);
 const TutorialIconStyled = chakra(BookOpenIcon, iconProps);
+const XraySettingsIconStyled = chakra(WrenchScrewdriverIcon, iconProps);
+const XrayLogsIconStyled = chakra(DocumentTextIcon, iconProps);
+const ApiDocsIconStyled = chakra(CodeBracketSquareIcon, iconProps);
+const PHPMyAdminIconStyled = chakra(CircleStackIcon, iconProps);
+const TutorialUpdateIconStyled = chakra(BellAlertIcon, {
+	baseStyle: {
+		w: 3,
+		h: 3,
+	},
+});
 interface AppSidebarProps {
 	collapsed: boolean;
 	/** when rendered inside a Drawer on mobile */
@@ -79,108 +94,13 @@ type SidebarItem = {
 	title: string;
 	icon: ElementType;
 	url?: string;
-	subItems?: { title: string; url: string; icon: ElementType }[];
+	subItems?: {
+		title: string;
+		url: string;
+		icon: ElementType;
+	}[];
 };
 type SidebarSubItems = NonNullable<SidebarItem["subItems"]>;
-
-type TutorialMenuSection = {
-	id?: string;
-	requiresRole?: ("sudo" | "full_access")[];
-	subsections?: { id?: string }[];
-};
-
-type TutorialMenuContent = {
-	meta?: { updated?: string };
-	quickTips?: unknown[];
-	sections?: TutorialMenuSection[];
-	dialogSections?: { id?: string }[];
-	samples?: unknown[];
-	statuses?: { status?: string }[];
-	faqs?: { id?: string }[];
-	adminRoles?: { id?: string }[];
-};
-
-const normalizeRole = (role?: string | null) =>
-	role
-		?.toString()
-		.toLowerCase()
-		.replace(/[^a-z]/g, "") || "";
-
-const getTutorialMenuIds = (
-	content: TutorialMenuContent,
-	normalizedUserRole: string,
-	hasResolvedUser: boolean,
-) => {
-	const ids = new Set<string>();
-
-	if (Array.isArray(content.quickTips) && content.quickTips.length > 0) {
-		ids.add("quick-tips");
-	}
-
-	(content.sections || []).forEach((section) => {
-		const sectionId = section.id?.toString().trim();
-		if (!sectionId) return;
-		const requiredRoles = (section.requiresRole || [])
-			.map((role) => normalizeRole(role))
-			.filter(Boolean);
-		if (requiredRoles.length > 0) {
-			if (!hasResolvedUser || !normalizedUserRole) return;
-			if (!requiredRoles.includes(normalizedUserRole)) return;
-		}
-		ids.add(`section-${sectionId}`);
-		(section.subsections || []).forEach((subsection) => {
-			const subsectionId = subsection.id?.toString().trim();
-			if (!subsectionId) return;
-			ids.add(`section-${sectionId}-${subsectionId}`);
-		});
-	});
-
-	if (
-		Array.isArray(content.dialogSections) &&
-		content.dialogSections.length > 0
-	) {
-		ids.add("dialog-guide");
-		ids.add("dialog-illustration");
-		content.dialogSections.forEach((section) => {
-			const sectionId = section.id?.toString().trim();
-			if (!sectionId) return;
-			ids.add(`dialog-${sectionId}`);
-		});
-	}
-
-	if (Array.isArray(content.samples) && content.samples.length > 0) {
-		ids.add("samples");
-	}
-
-	if (Array.isArray(content.statuses) && content.statuses.length > 0) {
-		ids.add("statuses");
-		content.statuses.forEach((status) => {
-			const statusId = status.status?.toString().trim();
-			if (!statusId) return;
-			ids.add(`status-${statusId}`);
-		});
-	}
-
-	if (Array.isArray(content.faqs) && content.faqs.length > 0) {
-		ids.add("faq");
-		content.faqs.forEach((faq) => {
-			const faqId = faq.id?.toString().trim();
-			if (!faqId) return;
-			ids.add(`faq-${faqId}`);
-		});
-	}
-
-	if (Array.isArray(content.adminRoles) && content.adminRoles.length > 0) {
-		ids.add("admin-roles");
-		content.adminRoles.forEach((role) => {
-			const roleId = role.id?.toString().trim();
-			if (!roleId) return;
-			ids.add(`admin-role-${roleId}`);
-		});
-	}
-
-	return Array.from(ids);
-};
 
 const LogoIcon = chakra("img", {
 	baseStyle: {
@@ -197,32 +117,39 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 	const { t, i18n } = useTranslation();
 	const location = useLocation();
 	const navigate = useNavigate();
+	const dashboardRoot = useHref("/");
 	const { colorMode } = useColorMode();
-	const { userData, getUserIsSuccess } = useGetUser();
-	const shouldShowAds = getUserIsSuccess;
-	const { data: adsData } = useAds(shouldShowAds);
+	const { userData } = useGetUser();
 	const currentLanguage = i18n.language || "en";
-	const sidebarAd = shouldShowAds
-		? pickLocalizedAd(adsData, "sidebar", currentLanguage)
-		: undefined;
+	const tutorialsUrl = "/tutorials";
 	const sectionAccess = userData.permissions?.sections;
 	const isFullAccess = userData.role === AdminRole.FullAccess;
-	const sidebarBg = useColorModeValue("white", "surface.dark");
-	const sidebarBorderColor = useColorModeValue(
-		"blackAlpha.200",
-		"whiteAlpha.200",
+	const isPrivilegedAdmin = isFullAccess || userData.role === AdminRole.Sudo;
+	const canUseBulkActions =
+		isFullAccess ||
+		Boolean(
+			userData.permissions?.admin_management?.[
+				AdminManagementPermission.Edit
+			],
+		) ||
+		Boolean(
+			userData.permissions?.users?.[UserPermissionToggle.Create] ||
+				userData.permissions?.users?.[UserPermissionToggle.Delete] ||
+				userData.permissions?.users?.[UserPermissionToggle.AdvancedActions],
+		);
+	const sidebarBg = useColorModeValue("panel.sidebar", "panel.sidebar");
+	const sidebarBorderColor = useColorModeValue("panel.border", "panel.border");
+	const sidebarPanelBg = useColorModeValue("panel.elevated", "panel.elevated");
+	const sidebarPanelBorder = useColorModeValue("panel.border", "panel.border");
+	const itemColor = useColorModeValue(
+		"panel.textSecondary",
+		"panel.textSecondary",
 	);
-	const sidebarPanelBg = useColorModeValue("gray.50", "whiteAlpha.100");
-	const sidebarPanelBorder = useColorModeValue(
-		"blackAlpha.100",
-		"whiteAlpha.100",
-	);
-	const itemColor = useColorModeValue("gray.700", "gray.300");
-	const activeItemBg = useColorModeValue("primary.50", "whiteAlpha.100");
-	const activeItemColor = useColorModeValue("primary.700", "primary.200");
-	const hoverItemBg = useColorModeValue("blackAlpha.50", "whiteAlpha.100");
-	const subNavBorder = useColorModeValue("blackAlpha.100", "whiteAlpha.100");
-	const logoTextColor = useColorModeValue("primary.700", "primary.200");
+	const activeItemBg = useColorModeValue("panel.elevated", "panel.elevated");
+	const activeItemColor = useColorModeValue("panel.text", "panel.text");
+	const hoverItemBg = useColorModeValue("panel.elevated", "panel.elevated");
+	const subNavBorder = useColorModeValue("panel.border", "panel.border");
+	const logoTextColor = useColorModeValue("panel.text", "panel.text");
 	const defaultSelfPermissions = {
 		self_myaccount: false,
 		self_change_password: false,
@@ -239,86 +166,38 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 		sectionAccess?.[AdminSection.Services],
 	);
 	const [hasNewTutorials, setHasNewTutorials] = useState(false);
-	const normalizedUserRole = normalizeRole(userData?.role);
 
 	const checkTutorialUpdates = useCallback(async () => {
 		const langKey = normalizeTutorialLang(i18n.language);
 		try {
-			const response = await fetch(getTutorialAssetUrl(i18n.language), {
+			const response = await fetch(getTutorialManifestUrl(dashboardRoot), {
 				headers: { "Cache-Control": "no-cache" },
 			});
 			if (!response.ok) {
 				throw new Error(`Failed to load tutorial meta: ${response.status}`);
 			}
-			const data = (await response.json()) as TutorialMenuContent;
-			const updated = data?.meta?.updated?.toString().trim();
-			const menuIds = getTutorialMenuIds(
-				data,
-				normalizedUserRole,
-				getUserIsSuccess,
-			);
-			const stored = readTutorialStorage(langKey);
-			const activeUnseen = stored.unseen.filter((id) => menuIds.includes(id));
-
-			if (!stored.updated) {
-				if (updated) {
-					writeTutorialStorage(langKey, updated, menuIds, activeUnseen);
-				}
-				setHasNewTutorials(activeUnseen.length > 0);
+			const manifest = (await response.json()) as Record<string, string>;
+			const version = manifest[langKey]?.toString().trim();
+			if (!version) {
+				setHasNewTutorials(false);
 				return;
 			}
-
-			const newIds = menuIds.filter((id) => !stored.ids.includes(id));
-			const hasVersionBump = updated
-				? isTutorialUpdated(updated, stored.updated)
-				: false;
-
-			if (hasVersionBump) {
-				if (!updated) {
-					setHasNewTutorials(activeUnseen.length > 0);
-					return;
-				}
-				const mergedUnseen = Array.from(new Set([...activeUnseen, ...newIds]));
-				writeTutorialStorage(langKey, updated, menuIds, mergedUnseen);
-				setHasNewTutorials(mergedUnseen.length > 0);
+			const seenKey = getTutorialSeenKey(langKey);
+			const seenVersion = window.localStorage.getItem(seenKey);
+			if (seenVersion === null) {
+				window.localStorage.setItem(seenKey, version);
+				setHasNewTutorials(false);
 				return;
 			}
-
-			if (newIds.length > 0) {
-				const mergedUnseen = Array.from(new Set([...activeUnseen, ...newIds]));
-				writeTutorialStorage(langKey, stored.updated, menuIds, mergedUnseen);
-				setHasNewTutorials(true);
-				return;
-			}
-
-			if (
-				menuIds.length > 0 &&
-				(stored.ids.length !== menuIds.length ||
-					activeUnseen.length !== stored.unseen.length)
-			) {
-				writeTutorialStorage(langKey, stored.updated, menuIds, activeUnseen);
-			}
-
-			setHasNewTutorials(activeUnseen.length > 0);
+			setHasNewTutorials(seenVersion !== version);
 		} catch (err) {
 			console.error("Failed to check tutorial updates", err);
 			setHasNewTutorials(false);
 		}
-	}, [getUserIsSuccess, i18n.language, normalizedUserRole]);
+	}, [dashboardRoot, i18n.language]);
 
 	useEffect(() => {
 		void checkTutorialUpdates();
-	}, [checkTutorialUpdates]);
-
-	useEffect(() => {
-		if (typeof window === "undefined") return;
-		const handleUpdate = () => {
-			void checkTutorialUpdates();
-		};
-		window.addEventListener(TUTORIALS_UPDATED_EVENT, handleUpdate);
-		return () => {
-			window.removeEventListener(TUTORIALS_UPDATED_EVENT, handleUpdate);
-		};
 	}, [checkTutorialUpdates]);
 
 	const baseSettingsSubItems: SidebarSubItems = [
@@ -326,61 +205,76 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 			? {
 					title: t("header.hostSettings"),
 					url: "/hosts",
-					icon: ServerIconStyled,
+					icon: HostsIconStyled,
 				}
 			: null,
 		sectionAccess?.[AdminSection.Nodes]
 			? {
 					title: t("header.nodeSettings"),
 					url: "/node-settings",
-					icon: NetworkIconStyled,
+					icon: NodeIconStyled,
 				}
 			: null,
 		sectionAccess?.[AdminSection.Integrations]
 			? {
-					title: t("header.integrationSettings", "Master Settings"),
-					url: "/integrations",
-					icon: SettingsIconStyled,
+					title: t("header.integrationSettings"),
+					url: "/settings",
+					icon: MasterSettingsIconStyled,
 				}
 			: null,
 		sectionAccess?.[AdminSection.Xray]
 			? {
 					title: t("header.xraySettings"),
 					url: "/xray-settings",
-					icon: SettingsIconStyled,
+					icon: XraySettingsIconStyled,
 				}
 			: null,
 		sectionAccess?.[AdminSection.Xray]
 			? {
-					title: t("header.accessInsights", "Access insights"),
+					title: t("pages.xray.logs"),
+					url: "/xray-logs",
+					icon: XrayLogsIconStyled,
+				}
+			: null,
+		sectionAccess?.[AdminSection.Xray]
+			? {
+					title: t("header.accessInsights"),
 					url: "/access-insights",
 					icon: InsightsIconStyled,
 				}
 			: null,
+		isPrivilegedAdmin
+			? {
+					title: t("apiDocs.menu"),
+					url: "/api-docs",
+					icon: ApiDocsIconStyled,
+				}
+			: null,
+		isPrivilegedAdmin
+			? {
+					title: t("phpmyadmin.menu"),
+					url: "/phpmyadmin",
+					icon: PHPMyAdminIconStyled,
+				}
+			: null,
+		{
+			title: t("tutorials.menu"),
+			url: tutorialsUrl,
+			icon: TutorialIconStyled,
+		},
 	].filter(Boolean) as SidebarSubItems;
 
 	const settingsSubItems: SidebarSubItems = [...baseSettingsSubItems];
 	if (canViewServicesSection) {
 		settingsSubItems.unshift({
-			title: t("services.menu", "Services"),
+			title: t("services.title"),
 			url: "/services",
 			icon: ServicesIconStyled,
 		});
 	}
 
-	const isSettingsRoute = settingsSubItems.some(
-		(sub) => location.pathname === sub.url,
-	);
-	const [isSettingsOpen, setSettingsOpen] = useState(isSettingsRoute);
-
-	useEffect(() => {
-		if (isSettingsRoute) {
-			setSettingsOpen(true);
-		}
-	}, [isSettingsRoute]);
-
 	const defaultTabByPath: Record<string, string> = {
-		"/integrations": "panel",
+		"/settings": "panel",
 		"/hosts": "inbounds",
 		"/usage": "services",
 		"/xray-settings": "basic",
@@ -406,6 +300,14 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 		{ title: t("users"), url: "/users", icon: UsersIconStyled },
 	];
 
+	if (canUseBulkActions) {
+		items.push({
+			title: t("bulkActions.menu"),
+			url: "/bulk-actions",
+			icon: BulkActionsIconStyled,
+		});
+	}
+
 	if (selfAccess.self_myaccount) {
 		items.splice(1, 0, {
 			title: t("myaccount.menu"),
@@ -416,19 +318,14 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 
 	if (canViewUsage) {
 		items.push({
-			title: t("usage.menu", "Usage"),
+			title: t("usage.menu"),
 			url: "/usage",
 			icon: UsageIconStyled,
 		});
 	}
-	items.push({
-		title: t("tutorials.menu", "Tutorials"),
-		url: "/tutorials",
-		icon: TutorialIconStyled,
-	});
 	if (canViewAdmins) {
 		items.push({
-			title: t("admins", "Admins"),
+			title: t("admins"),
 			url: "/admins",
 			icon: AdminIconStyled,
 		});
@@ -441,7 +338,58 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 		});
 	}
 
-	const isRTL = currentLanguage === "fa";
+	const directItems = items.filter((item) => item.url);
+	const directByUrl = new Map(
+		directItems.map((item) => [item.url as string, item]),
+	);
+	const settingsByUrl = new Map(
+		settingsSubItems.map((item) => [item.url, item as SidebarItem]),
+	);
+	const pickDirect = (url: string) => directByUrl.get(url);
+	const pickSetting = (url: string) => settingsByUrl.get(url);
+	const compactGroups = [
+		{
+			title: t("dashboard"),
+			items: [pickDirect("/")],
+		},
+		{
+			title: t("users"),
+			items: [pickDirect("/users"), pickDirect("/bulk-actions")],
+		},
+		{
+			title: t("sidebar.groups.infrastructure"),
+			items: [
+				pickSetting("/node-settings"),
+				pickSetting("/services"),
+				pickSetting("/hosts"),
+			],
+		},
+		{
+			title: t("admins.admin"),
+			items: [
+				pickDirect("/admins"),
+				pickDirect("/usage"),
+				pickDirect("/myaccount"),
+			],
+		},
+		{
+			title: t("sidebar.groups.system"),
+			items: [
+				pickSetting("/settings"),
+				pickSetting("/xray-settings"),
+				pickSetting("/xray-logs"),
+				pickSetting("/access-insights"),
+				pickSetting("/api-docs"),
+				pickSetting("/phpmyadmin"),
+				pickSetting(tutorialsUrl),
+			],
+		},
+	].map((group) => ({
+		...group,
+		items: group.items.filter(Boolean) as SidebarItem[],
+	}));
+
+	const isRTL = i18n.dir(currentLanguage) === "rtl";
 
 	return (
 		<Box
@@ -457,8 +405,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 			top={inDrawer ? undefined : "0"}
 			left={inDrawer || isRTL ? undefined : "0"}
 			right={inDrawer || !isRTL ? undefined : "0"}
-			overflowY="auto"
-			overflowX="hidden"
+			overflow="hidden"
 			flexShrink={0}
 			userSelect="none"
 		>
@@ -467,9 +414,19 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 				p={collapsed ? 2 : 4}
 				align="stretch"
 				h="100%"
+				minH={0}
 				justify="space-between"
 			>
-				<Box flex="1" overflowY="auto">
+				<Box
+					flex="1"
+					minH={0}
+					overflowY="auto"
+					overflowX="hidden"
+					className="rb-sidebar-scroll"
+					data-dir={isRTL ? "rtl" : "ltr"}
+					data-collapsed={collapsed ? "true" : "false"}
+					dir={isRTL ? "rtl" : "ltr"}
+				>
 					{!collapsed ? (
 						<HStack
 							spacing={3}
@@ -514,224 +471,147 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 							</Tooltip>
 						</HStack>
 					)}
-					{items.map((item) => {
-						const itemUrl = item.url;
-						const isActive =
-							(typeof itemUrl === "string" && location.pathname === itemUrl) ||
-							(typeof itemUrl === "string" &&
-								itemUrl !== "/" &&
-								location.pathname.startsWith(itemUrl)) ||
-							item.subItems?.some((sub) => location.pathname === sub.url);
-						const Icon = item.icon;
-						const showTutorialBadge =
-							itemUrl === "/tutorials" && hasNewTutorials;
+					<VStack align="stretch" spacing={4}>
+						{compactGroups.map((group) => {
+							if (group.items.length === 0) return null;
 
-						return (
-							<Box key={item.title}>
-								{item.subItems ? (
-									<>
-										<Tooltip
-											label={collapsed ? item.title : ""}
-											placement="right"
-											hasArrow
+							return (
+								<Box key={group.title}>
+									{collapsed ? (
+										<Box
+											borderTopWidth="1px"
+											borderColor={subNavBorder}
+											my={2}
+											mx={2}
+										/>
+									) : (
+										<Text
+											px={3}
+											mb={2}
+											fontSize="11px"
+											fontWeight="700"
+											color="panel.textMuted"
+											textTransform="uppercase"
 										>
-											<HStack
-												spacing={3}
-												px={3}
-												py={2}
-												borderRadius="md"
-												cursor="pointer"
-												bg={isActive ? activeItemBg : "transparent"}
-												color={isActive ? activeItemColor : itemColor}
-												_hover={{
-													bg: isActive ? activeItemBg : hoverItemBg,
-												}}
-												transition="background 0.15s ease, color 0.15s ease"
-												justifyContent={collapsed ? "center" : "space-between"}
-												onClick={() => {
-													if (collapsed) {
-														// request parent to expand the sidebar and open settings
-														onRequestExpand?.();
-														setSettingsOpen(true);
-													} else {
-														setSettingsOpen(!isSettingsOpen);
-													}
-												}}
-											>
-												<HStack spacing={3}>
-													<Icon
-														w={collapsed ? 5 : undefined}
-														h={collapsed ? 5 : undefined}
-													/>
-													{!collapsed && (
-														<Text
-															fontSize="sm"
-															fontWeight={isActive ? "semibold" : "normal"}
-														>
-															{item.title}
-														</Text>
-													)}
-												</HStack>
-												{!collapsed && (
-													<ChevronDownIconStyled
-														transform={
-															isSettingsOpen ? "rotate(180deg)" : "rotate(0deg)"
-														}
-													/>
-												)}
-											</HStack>
-										</Tooltip>
-										{!collapsed && (
-											<Collapse in={isSettingsOpen} animateOpacity>
-												<VStack
-													align="stretch"
-													ps={4}
-													ms={3}
-													spacing={1}
-													mt={2}
-													borderInlineStartWidth="1px"
-													borderColor={subNavBorder}
+											{group.title}
+										</Text>
+									)}
+									<VStack align="stretch" spacing={1}>
+										{group.items.map((item) => {
+											if (!item.url) return null;
+											const itemUrl = item.url;
+											const isActive =
+												location.pathname === itemUrl ||
+												(itemUrl !== "/" &&
+													location.pathname.startsWith(itemUrl));
+											const Icon = item.icon;
+											const showTutorialBadge =
+												itemUrl === tutorialsUrl && hasNewTutorials;
+											const navItem = (
+												<Tooltip
+													key={itemUrl}
+													label={collapsed ? item.title : ""}
+													placement={isRTL ? "left" : "right"}
+													hasArrow
 												>
-													{item.subItems.map((subItem) => {
-														const isSubActive =
-															location.pathname === subItem.url;
-														const SubIcon = subItem.icon;
-														return (
-															<NavLink
-																key={subItem.url}
-																to={subItem.url}
-																onClick={(e) => handleNavClick(e, subItem.url)}
-															>
-																<HStack
-																	spacing={3}
-																	px={3}
-																	py={2}
-																	borderRadius="md"
-																	cursor="pointer"
-																	bg={
-																		isSubActive ? activeItemBg : "transparent"
-																	}
-																	color={
-																		isSubActive ? activeItemColor : itemColor
-																	}
-																	_hover={{
-																		bg: isSubActive
-																			? activeItemBg
-																			: hoverItemBg,
-																	}}
-																	transition="background 0.15s ease, color 0.15s ease"
+													<HStack
+														spacing={3}
+														px={collapsed ? 2 : 3}
+														py={2}
+														minH="40px"
+														borderRadius="4px"
+														cursor="pointer"
+														bg={isActive ? activeItemBg : "transparent"}
+														color={isActive ? activeItemColor : itemColor}
+														borderInlineStartWidth="3px"
+														borderInlineStartColor={
+															isActive ? "panel.accent" : "transparent"
+														}
+														_hover={{
+															bg: isActive ? activeItemBg : hoverItemBg,
+															color: activeItemColor,
+														}}
+														transition="background 0.15s ease, color 0.15s ease"
+														justifyContent={collapsed ? "center" : "flex-start"}
+													>
+														{showTutorialBadge && collapsed ? (
+															<Box position="relative" display="inline-flex">
+																<Icon
+																	w={collapsed ? 5 : undefined}
+																	h={collapsed ? 5 : undefined}
+																/>
+																<Box
+																	position="absolute"
+																	top="-6px"
+																	left={isRTL ? "-7px" : undefined}
+																	right={isRTL ? undefined : "-7px"}
+																	w="4"
+																	h="4"
+																	borderRadius="full"
+																	bg="panel.accent"
+																	color="white"
+																	border="2px solid"
+																	borderColor={sidebarBg}
+																	display="inline-flex"
+																	alignItems="center"
+																	justifyContent="center"
 																>
-																	<SubIcon
-																		w={collapsed ? 5 : undefined}
-																		h={collapsed ? 5 : undefined}
-																	/>
-																	<Text
-																		fontSize="sm"
-																		fontWeight={
-																			isSubActive ? "semibold" : "normal"
-																		}
-																	>
-																		{subItem.title}
-																	</Text>
-																</HStack>
-															</NavLink>
-														);
-													})}
-												</VStack>
-											</Collapse>
-										)}
-									</>
-								) : item.url ? (
-									<NavLink
-										to={item.url}
-										onClick={(e) => handleNavClick(e, item.url)}
-									>
-										<Tooltip
-											label={collapsed ? item.title : ""}
-											placement="right"
-											hasArrow
-										>
-											<HStack
-												spacing={3}
-												px={3}
-												py={2}
-												borderRadius="md"
-												cursor="pointer"
-												bg={isActive ? activeItemBg : "transparent"}
-												color={isActive ? activeItemColor : itemColor}
-												_hover={{
-													bg: isActive ? activeItemBg : hoverItemBg,
-												}}
-												transition="background 0.15s ease, color 0.15s ease"
-												justifyContent={collapsed ? "center" : "flex-start"}
-											>
-												{showTutorialBadge && collapsed ? (
-													<Box position="relative" display="inline-flex">
-														<Icon
-															w={collapsed ? 5 : undefined}
-															h={collapsed ? 5 : undefined}
-														/>
-														<Box
-															position="absolute"
-															top="-2px"
-															right="-2px"
-															w="2"
-															h="2"
-															borderRadius="full"
-															bg="yellow.400"
-															_dark={{ bg: "yellow.300" }}
-														/>
-													</Box>
-												) : (
-													<Icon
-														w={collapsed ? 5 : undefined}
-														h={collapsed ? 5 : undefined}
-													/>
-												)}
-												{!collapsed && (
-													<>
-														<Text
-															fontSize="sm"
-															fontWeight={isActive ? "semibold" : "normal"}
-														>
-															{item.title}
-														</Text>
-														{showTutorialBadge ? (
-															<Box
-																w="2"
-																h="2"
-																borderRadius="full"
-																bg="yellow.400"
-																_dark={{ bg: "yellow.300" }}
+																	<TutorialUpdateIconStyled />
+																</Box>
+															</Box>
+														) : (
+															<Icon
+																w={collapsed ? 5 : undefined}
+																h={collapsed ? 5 : undefined}
 															/>
-														) : null}
-													</>
-												)}
-											</HStack>
-										</Tooltip>
-									</NavLink>
-								) : null}
-							</Box>
-						);
-					})}
+														)}
+														{!collapsed && (
+															<>
+																<Text
+																	fontSize="sm"
+																	fontWeight={isActive ? "700" : "600"}
+																	noOfLines={1}
+																>
+																	{item.title}
+																</Text>
+																{showTutorialBadge ? (
+																	<Box
+																		ml={isRTL ? undefined : "auto"}
+																		mr={isRTL ? "auto" : undefined}
+																		w="5"
+																		h="5"
+																		borderRadius="full"
+																		bg="panel.accent"
+																		color="white"
+																		display="inline-flex"
+																		alignItems="center"
+																		justifyContent="center"
+																	>
+																		<TutorialUpdateIconStyled />
+																	</Box>
+																) : null}
+															</>
+														)}
+													</HStack>
+												</Tooltip>
+											);
+
+											return (
+												<NavLink
+													key={itemUrl}
+													to={itemUrl}
+													onClick={(e) => handleNavClick(e, itemUrl)}
+												>
+													{navItem}
+												</NavLink>
+											);
+										})}
+									</VStack>
+								</Box>
+							);
+						})}
+					</VStack>
 				</Box>
-				{sidebarAd && !collapsed && (
-					<Box
-						px={collapsed ? 2 : 2.5}
-						py={2.5}
-						mt={4}
-						w="full"
-						sx={{
-							"&:empty": {
-								display: "none",
-								marginTop: 0,
-								padding: 0,
-							},
-						}}
-					>
-						<AdvertisementCard ad={sidebarAd} maxSize={440} />
-					</Box>
-				)}
 			</VStack>
 		</Box>
 	);
