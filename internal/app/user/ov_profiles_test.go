@@ -98,6 +98,9 @@ func TestOVProfileKeepsEmbeddedCredentialsForReconnect(t *testing.T) {
 	if !strings.Contains(profile, "<auth-user-pass>\nalice\n") {
 		t.Fatalf("profile is missing embedded credentials:\n%s", profile)
 	}
+	if strings.Count(profile, "auth-user-pass") != 2 {
+		t.Fatalf("embedded credentials must use exactly one inline auth-user-pass directive:\n%s", profile)
+	}
 }
 
 func TestOVProfileCanDisableExternalCredentialCaching(t *testing.T) {
@@ -119,5 +122,8 @@ func TestOVProfileCanDisableExternalCredentialCaching(t *testing.T) {
 	}
 	if strings.Contains(profile, "<auth-user-pass>") {
 		t.Fatalf("external credential profile must not embed credentials:\n%s", profile)
+	}
+	if strings.Count(profile, "auth-user-pass\n") != 1 {
+		t.Fatalf("external credential profile must use one auth-user-pass directive:\n%s", profile)
 	}
 }

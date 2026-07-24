@@ -290,9 +290,10 @@ func buildOVProfile(item ConfigLinkUser, remark string, address string, inbound 
 	for _, dns := range stringList(settings["dns_servers"]) {
 		writeOVLine(&b, "dhcp-option DNS "+dns)
 	}
-	writeOVLine(&b, "auth-user-pass")
 	if embedCredentials {
 		writeOVInline(&b, "auth-user-pass", username+"\n"+password+"\n")
+	} else {
+		writeOVLine(&b, "auth-user-pass")
 	}
 	if ca := strings.TrimSpace(stringValue(settings["ca"])); ca != "" && boolSetting(settings, "inline_ca", true) {
 		writeOVInline(&b, "ca", ca)
