@@ -1,16 +1,47 @@
 {
+  "schema_version": 1,
   "project": "Rebecca",
-  "latest": {
-    "build_tag": "dev-fd2464a",
-    "sha": "fd2464a6ee374c74a6498425b89d54baf409a6eb",
-    "branch": "dev",
-    "workflow": "Binary Build",
-    "run_id": "29944027609",
-    "run_number": "587",
-    "generated_at": "2026-07-22T17:53:51Z",
-    "assets": [
-      "rebecca-windows-amd64-dev-fd2464a.zip",
-      "rebecca-linux-amd64-dev-fd2464a.tar.gz"
-    ]
-  }
+  "latest": "dev-7d10086",
+  "updated_at": "2026-07-24T11:55:24Z",
+  "builds": [
+    {
+      "tag": "dev-7d10086",
+      "sha": "7d100861edd2aa4966a5911b6f551de330e2ad17",
+      "branch": "dev",
+      "workflow": "Binary Build",
+      "run_id": "30091042103",
+      "run_number": "594",
+      "created_at": "2026-07-24T11:55:24Z",
+      "release_tag": "dev-builds",
+      "assets": {
+        "linux-amd64": {
+          "name": "rebecca-linux-amd64-dev-7d10086.tar.gz",
+          "url": "https://github.com/rebeccapanel/Rebecca/releases/download/dev-builds/rebecca-linux-amd64-dev-7d10086.tar.gz"
+        },
+        "windows-amd64": {
+          "name": "rebecca-windows-amd64-dev-7d10086.zip",
+          "url": "https://github.com/rebeccapanel/Rebecca/releases/download/dev-builds/rebecca-windows-amd64-dev-7d10086.zip"
+        }
+      }
+    },
+    {
+      "tag": "dev-fd2464a",
+      "sha": "fd2464a6ee374c74a6498425b89d54baf409a6eb",
+      "branch": "dev",
+      "workflow": "Binary Build",
+      "run_id": "29944027609",
+      "run_number": "587",
+      "created_at": "2026-07-22T17:53:51Z",
+      "assets": {
+        "windows-amd64": {
+          "name": "rebecca-windows-amd64-dev-fd2464a.zip",
+          "url": "https://github.com/rebeccapanel/Rebecca/releases/download/dev-builds/rebecca-windows-amd64-dev-fd2464a.zip"
+        },
+        "linux-amd64": {
+          "name": "rebecca-linux-amd64-dev-fd2464a.tar.gz",
+          "url": "https://github.com/rebeccapanel/Rebecca/releases/download/dev-builds/rebecca-linux-amd64-dev-fd2464a.tar.gz"
+        }
+      }
+    }
+  ]
 }
