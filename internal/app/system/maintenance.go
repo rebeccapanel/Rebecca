@@ -622,7 +622,8 @@ func (c *GitHubUpdateChecker) latestDev(ctx context.Context, repo string) (*Rele
 		return info, nil
 	}
 	var data map[string]any
-	if err := c.getJSON(ctx, strings.TrimRight(c.APIBase, "/")+"/repos/"+repo+"/actions/runs?per_page=50", &data); err != nil {
+	workflowURL := strings.TrimRight(c.APIBase, "/") + "/repos/" + repo + "/actions/workflows/binary-build.yml/runs?branch=dev&event=push&status=success&per_page=100"
+	if err := c.getJSON(ctx, workflowURL, &data); err != nil {
 		return nil, err
 	}
 	runs, _ := data["workflow_runs"].([]any)
@@ -633,8 +634,7 @@ func (c *GitHubUpdateChecker) latestDev(ctx context.Context, repo string) (*Rele
 		}
 		if stringFromAny(run["head_branch"]) != "dev" ||
 			stringFromAny(run["conclusion"]) != "success" ||
-			(stringFromAny(run["status"]) != "" && stringFromAny(run["status"]) != "completed") ||
-			stringFromAny(run["path"]) != ".github/workflows/binary-build.yml" {
+			(stringFromAny(run["status"]) != "" && stringFromAny(run["status"]) != "completed") {
 			continue
 		}
 		sha := strings.TrimSpace(stringFromAny(run["head_sha"]))
@@ -676,7 +676,7 @@ func (c *GitHubUpdateChecker) latestDevFromManifest(ctx context.Context, repo st
 	if build == nil {
 		return nil, nil
 	}
-	tag := strings.TrimSpace(stringFromAny((*build)["tag"]))
+	tag := firstNonEmptyString(stringFromAny((*build)["tag"]), stringFromAny((*build)["build_tag"]))
 	if tag == "" {
 		return nil, nil
 	}
@@ -689,8 +689,8 @@ func (c *GitHubUpdateChecker) latestDevFromManifest(ctx context.Context, repo st
 		"tag":          tag,
 		"sha":          (*build)["sha"],
 		"branch":       firstNonEmptyString(stringFromAny((*build)["branch"]), "dev"),
-		"created_at":   (*build)["created_at"],
-		"updated_at":   data["updated_at"],
+		"created_at":   firstNonEmptyAny((*build)["created_at"], (*build)["generated_at"]),
+		"updated_at":   firstNonEmptyAny(data["updated_at"], (*build)["generated_at"]),
 		"html_url":     htmlURL,
 		"manifest_url": url,
 	}
@@ -704,11 +704,8 @@ func (c *GitHubUpdateChecker) latestDevFromManifest(ctx context.Context, repo st
 
 func selectManifestBuild(data map[string]any) *map[string]any {
 	builds, _ := data["builds"].([]any)
-	if len(builds) == 0 {
-		return nil
-	}
 	latest := strings.TrimSpace(stringFromAny(data["latest"]))
-	if latest != "" {
+	if len(builds) > 0 && latest != "" {
 		for _, item := range builds {
 			build, ok := item.(map[string]any)
 			if ok && stringFromAny(build["tag"]) == latest {
@@ -720,6 +717,18 @@ func selectManifestBuild(data map[string]any) *map[string]any {
 		build, ok := item.(map[string]any)
 		if ok {
 			return &build
+		}
+	}
+	if legacy, ok := data["latest"].(map[string]any); ok {
+		return &legacy
+	}
+	return nil
+}
+
+func firstNonEmptyAny(values ...any) any {
+	for _, value := range values {
+		if strings.TrimSpace(stringFromAny(value)) != "" {
+			return value
 		}
 	}
 	return nil

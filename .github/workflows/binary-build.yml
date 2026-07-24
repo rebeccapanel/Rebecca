@@ -382,9 +382,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$(dirname "dev-manifest/${DEV_MANIFEST_PATH}")"
+          manifest_path="dev-manifest/${DEV_MANIFEST_PATH}"
+          mkdir -p "$(dirname "${manifest_path}")"
           generated_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          previous_manifest='{}'
+          if [ -s "${manifest_path}" ]; then
+            previous_manifest="$(<"${manifest_path}")"
+          fi
           jq -n \
+            --argjson previous "${previous_manifest}" \
             --arg project "Rebecca" \
             --arg build_tag "${{ steps.meta.outputs.build_tag }}" \
             --arg sha "${GITHUB_SHA}" \
@@ -393,9 +399,64 @@ jobs:
             --arg run_id "${GITHUB_RUN_ID}" \
             --arg run_number "${GITHUB_RUN_NUMBER}" \
             --arg generated_at "${generated_at}" \
-            --argjson assets "$(find dev-upload-assets -maxdepth 1 -type f -printf '%f\n' | jq -R . | jq -s .)" \
-            '{project:$project, latest:{build_tag:$build_tag, sha:$sha, branch:$branch, workflow:$workflow, run_id:$run_id, run_number:$run_number, generated_at:$generated_at, assets:$assets}}' \
-            > "dev-manifest/${DEV_MANIFEST_PATH}"
+            --arg release_tag "${DEV_RELEASE_TAG}" \
+            --arg download_base "https://github.com/${GITHUB_REPOSITORY}/releases/download/${DEV_RELEASE_TAG}" \
+            --argjson asset_names "$(find dev-upload-assets -maxdepth 1 -type f -printf '%f\n' | jq -R . | jq -s .)" \
+            '
+              def build_assets($names):
+                reduce $names[]? as $name
+                  ({};
+                    if ($name | test("^rebecca-(?<platform>(linux|windows)-[A-Za-z0-9_]+)-dev-[0-9a-fA-F]+(\\.tar\\.gz|\\.zip)$")) then
+                      ($name | capture("^rebecca-(?<platform>(linux|windows)-[A-Za-z0-9_]+)-dev-[0-9a-fA-F]+(\\.tar\\.gz|\\.zip)$")) as $match
+                      | .[$match.platform] = {name: $name, url: ($download_base + "/" + $name)}
+                    else
+                      .
+                    end);
+              def legacy_builds:
+                if (.latest? | type) == "object" then
+                  .latest as $legacy
+                  | [{
+                      tag: ($legacy.build_tag // $legacy.tag // ""),
+                      sha: ($legacy.sha // ""),
+                      branch: ($legacy.branch // "dev"),
+                      workflow: ($legacy.workflow // ""),
+                      run_id: ($legacy.run_id // ""),
+                      run_number: ($legacy.run_number // ""),
+                      created_at: ($legacy.generated_at // $legacy.created_at // ""),
+                      assets: build_assets($legacy.assets // [])
+                    } | select(.tag != "" and (.assets | length) > 0)]
+                else
+                  []
+                end;
+              ($previous | ((.builds // []) + legacy_builds)) as $previous_builds
+              | {
+                  schema_version: 1,
+                  project: $project,
+                  latest: $build_tag,
+                  updated_at: $generated_at,
+                  builds: (
+                    ([{
+                      tag: $build_tag,
+                      sha: $sha,
+                      branch: $branch,
+                      workflow: $workflow,
+                      run_id: $run_id,
+                      run_number: $run_number,
+                      created_at: $generated_at,
+                      release_tag: $release_tag,
+                      assets: build_assets($asset_names)
+                    }] + $previous_builds)
+                    | reduce .[] as $build
+                        ([];
+                          if (($build.tag // "") == "" or any(.[]; (.tag // "") == ($build.tag // ""))) then
+                            .
+                          else
+                            . + [$build]
+                          end)
+                    | .[:50]
+                  )
+                }
+            ' > "${manifest_path}"
 
       - name: Commit dev build manifest
         shell: bash
