@@ -503,6 +503,10 @@ export function DataTable<TData>({
 	const selectAllLabel = t("selectAll");
 	const selectRowLabel = t("selectRow");
 	const rootRef = useRef<HTMLDivElement | null>(null);
+	const rowActionsRef = useRef(rowActions);
+	rowActionsRef.current = rowActions;
+	const renderRowActionsRef = useRef(renderRowActions);
+	renderRowActionsRef.current = renderRowActions;
 	const [contextMenu, setContextMenu] = useState<{
 		row: TData | null;
 		x: number;
@@ -529,9 +533,9 @@ export function DataTable<TData>({
 			),
 		[activeBreakpoint, columns],
 	);
-	const getResolvedRowActions = useMemo(
-		() => (row: TData): RowActionItem[] =>
-			rowActions?.(row).map((action) => ({
+	const getResolvedRowActions = useCallback(
+		(row: TData): RowActionItem[] =>
+			rowActionsRef.current?.(row).map((action) => ({
 				...action,
 				onClick: () => action.onClick?.(row),
 				render: action.render
@@ -542,7 +546,7 @@ export function DataTable<TData>({
 						? action.isDisabled(row)
 						: action.isDisabled,
 			})) ?? [],
-		[rowActions],
+		[],
 	);
 	const contextMenuActions = contextMenu.row
 		? getResolvedRowActions(contextMenu.row)
@@ -586,18 +590,18 @@ export function DataTable<TData>({
 			window.removeEventListener("scroll", handleScroll, true);
 		};
 	}, [closeContextMenu, contextMenu.row]);
-	const renderConfiguredActions = useMemo(
-		() => (row: TData) => {
+	const renderConfiguredActions = useCallback(
+		(row: TData) => {
 			if (resolvedActionsDisplay === "none") return null;
 
 			if (resolvedActionsDisplay === "inline") {
-				if (renderRowActions) {
+				if (renderRowActionsRef.current) {
 					return (
 						<Box
 							className="rb-inline-actions"
 							onClick={(event) => event.stopPropagation()}
 						>
-							{renderRowActions(row)}
+							{renderRowActionsRef.current(row)}
 						</Box>
 					);
 				}
@@ -615,7 +619,6 @@ export function DataTable<TData>({
 		[
 			actionsLabel,
 			getResolvedRowActions,
-			renderRowActions,
 			resolvedActionsDisplay,
 		],
 	);
