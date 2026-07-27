@@ -121,14 +121,21 @@ export const HeaderCalendar: FC = () => {
 	}, []);
 
 	const formattedDate = useMemo(
-		() =>
-			new Intl.DateTimeFormat(displayLocale, {
+		() => {
+			const formatter = new Intl.DateTimeFormat(displayLocale, {
 				weekday: "long",
 				day: "numeric",
 				month: "long",
 				year: "numeric",
-			}).format(today),
-		[displayLocale, today],
+			});
+			if (isPersian) {
+				const parts = formatter.formatToParts(today);
+				const getPart = (type: string) => parts.find((p) => p.type === type)?.value || "";
+				return `${getPart("weekday")}، ${getPart("day")} ${getPart("month")} ${getPart("year")}`;
+			}
+			return formatter.format(today);
+		},
+		[displayLocale, today, isPersian],
 	);
 
 	const { monthLabel, days } = useMemo(
