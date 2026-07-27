@@ -1112,11 +1112,13 @@ const UsersOverviewCard: FC<{
 					value={formatNumberValue(data.users_limited)}
 					colorScheme="yellow"
 				/>
-				<MetricBadge
-					label={t("status.on_hold")}
-					value={formatNumberValue(data.users_on_hold)}
-					colorScheme="purple"
-				/>
+				<Box gridColumn={{ base: "span 1", sm: "span 2" }}>
+					<MetricBadge
+						label={t("status.on_hold")}
+						value={formatNumberValue(data.users_on_hold)}
+						colorScheme="purple"
+					/>
+				</Box>
 			</SimpleGrid>
 		</Stack>
 	</ChartBox>
