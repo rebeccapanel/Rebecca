@@ -10,6 +10,8 @@
 	"total": "Total",
 	"UsersUsage": "Users Usage",
 	"dashboard.systemUsage": "System usage",
+	"dashboard.updateInterval": "Update",
+	"dashboard.every3Seconds": "Every 3 seconds",
 	"actions": "Actions",
 	"common.confirmAction": "Confirm action",
 	"jsonEditor.compact": "Compact",
