@@ -18,7 +18,7 @@ export const DashboardPage = () => {
 				summaryItems={[
 					{ label: t("systemOverview"), value: t("live"), colorScheme: "green" },
 					{ label: t("usersOverview"), value: t("live"), colorScheme: "green" },
-					{ label: t("panelUsage"), value: "3s", colorScheme: "blue" },
+					{ label: t("dashboard.updateInterval"), value: t("dashboard.every3Seconds"), colorScheme: "blue" },
 				]}
 			/>
 			<Statistics />
