@@ -1056,7 +1056,7 @@ const PanelOverviewCard: FC<{
 						}
 					/>
 				</SimpleGrid>
-				<SimpleGrid columns={{ base: 1, md: 3 }} gap={4}>
+				<SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
 					<MetricBadge
 						label={t("threads")}
 						value={formatNumberValue(data.app_threads)}
