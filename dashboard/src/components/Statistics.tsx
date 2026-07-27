@@ -640,9 +640,16 @@ const SpeedItem: FC<{
 				{icon}
 			</Box>
 			<Box minW={0}>
-				<Text fontSize="xs" fontWeight="semibold" color={labelColor}>
-					{label}
-				</Text>
+				<Text
+				fontSize="xs"
+				fontWeight="semibold"
+				color={labelColor}
+				whiteSpace="nowrap"
+				overflow="hidden"
+				textOverflow="ellipsis"
+			>
+				{label}
+			</Text>
 				<Text fontSize={{ base: "lg", md: "xl" }} fontWeight="800" mt={1}>
 					{value}
 				</Text>
