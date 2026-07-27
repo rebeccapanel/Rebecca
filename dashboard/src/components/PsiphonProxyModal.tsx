@@ -1,17 +1,21 @@
 import {
 	Alert,
 	AlertIcon,
+	Badge,
 	Box,
 	Button,
 	FormControl,
 	FormErrorMessage,
 	FormHelperText,
 	FormLabel,
+	HStack,
 	Input,
 	Modal,
 	ModalCloseButton,
 	ModalOverlay,
+	Text,
 	Textarea,
+	useColorModeValue,
 	VStack,
 } from "@chakra-ui/react";
 import { type FC, useEffect, useMemo } from "react";
@@ -64,6 +68,7 @@ export const PsiphonProxyModal: FC<Props> = ({
 }) => {
 	const { t, i18n } = useTranslation();
 	const form = useForm<PsiphonProxyFormValues>({ defaultValues: defaults });
+	const borderColor = useColorModeValue("gray.200", "whiteAlpha.200");
 	const locationOptions = useMemo(
 		() => countrySelectOptions(i18n.language),
 		[i18n.language],
@@ -72,10 +77,13 @@ export const PsiphonProxyModal: FC<Props> = ({
 		value.toLowerCase(),
 	);
 	const tag = form.watch("tag").trim();
-	const generatedTags = locations.map((location) =>
-		locations.length > 1 ? `${tag}-${location}` : tag,
-	);
-	const duplicateTag = generatedTags.find((value) => existingTags.includes(value));
+	const startPort = Number(form.watch("port"));
+	const preview = locations.map((location, index) => ({
+		location,
+		port: startPort + index,
+		tag: locations.length > 1 ? `${tag}-${location}` : tag,
+	}));
+	const duplicateTag = preview.find((item) => existingTags.includes(item.tag))?.tag;
 
 	useEffect(() => {
 		if (isOpen) form.reset(defaults);
@@ -154,9 +162,19 @@ export const PsiphonProxyModal: FC<Props> = ({
 										name="locations"
 										control={form.control}
 										rules={{
-											validate: (value) =>
-												splitMultiValueText(value).length > 0 ||
-												t("pages.xray.psiphon.locationsRequired"),
+											validate: (value) => {
+												const selected = splitMultiValueText(value);
+												if (selected.length === 0) {
+													return t("pages.xray.psiphon.locationsRequired");
+												}
+												if (selected.length > 20) {
+													return t("pages.xray.psiphon.locationsLimit");
+												}
+												return (
+													new Set(selected.map((item) => item.toLowerCase())).size ===
+														selected.length || t("pages.xray.psiphon.locationsDuplicate")
+												);
+											},
 										}}
 										render={({ field }) => (
 											<MultiValueAutocomplete
@@ -183,14 +201,9 @@ export const PsiphonProxyModal: FC<Props> = ({
 											inputMode="numeric"
 											{...form.register("port", {
 												valueAsNumber: true,
-												min: {
-													value: 1024,
-													message: t("pages.xray.psiphon.portInvalid"),
-												},
-												max: {
-													value: 65535,
-													message: t("pages.xray.psiphon.portInvalid"),
-												},
+												validate: (value) =>
+													(value >= 1024 && value + Math.max(0, locations.length - 1) <= 65535) ||
+													t("pages.xray.psiphon.portInvalid"),
 											})}
 										/>
 										<FormErrorMessage>
@@ -198,7 +211,7 @@ export const PsiphonProxyModal: FC<Props> = ({
 										</FormErrorMessage>
 									</FormControl>
 									<FormControl isInvalid={Boolean(form.formState.errors.tag || duplicateTag)}>
-										<FormLabel>{t("pages.xray.psiphon.tag")}</FormLabel>
+										<FormLabel>{t("pages.xray.psiphon.tagPrefix")}</FormLabel>
 										<Input
 											{...form.register("tag", {
 												required: t("pages.xray.psiphon.tagRequired"),
@@ -218,6 +231,31 @@ export const PsiphonProxyModal: FC<Props> = ({
 										</FormErrorMessage>
 									</FormControl>
 								</XrayFieldGrid>
+								<Box mt={4} pt={3} borderTopWidth="1px" borderColor={borderColor}>
+									<HStack justify="space-between" mb={2}>
+										<Text fontSize="xs" fontWeight="semibold">
+											{t("pages.xray.psiphon.preview")}
+										</Text>
+										<Badge variant="subtle">{preview.length}</Badge>
+									</HStack>
+									<VStack align="stretch" spacing={0} maxH="152px" overflowY="auto">
+										{preview.map((item, index) => (
+											<HStack
+												key={`${item.location}-${index}`}
+												justify="space-between"
+												minH="34px"
+												borderBottomWidth="1px"
+												borderColor={borderColor}
+												fontSize="xs"
+											>
+												<Text fontWeight="medium">{item.tag}</Text>
+												<Text color="panel.textMuted" fontFamily="mono">
+													127.0.0.1:{item.port}
+												</Text>
+											</HStack>
+										))}
+									</VStack>
+								</Box>
 							</XrayDialogSection>
 						</VStack>
 					</XrayModalBody>

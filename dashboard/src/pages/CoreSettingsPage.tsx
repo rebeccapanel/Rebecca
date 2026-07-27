@@ -116,6 +116,7 @@ import {
 	type PsiphonProxyFormValues,
 	PsiphonProxyModal,
 } from "../components/PsiphonProxyModal";
+import { splitMultiValueText } from "../components/common/MultiValueAutocomplete";
 import { SizeFormatter } from "../utils/outbound";
 import { computeOutboundIds } from "../utils/outboundId";
 import {
@@ -1533,8 +1534,7 @@ export const CoreSettingsPage: FC = () => {
 	const addPsiphonOutbounds = async (values: PsiphonProxyFormValues) => {
 		setIsApplyingPsiphonProxy(true);
 		try {
-			const locations = values.locations
-				.split(",")
+			const locations = splitMultiValueText(values.locations)
 				.map((location) => location.trim().toLowerCase())
 				.filter(Boolean);
 			const response = await apiFetch<{
