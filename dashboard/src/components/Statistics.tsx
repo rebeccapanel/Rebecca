@@ -1180,7 +1180,7 @@ const AdminOverviewCard: FC<{
 					/>
 				</SimpleGrid>
 				{data.top_admin_username && (
-					<Box>
+					<Flex wrap="wrap" gap={4} alignItems="center">
 						<Text fontSize="sm" color="gray.500">
 							{t("topAdmin")}:{" "}
 							<Text as="span" fontWeight="semibold">
@@ -1190,7 +1190,7 @@ const AdminOverviewCard: FC<{
 						<Text fontSize="sm" color="gray.500">
 							{t("topAdminUsage")}: {formatBytes(data.top_admin_usage)}
 						</Text>
-					</Box>
+					</Flex>
 				)}
 			</Stack>
 		</ChartBox>
