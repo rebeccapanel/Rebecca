@@ -565,16 +565,23 @@ const UsageMetricCard: FC<{
 			minH={history ? "126px" : "96px"}
 		>
 			<Stack spacing={2}>
-				<HStack justifyContent="space-between" alignItems="center" gap={3}>
-					<Text fontSize="xs" fontWeight="semibold" color={labelColor}>
+				<Flex justifyContent="space-between" alignItems="center" gap={2} wrap="wrap">
+					<Text
+						fontSize="xs"
+						fontWeight="semibold"
+						color={labelColor}
+						whiteSpace="nowrap"
+						overflow="hidden"
+						textOverflow="ellipsis"
+					>
 						{label}
 					</Text>
 					{onOpen && actionLabel && (
-						<Button size="xs" variant="outline" onClick={onOpen} flexShrink={0}>
+						<Button size="xs" variant="outline" onClick={onOpen} flexShrink={0} ms="auto">
 							{actionLabel}
 						</Button>
 					)}
-				</HStack>
+				</Flex>
 				<HStack justifyContent="space-between" alignItems="baseline" gap={3}>
 					<Text fontSize="2xl" lineHeight="1" fontWeight="800" color={valueColor}>
 						{Math.max(0, percent).toFixed(1)}%
@@ -662,14 +669,21 @@ const NetworkSpeedCard: FC<{
 			p={3}
 		>
 			<Stack spacing={3}>
-				<HStack justifyContent="space-between" alignItems="center" gap={3}>
-					<Text fontSize="xs" fontWeight="semibold" color={labelColor}>
+				<Flex justifyContent="space-between" alignItems="center" gap={2} wrap="wrap">
+					<Text
+						fontSize="xs"
+						fontWeight="semibold"
+						color={labelColor}
+						whiteSpace="nowrap"
+						overflow="hidden"
+						textOverflow="ellipsis"
+					>
 						{t("networkHistory")}
 					</Text>
-					<Button size="xs" variant="outline" onClick={onOpen} flexShrink={0}>
+					<Button size="xs" variant="outline" onClick={onOpen} flexShrink={0} ms="auto">
 						{t("viewHistory")}
 					</Button>
-				</HStack>
+				</Flex>
 				<SimpleGrid columns={{ base: 1, sm: 2 }} gap={3}>
 					<SpeedItem
 						icon={<DownloadIcon />}
