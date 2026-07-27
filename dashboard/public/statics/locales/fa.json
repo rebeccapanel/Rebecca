@@ -894,7 +894,7 @@
 	"nodes.geoDialog.templateIndexLabel": "آدرس لیست تمپلیت",
 	"nodes.geoDialog.templateNameLabel": "نام تمپلیت",
 	"nodes.hide-certificate": "مخفی کردن گواهی",
-	"nodes.lastUpdated": "آخرین بروزرسانی",
+	"nodes.lastUpdated": "آخرین به‌روزرسانی",
 	"nodes.latestNodeVersionTag": "آخرین نسخه نود: v{{version}}",
 	"nodes.limitReached": "محدودیت مصرف پر شده",
 	"nodes.limitedStatusDescription": "این نود به خاطر اتمام سقف حجم محدود شده است. برای فعال‌سازی دوباره، سقف را افزایش دهید یا مصرف را ریست کنید.",
