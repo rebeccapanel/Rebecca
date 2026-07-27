@@ -11,6 +11,8 @@
 	"total": "کل",
 	"UsersUsage": "مصرف کاربران",
 	"dashboard.systemUsage": "مصرف سیستم",
+	"dashboard.updateInterval": "به‌روزرسانی",
+	"dashboard.every3Seconds": "هر ۳ ثانیه",
 	"actions": "عملیات",
 	"common.confirmAction": "تأیید عملیات",
 	"jsonEditor.compact": "فشرده",
