@@ -1130,7 +1130,7 @@ const YourUsageCard: FC<{
 	return (
 		<ChartBox title={t("yourUsage")}>
 			<Stack spacing={4}>
-				<SimpleGrid columns={{ base: 1, md: 2 }} gap={4}>
+				<SimpleGrid columns={1} gap={4}>
 					<MetricBadge
 						label={t("total")}
 						value={formatNumberValue(data.total_users)}
