@@ -582,8 +582,8 @@ const UsageMetricCard: FC<{
 						</Button>
 					)}
 				</Flex>
-				<HStack justifyContent="space-between" alignItems="baseline" gap={3}>
-					<Text fontSize="2xl" lineHeight="1" fontWeight="800" color={valueColor}>
+				<Flex justifyContent="space-between" alignItems="baseline" gap={2} wrap="wrap">
+					<Text fontSize="2xl" lineHeight="1" fontWeight="800" color={valueColor} whiteSpace="nowrap">
 						{Math.max(0, percent).toFixed(1)}%
 					</Text>
 					{detail && (
@@ -591,12 +591,13 @@ const UsageMetricCard: FC<{
 							fontSize="xs"
 							color={mutedColor}
 							className="rb-usage-pair"
-							textAlign="end"
+							textAlign="center"
+							flex="1 1 auto"
 						>
 							{detail}
 						</Text>
 					)}
-				</HStack>
+				</Flex>
 				<Progress
 					value={safePercent}
 					colorScheme={colorScheme}
