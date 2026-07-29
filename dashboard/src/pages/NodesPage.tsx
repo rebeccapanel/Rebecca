@@ -660,7 +660,12 @@ export const NodesPage: FC = () => {
 
 	const { isLoading: isAdding, mutate: addNodeMutate } = useMutation(addNode, {
 		onSuccess: (createdNode: NodeType) => {
-			generateSuccessMessage(t("nodes.addNodeSuccess"), toast);
+			generateSuccessMessage(
+				t("nodes.addNodeSuccess", {
+					name: createdNode.name ?? t("nodes.unnamedNode"),
+				}),
+				toast
+			);
 			queryClient.invalidateQueries(FetchNodesQueryKey);
 			refetchNodes();
 		},
