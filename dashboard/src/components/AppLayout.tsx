@@ -1007,7 +1007,7 @@ export function AppLayout() {
 						as="main"
 						flex="1"
 						p={{ base: 3, md: 6 }}
-						pb={{ base: "28", md: "6" }}
+						pb={{ base: "40", md: "6" }}
 						overflow="auto"
 						minH="0"
 						bg={shellMainBg}
