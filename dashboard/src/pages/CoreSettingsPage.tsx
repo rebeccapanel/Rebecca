@@ -4292,7 +4292,6 @@ export const CoreSettingsPage: FC = () => {
 													<Switch
 														id={id}
 														isChecked={!!field.value}
-														dir={isRTL ? "ltr" : undefined}
 														onChange={(e) => field.onChange(e.target.checked)}
 													/>
 												)}
@@ -4311,7 +4310,6 @@ export const CoreSettingsPage: FC = () => {
 													<Switch
 														id={id}
 														isChecked={!!field.value}
-														dir={isRTL ? "ltr" : undefined}
 														onChange={(e) => field.onChange(e.target.checked)}
 													/>
 												)}
@@ -4330,7 +4328,6 @@ export const CoreSettingsPage: FC = () => {
 													<Switch
 														id={id}
 														isChecked={!!field.value}
-														dir={isRTL ? "ltr" : undefined}
 														onChange={(e) => field.onChange(e.target.checked)}
 													/>
 												)}
@@ -4349,7 +4346,6 @@ export const CoreSettingsPage: FC = () => {
 													<Switch
 														id={id}
 														isChecked={!!field.value}
-														dir={isRTL ? "ltr" : undefined}
 														onChange={(e) => field.onChange(e.target.checked)}
 													/>
 												)}
