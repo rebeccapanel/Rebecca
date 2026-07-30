@@ -304,8 +304,8 @@ const HistoryModal: FC<{
 	t: TFunction;
 }> = ({ isOpen, onClose, payload, intervalSeconds, onIntervalChange, t }) => {
 	const { colorMode } = useColorMode();
-	const gridColor = useColorModeValue("#e2e8f0", "#262626"); // هماهنگ با panel.border
-	const mutedTextColor = useColorModeValue("#64748b", "#737373"); // هماهنگ با panel.textMuted
+	const gridColor = useColorModeValue("#e2e8f0", "#262626");
+	const mutedTextColor = useColorModeValue("#64748b", "#737373");
 
 	const latestTimestamp = useMemo(() => {
 		if (!payload) return Math.floor(Date.now() / 1000);
