@@ -1,10 +1,6 @@
 import { extendTheme } from "@chakra-ui/react";
 import { mode, type StyleFunctionProps } from "@chakra-ui/theme-tools";
 
-// The theme uses CSS variables for the primary color palette so we can
-// switch named palettes at runtime by toggling a class on documentElement.
-// The variables below provide sensible defaults which match the previous
-// primary color scale.
 const sharedThemeConfig = {
 	config: {
 		initialColorMode: "dark",
@@ -42,8 +38,6 @@ const sharedThemeConfig = {
 			light: "var(--surface-light)",
 			dark: "var(--surface-dark)",
 		},
-		// primary color scale reads from CSS variables so swapping theme is just
-		// adding/removing a class that sets a different set of --primary-* vars.
 		primary: {
 			50: "var(--primary-50)",
 			100: "var(--primary-100)",
@@ -60,8 +54,6 @@ const sharedThemeConfig = {
 			750: "#222C3B",
 		},
 	},
-	// global styles: panel tokens and primary colors are CSS variables so
-	// theme/accent can switch at runtime without remounting the app.
 	styles: {
 		global: {
 			":root": {
@@ -75,47 +67,48 @@ const sharedThemeConfig = {
 				"--primary-700": "#990029",
 				"--primary-800": "#73001f",
 				"--primary-900": "#4c0015",
-				"--bg-light": "#101010",
-				"--bg-dark": "#101010",
-				"--surface-light": "#242424",
-				"--surface-dark": "#242424",
+				"--bg-light": "#f8fafc",
+				"--bg-dark": "#0a0a0a",
+				"--surface-light": "#ffffff",
+				"--surface-dark": "#141414",
 			},
 
 			".rb-theme-dark": {
-				"--rb-panel-bg": "#101010",
-				"--rb-panel-main": "#111111",
-				"--rb-panel-sidebar": "#2b2b2b",
-				"--rb-panel-surface": "#242424",
-				"--rb-panel-elevated": "#2f2f2f",
-				"--rb-panel-border": "#3a3a3a",
-				"--rb-panel-border-strong": "#4a4a4a",
+				"--rb-panel-bg": "#0a0a0a",
+				"--rb-panel-main": "#0a0a0a",
+				"--rb-panel-sidebar": "#141414",
+				"--rb-panel-surface": "#141414",
+				"--rb-panel-elevated": "#1f1f1f",
+				"--rb-panel-border": "#262626",
+				"--rb-panel-border-strong": "#333333",
 				"--rb-panel-text": "#f5f5f5",
-				"--rb-panel-text-secondary": "#b8b8b8",
-				"--rb-panel-text-muted": "#8a8a8a",
-				"--bg-light": "#101010",
-				"--bg-dark": "#101010",
-				"--surface-light": "#242424",
-				"--surface-dark": "#242424",
+				"--rb-panel-text-secondary": "#a3a3a3",
+				"--rb-panel-text-muted": "#737373",
+				"--bg-light": "#0a0a0a",
+				"--bg-dark": "#0a0a0a",
+				"--surface-light": "#141414",
+				"--surface-dark": "#141414",
 			},
 			".rb-theme-light": {
-				"--rb-panel-bg": "#f4f5f7",
-				"--rb-panel-main": "#f7f8fa",
+				"--rb-panel-bg": "#f8fafc",
+				"--rb-panel-main": "#f8fafc",
 				"--rb-panel-sidebar": "#ffffff",
 				"--rb-panel-surface": "#ffffff",
-				"--rb-panel-elevated": "#eef0f3",
-				"--rb-panel-border": "#d8dce2",
-				"--rb-panel-border-strong": "#c2c8d0",
-				"--rb-panel-text": "#17191c",
-				"--rb-panel-text-secondary": "#4f5661",
-				"--rb-panel-text-muted": "#7a828e",
-				"--bg-light": "#f4f5f7",
-				"--bg-dark": "#f4f5f7",
+				"--rb-panel-elevated": "#f1f5f9",
+				"--rb-panel-border": "#e2e8f0",
+				"--rb-panel-border-strong": "#cbd5e1",
+				"--rb-panel-text": "#0f172a",
+				"--rb-panel-text-secondary": "#475569",
+				"--rb-panel-text-muted": "#94a3b8",
+				"--bg-light": "#f8fafc",
+				"--bg-dark": "#f8fafc",
 				"--surface-light": "#ffffff",
 				"--surface-dark": "#ffffff",
 			},
 			body: {
 				backgroundColor: "panel.main",
 				color: "panel.text",
+				letterSpacing: "tight",
 			},
 			"[data-theme='dark'] body, .chakra-ui-dark body": {
 				backgroundColor: "panel.main",
@@ -134,9 +127,9 @@ const sharedThemeConfig = {
 				"--primary-800": "#8d0f0f",
 				"--primary-900": "#5f0a0a",
 				"--bg-light": "#fdf7f2",
-				"--bg-dark": "#0b0f19",
-				"--surface-light": "#f7eee8",
-				"--surface-dark": "#172235",
+				"--bg-dark": "#0a0a0a",
+				"--surface-light": "#ffffff",
+				"--surface-dark": "#141414",
 			},
 		},
 	},
@@ -148,7 +141,7 @@ const sharedThemeConfig = {
 					borderWidth: "1px",
 					borderColor: mode("panel.border", "panel.border")(props),
 					boxShadow: "none",
-					borderRadius: "6px",
+					borderRadius: "xl",
 				},
 			}),
 		},
@@ -158,8 +151,8 @@ const sharedThemeConfig = {
 					bg: mode("panel.surface", "panel.surface")(props),
 					borderWidth: "1px",
 					borderColor: mode("panel.border", "panel.border")(props),
-					borderRadius: "6px",
-					boxShadow: "0 20px 60px rgba(0, 0, 0, 0.42)",
+					borderRadius: "2xl",
+					boxShadow: "xl",
 				},
 				header: {
 					borderBottomWidth: "1px",
@@ -188,11 +181,15 @@ const sharedThemeConfig = {
 						bg: mode("panel.surface", "panel.surface")(props),
 						borderWidth: "1px",
 						borderColor: mode("panel.border", "panel.border")(props),
-						boxShadow: "0 18px 48px rgba(0, 0, 0, 0.38)",
+						boxShadow: "lg",
+						borderRadius: "xl",
 					},
 					item: {
 						bg: "transparent !important",
 						color: mode("panel.text", "panel.text")(props),
+						borderRadius: "md",
+						mx: 2,
+						w: "calc(100% - 16px)",
 						_hover: {
 							bg: `${hoverBg} !important`,
 						},
@@ -212,7 +209,8 @@ const sharedThemeConfig = {
 					bg: mode("panel.surface", "panel.surface")(props),
 					borderWidth: "1px",
 					borderColor: mode("panel.border", "panel.border")(props),
-					boxShadow: "0 18px 48px rgba(0, 0, 0, 0.38)",
+					boxShadow: "lg",
+					borderRadius: "xl",
 				},
 				header: {
 					borderBottomWidth: "1px",
@@ -251,7 +249,7 @@ const sharedThemeConfig = {
 		Alert: {
 			baseStyle: {
 				container: {
-					borderRadius: "6px",
+					borderRadius: "xl",
 					fontSize: "sm",
 				},
 			},
@@ -261,12 +259,12 @@ const sharedThemeConfig = {
 				field: {
 					bg: "panel.surface",
 					color: "panel.text",
+					borderRadius: "lg",
 					_dark: {
 						borderColor: "panel.borderStrong",
-						borderRadius: "6px",
 					},
 					_light: {
-						borderRadius: "6px",
+						borderColor: "panel.borderStrong",
 					},
 				},
 			},
@@ -279,8 +277,8 @@ const sharedThemeConfig = {
 		FormLabel: {
 			baseStyle: {
 				fontSize: "sm",
-				fontWeight: "medium",
-				mb: "1",
+				fontWeight: "semibold",
+				mb: "1.5",
 				_dark: { color: "panel.textSecondary" },
 			},
 		},
@@ -288,6 +286,7 @@ const sharedThemeConfig = {
 			baseStyle: {
 				addon: {
 					bg: "panel.elevated",
+					borderRadius: "lg",
 					_dark: {
 						borderColor: "panel.borderStrong",
 						_placeholder: {
@@ -298,6 +297,7 @@ const sharedThemeConfig = {
 				field: {
 					bg: "panel.surface",
 					color: "panel.text",
+					borderRadius: "lg",
 					_focusVisible: {
 						boxShadow: "none",
 						borderColor: "primary.500",
@@ -312,6 +312,9 @@ const sharedThemeConfig = {
 						_placeholder: {
 							color: "panel.textMuted",
 						},
+					},
+					_light: {
+						borderColor: "panel.borderStrong",
 					},
 				},
 			},
@@ -346,7 +349,7 @@ const sharedThemeConfig = {
 					},
 				},
 				td: {
-					transition: "all .1s ease-out",
+					transition: "all .15s ease-out",
 					borderColor: "panel.border",
 					borderBottomColor: "panel.border !important",
 					_first: {
@@ -385,10 +388,10 @@ const sharedThemeConfig = {
 					_last: {
 						"& > td": {
 							_first: {
-								borderBottomLeftRadius: "8px",
+								borderBottomLeftRadius: "12px",
 							},
 							_last: {
-								borderBottomRightRadius: "8px",
+								borderBottomRightRadius: "12px",
 							},
 						},
 					},
@@ -396,6 +399,10 @@ const sharedThemeConfig = {
 			},
 		},
 		Button: {
+			baseStyle: {
+				borderRadius: "lg",
+				fontWeight: "semibold",
+			},
 			variants: {
 				outline: (props: StyleFunctionProps) => ({
 					borderColor: mode("blackAlpha.300", "whiteAlpha.300")(props),
