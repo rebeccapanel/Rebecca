@@ -17,7 +17,7 @@ require (
 	golang.org/x/term v0.45.0
 	google.golang.org/grpc v1.83.0
 	google.golang.org/protobuf v1.36.11
-	modernc.org/sqlite v1.54.0
+	modernc.org/sqlite v1.55.0
 )
 
 require (
