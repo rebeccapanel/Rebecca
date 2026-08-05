@@ -1434,6 +1434,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 						actionsPlacement="end"
 						actionsColumnWidth="210px"
 						actionsAlwaysVisible
+						mobileBreakpoint="md"
 						onRowClick={
 							canOpenUserDialog ? (user) => onEditingUser(user) : undefined
 						}

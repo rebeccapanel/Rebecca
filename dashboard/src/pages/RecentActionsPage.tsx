@@ -1061,7 +1061,7 @@ export const RecentActionsPage: FC = () => {
 				onRowClick={(action) => toggleDetails(action.id)}
 				isRowExpanded={(action) => action.id === selectedID}
 				renderExpandedRow={renderDetailPanel}
-				mobileBreakpoint="lg"
+				mobileBreakpoint="md"
 				pagination={
 					<HStack justify="space-between" flexWrap="wrap" spacing={3}>
 						<HStack spacing={2}>
