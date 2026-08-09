@@ -128,6 +128,10 @@ export type SockoptFormValues = {
 	V6Only: boolean;
 	tcpWindowClamp: string;
 	interfaceName: string;
+	happyEyeballs: Record<string, any>;
+	trustedXForwardedFor: string[];
+	addressPortStrategy: "" | "none" | "SrvPortOnly" | "SrvAddressOnly" | "SrvPortAndAddress" | "TxtPortOnly" | "TxtAddressOnly" | "TxtPortAndAddress";
+	customSockopt: Array<Record<string, any>>;
 };
 
 export type InboundFormValues = {
@@ -610,6 +614,10 @@ const createDefaultSockopt = (): SockoptFormValues => ({
 	V6Only: false,
 	tcpWindowClamp: "",
 	interfaceName: "",
+	happyEyeballs: {},
+	trustedXForwardedFor: [],
+	addressPortStrategy: "",
+	customSockopt: [],
 });
 
 const parsePort = (value: string): number | string => {
@@ -1407,6 +1415,42 @@ const buildSockoptSettings = (values: InboundFormValues) => {
 		return undefined;
 	}
 	const sockopt = values.sockopt;
+
+	const happyEyeballs = cleanObject({
+		tryDelayMs: parseOptionalNumber(sockopt.happyEyeballs?.tryDelayMs),
+		interleave: parseOptionalNumber(sockopt.happyEyeballs?.interleave),
+		maxConcurrentTry: parseOptionalNumber(sockopt.happyEyeballs?.maxConcurrentTry),
+		prioritizeIPv6: sockopt.happyEyeballs?.prioritizeIPv6 || undefined,
+	});
+
+	const customSockopt = (sockopt.customSockopt || [])
+		.map((item: Record<string, any>) => {
+			const obj: Record<string, any> = {};
+
+			if (item.level && item.level.trim() !== "") obj.level = item.level.trim();
+			if (item.opt && item.opt.trim() !== "") obj.opt = item.opt.trim();
+
+			let val: any = item.value !== undefined && item.value !== null ? String(item.value).trim() : undefined;
+			if (item.type === "int" && val !== undefined && val !== "") {
+				const num = Number(val);
+				if (!Number.isNaN(num)) val = num;
+			}
+			
+			if (val !== undefined && val !== "") obj.value = val;
+			if (item.type && item.type.trim() !== "") obj.type = item.type.trim();
+			if (item.system && item.system.trim() !== "") obj.system = item.system.trim();
+			if (item.network && item.network.trim() !== "") obj.network = item.network.trim();
+
+			return obj;
+		})
+		.filter((item: Record<string, any>) => Object.keys(item).length > 0);
+
+	const trustedXForwardedFor = typeof sockopt.trustedXForwardedFor === "string"
+		? splitLines(sockopt.trustedXForwardedFor)
+		: Array.isArray(sockopt.trustedXForwardedFor)
+		? sockopt.trustedXForwardedFor
+		: [];
+
 	const payload = {
 		acceptProxyProtocol: sockopt.acceptProxyProtocol,
 		tcpFastOpen: sockopt.tcpFastOpen,
@@ -1424,6 +1468,10 @@ const buildSockoptSettings = (values: InboundFormValues) => {
 		V6Only: sockopt.V6Only,
 		tcpWindowClamp: parseOptionalNumber(sockopt.tcpWindowClamp),
 		interface: sockopt.interfaceName || undefined,
+		happyEyeballs: Object.keys(happyEyeballs).length > 0 ? happyEyeballs : undefined,
+		trustedXForwardedFor: trustedXForwardedFor.length > 0 ? trustedXForwardedFor : undefined,
+		addressPortStrategy: sockopt.addressPortStrategy || undefined,
+		customSockopt: customSockopt.length > 0 ? customSockopt : undefined,
 	};
 	return cleanObject(payload);
 };
@@ -2187,6 +2235,30 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			defaults.V6Only = Boolean(sockopt.V6Only);
 			defaults.tcpWindowClamp = toInputValue(sockopt.tcpWindowClamp);
 			defaults.interfaceName = sockopt.interface ?? defaults.interfaceName;
+
+			if (typeof sockopt.happyEyeballs === "object" && sockopt.happyEyeballs !== null) {
+				defaults.happyEyeballs = {
+					tryDelayMs: toInputValue(sockopt.happyEyeballs.tryDelayMs),
+					interleave: toInputValue(sockopt.happyEyeballs.interleave),
+					maxConcurrentTry: toInputValue(sockopt.happyEyeballs.maxConcurrentTry),
+					prioritizeIPv6: Boolean(sockopt.happyEyeballs.prioritizeIPv6),
+				};
+			}
+
+			defaults.trustedXForwardedFor = parseStringList(sockopt.trustedXForwardedFor);
+			defaults.addressPortStrategy = sockopt.addressPortStrategy ?? defaults.addressPortStrategy;
+			
+			defaults.customSockopt = Array.isArray(sockopt.customSockopt)
+				? sockopt.customSockopt.map((item: Record<string, any>) => ({
+						level: item.level?.toString() ?? "",
+						opt: item.opt?.toString() ?? "",
+						value: item.value?.toString() ?? "",
+						type: item.type?.toString() ?? "str",
+						system: item.system?.toString() ?? "",
+						network: item.network?.toString() ?? "",
+				  }))
+				: defaults.customSockopt;
+
 			return defaults;
 		})(),
 		httpAccounts:

@@ -153,6 +153,17 @@ const TPROXY_OPTIONS: Array<"" | "off" | "redirect" | "tproxy"> = [
 	"redirect",
 	"tproxy",
 ];
+
+const ADDRESS_PORT_STRATEGY_OPTIONS = [
+	"none",
+	"SrvPortOnly",
+	"SrvAddressOnly",
+	"SrvPortAndAddress",
+	"TxtPortOnly",
+	"TxtAddressOnly",
+	"TxtPortAndAddress",
+];
+
 const TLS_COMPATIBLE_PROTOCOLS: Array<InboundFormValues["protocol"]> = [
 	"vmess",
 	"vless",
@@ -435,6 +446,14 @@ export const InboundFormModal: FC<Props> = ({
 	} = useFieldArray({
 		control,
 		name: "tlsCertificates",
+	});
+	const {
+		fields: customSockoptFields,
+		append: appendCustomSockopt,
+		remove: removeCustomSockopt,
+	} = useFieldArray({
+		control,
+		name: "sockopt.customSockopt" as never,
 	});
 
 	const currentProtocol =
@@ -5368,6 +5387,40 @@ export const InboundFormModal: FC<Props> = ({
 															"interfaceName",
 															t("inbounds.sockopt.interfaceName"),
 														)}
+														<FormControl>
+															<FormLabel>
+																{t("inbounds.sockopt.addressPortStrategy")}
+															</FormLabel>
+															<Controller
+																control={control}
+																name="sockopt.addressPortStrategy"
+																render={({ field }) => (
+																	<SearchableTagSelect
+																		value={field.value || ""}
+																		options={[
+																			{ value: "", label: t("userDialog.flow.none") },
+																			...ADDRESS_PORT_STRATEGY_OPTIONS.map((opt) => ({
+																				value: opt,
+																				label: opt,
+																			})),
+																		]}
+																		placeholder={t("inbounds.sockopt.addressPortStrategy")}
+																		onChange={(value) => field.onChange(String(value))}
+																	/>
+																)}
+															/>
+														</FormControl>
+
+														<FormControl>
+														<FormLabel>
+															{t("inbounds.sockopt.trustedXForwardedFor")}
+														</FormLabel>
+														<Textarea
+															rows={2}
+															{...register("sockopt.trustedXForwardedFor" as const)}
+															placeholder={"127.0.0.1/32\nCF-Connecting-IP"}
+														/>
+														</FormControl>
 													</SimpleGrid>
 													<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
 														<FormControl>
@@ -5465,6 +5518,142 @@ export const InboundFormModal: FC<Props> = ({
 															t("inbounds.sockopt.v6Only"),
 														)}
 													</SimpleGrid>
+
+													<Stack spacing={3} mt={4} p={3} borderWidth="1px" borderRadius="md" borderColor={sectionBorder}>
+														<Text fontSize="sm" fontWeight="semibold">
+															{t("inbounds.sockopt.happyEyeballsTitle")}
+														</Text>
+														<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+															<FormControl>
+																<FormLabel>{t("inbounds.sockopt.heTryDelayMs")}</FormLabel>
+																<Controller
+																	control={control}
+																	name="sockopt.happyEyeballs.tryDelayMs"
+																	render={({ field }) => (
+																		<NumericInput
+																			min={0}
+																			value={field.value ?? ""}
+																			onChange={(val) => field.onChange(val)}
+																		/>
+																	)}
+																/>
+															</FormControl>
+															<FormControl>
+																<FormLabel>{t("inbounds.sockopt.heInterleave")}</FormLabel>
+																<Controller
+																	control={control}
+																	name="sockopt.happyEyeballs.interleave"
+																	render={({ field }) => (
+																		<NumericInput
+																			min={1}
+																			value={field.value ?? ""}
+																			onChange={(val) => field.onChange(val)}
+																		/>
+																	)}
+																/>
+															</FormControl>
+															<FormControl>
+																<FormLabel>{t("inbounds.sockopt.heMaxConcurrentTry")}</FormLabel>
+																<Controller
+																	control={control}
+																	name="sockopt.happyEyeballs.maxConcurrentTry"
+																	render={({ field }) => (
+																		<NumericInput
+																			min={0}
+																			value={field.value ?? ""}
+																			onChange={(val) => field.onChange(val)}
+																		/>
+																	)}
+																/>
+															</FormControl>
+															<FormControl display="flex" alignItems="center">
+																<FormLabel mb={0}>{t("inbounds.sockopt.hePrioritizeIPv6")}</FormLabel>
+																<Controller
+																	control={control}
+																	name="sockopt.happyEyeballs.prioritizeIPv6"
+																	render={({ field }) => (
+																		<Switch
+																			isChecked={Boolean(field.value)}
+																			onChange={(e) => field.onChange(e.target.checked)}
+																		/>
+																	)}
+																/>
+															</FormControl>
+														</SimpleGrid>
+													</Stack>
+
+													<Stack spacing={3} mt={4}>
+														<Flex align="center" justify="space-between">
+															<Box fontWeight="medium">
+																{t("inbounds.sockopt.customSockopt")}
+															</Box>
+															<Button 
+																size="xs" 
+																onClick={() => appendCustomSockopt({ level: "", opt: "", value: "", type: "str", system: "", network: "" })}
+															>
+																{t("inbounds.sockopt.addCustomSockopt")}
+															</Button>
+														</Flex>
+														
+														{customSockoptFields.length === 0 && (
+															<Text fontSize="sm" color="gray.500">
+																{t("inbounds.sockopt.noCustomSockopt")}
+															</Text>
+														)}
+														
+														{customSockoptFields.map((field, index) => (
+															<Box key={field.id} borderWidth="1px" borderRadius="md" p={3} borderColor={sectionBorder}>
+																<Flex justify="space-between" align="center" mb={3}>
+																	<Text fontWeight="semibold">
+																		{t("inbounds.sockopt.customSockoptItem", "Option")} #{index + 1}
+																	</Text>
+																	<Button size="xs" variant="ghost" colorScheme="red" onClick={() => removeCustomSockopt(index)}>
+																		{t("delete")}
+																	</Button>
+																</Flex>
+																<SimpleGrid columns={{ base: 1, md: 3 }} spacing={3}>
+																	<FormControl>
+																		<FormLabel>level</FormLabel>
+																		<Input {...register(`sockopt.customSockopt.${index}.level` as const)} placeholder="6" />
+																	</FormControl>
+																	<FormControl>
+																		<FormLabel>opt</FormLabel>
+																		<Input {...register(`sockopt.customSockopt.${index}.opt` as const)} placeholder="13" />
+																	</FormControl>
+																	<FormControl>
+																		<FormLabel>value</FormLabel>
+																		<Input {...register(`sockopt.customSockopt.${index}.value` as const)} placeholder="bbr" />
+																	</FormControl>
+																	<FormControl>
+																		<FormLabel>type</FormLabel>
+																		<Controller
+																			control={control}
+																			name={`sockopt.customSockopt.${index}.type` as const}
+																			render={({ field: typeField }) => (
+																				<SearchableTagSelect
+																					value={typeField.value || "str"}
+																					options={[
+																						{ value: "str", label: "str" },
+																						{ value: "int", label: "int" },
+																					]}
+																					placeholder="str"
+																					onChange={(val) => typeField.onChange(String(val))}
+																				/>
+																			)}
+																		/>
+																	</FormControl>
+																	<FormControl>
+																		<FormLabel>system</FormLabel>
+																		<Input {...register(`sockopt.customSockopt.${index}.system` as const)} placeholder="linux" />
+																	</FormControl>
+																	<FormControl>
+																		<FormLabel>network</FormLabel>
+																		<Input {...register(`sockopt.customSockopt.${index}.network` as const)} placeholder="tcp" />
+																	</FormControl>
+																</SimpleGrid>
+															</Box>
+														))}
+													</Stack>
 												</Stack>
 											</Collapse>
 										</Stack>
