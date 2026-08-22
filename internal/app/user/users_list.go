@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/rebeccapanel/rebecca/internal/app/online"
 )
 
 const (
@@ -423,8 +425,9 @@ func (r Repository) usersUsageTotal(ctx context.Context, filter usersFilter) (in
 func (r Repository) usersOnlineTotal(ctx context.Context, filter usersFilter) (int64, error) {
 	args := append([]any{}, filter.args...)
 	clauses := append([]string{}, filter.where...)
-	clauses = append(clauses, "(live_session.user_id IS NOT NULL OR u.online_at >= ?)")
-	args = append(args, time.Now().UTC().Add(-5*time.Minute))
+	clauses = append(clauses, online.UserPredicate)
+	cutoff := online.Cutoff(time.Now())
+	args = append(args, cutoff, cutoff)
 	queryFilter := usersFilter{where: clauses, args: args}
 	query := "SELECT COUNT(u.id)" + usersFromSQL() + queryFilter.whereSQL()
 	var total int64
@@ -447,11 +450,12 @@ func addAdvancedUsersFilters(filter *usersFilter, filters []string) {
 	}
 	now := time.Now().UTC()
 	if _, ok := normalized["online"]; ok {
-		filter.add("(live_session.user_id IS NOT NULL OR u.online_at >= ?)", now.Add(-5*time.Minute))
+		cutoff := online.Cutoff(now)
+		filter.add(online.UserPredicate, cutoff, cutoff)
 	}
 	if _, ok := normalized["offline"]; ok {
-		filter.add("live_session.user_id IS NULL")
-		filter.add("(u.online_at IS NULL OR u.online_at < ?)", now.Add(-24*time.Hour))
+		cutoff := online.Cutoff(now)
+		filter.add("NOT "+online.UserPredicate, cutoff, cutoff)
 	}
 	if _, ok := normalized["finished"]; ok {
 		filter.add("u.status IN (?, ?)", "limited", "expired")

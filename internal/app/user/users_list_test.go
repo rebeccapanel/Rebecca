@@ -21,9 +21,10 @@ func TestUsersListIncludesOpenTunnelSessionsInOnlineStatus(t *testing.T) {
 		`CREATE TABLE admins (id INTEGER PRIMARY KEY, username TEXT)`,
 		`CREATE TABLE services (id INTEGER PRIMARY KEY, name TEXT)`,
 		`CREATE TABLE user_usage_logs (user_id BIGINT, used_traffic_at_reset BIGINT)`,
-		`CREATE TABLE vpn_user_sessions (user_id BIGINT, ended_at DATETIME)`,
-		`INSERT INTO users (id, username, status, used_traffic, created_at) VALUES (1, 'tunnel-user', 'active', 0, CURRENT_TIMESTAMP)`,
-		`INSERT INTO vpn_user_sessions (user_id, ended_at) VALUES (1, NULL)`,
+		`CREATE TABLE user_online_ips (user_id BIGINT, last_seen_at DATETIME)`,
+		`CREATE TABLE vpn_user_sessions (user_id BIGINT, last_seen_at DATETIME, ended_at DATETIME)`,
+		`INSERT INTO users (id, username, status, used_traffic, created_at, online_at) VALUES (1, 'tunnel-user', 'active', 0, CURRENT_TIMESTAMP, NULL), (2, 'stale-user', 'active', 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
+		`INSERT INTO vpn_user_sessions (user_id, last_seen_at, ended_at) VALUES (1, CURRENT_TIMESTAMP, NULL)`,
 	} {
 		if _, err := db.Exec(statement); err != nil {
 			t.Fatal(err)
@@ -35,7 +36,7 @@ func TestUsersListIncludesOpenTunnelSessionsInOnlineStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(rows) != 1 || rows[0].item.OnlineAt == nil {
+	if len(rows) != 2 || rows[0].item.OnlineAt == nil {
 		t.Fatalf("expected open tunnel session to be online, got %#v", rows)
 	}
 	total, err := repo.usersOnlineTotal(context.Background(), usersFilter{})
@@ -55,5 +56,22 @@ func TestUsersListIncludesOpenTunnelSessionsInOnlineStatus(t *testing.T) {
 	}
 	if rows[0].item.OnlineAt != nil {
 		t.Fatalf("expected ended tunnel session to be offline, got %q", *rows[0].item.OnlineAt)
+	}
+	total, err = repo.usersOnlineTotal(context.Background(), usersFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 0 {
+		t.Fatalf("expected stale online_at to be ignored, got %d", total)
+	}
+	if _, err := db.Exec(`INSERT INTO user_online_ips (user_id, last_seen_at) VALUES (1, CURRENT_TIMESTAMP)`); err != nil {
+		t.Fatal(err)
+	}
+	total, err = repo.usersOnlineTotal(context.Background(), usersFilter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 {
+		t.Fatalf("expected fresh Xray activity to be online, got %d", total)
 	}
 }

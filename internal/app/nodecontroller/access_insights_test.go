@@ -56,6 +56,16 @@ INSERT INTO vpn_user_sessions (node_id, user_id, protocol, inbound_tag, session_
 	if err != nil {
 		t.Fatal(err)
 	}
+	total, err := NewRepository(db, "sqlite").OnlineAccessUserTotal(ctx, OnlineAccessQuery{
+		AdminID: &adminID,
+		Cutoff:  now.Add(-time.Minute),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if total != 1 {
+		t.Fatalf("online total=%d want=1", total)
+	}
 	if got, want := len(records), 6; got != want {
 		t.Fatalf("records=%d want=%d: %#v", got, want, records)
 	}

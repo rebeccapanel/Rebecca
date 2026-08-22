@@ -56,6 +56,7 @@ export type AccessInsightsResponse = {
 	};
 	platforms?: { platform: string; count: number; percent?: number }[];
 	matched_entries?: number;
+	online_total?: number;
 	error?: string;
 	detail?: string;
 	mode?: string;

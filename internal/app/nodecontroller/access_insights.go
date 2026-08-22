@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/rebeccapanel/rebecca/internal/app/online"
 )
 
 const maxAccessInsightRecords = 5000
@@ -15,6 +17,36 @@ type OnlineAccessQuery struct {
 	Search  string
 	Limit   int
 	Cutoff  time.Time
+}
+
+func (r Repository) OnlineAccessUserTotal(ctx context.Context, query OnlineAccessQuery) (int64, error) {
+	predicates := make([]string, 0, 2)
+	if ok, err := r.tableExists(ctx, "user_online_ips"); err != nil {
+		return 0, err
+	} else if ok {
+		predicates = append(predicates, online.XrayUserPredicate)
+	}
+	if ok, err := r.tableExists(ctx, "vpn_user_sessions"); err != nil {
+		return 0, err
+	} else if ok {
+		predicates = append(predicates, online.SessionUserPredicate)
+	}
+	if len(predicates) == 0 {
+		return 0, nil
+	}
+	cutoff := r.timeArg(accessRecordCutoff(query))
+	args := []any{"deleted"}
+	for range predicates {
+		args = append(args, cutoff)
+	}
+	clauses := []string{"u.status != ?", "(" + strings.Join(predicates, " OR ") + ")"}
+	if query.AdminID != nil && *query.AdminID > 0 {
+		clauses = append(clauses, "u.admin_id = ?")
+		args = append(args, *query.AdminID)
+	}
+	var total int64
+	err := r.db.QueryRowContext(ctx, "SELECT COUNT(u.id) FROM users u WHERE "+strings.Join(clauses, " AND "), args...).Scan(&total)
+	return total, err
 }
 
 func (r Repository) OnlineAccessRecords(ctx context.Context, query OnlineAccessQuery) ([]UserOnlineIPRecord, error) {

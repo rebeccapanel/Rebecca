@@ -136,7 +136,7 @@ VALUES (7, 42, 'ov', 'ov-main', 'ov-1', '10.66.0.2', '5.52.10.21', CURRENT_TIMES
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
 	}
-	for _, expected := range []string{`"user_label":"alice"`, `"used_traffic":123`, `"data_limit":456`, `"service_name":"Premium"`, `"platform":"Xray"`, `"platform":"OpenVPN"`, `"short_name":"Hamrah Aval"`} {
+	for _, expected := range []string{`"user_label":"alice"`, `"used_traffic":123`, `"data_limit":456`, `"service_name":"Premium"`, `"platform":"Xray"`, `"platform":"OpenVPN"`, `"short_name":"Hamrah Aval"`, `"online_total":1`} {
 		if !strings.Contains(recorder.Body.String(), expected) {
 			t.Fatalf("missing %s in %s", expected, recorder.Body.String())
 		}

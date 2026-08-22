@@ -241,17 +241,23 @@ func (s *Server) handleAccessInsights(w http.ResponseWriter, r *http.Request) {
 		id := principal.ID
 		adminID = &id
 	}
-	records, err := s.nodeController.OnlineAccessRecords(r.Context(), nodecontroller.OnlineAccessQuery{
+	query := nodecontroller.OnlineAccessQuery{
 		AdminID: adminID,
 		Search:  r.URL.Query().Get("search"),
 		Limit:   limit,
 		Cutoff:  time.Now().UTC().Add(-time.Duration(windowSeconds) * time.Second),
-	})
+	}
+	onlineTotal, err := s.nodeController.OnlineAccessUserTotal(r.Context(), query)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, s.buildAccessInsights(r.Context(), records, limit, windowSeconds))
+	records, err := s.nodeController.OnlineAccessRecords(r.Context(), query)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, s.buildAccessInsights(r.Context(), records, limit, windowSeconds, onlineTotal))
 }
 
 func (s *Server) handleAccessOperators(w http.ResponseWriter, r *http.Request) {
@@ -279,7 +285,7 @@ func (s *Server) handleAccessOperators(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"operators": operators})
 }
 
-func (s *Server) buildAccessInsights(ctx context.Context, records []nodecontroller.UserOnlineIPRecord, limit, windowSeconds int) map[string]any {
+func (s *Server) buildAccessInsights(ctx context.Context, records []nodecontroller.UserOnlineIPRecord, limit, windowSeconds int, onlineTotal int64) map[string]any {
 	groups := map[int64]*accessInsightGroup{}
 	order := make([]int64, 0, limit)
 	allIPs := []string{}
@@ -359,7 +365,7 @@ func (s *Server) buildAccessInsights(ctx context.Context, records []nodecontroll
 	sort.Slice(statuses, func(i, j int) bool { return statuses[i]["node_name"].(string) < statuses[j]["node_name"].(string) })
 	return map[string]any{
 		"mode": "sessions", "sources": sources, "source_statuses": statuses, "items": items,
-		"platform_counts": platformCounts, "matched_entries": len(records), "generated_at": time.Now().UTC(),
+		"platform_counts": platformCounts, "matched_entries": len(records), "online_total": onlineTotal, "generated_at": time.Now().UTC(),
 		"lookback_lines": len(records), "window_seconds": windowSeconds, "unmatched": []any{},
 	}
 }

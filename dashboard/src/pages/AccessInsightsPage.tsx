@@ -399,7 +399,7 @@ const AccessInsightsPage: FC = () => {
 					summaryItems={[
 						{
 							label: t("pages.accessInsights.onlineUsers"),
-							value: filteredItems.length,
+							value: data?.online_total ?? 0,
 							colorScheme: "green",
 						},
 						{

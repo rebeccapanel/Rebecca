@@ -17,9 +17,12 @@ import (
 	"github.com/rebeccapanel/rebecca/internal/app/nodecontroller"
 )
 
-const outboundTestDefaultURL = "https://www.google.com/generate_204"
+const (
+	outboundTestDefaultURL = "https://www.google.com/generate_204"
+	outboundTestTimeout    = 30 * time.Second
+)
 
-var outboundTestLock sync.Mutex
+const maxConcurrentOutboundTests = 2
 
 func (s *Server) handleCoreIPs(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
@@ -82,18 +85,8 @@ func (s *Server) handleOutboundTest(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if !outboundTestLock.TryLock() {
-		writeJSON(w, http.StatusOK, outboundTestEnvelope(nodecontroller.OutboundTestResult{
-			Success:  false,
-			Error:    "Another outbound test is already running, please wait",
-			TestType: testType,
-		}))
-		return
-	}
-	defer outboundTestLock.Unlock()
-
 	testURL := firstNonEmpty(stringFromAny(payload["test_url"]), stringFromAny(payload["testUrl"]), outboundTestDefaultURL)
-	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), outboundTestTimeout)
 	defer cancel()
 	result := s.runOutboundTest(ctx, nodeID, outbound, allOutbounds, testType, testURL)
 	writeJSON(w, http.StatusOK, outboundTestEnvelope(result))
@@ -128,35 +121,43 @@ func (s *Server) handleOutboundTests(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	testType := outboundTestType(payload)
-	if !outboundTestLock.TryLock() {
-		results := make([]map[string]any, 0, len(outbounds))
-		for range outbounds {
-			results = append(results, outboundTestObject(nodecontroller.OutboundTestResult{
-				Success:  false,
-				Error:    "Another outbound test is already running, please wait",
-				TestType: testType,
-			}))
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"success": true, "obj": results})
-		return
-	}
-	defer outboundTestLock.Unlock()
-
 	testURL := firstNonEmpty(stringFromAny(payload["test_url"]), stringFromAny(payload["testUrl"]), outboundTestDefaultURL)
-	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(max(30, len(outbounds)*15))*time.Second)
+	batches := (len(outbounds) + maxConcurrentOutboundTests - 1) / maxConcurrentOutboundTests
+	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(batches)*outboundTestTimeout)
 	defer cancel()
-	results := make([]map[string]any, 0, len(outbounds))
-	for _, outbound := range outbounds {
+	results := make([]map[string]any, len(outbounds))
+	type outboundTestJob struct {
+		index    int
+		outbound map[string]any
+	}
+	jobs := make([]outboundTestJob, 0, len(outbounds))
+	for index, outbound := range outbounds {
 		if err := validateOutboundTestRequest(outbound, testType); err != nil {
-			results = append(results, outboundTestObject(nodecontroller.OutboundTestResult{
+			results[index] = outboundTestObject(nodecontroller.OutboundTestResult{
 				Success:  false,
 				Error:    err.Error(),
 				TestType: testType,
-			}))
+			})
 			continue
 		}
-		results = append(results, outboundTestObject(s.runOutboundTest(ctx, nodeID, outbound, allOutbounds, testType, testURL)))
+		jobs = append(jobs, outboundTestJob{index: index, outbound: outbound})
 	}
+	queue := make(chan outboundTestJob)
+	var workers sync.WaitGroup
+	for range min(maxConcurrentOutboundTests, len(jobs)) {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for job := range queue {
+				results[job.index] = outboundTestObject(s.runOutboundTest(ctx, nodeID, job.outbound, allOutbounds, testType, testURL))
+			}
+		}()
+	}
+	for _, job := range jobs {
+		queue <- job
+	}
+	close(queue)
+	workers.Wait()
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "obj": results})
 }
 
@@ -195,14 +196,6 @@ func (s *Server) handleRouteTest(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "valid Xray config is required")
 		return
 	}
-	if !outboundTestLock.TryLock() {
-		writeJSON(w, http.StatusOK, map[string]any{"success": true, "obj": routeTestObject(nodecontroller.RouteTestResult{
-			Error: "Another Xray test is already running, please wait",
-		})})
-		return
-	}
-	defer outboundTestLock.Unlock()
-
 	ctx, cancel := context.WithTimeout(r.Context(), 35*time.Second)
 	defer cancel()
 	result, err := s.nodeController.TestRoute(ctx, nodecontroller.Request{

@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"strings"
 	"time"
+
+	"github.com/rebeccapanel/rebecca/internal/app/online"
 )
 
 type Repository struct {
@@ -223,10 +225,10 @@ func (r Repository) countUsers(ctx context.Context, adminID *int64, status strin
 }
 
 func (r Repository) onlineUsers(ctx context.Context, adminID *int64) (int64, error) {
-	cutoff := r.timeArg(time.Now().UTC().Add(-5 * time.Minute))
+	cutoff := r.timeArg(online.Cutoff(time.Now()))
 	clauses := []string{
 		"u.status != ?",
-		"(EXISTS (SELECT 1 FROM user_online_ips uoi WHERE uoi.user_id = u.id AND uoi.last_seen_at >= ?) OR EXISTS (SELECT 1 FROM vpn_user_sessions vus WHERE vus.user_id = u.id AND vus.ended_at IS NULL AND vus.last_seen_at >= ?))",
+		online.UserPredicate,
 	}
 	args := []any{"deleted", cutoff, cutoff}
 	if adminID != nil {

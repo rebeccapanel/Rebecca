@@ -12,11 +12,12 @@ import (
 	nodev1 "github.com/rebeccapanel/rebecca/internal/proto/node/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/rebeccapanel/rebecca/internal/app/online"
 )
 
 const (
-	onlineIPActiveWindow = 5 * time.Minute
-	ipBlockTTLSeconds    = uint32(2 * 60)
+	ipBlockTTLSeconds = uint32(2 * 60)
 )
 
 type OnlineIPSample struct {
@@ -63,7 +64,7 @@ type limiterEndpoint struct {
 }
 
 func onlineIPActiveCutoff() time.Time {
-	return time.Now().UTC().Add(-onlineIPActiveWindow)
+	return online.Cutoff(time.Now())
 }
 
 func onlineIPSamplesFromBatch(items []*nodev1.OnlineUserIP) []OnlineIPSample {
@@ -161,7 +162,7 @@ ON CONFLICT(node_id, user_id, protocol, ip) DO UPDATE SET last_seen_at = exclude
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM user_online_ips WHERE node_id = ? AND last_seen_at < ?`,
 		nodeID,
-		r.timeArg(time.Now().UTC().Add(-onlineIPActiveWindow*2)),
+		r.timeArg(time.Now().UTC().Add(-online.ActiveWindow*2)),
 	); err != nil {
 		return err
 	}
@@ -254,6 +255,10 @@ func (c Controller) UserOnlineIPs(ctx context.Context, userID int64) ([]UserOnli
 
 func (c Controller) OnlineAccessRecords(ctx context.Context, query OnlineAccessQuery) ([]UserOnlineIPRecord, error) {
 	return c.repo.OnlineAccessRecords(ctx, query)
+}
+
+func (c Controller) OnlineAccessUserTotal(ctx context.Context, query OnlineAccessQuery) (int64, error) {
+	return c.repo.OnlineAccessUserTotal(ctx, query)
 }
 
 func (c Controller) applyIPLimitBlocksForNode(ctx context.Context, client *nodeclient.Client, node NodeRow) error {
