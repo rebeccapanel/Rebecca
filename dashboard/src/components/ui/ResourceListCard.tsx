@@ -38,29 +38,31 @@ export const ResourceListCard: FC<ResourceListCardProps> = ({
 	const hasFooter = Boolean(children || footerActions);
 	const titleContent =
 		typeof title === "string" || typeof title === "number" ? (
-			<Text fontWeight="semibold">{title}</Text>
+			<Text fontWeight="bold" fontSize="lg">{title}</Text>
 		) : (
 			<Box w="full">{title}</Box>
 		);
 
 	return (
 		<Stack
-			spacing={3}
+			spacing={4}
 			w="full"
 			borderWidth="1px"
 			borderColor="panel.border"
-			borderRadius="md"
+			borderRadius="xl"
 			bg="panel.surface"
-			p={3}
+			p={{ base: 4, md: 5 }}
+			transition="all 0.25s ease"
+			_hover={{ "@media (min-width: 768px)": { boxShadow: "sm" } }}
 			{...props}
 		>
 			<Stack
 				direction={{ base: "column", xl: "row" }}
-				spacing={3}
+				spacing={4}
 				align={{ base: "stretch", xl: "flex-start" }}
 				justify="space-between"
 			>
-				<VStack align="flex-start" spacing={1} minW={{ base: "0", xl: "210px" }}>
+				<VStack align="flex-start" spacing={3} minW={{ base: "0", xl: "210px" }}>
 					{titleContent}
 					{summaryItems.length > 0 && (
 						<HStack spacing={2} flexWrap="wrap">
@@ -68,15 +70,19 @@ export const ResourceListCard: FC<ResourceListCardProps> = ({
 								const tag = (
 									<Tag
 										key={item.label}
-										size="sm"
+										size="md"
+										borderRadius="full"
+										px={3}
+										py={1}
 										colorScheme={item.colorScheme ?? "gray"}
 										variant="subtle"
+										fontWeight="medium"
 									>
-										{item.label}: {item.value}
+										{item.label}: <Text as="span" fontWeight="bold" ms={1}>{item.value}</Text>
 									</Tag>
 								);
 								return item.helper ? (
-									<Tooltip key={item.label} label={item.helper} hasArrow>
+									<Tooltip key={item.label} label={item.helper} hasArrow placement="top">
 										{tag}
 									</Tooltip>
 								) : (
@@ -86,15 +92,15 @@ export const ResourceListCard: FC<ResourceListCardProps> = ({
 						</HStack>
 					)}
 				</VStack>
-				{actions}
+				{actions && <Box>{actions}</Box>}
 			</Stack>
 
 			{hasFooter && (
 				<>
-					<Divider />
+					<Divider borderColor="panel.border" />
 					<Stack
 						direction={{ base: "column", xl: "row" }}
-						spacing={3}
+						spacing={4}
 						align={{ base: "stretch", xl: "center" }}
 						justify="space-between"
 					>
@@ -103,7 +109,7 @@ export const ResourceListCard: FC<ResourceListCardProps> = ({
 						</Stack>
 						{footerActions && (
 							<HStack
-								spacing={1.5}
+								spacing={2}
 								flexWrap="wrap"
 								justify={{ base: "flex-start", xl: "flex-end" }}
 							>
@@ -125,11 +131,11 @@ export const ResourceRefreshButton: FC<{
 	onClick: () => void;
 }> = ({ icon, label, ...props }) => {
 	const button = (
-		<IconButton variant="ghost" size="sm" icon={icon} {...props} />
+		<IconButton variant="ghost" size="sm" borderRadius="md" icon={icon} {...props} />
 	);
 
 	return label ? (
-		<Tooltip label={label}>
+		<Tooltip label={label} hasArrow placement="top">
 			<span>{button}</span>
 		</Tooltip>
 	) : (
