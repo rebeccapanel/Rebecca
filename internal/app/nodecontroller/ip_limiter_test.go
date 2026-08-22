@@ -29,6 +29,27 @@ func TestXrayIPBlocksForLimiterEndpoints(t *testing.T) {
 	}
 }
 
+func TestNormalizedOnlineIPSamplesDeduplicatesAndSorts(t *testing.T) {
+	base := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
+	got := normalizedOnlineIPSamples([]OnlineIPSample{
+		{UserID: 9, Protocol: "XRay", IP: "2001:0db8::1", LastSeenAt: base},
+		{UserID: 2, Protocol: "", IP: "203.0.113.2", LastSeenAt: base},
+		{UserID: 9, Protocol: "xray", IP: "2001:db8::1", LastSeenAt: base.Add(time.Second)},
+		{UserID: 0, Protocol: "xray", IP: "203.0.113.9", LastSeenAt: base},
+		{UserID: 3, Protocol: "xray", IP: "127.0.0.1", LastSeenAt: base},
+	})
+
+	if len(got) != 2 {
+		t.Fatalf("normalized sample count = %d, want 2: %#v", len(got), got)
+	}
+	if got[0].UserID != 2 || got[0].Protocol != "xray" || got[0].IP != "203.0.113.2" {
+		t.Fatalf("first normalized sample = %#v", got[0])
+	}
+	if got[1].UserID != 9 || got[1].IP != "2001:db8::1" || !got[1].LastSeenAt.Equal(base.Add(time.Second)) {
+		t.Fatalf("deduplicated sample = %#v", got[1])
+	}
+}
+
 func TestXrayIPBlocksForLimiterEndpointsUnlimited(t *testing.T) {
 	blocks := xrayIPBlocksForLimiterEndpoints([]limiterEndpoint{
 		{NodeID: 1, UserID: 42, Limit: 0, Protocol: "wg", IP: "198.51.100.10", LastSeenAt: time.Now()},

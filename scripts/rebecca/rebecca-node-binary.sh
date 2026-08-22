@@ -192,6 +192,24 @@ ui_is_tty() {
     [ -t 1 ] && [ -z "${NO_COLOR:-}" ]
 }
 
+ui_supports_cursor_motion() {
+    ui_is_tty && [ "${TERM:-dumb}" != "dumb" ]
+}
+
+ui_terminal_columns() {
+    local columns="${COLUMNS:-}"
+    if ! [[ "$columns" =~ ^[0-9]+$ ]] || [ "$columns" -lt 20 ]; then
+        columns=""
+        if command -v tput >/dev/null 2>&1; then
+            columns=$(tput cols 2>/dev/null || true)
+        fi
+    fi
+    if ! [[ "$columns" =~ ^[0-9]+$ ]] || [ "$columns" -lt 20 ]; then
+        columns=80
+    fi
+    printf "%s" "$columns"
+}
+
 ui_color() {
     local code="$1"
     shift || true
@@ -245,20 +263,33 @@ ui_menu_item() {
     local command="$2"
     local description="$3"
     local selected="${4:-0}"
+    local columns command_width=20 description_width command_label description_text
+    columns=$(ui_terminal_columns)
+    if [ "$columns" -lt 30 ]; then
+        command_width=$((columns - 10))
+    fi
+    [ "$command_width" -lt 1 ] && command_width=1
+    description_width=$((columns - 10 - command_width))
+    printf -v command_label "%-${command_width}.${command_width}s" "$command"
+    if [ "$description_width" -gt 0 ]; then
+        description_text="${description:0:$description_width}"
+    else
+        description_text=""
+    fi
     printf "  "
     if [ "$selected" = "1" ]; then
-        ui_color "38;5;16;48;5;45;1" " ▶ "
+        ui_color "38;5;16;48;5;45;1" " > "
     else
         printf "   "
     fi
     ui_color "38;5;45;1" "$(printf '%2s' "$number")"
     printf "  "
     if [ "$selected" = "1" ]; then
-        ui_color "38;5;231;1" "$(printf '%-18s' "$command")"
-        ui_color "38;5;231" "$description"
+        ui_color "38;5;231;1" "$command_label"
+        ui_color "38;5;231" "$description_text"
     else
-        ui_color "38;5;231;1" "$(printf '%-18s' "$command")"
-        ui_color "38;5;245" "$description"
+        ui_color "38;5;231;1" "$command_label"
+        ui_color "38;5;245" "$description_text"
     fi
     printf "\n"
 }
@@ -287,15 +318,21 @@ ui_read_menu_choice() {
             return
         ;;
         $'\033')
-            IFS= read -rsn2 -t 0.05 rest || true
+            rest=""
+            while [ "${#rest}" -lt 8 ] && IFS= read -rsn1 -t 0.05 key; do
+                rest="${rest}${key}"
+                case "$key" in
+                    [A-Za-z~]) break ;;
+                esac
+            done
             case "$rest" in
-                "[A")
+                *A)
                     selected=$((selected - 1))
                     [ "$selected" -lt 1 ] && selected="$total"
                     echo "move:$selected"
                     return
                 ;;
-                "[B")
+                *B)
                     selected=$((selected + 1))
                     [ "$selected" -gt "$total" ] && selected=1
                     echo "move:$selected"
@@ -1087,8 +1124,7 @@ create_binary_rebecca_node_service() {
     cat > "$BINARY_SERVICE_UNIT" <<EOF
 [Unit]
 Description=Rebecca-node
-After=network-online.target
-Wants=network-online.target
+After=network.target
 
 [Service]
 Type=simple
@@ -2448,7 +2484,7 @@ print_menu() {
     local selected="${1:-0}"
     local previous_category=""
     local idx=1
-    local cmd category desc is_selected
+    local cmd category desc is_selected columns tip_width tip
     ui_header "$APP_NAME" "Rebecca-node control center"
     ui_section "Status"
     print_node_menu_status_summary
@@ -2466,9 +2502,53 @@ print_menu() {
         idx=$((idx + 1))
     done
     printf "\n"
-    ui_color "38;5;245" "Tip: use ↑/↓ and Enter, or type a number/command directly. Press q to exit."
+    columns=$(ui_terminal_columns)
+    tip_width=$((columns - 1))
+    tip="Tip: arrow keys move, Enter selects, q exits; numbers and commands also work."
+    ui_color "38;5;245" "${tip:0:$tip_width}"
     printf "\n"
     echo
+}
+
+ui_menu_lines_below_item() {
+    local target="$1"
+    local idx=1 lines=4 previous_category="" cmd category
+    for cmd in $(menu_commands); do
+        category=$(menu_category_for "$cmd")
+        if [ "$idx" -gt "$target" ]; then
+            [ "$category" != "$previous_category" ] && lines=$((lines + 2))
+            lines=$((lines + 1))
+        fi
+        previous_category="$category"
+        idx=$((idx + 1))
+    done
+    printf "%s" "$lines"
+}
+
+ui_redraw_menu_item() {
+    local index="$1" selected="$2" distance
+    local commands=($(menu_commands))
+    local command="${commands[$((index - 1))]}"
+    distance=$(ui_menu_lines_below_item "$index")
+    printf "\033[%sA\r\033[2K" "$distance"
+    ui_menu_item "$index" "$command" "$(menu_description_for "$command")" "$selected"
+    if [ "$distance" -gt 1 ]; then
+        printf "\033[%sB\r" "$((distance - 1))"
+    fi
+}
+
+ui_menu_prompt() {
+    local columns prompt
+    columns=$(ui_terminal_columns)
+    if [ "$columns" -lt 30 ]; then
+        prompt="Select: "
+    elif [ "$columns" -lt 55 ]; then
+        prompt="Select (arrows/Enter/number): "
+    else
+        prompt="Select option (arrow keys, Enter, number, command): "
+    fi
+    prompt="${prompt:0:$((columns - 1))}"
+    ui_color "38;5;45;1" "$prompt"
 }
 
 map_choice_to_command() {
@@ -2482,7 +2562,7 @@ map_choice_to_command() {
 
 read_menu_command() {
     MENU_COMMAND=""
-    if ! ui_is_tty; then
+    if ! ui_supports_cursor_motion; then
         print_menu
         ui_color "38;5;45;1" "Select option"
         printf " "
@@ -2495,30 +2575,38 @@ read_menu_command() {
 
     local commands=($(menu_commands))
     local selected=1
-    local action kind value mapped
+    local action kind value mapped previous_selected
+    ui_clear
+    print_menu "$selected"
+    ui_menu_prompt
     while true; do
-        ui_clear
-        print_menu "$selected"
-        ui_color "38;5;45;1" "Select option"
-        printf " "
-        ui_color "38;5;245" "(↑/↓, Enter, number, command): "
         action=$(ui_read_menu_choice "$selected" "${#commands[@]}") || return 1
         kind="${action%%:*}"
         value="${action#*:}"
         case "$kind" in
             move)
+                previous_selected="$selected"
                 selected="$value"
+                if [ "$selected" -ne "$previous_selected" ]; then
+                    ui_redraw_menu_item "$previous_selected" 0
+                    ui_redraw_menu_item "$selected" 1
+                    printf "\r\033[2K"
+                    ui_menu_prompt
+                fi
             ;;
             enter)
                 MENU_COMMAND="${commands[$(($value - 1))]}"
+                printf "\n"
                 return
             ;;
             value)
                 mapped=$(map_choice_to_command "$value")
                 [ -n "$mapped" ] && MENU_COMMAND="$mapped"
+                printf "\n"
                 return
             ;;
             quit)
+                printf "\n"
                 return 1
             ;;
         esac

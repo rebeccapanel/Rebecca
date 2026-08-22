@@ -2,10 +2,13 @@ package xrayconfig
 
 import (
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"net"
+	"net/netip"
 	"regexp"
 	"strconv"
 	"strings"
@@ -14,6 +17,7 @@ import (
 const (
 	DefaultAPIHost = "127.0.0.1"
 	DefaultAPIPort = 8080
+	maxMKCPMTU     = int64(1<<32 - 1)
 )
 
 var proxyProtocols = map[string]struct{}{
@@ -52,7 +56,50 @@ var (
 	}
 	realityShortIDPattern  = regexp.MustCompile(`^[0-9a-fA-F]{2,16}$`)
 	xPaddingBytesPattern   = regexp.MustCompile(`^\d+(-\d+)?$`)
+	httpTokenPattern       = regexp.MustCompile("^[!#$%&'*+\\-.^_`|~0-9A-Za-z]+$")
 	xrayCoreVersionPattern = regexp.MustCompile(`(?:^|[^0-9])(\d+)\.(\d+)\.(\d+)(?:$|[^0-9])`)
+	xrayPrivateNetworks    = []netip.Prefix{
+		netip.MustParsePrefix("0.0.0.0/8"),
+		netip.MustParsePrefix("10.0.0.0/8"),
+		netip.MustParsePrefix("100.64.0.0/10"),
+		netip.MustParsePrefix("127.0.0.0/8"),
+		netip.MustParsePrefix("169.254.0.0/16"),
+		netip.MustParsePrefix("172.16.0.0/12"),
+		netip.MustParsePrefix("192.0.0.0/24"),
+		netip.MustParsePrefix("192.0.2.0/24"),
+		netip.MustParsePrefix("192.88.99.0/24"),
+		netip.MustParsePrefix("192.168.0.0/16"),
+		netip.MustParsePrefix("198.18.0.0/15"),
+		netip.MustParsePrefix("198.51.100.0/24"),
+		netip.MustParsePrefix("203.0.113.0/24"),
+		netip.MustParsePrefix("224.0.0.0/3"),
+		netip.MustParsePrefix("::/127"),
+		netip.MustParsePrefix("fc00::/7"),
+		netip.MustParsePrefix("fe80::/10"),
+		netip.MustParsePrefix("ff00::/8"),
+	}
+	xrayPrivateDomains = []string{
+		"lan",
+		"localdomain",
+		"example",
+		"invalid",
+		"localhost",
+		"test",
+		"local",
+		"home.arpa",
+		"internal",
+	}
+	xhttpSessionTables = map[string]string{
+		"ALPHABET": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+		"Alphabet": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+		"BASE36":   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+		"Base62":   "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz",
+		"HEX":      "0123456789ABCDEF",
+		"alphabet": "abcdefghijklmnopqrstuvwxyz",
+		"base36":   "0123456789abcdefghijklmnopqrstuvwxyz",
+		"hex":      "0123456789abcdef",
+		"number":   "0123456789",
+	}
 )
 
 type Options struct {
@@ -123,16 +170,782 @@ func NormalizePayload(payload map[string]any) map[string]any {
 
 // NormalizePayloadForXrayVersion prepares transport settings for the core
 // running on a particular node without changing the persisted panel config.
-func NormalizePayloadForXrayVersion(payload map[string]any, coreVersion string) map[string]any {
+func NormalizePayloadForXrayVersion(payload map[string]any, coreVersion string) (map[string]any, string) {
 	cfg := deepCopyMap(payload)
-	useMethod := xrayUsesTransportMethod(coreVersion)
-	for _, inbound := range listOfMaps(cfg["inbounds"]) {
-		normalizeStreamTransportMethod(mapValue(inbound["streamSettings"]), useMethod)
+	atLeast25829, knownVersion := xrayVersionAtLeast(coreVersion, 25, 8, 29)
+	atLeast26113, _ := xrayVersionAtLeast(coreVersion, 26, 1, 13)
+	atLeast26131, _ := xrayVersionAtLeast(coreVersion, 26, 1, 31)
+	atLeast2659, _ := xrayVersionAtLeast(coreVersion, 26, 5, 9)
+	mkcpTTIMaximum, _ := xrayMKCPTTIMax(coreVersion)
+	atLeast26711, _ := xrayVersionAtLeast(coreVersion, 26, 7, 11)
+	atLeast26327, _ := xrayVersionAtLeast(coreVersion, 26, 3, 27)
+	atLeast2661, _ := xrayVersionAtLeast(coreVersion, 26, 6, 1)
+	atLeast26622, _ := xrayVersionAtLeast(coreVersion, 26, 6, 22)
+	useSessionIDFields := atLeast26622
+	inbounds := listOfMaps(cfg["inbounds"])
+	outbounds := listOfMaps(cfg["outbounds"])
+	legacyInsecureTags := make([]string, 0)
+	invalidPinTags := make([]string, 0)
+	unknownTLSSyntaxTags := make([]string, 0)
+	normalizedMKCPTags := make([]string, 0)
+	incompatibleMKCPTags := make([]string, 0)
+	unknownMKCPTags := make([]string, 0)
+	incompatibleMKCPMTUTags := make([]string, 0)
+	unknownMKCPMTUTags := make([]string, 0)
+	incompatibleMKCPTTITags := make([]string, 0)
+	unknownMKCPTTITags := make([]string, 0)
+	normalizedFragmentTags := make([]string, 0)
+	incompatibleFragmentTags := make([]string, 0)
+	unknownFragmentTags := make([]string, 0)
+	vlessEncryptionTags := append(vlessEncryptionEndpointTags(inbounds), vlessEncryptionEndpointTags(outbounds)...)
+	vlessDefaultFlowTags := vlessDefaultFlowEndpointTags(inbounds)
+	for index, inbound := range inbounds {
+		stream := mapValue(inbound["streamSettings"])
+		normalizeStreamForXrayVersion(stream, atLeast26711, useSessionIDFields, knownVersion)
+		invalidPin, versionSensitive := normalizeTLSFieldsForXrayVersion(stream, atLeast26131, knownVersion)
+		label := configEndpointLabel(inbound, index)
+		if invalidPin {
+			invalidPinTags = append(invalidPinTags, label)
+		}
+		if versionSensitive && !knownVersion {
+			unknownTLSSyntaxTags = append(unknownTLSSyntaxTags, label)
+		}
+		switch normalizeLegacyMKCPForXrayVersion(stream, atLeast26131, atLeast2661, knownVersion) {
+		case mkcpNormalized:
+			normalizedMKCPTags = append(normalizedMKCPTags, label)
+		case mkcpIncompatible:
+			incompatibleMKCPTags = append(incompatibleMKCPTags, label)
+		case mkcpUnknownVersion:
+			unknownMKCPTags = append(unknownMKCPTags, label)
+		}
+		if incompatible, unknown := incompatibleMKCPMTU(stream, atLeast26131, knownVersion); incompatible {
+			incompatibleMKCPMTUTags = append(incompatibleMKCPMTUTags, label)
+		} else if unknown {
+			unknownMKCPMTUTags = append(unknownMKCPMTUTags, label)
+		}
+		if incompatible, unknown := incompatibleMKCPTTI(stream, mkcpTTIMaximum, knownVersion); incompatible {
+			incompatibleMKCPTTITags = append(incompatibleMKCPTTITags, label)
+		} else if unknown {
+			unknownMKCPTTITags = append(unknownMKCPTTITags, label)
+		}
+		switch normalizeFragmentFinalMaskForXrayVersion(stream, atLeast26622, knownVersion) {
+		case fragmentNormalized:
+			normalizedFragmentTags = append(normalizedFragmentTags, label)
+		case fragmentIncompatible:
+			incompatibleFragmentTags = append(incompatibleFragmentTags, label)
+		case fragmentUnknownVersion:
+			unknownFragmentTags = append(unknownFragmentTags, label)
+		}
 	}
-	for _, outbound := range listOfMaps(cfg["outbounds"]) {
-		normalizeStreamTransportMethod(mapValue(outbound["streamSettings"]), useMethod)
+	for index, outbound := range outbounds {
+		stream := mapValue(outbound["streamSettings"])
+		normalizeStreamForXrayVersion(stream, atLeast26711, useSessionIDFields, knownVersion)
+		invalidPin, versionSensitive := normalizeTLSFieldsForXrayVersion(stream, atLeast26131, knownVersion)
+		label := configEndpointLabel(outbound, index)
+		if invalidPin {
+			invalidPinTags = append(invalidPinTags, label)
+		}
+		if versionSensitive && !knownVersion {
+			unknownTLSSyntaxTags = append(unknownTLSSyntaxTags, label)
+		}
+		if normalizeOutboundAllowInsecureForXrayVersion(stream, atLeast26131, knownVersion) {
+			legacyInsecureTags = append(legacyInsecureTags, configEndpointLabel(outbound, index))
+		}
+		switch normalizeLegacyMKCPForXrayVersion(stream, atLeast26131, atLeast2661, knownVersion) {
+		case mkcpNormalized:
+			normalizedMKCPTags = append(normalizedMKCPTags, label)
+		case mkcpIncompatible:
+			incompatibleMKCPTags = append(incompatibleMKCPTags, label)
+		case mkcpUnknownVersion:
+			unknownMKCPTags = append(unknownMKCPTags, label)
+		}
+		if incompatible, unknown := incompatibleMKCPMTU(stream, atLeast26131, knownVersion); incompatible {
+			incompatibleMKCPMTUTags = append(incompatibleMKCPMTUTags, label)
+		} else if unknown {
+			unknownMKCPMTUTags = append(unknownMKCPMTUTags, label)
+		}
+		if incompatible, unknown := incompatibleMKCPTTI(stream, mkcpTTIMaximum, knownVersion); incompatible {
+			incompatibleMKCPTTITags = append(incompatibleMKCPTTITags, label)
+		} else if unknown {
+			unknownMKCPTTITags = append(unknownMKCPTTITags, label)
+		}
+		switch normalizeFragmentFinalMaskForXrayVersion(stream, atLeast26622, knownVersion) {
+		case fragmentNormalized:
+			normalizedFragmentTags = append(normalizedFragmentTags, label)
+		case fragmentIncompatible:
+			incompatibleFragmentTags = append(incompatibleFragmentTags, label)
+		case fragmentUnknownVersion:
+			unknownFragmentTags = append(unknownFragmentTags, label)
+		}
 	}
-	return cfg
+	warnings := make([]string, 0, 12)
+	if !knownVersion {
+		warnings = append(warnings, "Xray core version is unknown or invalid; using legacy transport naming, preserving both XHTTP session aliases, and preserving Hysteria settings")
+	} else {
+		if !atLeast26327 {
+			if tags := hysteriaEndpointTags(inbounds); len(tags) > 0 {
+				warnings = append(warnings, fmt.Sprintf("Xray before 26.3.27 does not support Hysteria 2 inbounds; preserving inbound settings for: %s", strings.Join(tags, ", ")))
+			}
+		} else {
+			normalized, incompatible := normalizeCompatibleHysteria2(inbounds)
+			if len(normalized) > 0 {
+				warnings = append(warnings, fmt.Sprintf("Normalized compatible Hysteria inbound runtime settings to version 2 for: %s", strings.Join(normalized, ", ")))
+			}
+			if len(incompatible) > 0 {
+				warnings = append(warnings, fmt.Sprintf("Hysteria inbound settings are not safely recognizable as version 2 and were preserved for: %s", strings.Join(incompatible, ", ")))
+			}
+		}
+		if !atLeast26113 {
+			if tags := hysteriaEndpointTags(outbounds); len(tags) > 0 {
+				warnings = append(warnings, fmt.Sprintf("This Xray version predates the first released Hysteria 2 outbound transport; preserving outbound settings for: %s", strings.Join(tags, ", ")))
+			}
+		} else {
+			normalized, incompatible := normalizeCompatibleHysteria2(outbounds)
+			if len(normalized) > 0 {
+				warnings = append(warnings, fmt.Sprintf("Normalized compatible Hysteria outbound runtime settings to version 2 for: %s", strings.Join(normalized, ", ")))
+			}
+			if len(incompatible) > 0 {
+				warnings = append(warnings, fmt.Sprintf("Hysteria outbound settings are not safely recognizable as version 2 and were preserved for: %s", strings.Join(incompatible, ", ")))
+			}
+		}
+	}
+	if tags := hysteriaGeckoEndpointTags(append(append([]map[string]any{}, inbounds...), outbounds...)); len(tags) > 0 {
+		switch {
+		case !knownVersion:
+			warnings = append(warnings, fmt.Sprintf("Xray core version is unknown; Hysteria Gecko FinalMask support starts at 26.6.1 and settings were preserved for: %s", strings.Join(tags, ", ")))
+		case !atLeast2661:
+			warnings = append(warnings, fmt.Sprintf("Xray before 26.6.1 cannot run Hysteria Gecko FinalMask; settings were preserved without semantic downgrade for: %s", strings.Join(tags, ", ")))
+		}
+	}
+	if len(vlessEncryptionTags) > 0 {
+		switch {
+		case !knownVersion:
+			warnings = append(warnings, fmt.Sprintf("Xray core version is unknown; VLESS Encryption support starts at 26.5.9 and non-none settings were preserved without downgrade for: %s", strings.Join(vlessEncryptionTags, ", ")))
+		case !atLeast2659:
+			warnings = append(warnings, fmt.Sprintf("Xray before 26.5.9 does not accept VLESS Encryption decryption/encryption values; settings were preserved without downgrade for: %s", strings.Join(vlessEncryptionTags, ", ")))
+		}
+	}
+	if len(vlessDefaultFlowTags) > 0 {
+		switch {
+		case !knownVersion:
+			warnings = append(warnings, fmt.Sprintf("Xray core version is unknown; VLESS inbound default flow support starts at 25.8.29 and settings were preserved for: %s", strings.Join(vlessDefaultFlowTags, ", ")))
+		case !atLeast25829:
+			warnings = append(warnings, fmt.Sprintf("Xray before 25.8.29 does not support VLESS inbound default flow; settings were preserved without downgrade for: %s", strings.Join(vlessDefaultFlowTags, ", ")))
+		}
+	}
+	if atLeast26711 {
+		flatTags, nestedTags := insecurePublicOutboundTags(outbounds)
+		if len(flatTags) > 0 {
+			warnings = append(warnings, fmt.Sprintf("Xray 26.7.11+ rejects flat unencrypted VLESS/Trojan outbounds for public destinations. Add TLS, REALITY, or VLESS encryption to: %s", strings.Join(flatTags, ", ")))
+		}
+		if len(nestedTags) > 0 {
+			warnings = append(warnings, fmt.Sprintf("Official VLESS transport-security guidance treats unencrypted public destinations as unsafe. These legacy nested VLESS/Trojan outbounds are not covered by Xray's flat-config rejection and were preserved without auto-TLS mutation: %s", strings.Join(nestedTags, ", ")))
+		}
+	}
+	if len(legacyInsecureTags) > 0 {
+		switch {
+		case !knownVersion:
+			warnings = append(warnings, fmt.Sprintf("Xray core version is unknown; tlsSettings.allowInsecure stays metadata-only because Xray 26.1.31+ requires certificate pinning or peer-name verification for: %s", strings.Join(legacyInsecureTags, ", ")))
+		case atLeast26131:
+			warnings = append(warnings, fmt.Sprintf("Xray 26.1.31+ removed tlsSettings.allowInsecure; it was omitted from runtime config and certificate pinning or peer-name verification is required for: %s", strings.Join(legacyInsecureTags, ", ")))
+		}
+	}
+	if len(invalidPinTags) > 0 {
+		warnings = append(warnings, fmt.Sprintf("Malformed pinnedPeerCertSha256 values could not be converted safely and were preserved for: %s", strings.Join(invalidPinTags, ", ")))
+	}
+	if len(unknownTLSSyntaxTags) > 0 {
+		warnings = append(warnings, fmt.Sprintf("Xray core version is unknown; preserving canonical TLS pin and peer-name syntax without emitting mutually incompatible aliases for: %s", strings.Join(unknownTLSSyntaxTags, ", ")))
+	}
+	if len(normalizedMKCPTags) > 0 {
+		warnings = append(warnings, fmt.Sprintf("Moved legacy mKCP header/seed semantics to version-compatible FinalMask for: %s", strings.Join(normalizedMKCPTags, ", ")))
+	}
+	if len(incompatibleMKCPTags) > 0 {
+		warnings = append(warnings, fmt.Sprintf("Legacy mKCP header/seed settings could not be translated losslessly and were preserved for: %s", strings.Join(incompatibleMKCPTags, ", ")))
+	}
+	if len(unknownMKCPTags) > 0 {
+		warnings = append(warnings, fmt.Sprintf("Xray core version is unknown; preserving version-sensitive legacy mKCP header/seed settings for: %s", strings.Join(unknownMKCPTags, ", ")))
+	}
+	if len(incompatibleMKCPMTUTags) > 0 {
+		warnings = append(warnings, fmt.Sprintf("Xray before 26.1.31 accepts mKCP mtu only from 576 through 1460; other canonical values were preserved without clamping for: %s", strings.Join(incompatibleMKCPMTUTags, ", ")))
+	}
+	if len(unknownMKCPMTUTags) > 0 {
+		warnings = append(warnings, fmt.Sprintf("Xray core version is unknown; mKCP mtu outside the legacy 576 through 1460 range is version-sensitive and was preserved without clamping for: %s", strings.Join(unknownMKCPMTUTags, ", ")))
+	}
+	if len(incompatibleMKCPTTITags) > 0 {
+		warnings = append(warnings, fmt.Sprintf("This Xray version accepts mKCP tti only up to %d ms; larger values were preserved without clamping for: %s", mkcpTTIMaximum, strings.Join(incompatibleMKCPTTITags, ", ")))
+	}
+	if len(unknownMKCPTTITags) > 0 {
+		warnings = append(warnings, fmt.Sprintf("Xray core version is unknown; mKCP tti above the conservative 100 ms limit is version-sensitive and was preserved without clamping for: %s", strings.Join(unknownMKCPTTITags, ", ")))
+	}
+	if len(normalizedFragmentTags) > 0 {
+		warnings = append(warnings, fmt.Sprintf("Normalized FinalMask fragment length/delay aliases for this Xray version for: %s", strings.Join(normalizedFragmentTags, ", ")))
+	}
+	if len(incompatibleFragmentTags) > 0 {
+		warnings = append(warnings, fmt.Sprintf("FinalMask fragment arrays with multiple ranges cannot be represented losslessly before Xray 26.6.22 and were preserved for: %s", strings.Join(incompatibleFragmentTags, ", ")))
+	}
+	if len(unknownFragmentTags) > 0 {
+		warnings = append(warnings, fmt.Sprintf("Xray core version is unknown; preserving version-sensitive FinalMask fragment lengths/delays arrays for: %s", strings.Join(unknownFragmentTags, ", ")))
+	}
+	if tags := removedTransportEndpointTags(append(append([]map[string]any{}, inbounds...), outbounds...)); len(tags) > 0 && (!knownVersion || atLeast26131) {
+		if knownVersion {
+			warnings = append(warnings, fmt.Sprintf("Xray 26.1.31+ removed HTTP/H2/H3 and QUIC transports; migrate HTTP to XHTTP stream-one and review QUIC security/key/header semantics for: %s", strings.Join(tags, ", ")))
+		} else {
+			warnings = append(warnings, fmt.Sprintf("Xray core version is unknown; HTTP/H2/H3 and QUIC transports are removed in 26.1.31+ and were preserved without a lossy migration for: %s", strings.Join(tags, ", ")))
+		}
+	}
+	return cfg, strings.Join(warnings, "; ")
+}
+
+func normalizeOutboundAllowInsecureForXrayVersion(stream map[string]any, atLeast26131 bool, knownVersion bool) bool {
+	if len(stream) == 0 {
+		return false
+	}
+	tlsSettings := mapValue(stream["tlsSettings"])
+	if len(tlsSettings) == 0 {
+		return false
+	}
+	metadata := mapValue(tlsSettings["settings"])
+	if allow, exists := tlsSettings["allowInsecure"]; exists {
+		if _, preserved := metadata["allowInsecure"]; !preserved {
+			metadata["allowInsecure"] = allow
+		}
+		delete(tlsSettings, "allowInsecure")
+	}
+	allow, exists := metadata["allowInsecure"]
+	if !exists {
+		stream["tlsSettings"] = tlsSettings
+		return false
+	}
+	tlsSettings["settings"] = metadata
+	if knownVersion && !atLeast26131 {
+		tlsSettings["allowInsecure"] = allow
+	}
+	stream["tlsSettings"] = tlsSettings
+	return boolValue(allow)
+}
+
+func normalizeTLSFieldsForXrayVersion(stream map[string]any, atLeast26131 bool, knownVersion bool) (invalidPin bool, versionSensitive bool) {
+	tlsSettings := mapValue(stream["tlsSettings"])
+	if len(tlsSettings) == 0 {
+		return false, false
+	}
+	if pin := strings.TrimSpace(joinStringList(tlsSettings["pinnedPeerCertSha256"])); pin != "" {
+		versionSensitive = true
+		pins, valid := parseXrayCertificatePins(pin)
+		if !valid {
+			invalidPin = true
+		} else if knownVersion && atLeast26131 {
+			tlsSettings["pinnedPeerCertSha256"] = strings.Join(pins, ",")
+		} else if knownVersion {
+			for index, value := range pins {
+				pins[index] = strings.ReplaceAll(value, ":", "")
+			}
+			tlsSettings["pinnedPeerCertSha256"] = strings.Join(pins, "~")
+		}
+	}
+	byName := stringList(tlsSettings["verifyPeerCertByName"])
+	inNames := stringList(tlsSettings["verifyPeerCertInNames"])
+	if len(byName) > 0 || len(inNames) > 0 {
+		versionSensitive = true
+		names := byName
+		if len(names) == 0 {
+			names = inNames
+		}
+		if knownVersion && !atLeast26131 {
+			tlsSettings["verifyPeerCertInNames"] = names
+			delete(tlsSettings, "verifyPeerCertByName")
+		} else {
+			tlsSettings["verifyPeerCertByName"] = strings.Join(names, ",")
+			delete(tlsSettings, "verifyPeerCertInNames")
+		}
+	}
+	stream["tlsSettings"] = tlsSettings
+	return invalidPin, versionSensitive
+}
+
+func parseXrayCertificatePins(raw string) ([]string, bool) {
+	normalized := strings.ReplaceAll(strings.TrimSpace(raw), "~", ",")
+	if normalized == "" {
+		return nil, false
+	}
+	parts := strings.Split(normalized, ",")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		value := strings.TrimSpace(part)
+		compact := strings.ReplaceAll(value, ":", "")
+		if len(compact) != 64 {
+			return nil, false
+		}
+		decoded, err := hex.DecodeString(compact)
+		if err != nil || len(decoded) != 32 {
+			return nil, false
+		}
+		result = append(result, value)
+	}
+	return result, len(result) > 0
+}
+
+type mkcpNormalization int
+
+const (
+	mkcpUnchanged mkcpNormalization = iota
+	mkcpNormalized
+	mkcpIncompatible
+	mkcpUnknownVersion
+)
+
+func normalizeLegacyMKCPForXrayVersion(stream map[string]any, atLeast26131, atLeast2661, knownVersion bool) mkcpNormalization {
+	if streamNetwork(stream) != "kcp" {
+		return mkcpUnchanged
+	}
+	settings := mapValue(stream["kcpSettings"])
+	headerValue, headerExists := settings["header"]
+	seedValue, seedExists := settings["seed"]
+	headerExists = headerExists && headerValue != nil
+	seedExists = seedExists && seedValue != nil
+	if !headerExists && !seedExists {
+		return mkcpUnchanged
+	}
+	if !knownVersion {
+		return mkcpUnknownVersion
+	}
+	if !atLeast26131 {
+		return mkcpUnchanged
+	}
+	headerType := "none"
+	headerDomain := ""
+	if headerExists {
+		header := mapValue(headerValue)
+		headerType = strings.ToLower(strings.TrimSpace(stringValue(header["type"])))
+		if headerType == "" {
+			headerType = "none"
+		}
+		headerDomain = strings.TrimSpace(stringValue(header["domain"]))
+	}
+	headerType = normalizeLegacyMKCPHeader(headerType)
+	if headerType == "invalid" {
+		return mkcpIncompatible
+	}
+	seed := stringValue(seedValue)
+	masks := make([]any, 0, 2)
+	if atLeast2661 {
+		masks = append(masks, map[string]any{"type": "mkcp-legacy", "settings": map[string]any{"header": "", "value": seed}})
+		if headerType != "none" {
+			value := ""
+			if headerType == "dns" {
+				value = headerDomain
+			}
+			masks = append(masks, map[string]any{"type": "mkcp-legacy", "settings": map[string]any{"header": headerType, "value": value}})
+		}
+	} else {
+		if seedExists {
+			masks = append(masks, map[string]any{"type": "mkcp-aes128gcm", "settings": map[string]any{"password": seed}})
+		} else {
+			masks = append(masks, map[string]any{"type": "mkcp-original", "settings": map[string]any{}})
+		}
+		if headerType != "none" {
+			settings := map[string]any{}
+			if headerType == "dns" && headerDomain != "" {
+				settings["domain"] = headerDomain
+			}
+			masks = append(masks, map[string]any{"type": "header-" + headerType, "settings": settings})
+		}
+	}
+	finalMask := mapValue(stream["finalmask"])
+	if existing, ok := finalMask["udp"].([]any); ok {
+		if len(existing) > 0 {
+			outerType := strings.ToLower(strings.TrimSpace(stringValue(mapValue(existing[0])["type"])))
+			if outerType == "realm" || outerType == "xicmp" {
+				masks = append(append([]any{existing[0]}, masks...), existing[1:]...)
+			} else {
+				masks = append(masks, existing...)
+			}
+		}
+	}
+	finalMask["udp"] = masks
+	stream["finalmask"] = finalMask
+	delete(settings, "header")
+	delete(settings, "seed")
+	stream["kcpSettings"] = settings
+	return mkcpNormalized
+}
+
+func normalizeLegacyMKCPHeader(value string) string {
+	switch value {
+	case "", "none":
+		return "none"
+	case "dns", "dtls", "srtp", "utp", "wireguard":
+		return value
+	case "wechat", "wechat-video":
+		return "wechat"
+	default:
+		return "invalid"
+	}
+}
+
+func xrayMKCPTTIMax(coreVersion string) (int, bool) {
+	atLeast26323, known := xrayVersionAtLeast(coreVersion, 26, 3, 23)
+	if !known {
+		return 100, false
+	}
+	atLeast26413, _ := xrayVersionAtLeast(coreVersion, 26, 4, 13)
+	if atLeast26413 {
+		return 1000, true
+	}
+	if atLeast26323 {
+		return 5000, true
+	}
+	return 100, true
+}
+
+func incompatibleMKCPTTI(stream map[string]any, maximum int, knownVersion bool) (incompatible bool, unknown bool) {
+	if streamNetwork(stream) != "kcp" {
+		return false, false
+	}
+	tti := intValue(mapValue(stream["kcpSettings"])["tti"])
+	if tti <= 100 {
+		return false, false
+	}
+	if !knownVersion {
+		return false, true
+	}
+	return tti > maximum, false
+}
+
+func incompatibleMKCPMTU(stream map[string]any, atLeast26131, knownVersion bool) (incompatible bool, unknown bool) {
+	if streamNetwork(stream) != "kcp" {
+		return false, false
+	}
+	mtu, err := strconv.ParseInt(strings.TrimSpace(stringValue(mapValue(stream["kcpSettings"])["mtu"])), 10, 64)
+	if err != nil || mtu == 0 || (mtu >= 576 && mtu <= 1460) {
+		return false, false
+	}
+	if !knownVersion {
+		return false, true
+	}
+	return !atLeast26131, false
+}
+
+type fragmentNormalization int
+
+const (
+	fragmentUnchanged fragmentNormalization = iota
+	fragmentNormalized
+	fragmentIncompatible
+	fragmentUnknownVersion
+)
+
+func normalizeFragmentFinalMaskForXrayVersion(stream map[string]any, usePlural, knownVersion bool) fragmentNormalization {
+	finalMask := mapValue(stream["finalmask"])
+	tcpMasks := listOfMaps(finalMask["tcp"])
+	if len(tcpMasks) == 0 {
+		return fragmentUnchanged
+	}
+	if status := fragmentFinalMaskCompatibility(tcpMasks, usePlural, knownVersion); status != fragmentUnchanged {
+		return status
+	}
+	changed := false
+	for _, mask := range tcpMasks {
+		if !strings.EqualFold(stringValue(mask["type"]), "fragment") {
+			continue
+		}
+		settings := mapValue(mask["settings"])
+		for _, pair := range [][2]string{{"lengths", "length"}, {"delays", "delay"}} {
+			plural, singular := pair[0], pair[1]
+			values, hasValues := anyList(settings[plural])
+			singularValue, hasSingular := settings[singular]
+			if usePlural {
+				if !hasValues && hasSingular {
+					settings[plural] = []any{singularValue}
+					delete(settings, singular)
+					changed = true
+				} else if hasValues && hasSingular {
+					delete(settings, singular)
+					changed = true
+				}
+				continue
+			}
+			if !hasValues {
+				continue
+			}
+			settings[singular] = values[0]
+			delete(settings, plural)
+			changed = true
+		}
+		mask["settings"] = settings
+	}
+	if changed {
+		return fragmentNormalized
+	}
+	return fragmentUnchanged
+}
+
+func fragmentFinalMaskCompatibility(tcpMasks []map[string]any, usePlural, knownVersion bool) fragmentNormalization {
+	for _, mask := range tcpMasks {
+		if !strings.EqualFold(stringValue(mask["type"]), "fragment") {
+			continue
+		}
+		settings := mapValue(mask["settings"])
+		if !knownVersion && (isList(settings["lengths"]) || isList(settings["delays"])) {
+			return fragmentUnknownVersion
+		}
+		for _, pair := range [][2]string{{"lengths", "length"}, {"delays", "delay"}} {
+			values, hasValues := anyList(settings[pair[0]])
+			singularValue, hasSingular := settings[pair[1]]
+			if usePlural {
+				if hasValues && hasSingular && (len(values) != 1 || stringValue(values[0]) != stringValue(singularValue)) {
+					return fragmentIncompatible
+				}
+				continue
+			}
+			if hasValues && (len(values) != 1 || (hasSingular && stringValue(values[0]) != stringValue(singularValue))) {
+				return fragmentIncompatible
+			}
+		}
+	}
+	return fragmentUnchanged
+}
+
+func anyList(value any) ([]any, bool) {
+	switch typed := value.(type) {
+	case []any:
+		return typed, true
+	case []string:
+		values := make([]any, len(typed))
+		for index, item := range typed {
+			values[index] = item
+		}
+		return values, true
+	default:
+		return nil, false
+	}
+}
+
+func removedTransportEndpointTags(endpoints []map[string]any) []string {
+	tags := make([]string, 0)
+	for index, endpoint := range endpoints {
+		switch streamNetwork(mapValue(endpoint["streamSettings"])) {
+		case "http", "h2", "h3", "quic":
+			tags = append(tags, configEndpointLabel(endpoint, index))
+		}
+	}
+	return tags
+}
+
+func hysteriaEndpointTags(endpoints []map[string]any) []string {
+	tags := make([]string, 0)
+	for index, endpoint := range endpoints {
+		if strings.EqualFold(stringValue(endpoint["protocol"]), "hysteria") {
+			tags = append(tags, configEndpointLabel(endpoint, index))
+		}
+	}
+	return tags
+}
+
+func normalizeCompatibleHysteria2(endpoints []map[string]any) (normalized []string, incompatible []string) {
+	for index, endpoint := range endpoints {
+		if !strings.EqualFold(stringValue(endpoint["protocol"]), "hysteria") {
+			continue
+		}
+		label := configEndpointLabel(endpoint, index)
+		settings := mapValue(endpoint["settings"])
+		stream := mapValue(endpoint["streamSettings"])
+		hysteria := mapValue(stream["hysteriaSettings"])
+		if !hysteria2ProtocolShapeCompatible(settings) || len(hysteria) == 0 ||
+			!strings.EqualFold(firstNonEmptyString(stream["method"], stream["network"]), "hysteria") ||
+			!strings.EqualFold(stringValue(stream["security"]), "tls") ||
+			!hysteriaVersionCompatible(settings["version"]) || !hysteriaVersionCompatible(hysteria["version"]) {
+			incompatible = append(incompatible, label)
+			continue
+		}
+		changed := intValue(settings["version"]) != 2 || intValue(hysteria["version"]) != 2
+		settings["version"] = 2
+		hysteria["version"] = 2
+		if changed {
+			normalized = append(normalized, label)
+		}
+	}
+	return normalized, incompatible
+}
+
+func hysteria2ProtocolShapeCompatible(settings map[string]any) bool {
+	if _, hasClients := settings["clients"]; hasClients {
+		return true
+	}
+	return strings.TrimSpace(stringValue(settings["address"])) != "" && intValue(settings["port"]) > 0
+}
+
+func hysteriaVersionCompatible(value any) bool {
+	version := intValue(value)
+	return version == 0 || version == 2
+}
+
+func hysteriaGeckoEndpointTags(endpoints []map[string]any) []string {
+	tags := make([]string, 0)
+	for index, endpoint := range endpoints {
+		stream := mapValue(endpoint["streamSettings"])
+		if streamNetwork(stream) != "hysteria" {
+			continue
+		}
+		for _, mask := range listOfMaps(mapValue(stream["finalmask"])["udp"]) {
+			if strings.EqualFold(stringValue(mask["type"]), "salamander") && stringValue(mapValue(mask["settings"])["packetSize"]) != "" {
+				tags = append(tags, configEndpointLabel(endpoint, index))
+				break
+			}
+		}
+	}
+	return tags
+}
+
+func configEndpointLabel(endpoint map[string]any, index int) string {
+	if tag := strings.TrimSpace(stringValue(endpoint["tag"])); tag != "" {
+		return tag
+	}
+	return fmt.Sprintf("endpoint #%d", index+1)
+}
+
+func insecurePublicOutboundTags(outbounds []map[string]any) (flatTags, nestedTags []string) {
+	for index, outbound := range outbounds {
+		protocol := strings.ToLower(stringValue(outbound["protocol"]))
+		if protocol != "vless" && protocol != "trojan" {
+			continue
+		}
+		security := strings.ToLower(stringValue(mapValue(outbound["streamSettings"])["security"]))
+		if security != "" && security != "none" {
+			continue
+		}
+		settings := mapValue(outbound["settings"])
+		flat, nested := unencryptedPublicDestinationShapes(protocol, settings)
+		if !flat && !nested {
+			continue
+		}
+		tag := stringValue(outbound["tag"])
+		if tag == "" {
+			tag = fmt.Sprintf("outbound #%d", index+1)
+		}
+		if flat {
+			flatTags = append(flatTags, tag)
+		}
+		if nested {
+			nestedTags = append(nestedTags, tag)
+		}
+	}
+	return flatTags, nestedTags
+}
+
+func unencryptedPublicDestinationShapes(protocol string, settings map[string]any) (flat, nested bool) {
+	if protocol == "trojan" {
+		if isXrayPublicDestination(stringValue(settings["address"])) {
+			flat = true
+		}
+		for _, server := range listOfMaps(settings["servers"]) {
+			if isXrayPublicDestination(stringValue(server["address"])) {
+				nested = true
+				break
+			}
+		}
+		return flat, nested
+	}
+
+	if isXrayPublicDestination(stringValue(settings["address"])) && !vlessEncryptionEnabled(settings["encryption"]) {
+		flat = true
+	}
+	for _, server := range listOfMaps(settings["vnext"]) {
+		if !isXrayPublicDestination(stringValue(server["address"])) {
+			continue
+		}
+		users := listOfMaps(server["users"])
+		if len(users) == 0 {
+			nested = true
+			continue
+		}
+		for _, user := range users {
+			if !vlessEncryptionEnabled(user["encryption"]) {
+				nested = true
+				break
+			}
+		}
+	}
+	return flat, nested
+}
+
+func vlessEncryptionEnabled(value any) bool {
+	encryption := strings.ToLower(stringValue(value))
+	return encryption != "" && encryption != "none"
+}
+
+func vlessEncryptionEndpointTags(endpoints []map[string]any) []string {
+	tags := make([]string, 0)
+	for index, endpoint := range endpoints {
+		if !strings.EqualFold(stringValue(endpoint["protocol"]), "vless") {
+			continue
+		}
+		settings := mapValue(endpoint["settings"])
+		enabled := vlessEncryptionEnabled(settings["decryption"]) || vlessEncryptionEnabled(settings["encryption"])
+		for _, server := range listOfMaps(settings["vnext"]) {
+			for _, user := range listOfMaps(server["users"]) {
+				enabled = enabled || vlessEncryptionEnabled(user["encryption"])
+			}
+		}
+		if enabled {
+			tags = append(tags, configEndpointLabel(endpoint, index))
+		}
+	}
+	return tags
+}
+
+func vlessDefaultFlowEndpointTags(inbounds []map[string]any) []string {
+	tags := make([]string, 0)
+	for index, inbound := range inbounds {
+		if !strings.EqualFold(stringValue(inbound["protocol"]), "vless") {
+			continue
+		}
+		settings := mapValue(inbound["settings"])
+		flow := firstNonEmptyString(settings["flow"])
+		if flow != "" {
+			tags = append(tags, configEndpointLabel(inbound, index))
+		}
+	}
+	return tags
+}
+
+func isXrayPublicDestination(value string) bool {
+	return strings.TrimSpace(value) != "" && !isXrayPrivateDestination(value)
+}
+
+func isXrayPrivateDestination(value string) bool {
+	host := strings.ToLower(strings.TrimSuffix(strings.TrimSpace(value), "."))
+	if host == "" {
+		return true
+	}
+	if address, err := netip.ParseAddr(strings.Trim(host, "[]")); err == nil {
+		address = address.Unmap()
+		for _, network := range xrayPrivateNetworks {
+			if network.Contains(address) {
+				return true
+			}
+		}
+		return false
+	}
+	if !strings.Contains(host, ".") {
+		return true
+	}
+	for _, domain := range xrayPrivateDomains {
+		if host == domain || strings.HasSuffix(host, "."+domain) {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeStreamForXrayVersion(stream map[string]any, useMethod, useSessionIDFields, knownVersion bool) {
+	normalizeStreamTransportMethod(stream, useMethod)
+	for _, key := range []string{"xhttpSettings", "splithttpSettings"} {
+		settings := mapValue(stream[key])
+		if len(settings) > 0 {
+			normalizeXHTTPSessionFields(settings, useSessionIDFields, knownVersion)
+		}
+	}
 }
 
 func normalizeStreamTransportMethod(stream map[string]any, useMethod bool) {
@@ -152,14 +965,92 @@ func normalizeStreamTransportMethod(stream map[string]any, useMethod bool) {
 	delete(stream, "method")
 }
 
-func xrayUsesTransportMethod(coreVersion string) bool {
+func normalizeXHTTPSessionFields(settings map[string]any, useSessionIDFields, knownVersion bool) {
+	placement := firstNonEmptyString(settings["sessionIDPlacement"], settings["sessionPlacement"])
+	key := firstNonEmptyString(settings["sessionIDKey"], settings["sessionKey"])
+	table, hasTable := firstXHTTPAliasValue(settings, "sessionIDTable", "sessionTable")
+	length, hasLength := firstXHTTPAliasValue(settings, "sessionIDLength", "sessionLength")
+	if !knownVersion {
+		if placement != "" {
+			settings["sessionIDPlacement"] = placement
+			settings["sessionPlacement"] = placement
+		}
+		if key != "" {
+			settings["sessionIDKey"] = key
+			settings["sessionKey"] = key
+		}
+		if hasTable {
+			settings["sessionIDTable"] = table
+			settings["sessionTable"] = table
+		}
+		if hasLength {
+			settings["sessionIDLength"] = length
+			settings["sessionLength"] = length
+		}
+		return
+	}
+	if useSessionIDFields {
+		if placement != "" {
+			settings["sessionIDPlacement"] = placement
+		}
+		if key != "" {
+			settings["sessionIDKey"] = key
+		}
+		if hasTable {
+			settings["sessionIDTable"] = table
+		}
+		if hasLength {
+			settings["sessionIDLength"] = length
+		}
+		delete(settings, "sessionPlacement")
+		delete(settings, "sessionKey")
+		delete(settings, "sessionTable")
+		delete(settings, "sessionLength")
+		return
+	}
+	if placement != "" {
+		settings["sessionPlacement"] = placement
+	}
+	if key != "" {
+		settings["sessionKey"] = key
+	}
+	if hasTable {
+		settings["sessionTable"] = table
+	}
+	if hasLength {
+		settings["sessionLength"] = length
+	}
+	delete(settings, "sessionIDPlacement")
+	delete(settings, "sessionIDKey")
+	delete(settings, "sessionIDTable")
+	delete(settings, "sessionIDLength")
+}
+
+func firstXHTTPAliasValue(settings map[string]any, current, legacy string) (any, bool) {
+	if value, ok := settings[current]; ok && value != nil && strings.TrimSpace(stringValue(value)) != "" {
+		return value, true
+	}
+	if value, ok := settings[legacy]; ok && value != nil && strings.TrimSpace(stringValue(value)) != "" {
+		return value, true
+	}
+	return nil, false
+}
+
+func xrayVersionAtLeast(coreVersion string, wantMajor, wantMinor, wantPatch int) (bool, bool) {
 	match := xrayCoreVersionPattern.FindStringSubmatch(coreVersion)
 	if len(match) != 4 {
-		return false
+		return false, false
 	}
 	major, _ := strconv.Atoi(match[1])
 	minor, _ := strconv.Atoi(match[2])
-	return major > 26 || (major == 26 && minor >= 7)
+	patch, _ := strconv.Atoi(match[3])
+	if major != wantMajor {
+		return major > wantMajor, true
+	}
+	if minor != wantMinor {
+		return minor > wantMinor, true
+	}
+	return patch >= wantPatch, true
 }
 
 func (c *Config) Raw() map[string]any {
@@ -278,6 +1169,31 @@ func validateExecutableInbound(inbound map[string]any) error {
 	if port < 1 || port > 65535 {
 		return fmt.Errorf("invalid inbound %q: port must be between 1 and 65535", tag)
 	}
+	if protocol == "vless" {
+		settings := mapValue(inbound["settings"])
+		stream := mapValue(inbound["streamSettings"])
+		flow := firstNonEmptyString(settings["flow"])
+
+		if flow != "" {
+			if flow != "xtls-rprx-vision" {
+				return fmt.Errorf("invalid inbound %q: VLESS flow must be xtls-rprx-vision", tag)
+			}
+			network := streamNetwork(stream)
+			security := strings.ToLower(strings.TrimSpace(stringValue(stream["security"])))
+
+			hasEncryption := vlessEncryptionEnabled(settings["decryption"])
+
+			networkSettings := mapValue(stream[networkSettingsKey(network)])
+			headerType := strings.ToLower(stringValue(mapValue(networkSettings["header"])["type"]))
+			isStandardFlowSupported := (security == "tls" || security == "reality") &&
+				(network == "tcp" || network == "raw") &&
+				headerType != "http"
+
+			if !hasEncryption && !isStandardFlowSupported {
+				return fmt.Errorf("invalid inbound %q: VLESS flow requires TCP with TLS/REALITY (without HTTP header) or VLESS Encryption", tag)
+			}
+		}
+	}
 	if protocol == "shadowsocks" {
 		settings := mapValue(inbound["settings"])
 		method := stringValue(settings["method"])
@@ -345,25 +1261,219 @@ func validateNetworkSettings(tag string, network string, settings map[string]any
 		if path := strings.TrimSpace(stringValue(settings["path"])); path != "" && !strings.HasPrefix(path, "/") {
 			return fmt.Errorf("invalid inbound %q: %s path must start with /", tag, network)
 		}
-		if padding := strings.TrimSpace(stringValue(settings["xPaddingBytes"])); padding != "" {
-			if !xPaddingBytesPattern.MatchString(padding) {
-				return fmt.Errorf("invalid inbound %q: xPaddingBytes must look like 100 or 100-1000", tag)
+		if err := validateInt32RangeSetting(tag, "xPaddingBytes", settings["xPaddingBytes"], true); err != nil {
+			return err
+		}
+		if err := validateInt32RangeSetting(tag, "uplinkChunkSize", settings["uplinkChunkSize"], false); err != nil {
+			return err
+		}
+		mode := strings.TrimSpace(stringValue(settings["mode"]))
+		if mode == "" {
+			mode = "auto"
+		}
+		if !oneOf(mode, "auto", "packet-up", "stream-up", "stream-one") {
+			return fmt.Errorf("invalid inbound %q: unsupported XHTTP mode %q", tag, mode)
+		}
+		paddingPlacement := strings.TrimSpace(stringValue(settings["xPaddingPlacement"]))
+		if paddingPlacement != "" && !oneOf(paddingPlacement, "queryInHeader", "query", "header", "cookie") {
+			return fmt.Errorf("invalid inbound %q: unsupported xPaddingPlacement %q", tag, paddingPlacement)
+		}
+		paddingMethod := strings.TrimSpace(stringValue(settings["xPaddingMethod"]))
+		if paddingMethod != "" && !oneOf(paddingMethod, "repeat-x", "tokenish") {
+			return fmt.Errorf("invalid inbound %q: unsupported xPaddingMethod %q", tag, paddingMethod)
+		}
+		sessionPlacement := firstNonEmptyString(settings["sessionIDPlacement"], settings["sessionPlacement"])
+		if sessionPlacement != "" && !oneOf(sessionPlacement, "path", "query", "header", "cookie") {
+			return fmt.Errorf("invalid inbound %q: unsupported sessionIDPlacement %q", tag, sessionPlacement)
+		}
+		if err := validateXHTTPSessionID(tag, settings); err != nil {
+			return err
+		}
+		seqPlacement := strings.TrimSpace(stringValue(settings["seqPlacement"]))
+		if seqPlacement != "" && !oneOf(seqPlacement, "path", "query", "header", "cookie") {
+			return fmt.Errorf("invalid inbound %q: unsupported seqPlacement %q", tag, seqPlacement)
+		}
+		uplinkDataPlacement := strings.TrimSpace(stringValue(settings["uplinkDataPlacement"]))
+		if uplinkDataPlacement != "" && !oneOf(uplinkDataPlacement, "auto", "body", "header", "cookie") {
+			return fmt.Errorf("invalid inbound %q: unsupported uplinkDataPlacement %q", tag, uplinkDataPlacement)
+		}
+		if oneOf(uplinkDataPlacement, "header", "cookie") && mode != "packet-up" {
+			return fmt.Errorf("invalid inbound %q: uplinkDataPlacement %q requires packet-up mode", tag, uplinkDataPlacement)
+		}
+		method := strings.TrimSpace(stringValue(settings["uplinkHTTPMethod"]))
+		if err := validateHTTPTokenSetting(tag, "uplinkHTTPMethod", method); err != nil {
+			return err
+		}
+		if strings.EqualFold(method, "GET") && mode != "packet-up" {
+			return fmt.Errorf("invalid inbound %q: uplinkHTTPMethod GET requires packet-up mode", tag)
+		}
+		for _, field := range []struct {
+			name  string
+			value any
+		}{
+			{"xPaddingKey", settings["xPaddingKey"]},
+			{"xPaddingHeader", settings["xPaddingHeader"]},
+			{"sessionIDKey", firstNonEmptyString(settings["sessionIDKey"], settings["sessionKey"])},
+			{"seqKey", settings["seqKey"]},
+			{"uplinkDataKey", settings["uplinkDataKey"]},
+		} {
+			if err := validateHTTPTokenSetting(tag, field.name, stringValue(field.value)); err != nil {
+				return err
 			}
-			parts := strings.Split(padding, "-")
-			if len(parts) == 2 {
-				left, _ := strconv.Atoi(parts[0])
-				right, _ := strconv.Atoi(parts[1])
-				if left > right {
-					return fmt.Errorf("invalid inbound %q: xPaddingBytes range start must be less than or equal to end", tag)
-				}
+		}
+		if value, ok := settings["serverMaxHeaderBytes"]; ok && value != nil && stringValue(value) != "" {
+			parsed, err := parseConfigInt32(value)
+			if err != nil || parsed < 0 {
+				return fmt.Errorf("invalid inbound %q: serverMaxHeaderBytes must be a non-negative 32-bit integer", tag)
 			}
 		}
 	case "grpc", "gun":
 		if value := strings.TrimSpace(stringValue(settings["serviceName"])); strings.Contains(value, "/") {
 			return fmt.Errorf("invalid inbound %q: gRPC serviceName must not contain /", tag)
 		}
+	case "kcp":
+		if err := validateMKCPNumber(tag, "mtu", settings["mtu"], 21, maxMKCPMTU); err != nil {
+			return err
+		}
+		if err := validateMKCPNumber(tag, "tti", settings["tti"], 10, 5000); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+func validateMKCPNumber(tag, field string, value any, minimum, maximum int64) error {
+	if value == nil || strings.TrimSpace(stringValue(value)) == "" {
+		return nil
+	}
+	parsed, err := strconv.ParseInt(strings.TrimSpace(stringValue(value)), 10, 64)
+	if err != nil || parsed < minimum || parsed > maximum {
+		return fmt.Errorf("invalid inbound %q: mKCP %s must be an integer between %d and %d", tag, field, minimum, maximum)
+	}
+	return nil
+}
+
+func validateInt32RangeSetting(tag string, key string, value any, requirePositive bool) error {
+	text := strings.TrimSpace(stringValue(value))
+	if text == "" {
+		return nil
+	}
+	if !xPaddingBytesPattern.MatchString(text) {
+		return fmt.Errorf("invalid inbound %q: %s must look like 100 or 100-1000", tag, key)
+	}
+	parts := strings.Split(text, "-")
+	bounds := make([]int64, 0, len(parts))
+	for _, part := range parts {
+		parsed, err := strconv.ParseInt(part, 10, 32)
+		if err != nil || (requirePositive && parsed <= 0) {
+			return fmt.Errorf("invalid inbound %q: %s must use valid 32-bit integer values", tag, key)
+		}
+		bounds = append(bounds, parsed)
+	}
+	if len(bounds) == 2 && bounds[0] > bounds[1] {
+		return fmt.Errorf("invalid inbound %q: %s range start must be less than or equal to end", tag, key)
+	}
+	return nil
+}
+
+func validateXHTTPSessionID(tag string, settings map[string]any) error {
+	table := firstNonEmptyString(settings["sessionIDTable"], settings["sessionTable"])
+	if table == "" {
+		return nil
+	}
+	if predefined, ok := xhttpSessionTables[table]; ok {
+		table = predefined
+	}
+	for index := 0; index < len(table); index++ {
+		if table[index] >= 0x80 {
+			return fmt.Errorf("invalid inbound %q: sessionIDTable must contain only ASCII characters", tag)
+		}
+	}
+	minimum, maximum, err := parsePositiveInt32Range(firstNonEmptyString(settings["sessionIDLength"], settings["sessionLength"]))
+	if err != nil {
+		return fmt.Errorf("invalid inbound %q: sessionIDLength must be a positive integer or range", tag)
+	}
+	if !xhttpSessionRoomIsLargeEnough(len(table), minimum, maximum) {
+		return fmt.Errorf("invalid inbound %q: sessionIDTable/sessionIDLength provide fewer than 2^31 possible IDs", tag)
+	}
+	return nil
+}
+
+func parsePositiveInt32Range(value any) (int64, int64, error) {
+	text := strings.TrimSpace(stringValue(value))
+	if text == "" || !xPaddingBytesPattern.MatchString(text) {
+		return 0, 0, fmt.Errorf("invalid range")
+	}
+	parts := strings.Split(text, "-")
+	minimum, err := strconv.ParseInt(parts[0], 10, 32)
+	if err != nil || minimum <= 0 {
+		return 0, 0, fmt.Errorf("invalid range")
+	}
+	maximum := minimum
+	if len(parts) == 2 {
+		maximum, err = strconv.ParseInt(parts[1], 10, 32)
+		if err != nil || maximum < minimum {
+			return 0, 0, fmt.Errorf("invalid range")
+		}
+	}
+	return minimum, maximum, nil
+}
+
+func xhttpSessionRoomIsLargeEnough(tableSize int, minimum, maximum int64) bool {
+	threshold := big.NewInt(2 << 30)
+	if tableSize <= 0 || minimum <= 0 || maximum < minimum {
+		return false
+	}
+	if tableSize == 1 {
+		count := new(big.Int).SetInt64(maximum)
+		count.Sub(count, big.NewInt(minimum))
+		count.Add(count, big.NewInt(1))
+		return count.Cmp(threshold) >= 0
+	}
+	base := big.NewInt(int64(tableSize))
+	power := big.NewInt(1)
+	for exponent := int64(0); exponent < minimum; exponent++ {
+		power.Mul(power, base)
+		if power.Cmp(threshold) >= 0 {
+			return true
+		}
+	}
+	room := new(big.Int)
+	for exponent := minimum; exponent <= maximum; exponent++ {
+		room.Add(room, power)
+		if room.Cmp(threshold) >= 0 {
+			return true
+		}
+		power.Mul(power, base)
+	}
+	return false
+}
+
+func validateHTTPTokenSetting(tag string, key string, value string) error {
+	if value == "" {
+		return nil
+	}
+	if !httpTokenPattern.MatchString(value) {
+		return fmt.Errorf("invalid inbound %q: %s must be a valid HTTP token without spaces or line breaks", tag, key)
+	}
+	return nil
+}
+
+func parseConfigInt32(value any) (int64, error) {
+	text := strings.TrimSpace(stringValue(value))
+	if text == "" {
+		return 0, fmt.Errorf("value is required")
+	}
+	return strconv.ParseInt(text, 10, 32)
+}
+
+func oneOf(value string, allowed ...string) bool {
+	for _, candidate := range allowed {
+		if value == candidate {
+			return true
+		}
+	}
+	return false
 }
 
 func validateRealitySettings(tag string, protocol string, network string, reality map[string]any) error {
@@ -535,6 +1645,7 @@ func (c *Config) resolveInbound(inbound map[string]any) (ResolvedInbound, error)
 		"host":        []string{},
 		"path":        "",
 		"header_type": "",
+		"flow":        "",
 		"is_fallback": false,
 	}
 
@@ -542,6 +1653,9 @@ func (c *Config) resolveInbound(inbound map[string]any) (ResolvedInbound, error)
 	if protocol == "vless" {
 		if encryption := firstNonEmptyString(settings["encryption"]); encryption != "" {
 			resolved["encryption"] = encryption
+		}
+		if flow := firstNonEmptyString(settings["flow"]); flow != "" {
+			resolved["flow"] = flow
 		}
 	}
 	if protocol == "shadowsocks" {
@@ -763,7 +1877,7 @@ func normalizeRemovedTLSFields(stream map[string]any, preserveMetadata bool) {
 	if len(tlsSettings) == 0 {
 		return
 	}
-	if allow, exists := tlsSettings["allowInsecure"]; preserveMetadata && exists {
+	if allow, exists := tlsSettings["allowInsecure"]; exists {
 		metadata := mapValue(tlsSettings["settings"])
 		if _, configured := metadata["allowInsecure"]; !configured {
 			metadata["allowInsecure"] = allow
@@ -783,7 +1897,6 @@ func normalizeRemovedTLSFields(stream map[string]any, preserveMetadata bool) {
 	}
 
 	legacySettings := mapValue(tlsSettings["settings"])
-	delete(legacySettings, "allowInsecure")
 	for _, key := range []string{"fingerprint", "echConfigList", "pinnedPeerCertSha256", "verifyPeerCertByName"} {
 		if _, exists := tlsSettings[key]; !exists {
 			if value, ok := legacySettings[key]; ok {
@@ -875,10 +1988,14 @@ func applyNetworkSettings(resolved ResolvedInbound, network string, settings map
 		for _, key := range []string{
 			"scMaxBufferedPosts", "scMaxEachPostBytes", "scMaxConcurrentPosts", "scMinPostsIntervalMs",
 			"scStreamUpServerSecs", "xPaddingBytes", "noSSEHeader", "xmux", "mode", "noGRPCHeader",
-			"keepAlivePeriod",
+			"keepAlivePeriod", "xPaddingObfsMode", "xPaddingKey", "xPaddingHeader", "xPaddingPlacement",
+			"xPaddingMethod", "uplinkHTTPMethod", "seqPlacement",
+			"seqKey", "uplinkDataPlacement", "uplinkDataKey", "uplinkChunkSize", "serverMaxHeaderBytes",
 		} {
 			copyOptional(resolved, key, settings)
 		}
+		copyOptionalAlias(resolved, "sessionIDPlacement", settings, "sessionPlacement")
+		copyOptionalAlias(resolved, "sessionIDKey", settings, "sessionKey")
 	case "kcp":
 		header := mapValue(settings["header"])
 		resolved["header_type"] = stringValue(header["type"])
@@ -910,8 +2027,6 @@ func mergePolicy(runtime map[string]any) {
 			"statsUserOnline":   true,
 		}},
 		"system": map[string]any{
-			"statsInboundDownlink":  false,
-			"statsInboundUplink":    false,
 			"statsOutboundDownlink": true,
 			"statsOutboundUplink":   true,
 		},
@@ -1036,6 +2151,19 @@ func normalizeProxyProtocol(value string) string {
 func copyOptional(target map[string]any, key string, source map[string]any) {
 	if value, ok := source[key]; ok {
 		target[key] = value
+	}
+}
+
+func copyOptionalAlias(target map[string]any, key string, source map[string]any, aliases ...string) {
+	if value, ok := source[key]; ok {
+		target[key] = value
+		return
+	}
+	for _, alias := range aliases {
+		if value, ok := source[alias]; ok {
+			target[key] = value
+			return
+		}
 	}
 }
 

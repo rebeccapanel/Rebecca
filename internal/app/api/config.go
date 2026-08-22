@@ -38,6 +38,7 @@ func (s *Server) handleCoreConfig(w http.ResponseWriter, r *http.Request) {
 			writeConfigError(w, err)
 			return
 		}
+		s.kickNodeOperationsSoon()
 		writeJSON(w, http.StatusOK, config)
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
@@ -89,6 +90,7 @@ func (s *Server) handleCoreConfigTargetPath(w http.ResponseWriter, r *http.Reque
 		writeConfigError(w, err)
 		return
 	}
+	s.kickNodeOperationsSoon()
 	writeJSON(w, http.StatusOK, map[string]any{"target": xrayconfig.NodeTargetID(nodeID), "mode": mode})
 }
 

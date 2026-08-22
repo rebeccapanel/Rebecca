@@ -70,3 +70,34 @@ func TestDashboardFilesServesTutorialDirectories(t *testing.T) {
 		t.Fatalf("missing tutorial status=%d body=%q", missing.Code, missing.Body.String())
 	}
 }
+
+func TestDashboardFilesCacheControl(t *testing.T) {
+	dashboard := &dashboardFiles{
+		root: "/dashboard",
+		fs: fstest.MapFS{
+			"index.html":                {Data: []byte("panel")},
+			"statics/index.abcdef12.js": {Data: []byte("hashed")},
+			"statics/locales/en.json":   {Data: []byte("locale")},
+		},
+	}
+
+	tests := []struct {
+		path     string
+		expected string
+	}{
+		{path: "/dashboard/settings", expected: "no-store"},
+		{path: "/statics/index.abcdef12.js", expected: "public, max-age=31536000, immutable"},
+		{path: "/statics/locales/en.json", expected: "no-cache"},
+	}
+
+	for _, test := range tests {
+		response := httptest.NewRecorder()
+		dashboard.serve(response, httptest.NewRequest(http.MethodGet, test.path, nil))
+		if response.Code != http.StatusOK {
+			t.Fatalf("%s status=%d", test.path, response.Code)
+		}
+		if actual := response.Header().Get("Cache-Control"); actual != test.expected {
+			t.Fatalf("%s cache control=%q; want %q", test.path, actual, test.expected)
+		}
+	}
+}

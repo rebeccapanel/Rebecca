@@ -121,6 +121,7 @@ type AdminServiceLimit struct {
 type Admin struct {
 	ID                          int64                 `json:"id,omitempty"`
 	Username                    string                `json:"username"`
+	CreatedBy                   string                `json:"created_by"`
 	HashedPassword              string                `json:"-"`
 	Role                        AdminRole             `json:"role"`
 	Permissions                 AdminPermissions      `json:"permissions"`

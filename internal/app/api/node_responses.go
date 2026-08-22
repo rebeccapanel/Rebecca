@@ -49,6 +49,8 @@ func flattenNodeItem(node nodecontroller.NodeListItem) map[string]any {
 func flattenNodeStaticItem(node nodecontroller.NodeListItem) map[string]any {
 	item := flattenNodeItem(node)
 	for _, key := range []string{
+		"status",
+		"message",
 		"node_service_version",
 		"node_install_mode",
 		"node_binary_tag",

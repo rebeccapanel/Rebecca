@@ -1,4 +1,5 @@
 import type { Admin } from "types/Admin";
+import type { AdminApiKey } from "types/ApiKey";
 import { fetch } from "./http";
 
 export type SessionState =
@@ -80,5 +81,19 @@ export const setupAdmin2FA = (username: string) =>
 
 export const disableAdmin2FA = (username: string) =>
 	fetch<void>(`/admin/${encodeURIComponent(username)}/2fa`, {
+		method: "DELETE",
+	});
+
+export const listAdminApiKeys = (username: string) =>
+	fetch<AdminApiKey[]>(`/admin/${encodeURIComponent(username)}/api-keys`);
+
+export const createAdminApiKey = (username: string, lifetime: string) =>
+	fetch<AdminApiKey>(`/admin/${encodeURIComponent(username)}/api-keys`, {
+		method: "POST",
+		body: { lifetime },
+	});
+
+export const deleteAdminApiKey = (username: string, id: number) =>
+	fetch<void>(`/admin/${encodeURIComponent(username)}/api-keys/${id}`, {
 		method: "DELETE",
 	});

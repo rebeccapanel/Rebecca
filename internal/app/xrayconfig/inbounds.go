@@ -7,14 +7,22 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
 var (
 	shortIDSplitPattern  = regexp.MustCompile(`[,\s]+`)
 	autoServiceTagRegexp = regexp.MustCompile(`^setservice-\d+$`)
+)
+
+const (
+	defaultInboundUsageCoefficient = 1.0
+	minInboundUsageCoefficient     = 0.01
+	maxInboundUsageCoefficient     = 100.0
 )
 
 type InboundMutationResult struct {
@@ -92,6 +100,10 @@ func (r Repository) CreateInbound(ctx context.Context, payload map[string]any) (
 	if err != nil {
 		return InboundMutationResult{}, err
 	}
+	usageCoefficient, cleanPayload, err := extractInboundUsageCoefficient(cleanPayload, defaultInboundUsageCoefficient)
+	if err != nil {
+		return InboundMutationResult{}, err
+	}
 	inbound, err := r.prepareInboundPayload(cleanPayload, "")
 	if err != nil {
 		return InboundMutationResult{}, err
@@ -136,6 +148,9 @@ func (r Repository) CreateInbound(ctx context.Context, payload map[string]any) (
 	if err := r.ensureInboundRecordTx(ctx, tx, tag); err != nil {
 		return InboundMutationResult{}, err
 	}
+	if err := r.setInboundUsageCoefficientTx(ctx, tx, tag, usageCoefficient); err != nil {
+		return InboundMutationResult{}, err
+	}
 	if err := r.enqueueSyncForTargetsTx(ctx, tx, sortedTargetIDs(configs)); err != nil {
 		return InboundMutationResult{}, err
 	}
@@ -174,8 +189,16 @@ func (r Repository) UpdateInbound(ctx context.Context, tag string, payload map[s
 	if len(currentTargets) == 0 {
 		return InboundMutationResult{}, ErrInboundNotFound
 	}
+	currentCoefficient, err := r.inboundUsageCoefficientTx(ctx, tx, tag)
+	if err != nil {
+		return InboundMutationResult{}, err
+	}
 
 	targetIDs, cleanPayload, err := r.extractTargetIDs(payload, currentTargets)
+	if err != nil {
+		return InboundMutationResult{}, err
+	}
+	usageCoefficient, cleanPayload, err := extractInboundUsageCoefficient(cleanPayload, currentCoefficient)
 	if err != nil {
 		return InboundMutationResult{}, err
 	}
@@ -238,6 +261,9 @@ func (r Repository) UpdateInbound(ctx context.Context, tag string, payload map[s
 		return InboundMutationResult{}, err
 	}
 	if err := r.ensureInboundRecordTx(ctx, tx, tag); err != nil {
+		return InboundMutationResult{}, err
+	}
+	if err := r.setInboundUsageCoefficientTx(ctx, tx, tag, usageCoefficient); err != nil {
 		return InboundMutationResult{}, err
 	}
 	if err := r.enqueueSyncForTargetsTx(ctx, tx, changedTargets); err != nil {
@@ -346,6 +372,10 @@ func (r Repository) manageableInboundsWithTargets(ctx context.Context) ([]map[st
 	if err != nil {
 		return nil, err
 	}
+	metadata, err := r.inboundMetadataByTag(ctx)
+	if err != nil {
+		return nil, err
+	}
 	byTag := make(map[string]map[string]any)
 	order := make([]string, 0)
 	for _, item := range stored {
@@ -369,7 +399,12 @@ func (r Repository) manageableInboundsWithTargets(ctx context.Context) ([]map[st
 			if err != nil {
 				return nil, err
 			}
-			byTag[tag] = sanitizeInbound(inbound, direct, effective)
+			sanitized := sanitizeInbound(inbound, direct, effective)
+			record := metadata[tag]
+			sanitized["uplink"] = record.Uplink
+			sanitized["downlink"] = record.Downlink
+			sanitized["usage_coefficient"] = normalizedInboundUsageCoefficient(record.UsageCoefficient)
+			byTag[tag] = sanitized
 			order = append(order, tag)
 		}
 	}
@@ -379,6 +414,53 @@ func (r Repository) manageableInboundsWithTargets(ctx context.Context) ([]map[st
 		out = append(out, byTag[tag])
 	}
 	return out, nil
+}
+
+type inboundMetadata struct {
+	Uplink           int64
+	Downlink         int64
+	UsageCoefficient float64
+}
+
+func (r Repository) inboundMetadataByTag(ctx context.Context) (map[string]inboundMetadata, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT tag, COALESCE(uplink, 0), COALESCE(downlink, 0), COALESCE(usage_coefficient, 1) FROM inbounds`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	metadata := make(map[string]inboundMetadata)
+	for rows.Next() {
+		var tag string
+		var record inboundMetadata
+		if err := rows.Scan(&tag, &record.Uplink, &record.Downlink, &record.UsageCoefficient); err != nil {
+			return nil, err
+		}
+		metadata[tag] = record
+	}
+	return metadata, rows.Err()
+}
+
+func extractInboundUsageCoefficient(payload map[string]any, fallback float64) (float64, map[string]any, error) {
+	clean := deepCopyMap(payload)
+	raw, ok := clean["usage_coefficient"]
+	delete(clean, "usage_coefficient")
+	delete(clean, "uplink")
+	delete(clean, "downlink")
+	if !ok || raw == nil {
+		return normalizedInboundUsageCoefficient(fallback), clean, nil
+	}
+	coefficient, err := strconv.ParseFloat(strings.TrimSpace(fmt.Sprint(raw)), 64)
+	if err != nil || math.IsNaN(coefficient) || math.IsInf(coefficient, 0) || coefficient < minInboundUsageCoefficient || coefficient > maxInboundUsageCoefficient {
+		return 0, nil, fmt.Errorf("%w: usage_coefficient must be between %.2f and %.0f", ErrInvalidInbound, minInboundUsageCoefficient, maxInboundUsageCoefficient)
+	}
+	return coefficient, clean, nil
+}
+
+func normalizedInboundUsageCoefficient(value float64) float64 {
+	if math.IsNaN(value) || math.IsInf(value, 0) || value < minInboundUsageCoefficient || value > maxInboundUsageCoefficient {
+		return defaultInboundUsageCoefficient
+	}
+	return value
 }
 
 func (r Repository) extractTargetIDs(payload map[string]any, defaults []string) ([]string, map[string]any, error) {
@@ -794,7 +876,7 @@ func (r Repository) directTargetsForInboundTx(ctx context.Context, tx *sql.Tx, t
 		out = append(out, MasterTargetID)
 	}
 
-	rows, err := tx.QueryContext(ctx, `SELECT id, xray_config FROM nodes WHERE COALESCE(xray_config_mode, ?) = ? AND xray_config IS NOT NULL`, ConfigModeDefault, ConfigModeCustom)
+	rows, err := tx.QueryContext(ctx, `SELECT id, xray_config FROM nodes WHERE LOWER(COALESCE(status, '')) <> 'deleted' AND COALESCE(xray_config_mode, ?) = ? AND xray_config IS NOT NULL`, ConfigModeDefault, ConfigModeCustom)
 	if err != nil {
 		return nil, err
 	}
@@ -823,7 +905,7 @@ func (r Repository) effectiveTargetsForInboundTx(ctx context.Context, tx *sql.Tx
 		seen[targetID] = true
 	}
 	if seen[MasterTargetID] {
-		rows, err := tx.QueryContext(ctx, `SELECT id FROM nodes WHERE COALESCE(xray_config_mode, ?) != ?`, ConfigModeDefault, ConfigModeCustom)
+		rows, err := tx.QueryContext(ctx, `SELECT id FROM nodes WHERE LOWER(COALESCE(status, '')) <> 'deleted' AND COALESCE(xray_config_mode, ?) != ?`, ConfigModeDefault, ConfigModeCustom)
 		if err != nil {
 			return nil, err
 		}
@@ -864,7 +946,7 @@ func (r Repository) findManageableInboundTx(ctx context.Context, tx *sql.Tx, tag
 	if inbound := findInboundInConfig(master, tag); inbound != nil && r.isManageableInbound(inbound) {
 		return inbound, nil
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT xray_config FROM nodes WHERE COALESCE(xray_config_mode, ?) = ? AND xray_config IS NOT NULL`, ConfigModeDefault, ConfigModeCustom)
+	rows, err := tx.QueryContext(ctx, `SELECT xray_config FROM nodes WHERE LOWER(COALESCE(status, '')) <> 'deleted' AND COALESCE(xray_config_mode, ?) = ? AND xray_config IS NOT NULL`, ConfigModeDefault, ConfigModeCustom)
 	if err != nil {
 		return nil, err
 	}
@@ -911,7 +993,7 @@ func (r Repository) findSingleIPSecInboundTagTx(ctx context.Context, tx *sql.Tx,
 	if tag := r.findProtocolInboundTagInConfig(master, allowedTag, protocol); tag != "" {
 		return tag, nil
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT xray_config FROM nodes WHERE COALESCE(xray_config_mode, ?) = ? AND xray_config IS NOT NULL`, ConfigModeDefault, ConfigModeCustom)
+	rows, err := tx.QueryContext(ctx, `SELECT xray_config FROM nodes WHERE LOWER(COALESCE(status, '')) <> 'deleted' AND COALESCE(xray_config_mode, ?) = ? AND xray_config IS NOT NULL`, ConfigModeDefault, ConfigModeCustom)
 	if err != nil {
 		return "", err
 	}
@@ -948,7 +1030,7 @@ func (r Repository) findL2TPInboundTagTx(ctx context.Context, tx *sql.Tx, allowe
 			return tag, nil
 		}
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT xray_config FROM nodes WHERE COALESCE(xray_config_mode, ?) = ? AND xray_config IS NOT NULL`, ConfigModeDefault, ConfigModeCustom)
+	rows, err := tx.QueryContext(ctx, `SELECT xray_config FROM nodes WHERE LOWER(COALESCE(status, '')) <> 'deleted' AND COALESCE(xray_config_mode, ?) = ? AND xray_config IS NOT NULL`, ConfigModeDefault, ConfigModeCustom)
 	if err != nil {
 		return "", err
 	}
@@ -1077,6 +1159,20 @@ func (r Repository) ensureInboundRecordTx(ctx context.Context, tx *sql.Tx, tag s
 		}
 	}
 	return r.ensureDefaultHostForInboundTx(ctx, tx, tag)
+}
+
+func (r Repository) inboundUsageCoefficientTx(ctx context.Context, tx *sql.Tx, tag string) (float64, error) {
+	var coefficient float64
+	err := tx.QueryRowContext(ctx, `SELECT COALESCE(usage_coefficient, 1) FROM inbounds WHERE tag = ? LIMIT 1`, tag).Scan(&coefficient)
+	if errors.Is(err, sql.ErrNoRows) {
+		return defaultInboundUsageCoefficient, nil
+	}
+	return normalizedInboundUsageCoefficient(coefficient), err
+}
+
+func (r Repository) setInboundUsageCoefficientTx(ctx context.Context, tx *sql.Tx, tag string, coefficient float64) error {
+	_, err := tx.ExecContext(ctx, `UPDATE inbounds SET usage_coefficient = ? WHERE tag = ?`, normalizedInboundUsageCoefficient(coefficient), tag)
+	return err
 }
 
 func (r Repository) ensureDefaultHostForInboundTx(ctx context.Context, tx *sql.Tx, tag string) error {

@@ -48,8 +48,11 @@ type TargetState struct {
 }
 
 type InboundRecordSnapshot struct {
-	ID  int64  `json:"id"`
-	Tag string `json:"tag"`
+	ID               int64   `json:"id"`
+	Tag              string  `json:"tag"`
+	Uplink           int64   `json:"uplink,omitempty"`
+	Downlink         int64   `json:"downlink,omitempty"`
+	UsageCoefficient float64 `json:"usage_coefficient,omitempty"`
 }
 
 type HostSnapshot struct {
@@ -80,6 +83,7 @@ type HostSnapshot struct {
 	MuxEnable       bool    `json:"mux_enable"`
 	FragmentSetting *string `json:"fragment_setting,omitempty"`
 	NoiseSetting    *string `json:"noise_setting,omitempty"`
+	FinalMask       *string `json:"finalmask,omitempty"`
 	RandomUserAgent bool    `json:"random_user_agent"`
 	UseSNIAsHost    bool    `json:"use_sni_as_host"`
 }
@@ -99,7 +103,14 @@ type SnapshotScope struct {
 var ErrRollbackConflict = errors.New("recent action is no longer the current state")
 
 func SnapshotHash(snapshot MutationSnapshot) (string, error) {
-	raw, err := json.Marshal(snapshot)
+	hashable := snapshot
+	if snapshot.Inbound != nil {
+		inbound := *snapshot.Inbound
+		inbound.Uplink = 0
+		inbound.Downlink = 0
+		hashable.Inbound = &inbound
+	}
+	raw, err := json.Marshal(hashable)
 	if err != nil {
 		return "", err
 	}
@@ -123,7 +134,7 @@ func (r Repository) CaptureMutationSnapshotTx(ctx context.Context, tx *sql.Tx, s
 	}
 	if scope.InboundTag != "" {
 		var record InboundRecordSnapshot
-		err := tx.QueryRowContext(ctx, `SELECT id, tag FROM inbounds WHERE tag = ? LIMIT 1`, scope.InboundTag).Scan(&record.ID, &record.Tag)
+		err := tx.QueryRowContext(ctx, `SELECT id, tag, uplink, downlink, COALESCE(usage_coefficient, 1) FROM inbounds WHERE tag = ? LIMIT 1`, scope.InboundTag).Scan(&record.ID, &record.Tag, &record.Uplink, &record.Downlink, &record.UsageCoefficient)
 		switch {
 		case err == nil:
 			snapshot.Inbound = &record
@@ -142,7 +153,7 @@ func (r Repository) CaptureMutationSnapshotTx(ctx context.Context, tx *sql.Tx, s
 		path, sni, sni_options, COALESCE(sni_selection_mode, 'random'), sni_ttl_seconds,
 		host, host_options, COALESCE(host_selection_mode, 'random'), host_ttl_seconds,
 		COALESCE(security, 'inbound_default'), COALESCE(alpn, 'none'), COALESCE(fingerprint, 'none'),
-		allowinsecure, COALESCE(is_disabled, 0), COALESCE(mux_enable, 0), fragment_setting, noise_setting,
+		allowinsecure, COALESCE(is_disabled, 0), COALESCE(mux_enable, 0), fragment_setting, noise_setting, finalmask,
 		COALESCE(random_user_agent, 0), COALESCE(use_sni_as_host, 0)
 		FROM hosts WHERE inbound_tag IN (`+placeholders+`) ORDER BY inbound_tag ASC, id ASC`, args...)
 	if err != nil {
@@ -260,7 +271,7 @@ func (r Repository) targetStateTx(ctx context.Context, tx *sql.Tx, targetID stri
 	}
 	var raw any
 	var mode string
-	if err := tx.QueryRowContext(ctx, `SELECT xray_config, COALESCE(xray_config_mode, 'default') FROM nodes WHERE id = ? LIMIT 1`, *nodeID).Scan(&raw, &mode); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT xray_config, COALESCE(xray_config_mode, 'default') FROM nodes WHERE id = ? AND LOWER(COALESCE(status, '')) <> 'deleted' LIMIT 1`, *nodeID).Scan(&raw, &mode); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return TargetState{}, fmt.Errorf("node not found")
 		}
@@ -301,7 +312,7 @@ func (r Repository) restoreLegacyTargetStatesTx(ctx context.Context, tx *sql.Tx,
 			}
 			raw = string(encoded)
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE nodes SET xray_config_mode = ?, xray_config = ? WHERE id = ?`, normalizeConfigMode(target.Mode), raw, *nodeID); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE nodes SET xray_config_mode = ?, xray_config = ? WHERE id = ? AND LOWER(COALESCE(status, '')) <> 'deleted'`, normalizeConfigMode(target.Mode), raw, *nodeID); err != nil {
 			return nil, err
 		}
 		targetIDs = append(targetIDs, target.TargetID)
@@ -363,7 +374,7 @@ func (r Repository) restoreConfigPatchesTx(ctx context.Context, tx *sql.Tx, patc
 			}
 			raw = string(encoded)
 		}
-		if _, err := tx.ExecContext(ctx, `UPDATE nodes SET xray_config_mode = ?, xray_config = ? WHERE id = ?`, normalizeConfigMode(target.Mode), raw, *nodeID); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE nodes SET xray_config_mode = ?, xray_config = ? WHERE id = ? AND LOWER(COALESCE(status, '')) <> 'deleted'`, normalizeConfigMode(target.Mode), raw, *nodeID); err != nil {
 			return nil, err
 		}
 		targetIDs = append(targetIDs, target.TargetID)
@@ -372,7 +383,7 @@ func (r Repository) restoreConfigPatchesTx(ctx context.Context, tx *sql.Tx, patc
 }
 
 func (r Repository) restoreMutationSnapshotTx(ctx context.Context, tx *sql.Tx, snapshot MutationSnapshot, current MutationSnapshot, targetIDs []string) error {
-	if err := restoreInboundHostsTx(ctx, tx, snapshot); err != nil {
+	if err := restoreInboundHostsTx(ctx, tx, snapshot, current); err != nil {
 		return err
 	}
 	if len(targetIDs) > 0 {
@@ -389,7 +400,7 @@ func (r Repository) restoreMutationSnapshotTx(ctx context.Context, tx *sql.Tx, s
 	return nil
 }
 
-func restoreInboundHostsTx(ctx context.Context, tx *sql.Tx, snapshot MutationSnapshot) error {
+func restoreInboundHostsTx(ctx context.Context, tx *sql.Tx, snapshot MutationSnapshot, current MutationSnapshot) error {
 	if len(snapshot.HostTags) == 0 && snapshot.InboundTag == "" {
 		return nil
 	}
@@ -411,7 +422,12 @@ func restoreInboundHostsTx(ctx context.Context, tx *sql.Tx, snapshot MutationSna
 			return err
 		}
 		if snapshot.Inbound != nil {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO inbounds (id, tag) VALUES (?, ?)`, snapshot.Inbound.ID, snapshot.Inbound.Tag); err != nil {
+			uplink, downlink := snapshot.Inbound.Uplink, snapshot.Inbound.Downlink
+			if current.Inbound != nil {
+				uplink, downlink = current.Inbound.Uplink, current.Inbound.Downlink
+			}
+			coefficient := normalizedInboundUsageCoefficient(snapshot.Inbound.UsageCoefficient)
+			if _, err := tx.ExecContext(ctx, `INSERT INTO inbounds (id, tag, uplink, downlink, usage_coefficient) VALUES (?, ?, ?, ?, ?)`, snapshot.Inbound.ID, snapshot.Inbound.Tag, uplink, downlink, coefficient); err != nil {
 				return err
 			}
 		}
@@ -420,10 +436,10 @@ func restoreInboundHostsTx(ctx context.Context, tx *sql.Tx, snapshot MutationSna
 		if _, err := tx.ExecContext(ctx, `INSERT INTO hosts (
 			id, inbound_tag, remark, address, dns_primary, dns_secondary, address_options, address_selection_mode, address_ttl_seconds,
 			port, path, sni, sni_options, sni_selection_mode, sni_ttl_seconds, host, host_options, host_selection_mode,
-			host_ttl_seconds, security, alpn, fingerprint, allowinsecure, is_disabled, mux_enable, fragment_setting, noise_setting,
+			host_ttl_seconds, security, alpn, fingerprint, allowinsecure, is_disabled, mux_enable, fragment_setting, noise_setting, finalmask,
 			random_user_agent, use_sni_as_host
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			host.ID, host.InboundTag, host.Remark, host.Address, host.DNSPrimary, host.DNSSecondary, nullableString(host.AddressOptions), host.AddressMode, nullableInt64(host.AddressTTL), nullableInt64(host.Port), nullableString(host.Path), nullableString(host.SNI), nullableString(host.SNIOptions), host.SNIMode, nullableInt64(host.SNITTL), nullableString(host.Host), nullableString(host.HostOptions), host.HostMode, nullableInt64(host.HostTTL), host.Security, host.ALPN, host.Fingerprint, nullableBool(host.AllowInsecure), boolToDB(host.IsDisabled), boolToDB(host.MuxEnable), nullableString(host.FragmentSetting), nullableString(host.NoiseSetting), boolToDB(host.RandomUserAgent), boolToDB(host.UseSNIAsHost)); err != nil {
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			host.ID, host.InboundTag, host.Remark, host.Address, host.DNSPrimary, host.DNSSecondary, nullableString(host.AddressOptions), host.AddressMode, nullableInt64(host.AddressTTL), nullableInt64(host.Port), nullableString(host.Path), nullableString(host.SNI), nullableString(host.SNIOptions), host.SNIMode, nullableInt64(host.SNITTL), nullableString(host.Host), nullableString(host.HostOptions), host.HostMode, nullableInt64(host.HostTTL), host.Security, host.ALPN, host.Fingerprint, nullableBool(host.AllowInsecure), boolToDB(host.IsDisabled), boolToDB(host.MuxEnable), nullableString(host.FragmentSetting), nullableString(host.NoiseSetting), nullableString(host.FinalMask), boolToDB(host.RandomUserAgent), boolToDB(host.UseSNIAsHost)); err != nil {
 			return err
 		}
 	}
@@ -483,7 +499,7 @@ func snapshotServiceIDs(links []ServiceHostSnapshot) []int64 {
 
 func scanHostSnapshot(scanner interface{ Scan(...any) error }) (HostSnapshot, error) {
 	var host HostSnapshot
-	var addressOptions, path, sni, sniOptions, hostValue, hostOptions, fragment, noise sql.NullString
+	var addressOptions, path, sni, sniOptions, hostValue, hostOptions, fragment, noise, finalMask sql.NullString
 	var addressTTL, port, ignoredSort, sniTTL, hostTTL sql.NullInt64
 	var allowInsecure sql.NullInt64
 	var disabled, muxEnable, randomUA, useSNI int64
@@ -492,7 +508,7 @@ func scanHostSnapshot(scanner interface{ Scan(...any) error }) (HostSnapshot, er
 		&path, &sni, &sniOptions, &host.SNIMode, &sniTTL,
 		&hostValue, &hostOptions, &host.HostMode, &hostTTL,
 		&host.Security, &host.ALPN, &host.Fingerprint, &allowInsecure,
-		&disabled, &muxEnable, &fragment, &noise, &randomUA, &useSNI)
+		&disabled, &muxEnable, &fragment, &noise, &finalMask, &randomUA, &useSNI)
 	if err != nil {
 		return HostSnapshot{}, err
 	}
@@ -508,6 +524,7 @@ func scanHostSnapshot(scanner interface{ Scan(...any) error }) (HostSnapshot, er
 	host.HostTTL = nullInt64Ptr(hostTTL)
 	host.FragmentSetting = nullStringPtr(fragment)
 	host.NoiseSetting = nullStringPtr(noise)
+	host.FinalMask = nullStringPtr(finalMask)
 	if allowInsecure.Valid {
 		value := allowInsecure.Int64 != 0
 		host.AllowInsecure = &value

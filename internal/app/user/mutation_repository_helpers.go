@@ -567,7 +567,7 @@ func (r Repository) rawXrayConfigsTx(ctx context.Context, tx *sql.Tx) ([]map[str
 		}
 	}
 
-	rows, err := tx.QueryContext(ctx, `SELECT xray_config FROM nodes WHERE xray_config_mode = 'custom' AND xray_config IS NOT NULL ORDER BY id`)
+	rows, err := tx.QueryContext(ctx, `SELECT xray_config FROM nodes WHERE LOWER(COALESCE(status, '')) <> 'deleted' AND xray_config_mode = 'custom' AND xray_config IS NOT NULL ORDER BY id`)
 	if err != nil {
 		return result, nil
 	}

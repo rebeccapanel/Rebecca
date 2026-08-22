@@ -15,6 +15,8 @@ import (
 
 	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
 	backupapp "github.com/rebeccapanel/rebecca/internal/app/backup"
+	certificateapp "github.com/rebeccapanel/rebecca/internal/app/certificates"
+	externalapps "github.com/rebeccapanel/rebecca/internal/app/externalapps"
 	"github.com/rebeccapanel/rebecca/internal/app/logging"
 	"github.com/rebeccapanel/rebecca/internal/app/migrations"
 	nodeapp "github.com/rebeccapanel/rebecca/internal/app/node"
@@ -56,7 +58,10 @@ type Server struct {
 	webhookRepo          webhookapp.Repository
 	webhookDispatch      webhookapp.Dispatcher
 	backupService        *backupapp.Service
+	certificateManager   *certificateapp.Manager
+	externalApps         *externalapps.Manager
 	backgroundOnce       sync.Once
+	nodeOperationsKick   chan struct{}
 	userOpsKickMu        sync.Mutex
 	userOpsKicking       bool
 	userOpsKickUserIDs   map[int64]struct{}
@@ -102,6 +107,13 @@ func New(cfg Config) (*Server, error) {
 		RetryInterval: parseWorkerInterval(cfg.WebhookRetryInterval, 30*time.Second),
 	})
 	backupService := backupapp.NewService(pool.DB, pool.Dialect, cfg.Database)
+	certificateManager := certificateapp.NewManager(pool.DB, certificateapp.Config{
+		BaseDir:       cfg.CertificateBase,
+		CertbotBinary: cfg.CertbotBinary,
+	})
+	if err := certificateManager.Prepare(migrationCtx); err != nil {
+		return nil, fmt.Errorf("prepare managed certificates: %w", err)
+	}
 	outboundSubs := outboundsubapp.NewService(pool.DB, pool.Dialect)
 	server := &Server{
 		cfg:            cfg,
@@ -126,10 +138,17 @@ func New(cfg Config) (*Server, error) {
 			telegramRepo,
 			telegramSender,
 		),
-		telegramBackup:       telegramapp.NewBackupDelivery(telegramRepo, telegramSender),
-		webhookRepo:          webhookRepo,
-		webhookDispatch:      webhookDispatch,
-		backupService:        backupService,
+		telegramBackup:     telegramapp.NewBackupDelivery(telegramRepo, telegramSender),
+		webhookRepo:        webhookRepo,
+		webhookDispatch:    webhookDispatch,
+		backupService:      backupService,
+		certificateManager: certificateManager,
+		externalApps: externalapps.New(externalapps.Config{
+			BaseDir:           cfg.ExternalAppsBase,
+			DatabaseURL:       cfg.Database,
+			MySQLRootPassword: cfg.MySQLRootPassword,
+		}, certificateManager),
+		nodeOperationsKick:   make(chan struct{}, 1),
 		recentActionsEnabled: true,
 	}
 	server.configRepo = xrayconfig.NewRepository(pool.DB, pool.Dialect, xrayconfig.Options{
@@ -161,6 +180,12 @@ func (s *Server) SubscriptionSettings(ctx context.Context) (settingsapp.Subscrip
 
 func (s *Server) StartBackground(ctx context.Context) {
 	s.backgroundOnce.Do(func() {
+		cleared, err := s.nodeController.PrepareStartupFullSync(ctx)
+		if err != nil {
+			logging.Warnf(logging.ComponentNode, "failed to replace startup operation queue: %v", err)
+		} else if cleared > 0 {
+			logging.Infof(logging.ComponentNode, "startup operation queue replaced with full sync cleared=%d", cleared)
+		}
 		go s.runNodeOperationsWorker(ctx)
 		go s.runNodeRecoveryWorker(ctx)
 		go s.runNodeUsageCollector(ctx)
@@ -168,6 +193,7 @@ func (s *Server) StartBackground(ctx context.Context) {
 		go s.runAdminLifecycleWorker(ctx)
 		s.runUserLifecycleWorkers(ctx)
 		go s.runTelegramBackupScheduler(ctx)
+		go s.runCertificateRenewalWorker(ctx)
 		go s.runWebhookWorker(ctx)
 		go s.runTelegramBot(ctx)
 		go s.runOutboundSubscriptionRefresher(ctx)
@@ -689,7 +715,7 @@ func parseNodePath(path string) (int64, string, bool) {
 
 func (s *Server) nodeName(ctx context.Context, nodeID int64) (string, error) {
 	var name string
-	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(name, '') FROM nodes WHERE id = ? LIMIT 1`, nodeID).Scan(&name)
+	err := s.db.QueryRowContext(ctx, `SELECT COALESCE(name, '') FROM nodes WHERE id = ? AND LOWER(COALESCE(status, '')) <> 'deleted' LIMIT 1`, nodeID).Scan(&name)
 	if err == sql.ErrNoRows {
 		return "", fmt.Errorf("node not found")
 	}

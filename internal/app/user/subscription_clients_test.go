@@ -226,6 +226,111 @@ func TestSubscriptionClientOutputsCoverExplicitFormatsAndAutoDetect(t *testing.T
 	}
 }
 
+func TestV2rayNGSubscriptionsKeepAddressAndPort(t *testing.T) {
+	service, key := newSubscriptionClientTestService(t)
+	ctx := context.Background()
+
+	raw, err := service.RenderSubscription(ctx, SubscriptionRenderRequest{Identifier: key, UserAgent: "v2rayNG/1.10.28"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, link := range strings.Fields(decodeSubscriptionTestBody(string(raw.Body))) {
+		parsed, err := parseSubscriptionShareURL(link)
+		if err != nil {
+			t.Fatalf("v2rayNG raw subscription contains an invalid link: %v", err)
+		}
+		if parsed.Hostname() == "" || parsed.Port() == "" {
+			t.Fatalf("v2rayNG raw subscription lost address or port: %s", link)
+		}
+	}
+
+	if _, err := service.repo.db.Exec(`ALTER TABLE subscription_settings ADD COLUMN use_custom_json_for_v2rayng INTEGER DEFAULT 0`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.repo.db.Exec(`UPDATE subscription_settings SET use_custom_json_for_v2rayng = 1`); err != nil {
+		t.Fatal(err)
+	}
+	structured, err := service.RenderSubscription(ctx, SubscriptionRenderRequest{Identifier: key, UserAgent: "v2rayNG/1.10.28"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var configs []map[string]any
+	if err := json.Unmarshal(structured.Body, &configs); err != nil {
+		t.Fatal(err)
+	}
+	for _, config := range configs {
+		outbound := config["outbounds"].([]any)[0].(map[string]any)
+		settings := outbound["settings"].(map[string]any)
+		serverKey := "servers"
+		if protocol := stringValue(outbound["protocol"]); protocol == "vless" || protocol == "vmess" {
+			serverKey = "vnext"
+		}
+		server := settings[serverKey].([]any)[0].(map[string]any)
+		if stringValue(server["address"]) == "" || intValue(server["port"]) <= 0 {
+			t.Fatalf("v2rayNG JSON subscription lost address or port: %#v", outbound)
+		}
+	}
+}
+
+func TestAutomaticCustomJSONRefreshesCurrentCustomNodeHostFinalMask(t *testing.T) {
+	service, key := newSubscriptionClientTestService(t)
+	ctx := context.Background()
+	if _, err := service.repo.db.Exec(`ALTER TABLE subscription_settings ADD COLUMN use_custom_json_for_v2rayng INTEGER DEFAULT 0`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.repo.db.Exec(`UPDATE subscription_settings SET use_custom_json_for_v2rayng = 1`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.repo.db.Exec(`UPDATE nodes SET xray_config_mode = 'custom', xray_config = (SELECT data FROM xray_config WHERE id = 1) WHERE id = 1`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.repo.db.Exec(`UPDATE xray_config SET data = '{"inbounds":[]}' WHERE id = 1`); err != nil {
+		t.Fatal(err)
+	}
+
+	render := func() map[string]any {
+		t.Helper()
+		response, err := service.RenderSubscription(ctx, SubscriptionRenderRequest{Identifier: key, UserAgent: "v2rayNG/1.10.28", ReadOnly: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		configs := []map[string]any{}
+		if err := json.Unmarshal(response.Body, &configs); err != nil {
+			t.Fatal(err)
+		}
+		for _, config := range configs {
+			outbound := config["outbounds"].([]any)[0].(map[string]any)
+			if stringValue(outbound["protocol"]) == "vless" {
+				return outbound
+			}
+		}
+		t.Fatal("VLESS outbound not found")
+		return nil
+	}
+
+	before := render()
+	if len(mapValue(mapValue(before["streamSettings"])["finalmask"])) != 0 {
+		t.Fatalf("fixture unexpectedly started with FinalMask: %#v", before)
+	}
+	mask := `{"tcp":[{"type":"fragment","settings":{"lengths":["3-5","6-8"],"delays":["10-20"]}}]}`
+	if _, err := service.repo.db.Exec(`UPDATE hosts SET finalmask = ? WHERE id = 1`, mask); err != nil {
+		t.Fatal(err)
+	}
+	after := render()
+	finalMask := mapValue(mapValue(after["streamSettings"])["finalmask"])
+	tcp := listOfMaps(finalMask["tcp"])
+	if len(tcp) != 1 {
+		t.Fatalf("updated FinalMask was not rendered: %#v", finalMask)
+	}
+	lengths := listAny(mapValue(tcp[0]["settings"])["lengths"])
+	if len(lengths) != 2 || lengths[0] != "3-5" || lengths[1] != "6-8" {
+		t.Fatalf("current fragment ranges were not refreshed: %#v", finalMask)
+	}
+	if _, err := service.RenderSubscription(ctx, SubscriptionRenderRequest{Identifier: key, ClientType: "v2ray-json", ReadOnly: true}); err == nil {
+		t.Fatal("explicit stable v2ray-json unexpectedly accepted current-only FinalMask")
+	}
+}
+
 func TestSubscriptionClientsKeepShadowsocksHTTPHeader(t *testing.T) {
 	service, key := newSubscriptionClientTestService(t)
 	ctx := context.Background()
@@ -275,7 +380,9 @@ func TestSubscriptionClientsKeepShadowsocksHTTPHeader(t *testing.T) {
 			t.Fatal(err)
 		}
 		body := string(response.Body)
-		if !strings.Contains(body, `"type": "shadowsocks"`) || !strings.Contains(body, `"plugin": "obfs-local"`) || !strings.Contains(body, `"plugin_opts": "obfs=http;obfs-host=header.example.com"`) {
+		if !strings.Contains(body, `"dns"`) || !strings.Contains(body, `"inbounds"`) || !strings.Contains(body, `"route"`) ||
+			!strings.Contains(body, `"tag": "xray-edge"`) || !strings.Contains(body, `"tag": "ss-edge"`) ||
+			!strings.Contains(body, `"type": "shadowsocks"`) || !strings.Contains(body, `"plugin": "obfs-local"`) || !strings.Contains(body, `"plugin_opts": "obfs=http;obfs-host=header.example.com"`) {
 			t.Fatalf("sing-box lost the Shadowsocks HTTP plugin: %s", body)
 		}
 	})
@@ -290,6 +397,60 @@ func TestSubscriptionClientsKeepShadowsocksHTTPHeader(t *testing.T) {
 			t.Fatalf("unexpected Outline payload: %s", body)
 		}
 	})
+}
+
+func TestSubscriptionClientsPreserveShadowsocksTLS(t *testing.T) {
+	service, key := newSubscriptionClientTestService(t)
+	ctx := context.Background()
+	var rawConfig string
+	if err := service.repo.db.QueryRow(`SELECT data FROM xray_config WHERE id = 1`).Scan(&rawConfig); err != nil {
+		t.Fatal(err)
+	}
+	config := map[string]any{}
+	if err := json.Unmarshal([]byte(rawConfig), &config); err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range listOfMaps(config["inbounds"]) {
+		if stringValue(raw["tag"]) != "ss-http" {
+			continue
+		}
+		raw["streamSettings"] = map[string]any{
+			"network": "ws", "security": "tls",
+			"tlsSettings": map[string]any{"serverName": "sni.example.com", "fingerprint": "chrome", "alpn": []any{"h2", "http/1.1"}},
+			"wsSettings":  map[string]any{"path": "/ss", "host": "edge.example.com"},
+		}
+	}
+	updated, err := json.Marshal(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.repo.db.Exec(`UPDATE xray_config SET data = ? WHERE id = 1`, string(updated)); err != nil {
+		t.Fatal(err)
+	}
+
+	response, err := service.RenderSubscription(ctx, SubscriptionRenderRequest{Identifier: key, ClientType: "v2ray"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var clientLink string
+	for _, link := range strings.Fields(decodeSubscriptionTestBody(string(response.Body))) {
+		if strings.HasPrefix(link, "v2rayn://shadowsocks/") {
+			clientLink = link
+			break
+		}
+	}
+	parsed, err := parseSubscriptionShareURL(clientLink)
+	if err != nil || parsed.Query().Get("security") != "tls" || parsed.Query().Get("type") != "ws" || parsed.Query().Get("sni") != "sni.example.com" || parsed.Query().Get("host") != "edge.example.com" || parsed.Query().Get("path") != "/ss" {
+		t.Fatalf("raw subscription lost Shadowsocks TLS: link=%s parsed=%#v err=%v", clientLink, parsed, err)
+	}
+
+	response, err = service.RenderSubscription(ctx, SubscriptionRenderRequest{Identifier: key, ClientType: "xray-json"})
+	if err != nil || !strings.Contains(string(response.Body), `"protocol": "shadowsocks"`) || !strings.Contains(string(response.Body), `"security": "tls"`) || !strings.Contains(string(response.Body), `"serverName": "sni.example.com"`) {
+		t.Fatalf("xray-json lost Shadowsocks TLS: err=%v body=%s", err, response.Body)
+	}
+	if _, err := service.RenderSubscription(ctx, SubscriptionRenderRequest{Identifier: key, ClientType: "outline"}); err == nil {
+		t.Fatal("Outline must reject native Shadowsocks TLS instead of silently returning plain SS")
+	}
 }
 
 func TestSubscriptionInfoIncludesVPNDownloadMaterialAndProtocolEntries(t *testing.T) {
@@ -469,6 +630,7 @@ func newSubscriptionClientTestService(t *testing.T) (Service, string) {
 			mux_enable INTEGER NOT NULL DEFAULT 0,
 			fragment_setting TEXT NULL,
 			noise_setting TEXT NULL,
+			finalmask TEXT NULL,
 			random_user_agent INTEGER NOT NULL DEFAULT 0,
 			use_sni_as_host INTEGER NOT NULL DEFAULT 0
 		)`,

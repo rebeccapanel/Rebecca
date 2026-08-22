@@ -72,6 +72,16 @@ CREATE TABLE vpn_user_sessions (
 	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE user_id = 42 AND operation_type IN ('disable_user', 'enable_user')`, 0)
 }
 
+func TestNodeReadyQueuesFullSync(t *testing.T) {
+	server, db := testAdminServer(t)
+	if _, err := db.Exec(`INSERT INTO nodes (id, name, status, certificate) VALUES (7, 'node-7', 'connected', 'node-cert')`); err != nil {
+		t.Fatal(err)
+	}
+	token := nodecontroller.NodeSessionEventToken("admin-secret", 7, "node-cert")
+	postNodeSessionEvent(t, server, token, `{"node_id":7,"event":"ready"}`)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 7 AND operation_type = 'sync_config' AND status = 'pending'`, 1)
+}
+
 func postNodeSessionEvent(t *testing.T, server *Server, token string, body string) *httptest.ResponseRecorder {
 	t.Helper()
 	rec := requestNodeSessionEvent(t, server, token, body)

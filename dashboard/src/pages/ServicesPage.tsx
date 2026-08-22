@@ -1774,7 +1774,7 @@ const ServicesPage: FC = () => {
 				onRowClick={(service) => {
 					void openServiceDetail(service.id, "admins");
 				}}
-				mobileBreakpoint="lg"
+				mobileBreakpoint="md"
 				tableProps={{
 					w: "full",
 					sx: {
@@ -1844,7 +1844,7 @@ const ServicesPage: FC = () => {
 							actionsPlacement="end"
 							actionsColumnWidth="60px"
 							showActionsOnHover
-							mobileBreakpoint="lg"
+							mobileBreakpoint="md"
 							tableProps={{
 								w: "full",
 								sx: {
@@ -1869,7 +1869,7 @@ const ServicesPage: FC = () => {
 									{t("services.noHosts")}
 								</Text>
 							}
-							mobileBreakpoint="lg"
+							mobileBreakpoint="md"
 							tableProps={{
 								w: "full",
 								sx: {

@@ -91,7 +91,13 @@ func (c Controller) Get(ctx context.Context, req Request) (NodeListItem, error) 
 }
 
 func (c Controller) Sync(ctx context.Context, req Request) (RuntimeResult, error) {
+	unlock := c.lockNode(req.NodeID)
+	defer unlock()
 	node, err := c.repo.Node(ctx, req.NodeID)
+	if err != nil {
+		return RuntimeResult{}, err
+	}
+	supersededIDs, err := c.fullSyncOperationIDs(ctx, node.ID)
 	if err != nil {
 		return RuntimeResult{}, err
 	}
@@ -118,7 +124,14 @@ func (c Controller) Sync(ctx context.Context, req Request) (RuntimeResult, error
 		_ = c.repo.SetError(ctx, node.ID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("sync", node.ID, err)
 	}
-	return c.finishRuntime(ctx, node, res.GetRuntime(), res.GetMessage())
+	result, err := c.finishRuntime(ctx, node, res.GetRuntime(), res.GetMessage())
+	if err != nil {
+		return RuntimeResult{}, err
+	}
+	if _, err := c.repo.MarkOperationsDone(ctx, supersededIDs); err != nil {
+		return RuntimeResult{}, err
+	}
+	return result, nil
 }
 
 func applyRuntimeToNodeItem(item *NodeListItem, runtime RuntimeResult) {

@@ -1,6 +1,8 @@
 package api
 
 import (
+	"crypto/ecdh"
+	"crypto/mlkem"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -24,13 +26,15 @@ func (s *Server) handleXrayHelperPath(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
+	w.Header().Set("Cache-Control", "no-store")
 	switch r.URL.Path {
 	case "/api/xray/vlessenc", "/xray/vlessenc":
-		writeJSON(w, http.StatusOK, map[string]any{
-			"auths": []map[string]string{
-				{"label": "none", "encryption": "none", "decryption": "none"},
-			},
-		})
+		auths, err := generateVLESSEncAuthBlocks()
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "Failed to generate VLESS Encryption keys")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"auths": auths})
 	case "/api/xray/reality-keypair", "/xray/reality-keypair":
 		s.handleRealityKeypair(w)
 	case "/api/xray/reality-shortid", "/xray/reality-shortid":
@@ -48,6 +52,69 @@ func (s *Server) handleXrayHelperPath(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusNotFound, "not found")
 	}
+}
+
+func generateVLESSEncAuthBlocks() ([]map[string]string, error) {
+	x25519Private := make([]byte, 32)
+	if _, err := rand.Read(x25519Private); err != nil {
+		return nil, err
+	}
+	x25519Private[0] &= 248
+	x25519Private[31] &= 127
+	x25519Private[31] |= 64
+	x25519Key, err := ecdh.X25519().NewPrivateKey(x25519Private)
+	if err != nil {
+		return nil, err
+	}
+
+	mlkemSeed := make([]byte, 64)
+	if _, err := rand.Read(mlkemSeed); err != nil {
+		return nil, err
+	}
+	mlkemKey, err := mlkem.NewDecapsulationKey768(mlkemSeed)
+	if err != nil {
+		return nil, err
+	}
+
+	type authKeyPair struct {
+		id        string
+		label     string
+		serverKey string
+		clientKey string
+	}
+	pairs := []authKeyPair{
+		{
+			id:        "x25519",
+			label:     "X25519, not Post-Quantum",
+			serverKey: base64.RawURLEncoding.EncodeToString(x25519Private),
+			clientKey: base64.RawURLEncoding.EncodeToString(x25519Key.PublicKey().Bytes()),
+		},
+		{
+			id:        "mlkem768",
+			label:     "ML-KEM-768, Post-Quantum",
+			serverKey: base64.RawURLEncoding.EncodeToString(mlkemSeed),
+			clientKey: base64.RawURLEncoding.EncodeToString(mlkemKey.EncapsulationKey().Bytes()),
+		},
+	}
+
+	auths := []map[string]string{{"id": "none", "label": "none", "encryption": "none", "decryption": "none"}}
+	for _, pair := range pairs {
+		for _, mode := range []string{"native", "xorpub", "random"} {
+			id := pair.id
+			label := pair.label
+			if mode != "native" {
+				id += "_" + mode
+				label += " (" + mode + ")"
+			}
+			auths = append(auths, map[string]string{
+				"id":         id,
+				"label":      label,
+				"decryption": strings.Join([]string{"mlkem768x25519plus", mode, "600s", pair.serverKey}, "."),
+				"encryption": strings.Join([]string{"mlkem768x25519plus", mode, "0rtt", pair.clientKey}, "."),
+			})
+		}
+	}
+	return auths, nil
 }
 
 func (s *Server) handleMLDSA65(w http.ResponseWriter) {

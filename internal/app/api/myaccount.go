@@ -160,18 +160,7 @@ func (s *Server) handleMyAccountAPIKeyPath(w http.ResponseWriter, r *http.Reques
 		if !adminapp.VerifyPassword(dbadmin.HashedPassword, payload.CurrentPassword) {
 			return statusError{status: http.StatusUnauthorized, detail: "Incorrect password"}
 		}
-		result, err := tx.ExecContext(r.Context(), `DELETE FROM admin_api_keys WHERE id = ? AND admin_id = ?`, keyID, dbadmin.ID)
-		if err != nil {
-			return err
-		}
-		affected, err := result.RowsAffected()
-		if err != nil {
-			return err
-		}
-		if affected == 0 {
-			return statusError{status: http.StatusNotFound, detail: "API key not found"}
-		}
-		return nil
+		return deleteAdminAPIKeyTx(r.Context(), tx, dbadmin.ID, keyID)
 	})
 	if err != nil {
 		writeStatusError(w, err)
@@ -249,53 +238,67 @@ func (s *Server) handleCreateMyAccountAPIKey(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	expiresAt, err := apiKeyExpiresAt(payload.Lifetime, time.Now().UTC())
-	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	token, err := generateAdminAPIKeyToken()
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	keyHash := adminapp.APIKeyTokenHash(token)
 	var response apiKeyResponse
-	err = s.withTx(r.Context(), func(tx *sql.Tx) error {
-		now := time.Now().UTC()
-		result, err := tx.ExecContext(
-			r.Context(),
-			`INSERT INTO admin_api_keys (admin_id, key_hash, created_at, expires_at) VALUES (?, ?, ?, ?)`,
-			dbadmin.ID,
-			keyHash,
-			dbTimestamp(now),
-			timePtrDB(expiresAt),
-		)
-		if err != nil {
-			return err
-		}
-		id, err := result.LastInsertId()
-		if err != nil {
-			return err
-		}
-		createdAt := formatAPIKeyTimeValue(&now)
-		expires := formatAPIKeyTime(expiresAt)
-		masked := "****" + token[len(token)-4:]
-		response = apiKeyResponse{
-			ID:        id,
-			CreatedAt: createdAt,
-			ExpiresAt: expires,
-			MaskedKey: &masked,
-			TokenType: "bearer",
-			APIKey:    &token,
-		}
-		return nil
+	err := s.withTx(r.Context(), func(tx *sql.Tx) error {
+		var err error
+		response, err = createAdminAPIKeyTx(r.Context(), tx, dbadmin.ID, payload.Lifetime, time.Now().UTC())
+		return err
 	})
 	if err != nil {
 		writeStatusError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, response)
+}
+
+func createAdminAPIKeyTx(ctx context.Context, tx *sql.Tx, adminID int64, lifetime string, now time.Time) (apiKeyResponse, error) {
+	expiresAt, err := apiKeyExpiresAt(lifetime, now)
+	if err != nil {
+		return apiKeyResponse{}, statusError{status: http.StatusBadRequest, detail: err.Error()}
+	}
+	token, err := generateAdminAPIKeyToken()
+	if err != nil {
+		return apiKeyResponse{}, err
+	}
+	result, err := tx.ExecContext(
+		ctx,
+		`INSERT INTO admin_api_keys (admin_id, key_hash, created_at, expires_at) VALUES (?, ?, ?, ?)`,
+		adminID,
+		adminapp.APIKeyTokenHash(token),
+		dbTimestamp(now),
+		timePtrDB(expiresAt),
+	)
+	if err != nil {
+		return apiKeyResponse{}, err
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return apiKeyResponse{}, err
+	}
+	masked := "****" + token[len(token)-4:]
+	return apiKeyResponse{
+		ID:        id,
+		CreatedAt: formatAPIKeyTimeValue(&now),
+		ExpiresAt: formatAPIKeyTime(expiresAt),
+		MaskedKey: &masked,
+		TokenType: "bearer",
+		APIKey:    &token,
+	}, nil
+}
+
+func deleteAdminAPIKeyTx(ctx context.Context, tx *sql.Tx, adminID, keyID int64) error {
+	result, err := tx.ExecContext(ctx, `DELETE FROM admin_api_keys WHERE id = ? AND admin_id = ?`, keyID, adminID)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return statusError{status: http.StatusNotFound, detail: "API key not found"}
+	}
+	return nil
 }
 
 func (s *Server) myAccountSummary(ctx context.Context, dbadmin adminapp.Admin) (map[string]any, error) {

@@ -230,6 +230,23 @@ func TestBackupDueUsesSchedule(t *testing.T) {
 	if !BackupDue(settings, time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)) {
 		t.Fatal("backup should retry once the interval passes after failure")
 	}
+
+	last = "2026-06-18 10:00:00"
+	lastErrAt = "2026-06-18 11:00:00"
+	settings = Settings{
+		BackupEnabled:       true,
+		BackupIntervalValue: 1,
+		BackupIntervalUnit:  "hours",
+		BackupLastSentAt:    &last,
+		BackupLastError:     &errText,
+		LastErrorAt:         &lastErrAt,
+	}
+	if BackupDue(settings, time.Date(2026, 6, 18, 11, 1, 0, 0, time.UTC)) {
+		t.Fatal("backup should not retry every minute after a failed scheduled attempt")
+	}
+	if !BackupDue(settings, time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)) {
+		t.Fatal("backup should retry one interval after the failed attempt")
+	}
 }
 
 func int64PtrForBackupTest(value int64) *int64 {

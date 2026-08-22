@@ -10,10 +10,6 @@ import (
 	settingsapp "github.com/rebeccapanel/rebecca/internal/app/settings"
 )
 
-const (
-	subscriptionCertificateDisabledDetail = "Subscription certificate management is temporarily disabled and will be rebuilt with a new Go-native certificate flow."
-)
-
 func (s *Server) handlePanelSettings(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/api/settings/panel" {
 		writeError(w, http.StatusNotFound, "not found")
@@ -97,6 +93,11 @@ func (s *Server) handleSubscriptionSettings(w http.ResponseWriter, r *http.Reque
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
+		bundle.Certificates, err = s.certificateManager.List(r.Context())
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 		writeJSON(w, http.StatusOK, bundle)
 	case http.MethodPut:
 		raw, err := decodeRawJSONMap(r)
@@ -174,19 +175,6 @@ func (s *Server) handleSubscriptionTemplatePath(w http.ResponseWriter, r *http.R
 		writeTemplateContentResponse(w, content, err)
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-	}
-}
-
-func (s *Server) handleSettingsDisabledRoute(w http.ResponseWriter, r *http.Request) {
-	switch r.URL.Path {
-	case "/api/settings/subscriptions/certificates/issue", "/api/settings/subscriptions/certificates/renew":
-		if r.Method != http.MethodPost {
-			writeError(w, http.StatusMethodNotAllowed, "method not allowed")
-			return
-		}
-		writeError(w, http.StatusGone, subscriptionCertificateDisabledDetail)
-	default:
-		writeError(w, http.StatusNotFound, "not found")
 	}
 }
 

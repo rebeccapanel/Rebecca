@@ -124,9 +124,13 @@ import {
 	type RebeccaJsonContext,
 	stringifyRebeccaJson,
 } from "../utils/jsonFormatting";
-import { countryFlag } from "../utils/countries";
 import { SizeFormatter } from "../utils/outbound";
 import { computeOutboundIds } from "../utils/outboundId";
+import { sumOutboundTraffic } from "../utils/outboundTraffic";
+import {
+	sortByTraffic,
+	type TrafficSortOrder,
+} from "../utils/trafficSort";
 import XrayLogsPage from "./XrayLogsPage";
 
 const AddIconStyled = chakra(AddIcon, { baseStyle: { w: 3.5, h: 3.5 } });
@@ -172,9 +176,9 @@ const NordVPNIconStyled = () => (
 		{SiNordvpn({ size: 16, "aria-hidden": true })}
 	</Box>
 );
-const TorIconStyled = () => (
+const TorIconStyled: FC<{ size?: number }> = ({ size = 16 }) => (
 	<Box as="span" display="inline-flex" color="#7d4698">
-		{SiTorproject({ size: 16, "aria-hidden": true })}
+		{SiTorproject({ size, "aria-hidden": true })}
 	</Box>
 );
 const WindscribeIconStyled = () => (
@@ -199,17 +203,11 @@ const PsiphonIconStyled = () => (
 );
 const ManagedOutboundBadge: FC<{ outbound: any }> = ({ outbound }) => {
 	const meta = managedOutboundMeta(outbound);
-	if (!meta) return null;
+	if (!meta || meta.provider === "tor") return null;
 	const providerName =
-		meta.provider === "tor"
-			? "Tor"
-			: meta.provider === "windscribe"
-				? "Windscribe"
-				: "Psiphon";
+		meta.provider === "windscribe" ? "Windscribe" : "Psiphon";
 	const icon =
-		meta.provider === "tor" ? (
-			<TorIconStyled />
-		) : meta.provider === "windscribe" ? (
+		meta.provider === "windscribe" ? (
 			<WindscribeIconStyled />
 		) : (
 			<PsiphonIconStyled />
@@ -231,7 +229,6 @@ const ManagedOutboundBadge: FC<{ outbound: any }> = ({ outbound }) => {
 				flexShrink={0}
 			>
 				{icon}
-				{meta.country && <Text fontSize="sm">{countryFlag(meta.country)}</Text>}
 			</HStack>
 		</Tooltip>
 	);
@@ -804,6 +801,8 @@ export const CoreSettingsPage: FC = () => {
 
 	const [outboundData, setOutboundData] = useState<any[]>([]);
 	const [outboundSearch, setOutboundSearch] = useState("");
+	const [outboundTrafficSort, setOutboundTrafficSort] =
+		useState<TrafficSortOrder>("default");
 	const [selectedOutboundIds, setSelectedOutboundIds] = useState<string[]>([]);
 	const [outboundTestType, setOutboundTestType] =
 		useState<OutboundTestType>("latency");
@@ -1728,11 +1727,34 @@ export const CoreSettingsPage: FC = () => {
 			outbound,
 			originalIndex,
 		}));
-		if (!term) return rows;
-		return rows.filter(({ outbound }) =>
-			JSON.stringify(outbound).toLowerCase().includes(term),
+		const matches = term
+			? rows.filter(({ outbound }) =>
+					JSON.stringify(outbound).toLowerCase().includes(term),
+				)
+			: rows;
+		return sortByTraffic(
+			matches,
+			outboundTrafficSort,
+			({ outbound, originalIndex }) => {
+				const traffic = sumOutboundTraffic(
+					outboundsTraffic,
+					selectedTarget,
+					outboundIds[originalIndex],
+					outbound.tag,
+					isMasterTarget,
+				);
+				return traffic.up + traffic.down;
+			},
 		);
-	}, [outboundData, outboundSearch]);
+	}, [
+		outboundData,
+		outboundIds,
+		outboundSearch,
+		outboundTrafficSort,
+		outboundsTraffic,
+		selectedTarget,
+		isMasterTarget,
+	]);
 	const managedOutboundData = useMemo(
 		() => filteredOutboundData.filter(({ outbound }) => managedOutboundMeta(outbound)),
 		[filteredOutboundData],
@@ -2505,14 +2527,28 @@ export const CoreSettingsPage: FC = () => {
 	};
 
 	const findOutboundTraffic = (outbound: any, index: number) => {
-		const outboundId = outboundIds[index];
-		const targetTraffic = outboundsTraffic.filter(
-			(t) => (t.target_id || "master") === selectedTarget,
+		return sumOutboundTraffic(
+			outboundsTraffic,
+			selectedTarget,
+			outboundIds[index],
+			outbound.tag,
+			isMasterTarget,
 		);
-		const traffic = outboundId
-			? targetTraffic.find((t) => t.outbound_id === outboundId)
-			: targetTraffic.find((t) => t.tag === outbound.tag);
-		return { up: Number(traffic?.up) || 0, down: Number(traffic?.down) || 0 };
+	};
+
+	const findSubscriptionOutboundTraffic = (outbound: any) => {
+		const outboundId = outboundsTraffic.find(
+			(item) =>
+				(item.target_id || "master") === selectedTarget &&
+				item.tag === outbound.tag,
+		)?.outbound_id;
+		return sumOutboundTraffic(
+			outboundsTraffic,
+			selectedTarget,
+			outboundId,
+			outbound.tag,
+			isMasterTarget,
+		);
 	};
 
 	const renderOutboundTraffic = (traffic?: { up?: number; down?: number }) => (
@@ -3525,6 +3561,13 @@ export const CoreSettingsPage: FC = () => {
 			cell: ({ outbound }) => (
 				<VStack align="start" spacing={1}>
 					<HStack spacing={1.5} maxW="full" minW={0}>
+						{managedOutboundMeta(outbound)?.provider === "tor" && (
+							<Tooltip label="Tor">
+								<Box display="inline-flex" flexShrink={0}>
+									<TorIconStyled size={20} />
+								</Box>
+							</Tooltip>
+						)}
 						<Text fontWeight="semibold" noOfLines={1}>
 							{String(outbound.tag ?? "-")}
 						</Text>
@@ -3586,7 +3629,10 @@ export const CoreSettingsPage: FC = () => {
 			id: "move-up",
 			label: t("pages.xray.outbound.moveUp"),
 			icon: <ArrowUpIconStyled />,
-			isDisabled: outboundSearch.trim().length > 0 || row.originalIndex === 0,
+			isDisabled:
+				outboundSearch.trim().length > 0 ||
+				outboundTrafficSort !== "default" ||
+				row.originalIndex === 0,
 			onClick: () => moveOutboundUp(row.originalIndex),
 		},
 		{
@@ -3595,6 +3641,7 @@ export const CoreSettingsPage: FC = () => {
 			icon: <ArrowDownIconStyled />,
 			isDisabled:
 				outboundSearch.trim().length > 0 ||
+				outboundTrafficSort !== "default" ||
 				row.originalIndex === outboundData.length - 1,
 			onClick: () => moveOutboundDown(row.originalIndex),
 		},
@@ -3673,12 +3720,8 @@ export const CoreSettingsPage: FC = () => {
 				header: t("pages.inbounds.traffic"),
 				priority: "high",
 				mobileSummary: true,
-				cell: ({ outbound }) => {
-					const traffic = outboundsTraffic
-						.filter((item) => (item.target_id || "master") === selectedTarget)
-						.find((item) => item.tag === outbound.tag);
-					return renderOutboundTraffic(traffic);
-				},
+				cell: ({ outbound }) =>
+					renderOutboundTraffic(findSubscriptionOutboundTraffic(outbound)),
 			},
 			{
 				id: "latency",
@@ -4801,6 +4844,23 @@ export const CoreSettingsPage: FC = () => {
 										placeholder={t("search")}
 										value={outboundSearch}
 										onChange={(e) => setOutboundSearch(e.target.value)}
+									/>
+									<Select
+										size="sm"
+										w={{ base: "full", md: "210px" }}
+										value={outboundTrafficSort}
+										showSearch={false}
+										options={[
+											{ value: "default", label: t("trafficSort.default") },
+											{ value: "highest", label: t("trafficSort.highest") },
+											{ value: "lowest", label: t("trafficSort.lowest") },
+										]}
+										placeholder={t("trafficSort.label")}
+										onChange={(event) =>
+											setOutboundTrafficSort(
+												event.target.value as TrafficSortOrder,
+											)
+										}
 									/>
 									<RadioGroup
 										size="sm"

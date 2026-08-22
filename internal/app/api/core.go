@@ -65,6 +65,7 @@ func (s *Server) handleCoreRestart(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.kickNodeOperationsSoon()
 	writeJSON(w, http.StatusOK, map[string]any{"detail": "Runtime restart queued"})
 }
 

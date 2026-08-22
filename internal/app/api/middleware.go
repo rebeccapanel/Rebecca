@@ -12,7 +12,10 @@ import (
 
 type contextKey string
 
-const adminContextKey contextKey = "admin"
+const (
+	adminContextKey             contextKey = "admin"
+	recentActionBatchContextKey contextKey = "recent_action_batch"
+)
 
 type adminPrincipal struct {
 	ID       int64
@@ -33,8 +36,25 @@ func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		ctx := context.WithValue(r.Context(), adminContextKey, principal)
+		if batchID := recentActionBatchID(r); batchID != "" {
+			ctx = context.WithValue(ctx, recentActionBatchContextKey, batchID)
+		}
 		next(w, r.WithContext(ctx))
 	}
+}
+
+func recentActionBatchID(r *http.Request) string {
+	value := strings.TrimSpace(r.Header.Get("X-Rebecca-Action-Batch"))
+	if value == "" || len(value) > 64 {
+		return ""
+	}
+	for _, char := range value {
+		if (char < 'a' || char > 'z') && (char < 'A' || char > 'Z') &&
+			(char < '0' || char > '9') && char != '-' && char != '_' {
+			return ""
+		}
+	}
+	return value
 }
 
 func (s *Server) requireSudo(next http.HandlerFunc) http.HandlerFunc {

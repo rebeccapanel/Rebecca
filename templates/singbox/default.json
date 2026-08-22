@@ -5,20 +5,15 @@
   "dns": {
     "servers": [
       {
+        "type": "udp",
         "tag": "dns-remote",
-        "address": "1.1.1.2",
+        "server": "1.1.1.2",
+        "server_port": 53,
         "detour": "proxy"
       },
       {
-        "tag": "dns-local",
-        "address": "local",
-        "detour": "direct"
-      }
-    ],
-    "rules": [
-      {
-        "outbound": "any",
-        "server": "dns-local"
+        "type": "local",
+        "tag": "dns-local"
       }
     ],
     "final": "dns-remote",
@@ -37,9 +32,7 @@
       "route_exclude_address": [
         "192.168.0.0/16",
         "fc00::/7"
-      ],
-      "sniff": true,
-      "domain_strategy": "prefer_ipv4"
+      ]
     }
   ],
   "outbounds": [
@@ -57,35 +50,30 @@
     {
       "type": "direct",
       "tag": "direct"
-    },
-    {
-      "type": "block",
-      "tag": "block"
-    },
-    {
-      "type": "dns",
-      "tag": "dns-out"
     }
   ],
   "route": {
     "rules": [
       {
+        "action": "sniff"
+      },
+      {
         "protocol": "dns",
-        "outbound": "dns-out"
+        "action": "hijack-dns"
       },
       {
         "ip_is_private": true,
+        "action": "route",
         "outbound": "direct"
       }
     ],
     "final": "proxy",
     "auto_detect_interface": true,
-    "override_android_vpn": true
+    "default_domain_resolver": "dns-local"
   },
   "experimental": {
     "cache_file": {
-      "enabled": true,
-      "store_rdrc": true
+      "enabled": true
     }
   }
 }

@@ -249,6 +249,7 @@ func adminResponse(dbadmin adminapp.Admin) map[string]any {
 	result := map[string]any{
 		"id":                              dbadmin.ID,
 		"username":                        dbadmin.Username,
+		"created_by":                      dbadmin.CreatedBy,
 		"role":                            string(dbadmin.Role),
 		"permissions":                     dbadmin.Permissions,
 		"services":                        dbadmin.Services,

@@ -64,6 +64,7 @@ import { Link as RouterLink } from "react-router-dom";
 import { fetch as apiFetch } from "service/http";
 import {
 	type AdminSubscriptionSettings,
+	deleteSubscriptionCertificate,
 	disablePHPMyAdmin,
 	enablePHPMyAdmin,
 	getPanelSettings,
@@ -73,12 +74,14 @@ import {
 	getSubscriptionSettings,
 	getSubscriptionTemplateContent,
 	getTelegramSettings,
+	importSubscriptionCertificate,
 	issueSubscriptionCertificate,
 	type PanelSettingsResponse,
 	renewSubscriptionCertificate,
 	type RuntimeSettingsResponse,
 	sendTelegramBackup,
 	testTelegramSettings,
+	type SubscriptionCertificate,
 	type SubscriptionSettingsBundle,
 	type SubscriptionTemplateContentResponse,
 	type SubscriptionTemplateSettings,
@@ -88,9 +91,11 @@ import {
 	updateAdminSubscriptionSettings,
 	updatePanelSettings,
 	updateRuntimeSettings,
+	updateSubscriptionCertificateServing,
 	updateSubscriptionSettings,
 	updateSubscriptionTemplateContent,
 	updateTelegramSettings,
+	revokeSubscriptionCertificate,
 } from "service/settings";
 import {
 	generateErrorMessage,
@@ -770,10 +775,6 @@ export const IntegrationSettingsPage = () => {
 		"gray.200",
 		"whiteAlpha.200",
 	);
-	const comingSoonOverlayBg = useColorModeValue(
-		"rgba(255, 255, 255, 0.78)",
-		"rgba(8, 11, 18, 0.76)",
-	);
 	const { userData, getUserIsSuccess } = useGetUser();
 	const isSudoOrFull =
 		userData?.role === "sudo" || userData?.role === "full_access";
@@ -916,13 +917,23 @@ export const IntegrationSettingsPage = () => {
 	const [isOpeningPHPMyAdminExternal, setOpeningPHPMyAdminExternal] =
 		useState(false);
 	const [certificateForm, setCertificateForm] = useState<{
+		provider: "letsencrypt" | "zerossl" | "manual";
 		email: string;
 		domains: string;
+		fullchain: string;
+		privateKey: string;
 	}>({
+		provider: "letsencrypt",
 		email: "",
 		domains: "",
+		fullchain: "",
+		privateKey: "",
 	});
 	const [renewingDomain, setRenewingDomain] = useState<string | null>(null);
+	const [certificateAction, setCertificateAction] = useState<{
+		type: "revoke" | "delete";
+		domain: string;
+	} | null>(null);
 	const [maintenanceOperation, setMaintenanceOperation] =
 		useState<MaintenanceOperation | null>(null);
 	const [isMaintenanceProgressOpen, setMaintenanceProgressOpen] =
@@ -1512,30 +1523,52 @@ export const IntegrationSettingsPage = () => {
 		},
 	);
 
+	const updateCertificateCache = (cert: SubscriptionCertificate) => {
+		queryClient.setQueryData<SubscriptionSettingsBundle | undefined>(
+			"subscription-settings",
+			(prev) =>
+				prev
+					? {
+							...prev,
+							certificates: [
+								cert,
+								...(prev.certificates || []).filter(
+									(existing) => existing.domain !== cert.domain,
+								),
+							],
+						}
+					: prev,
+		);
+	};
+
 	const issueCertificateMutation = useMutation(issueSubscriptionCertificate, {
 		onSuccess: (cert) => {
-			queryClient.setQueryData<SubscriptionSettingsBundle | undefined>(
-				"subscription-settings",
-				(prev) =>
-					prev
-						? {
-								...prev,
-								certificates: [
-									cert,
-									...(prev.certificates || []).filter(
-										(existing) => existing.domain !== cert.domain,
-									),
-								],
-							}
-						: {
-								settings: buildSubscriptionDefaults(),
-								admins: [],
-								certificates: [cert],
-							},
-			);
-			setCertificateForm((prev) => ({ ...prev, domains: "" }));
+			updateCertificateCache(cert);
+			setCertificateForm((prev) => ({
+				...prev,
+				domains: "",
+			}));
 			toast({
 				title: t("settings.subscriptions.certificateIssued"),
+				status: "success",
+				duration: 3000,
+			});
+		},
+		onError: (error) => {
+			generateErrorMessage(error, toast);
+		},
+	});
+	const importCertificateMutation = useMutation(importSubscriptionCertificate, {
+		onSuccess: (cert) => {
+			updateCertificateCache(cert);
+			setCertificateForm((prev) => ({
+				...prev,
+				domains: "",
+				fullchain: "",
+				privateKey: "",
+			}));
+			toast({
+				title: t("settings.subscriptions.certificateImported"),
 				status: "success",
 				duration: 3000,
 			});
@@ -1549,18 +1582,7 @@ export const IntegrationSettingsPage = () => {
 		onMutate: (payload) => setRenewingDomain(payload?.domain || null),
 		onSuccess: (cert) => {
 			if (cert) {
-				queryClient.setQueryData<SubscriptionSettingsBundle | undefined>(
-					"subscription-settings",
-					(prev) =>
-						prev
-							? {
-									...prev,
-									certificates: prev.certificates.map((existing) =>
-										existing.domain === cert.domain ? cert : existing,
-									),
-								}
-							: prev,
-				);
+				updateCertificateCache(cert);
 			}
 			toast({
 				title: t("settings.subscriptions.certificateRenewed"),
@@ -1573,6 +1595,62 @@ export const IntegrationSettingsPage = () => {
 		},
 		onSettled: () => setRenewingDomain(null),
 	});
+	const revokeCertificateMutation = useMutation(revokeSubscriptionCertificate, {
+		onSuccess: (cert) => {
+			updateCertificateCache(cert);
+			setCertificateAction(null);
+			toast({
+				title: t("settings.subscriptions.certificateRevoked"),
+				status: "success",
+				duration: 3000,
+			});
+		},
+		onError: (error) => {
+			generateErrorMessage(error, toast);
+		},
+	});
+	const deleteCertificateMutation = useMutation(deleteSubscriptionCertificate, {
+		onSuccess: (_, domain) => {
+			queryClient.setQueryData<SubscriptionSettingsBundle | undefined>(
+				"subscription-settings",
+				(prev) =>
+					prev
+						? {
+								...prev,
+								certificates: prev.certificates.filter(
+									(cert) => cert.domain !== domain,
+								),
+							}
+						: prev,
+			);
+			setCertificateAction(null);
+			toast({
+				title: t("settings.subscriptions.certificateDeleted"),
+				status: "success",
+				duration: 3000,
+			});
+		},
+		onError: (error) => {
+			generateErrorMessage(error, toast);
+		},
+	});
+	const certificateServingMutation = useMutation(
+		({ domain, enabled }: { domain: string; enabled: boolean }) =>
+			updateSubscriptionCertificateServing(domain, enabled),
+		{
+			onSuccess: (cert) => {
+				updateCertificateCache(cert);
+				toast({
+					title: t("settings.subscriptions.certificateServingUpdated"),
+					status: "success",
+					duration: 3000,
+				});
+			},
+			onError: (error) => {
+				generateErrorMessage(error, toast);
+			},
+		},
+	);
 
 	const onSubmit = (values: FormValues) => {
 		const flattenedEventToggles = flattenEventToggleValues(
@@ -1789,11 +1867,31 @@ export const IntegrationSettingsPage = () => {
 		const domains = Array.from(
 			new Set(
 				certificateForm.domains
-					.split(/[,\\s]+/)
+					.split(/[,\s]+/)
 					.map((domain) => domain.trim())
 					.filter(Boolean),
 			),
 		);
+		if (certificateForm.provider === "manual") {
+			if (
+				domains.length !== 1 ||
+				!certificateForm.fullchain.trim() ||
+				!certificateForm.privateKey.trim()
+			) {
+				toast({
+					title: t("settings.subscriptions.certificateMissingInput"),
+					status: "warning",
+					duration: 2500,
+				});
+				return;
+			}
+			importCertificateMutation.mutate({
+				domain: domains[0],
+				fullchain: certificateForm.fullchain,
+				private_key: certificateForm.privateKey,
+			});
+			return;
+		}
 		if (!certificateForm.email.trim() || domains.length === 0) {
 			toast({
 				title: t("settings.subscriptions.certificateMissingInput"),
@@ -1805,6 +1903,7 @@ export const IntegrationSettingsPage = () => {
 		issueCertificateMutation.mutate({
 			email: certificateForm.email.trim(),
 			domains,
+			provider: certificateForm.provider,
 		});
 	};
 
@@ -4610,24 +4709,50 @@ export const IntegrationSettingsPage = () => {
 									</Box>
 									<Box
 										className="master-settings-card"
-										position="relative"
-										overflow="hidden"
-										borderStyle="dashed"
 									>
-										<Box
-											opacity={0.42}
-											filter="grayscale(0.55)"
-											pointerEvents="none"
-											userSelect="none"
-											aria-hidden
-										>
 											<Heading size="sm" mb={1}>
 												{t("settings.subscriptions.certificateTitle")}
 											</Heading>
 											<Text fontSize="sm" color="gray.500" mb={4}>
 												{t("settings.subscriptions.certificateDescription")}
 											</Text>
+											<Alert status="info" variant="left-accent" borderRadius="md" mb={4}>
+												<AlertIcon />
+												<Text fontSize="sm">
+													{t("settings.subscriptions.certificateSNIHint")}
+												</Text>
+											</Alert>
 											<SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
+												<FormControl>
+													<FormLabel>
+														{t("settings.subscriptions.certificateProvider")}
+													</FormLabel>
+													<Select
+														value={certificateForm.provider}
+														showSearch={false}
+														onChange={(event) =>
+															setCertificateForm((prev) => ({
+																...prev,
+																provider: event.target.value as
+																	| "letsencrypt"
+																	| "zerossl"
+																	| "manual",
+															}))
+														}
+													>
+														<option value="letsencrypt">Certbot / Let's Encrypt</option>
+														<option value="zerossl">ZeroSSL</option>
+														<option value="manual">
+															{t("settings.subscriptions.manualCertificate")}
+														</option>
+													</Select>
+													{certificateForm.provider === "zerossl" ? (
+														<FormHelperText>
+															{t("settings.subscriptions.zeroSSLNoKeyHint")}
+														</FormHelperText>
+													) : null}
+												</FormControl>
+												{certificateForm.provider !== "manual" ? (
 												<FormControl>
 													<FormLabel>
 														{t("settings.subscriptions.email")}
@@ -4644,12 +4769,19 @@ export const IntegrationSettingsPage = () => {
 														}
 													/>
 												</FormControl>
+												) : null}
 												<FormControl>
 													<FormLabel>
-														{t("settings.subscriptions.domains")}
+														{certificateForm.provider === "manual"
+															? t("settings.subscriptions.domain")
+															: t("settings.subscriptions.domains")}
 													</FormLabel>
 													<Input
-														placeholder="example.com,sub.example.com"
+														placeholder={
+															certificateForm.provider === "manual"
+																? "example.com"
+																: "example.com,sub.example.com"
+														}
 														value={certificateForm.domains}
 														onChange={(event) =>
 															setCertificateForm((prev) => ({
@@ -4658,19 +4790,60 @@ export const IntegrationSettingsPage = () => {
 															}))
 														}
 													/>
-													<FormHelperText>
-														{t("settings.subscriptions.domainsHint")}
-													</FormHelperText>
+													{certificateForm.provider !== "manual" ? (
+														<FormHelperText>
+															{t("settings.subscriptions.domainsHint")}
+														</FormHelperText>
+													) : null}
 												</FormControl>
 											</SimpleGrid>
+											{certificateForm.provider === "manual" ? (
+												<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4} mt={4}>
+													<FormControl>
+														<FormLabel>fullchain.pem</FormLabel>
+														<Textarea
+															dir="ltr"
+															fontFamily="mono"
+															minH="180px"
+															value={certificateForm.fullchain}
+															onChange={(event) =>
+																setCertificateForm((prev) => ({
+																	...prev,
+																	fullchain: event.target.value,
+																}))
+															}
+														/>
+													</FormControl>
+													<FormControl>
+														<FormLabel>privkey.pem</FormLabel>
+														<Textarea
+															dir="ltr"
+															fontFamily="mono"
+															minH="180px"
+															value={certificateForm.privateKey}
+															onChange={(event) =>
+																setCertificateForm((prev) => ({
+																	...prev,
+																	privateKey: event.target.value,
+																}))
+															}
+														/>
+													</FormControl>
+												</SimpleGrid>
+											) : null}
 											<Flex className="master-settings-action-row" mt={3}>
 												<Button
 													colorScheme="primary"
 													leftIcon={<SaveIcon />}
 													onClick={handleIssueCertificate}
-													isLoading={issueCertificateMutation.isLoading}
+													isLoading={
+														issueCertificateMutation.isLoading ||
+														importCertificateMutation.isLoading
+													}
 												>
-													{t("settings.subscriptions.issueAction")}
+													{certificateForm.provider === "manual"
+														? t("settings.subscriptions.importAction")
+														: t("settings.subscriptions.issueAction")}
 												</Button>
 											</Flex>
 											<Divider my={4} />
@@ -4694,13 +4867,20 @@ export const IntegrationSettingsPage = () => {
 																gap={3}
 																flexDirection={{ base: "column", md: "row" }}
 															>
-																<Box>
+																<Box minW={0}>
 																	<Text fontWeight="semibold">
 																		{cert.domain}
 																	</Text>
+																	{cert.alt_names?.length ? (
+																		<Text fontSize="sm" color="gray.500">
+																			SAN: {cert.alt_names.join(", ")}
+																		</Text>
+																	) : null}
 																	<Text fontSize="sm" color="gray.500">
-																		{t("path")}:{" "}
-																		{cert.path}
+																		{t("settings.subscriptions.expiresAt")}:{" "}
+																		{cert.not_after
+																			? new Date(cert.not_after).toLocaleString()
+																			: t("settings.subscriptions.never")}
 																	</Text>
 																	<Text fontSize="sm" color="gray.500">
 																		{t("settings.subscriptions.lastIssued")}:{" "}
@@ -4718,13 +4898,54 @@ export const IntegrationSettingsPage = () => {
 																				).toLocaleString()
 																			: t("settings.subscriptions.never")}
 																	</Text>
-																</Box>
-																<HStack>
+																	</Box>
+																	<HStack flexWrap="wrap" justify="flex-end">
+																		<HStack>
+																			<Text fontSize="sm">
+																				{t("settings.subscriptions.serveTLS")}
+																			</Text>
+																			<Switch
+																				aria-label={t("settings.subscriptions.serveTLS")}
+																				isChecked={cert.serve_tls !== false}
+																				isDisabled={
+																					certificateServingMutation.isLoading ||
+																					(cert.serve_tls === false &&
+																						cert.status !== "active" &&
+																						cert.status !== "expiring")
+																				}
+																				onChange={(event) =>
+																					certificateServingMutation.mutate({
+																						domain: cert.domain,
+																						enabled: event.target.checked,
+																					})
+																				}
+																			/>
+																		</HStack>
+																		<Badge
+																		colorScheme={
+																			cert.status === "active"
+																				? "green"
+																				: cert.status === "expiring"
+																					? "orange"
+																					: "red"
+																		}
+																	>
+																		{cert.status}
+																	</Badge>
+																	<Badge colorScheme="blue">
+																		{cert.provider || "unknown"}
+																	</Badge>
+																	{cert.auto_renew ? (
+																		<Badge colorScheme="teal">
+																			{t("settings.subscriptions.autoRenew")}
+																		</Badge>
+																	) : null}
 																	{cert.email ? (
 																		<Badge colorScheme="purple">
 																			{cert.email}
 																		</Badge>
 																	) : null}
+																	{cert.auto_renew && cert.status !== "revoked" ? (
 																	<Button
 																		size="sm"
 																		variant="outline"
@@ -4741,6 +4962,35 @@ export const IntegrationSettingsPage = () => {
 																	>
 																		{t("settings.subscriptions.renewAction")}
 																	</Button>
+																	) : null}
+																	{cert.provider !== "manual" && cert.status !== "revoked" ? (
+																		<Button
+																			size="sm"
+																			variant="outline"
+																			colorScheme="orange"
+																			onClick={() =>
+																				setCertificateAction({
+																					type: "revoke",
+																					domain: cert.domain,
+																				})
+																			}
+																		>
+																			{t("settings.subscriptions.revokeAction")}
+																		</Button>
+																	) : null}
+																	<Button
+																		size="sm"
+																		variant="outline"
+																		colorScheme="red"
+																		onClick={() =>
+																			setCertificateAction({
+																				type: "delete",
+																				domain: cert.domain,
+																			})
+																		}
+																	>
+																		{t("delete")}
+																	</Button>
 																</HStack>
 															</Flex>
 														</Box>
@@ -4748,27 +4998,6 @@ export const IntegrationSettingsPage = () => {
 												</Stack>
 											)}
 										</Box>
-										<Flex
-											position="absolute"
-											inset={0}
-											align="center"
-											justify="center"
-											bg={comingSoonOverlayBg}
-											backdropFilter="blur(2px)"
-											zIndex={1}
-										>
-											<Badge
-												colorScheme="orange"
-												borderRadius="full"
-												px={4}
-												py={2}
-												fontSize="sm"
-												textTransform="lowercase"
-											>
-												{t("common.comingSoon")}
-											</Badge>
-										</Flex>
-									</Box>
 								</VStack>
 							</form>
 						)}
@@ -4818,6 +5047,34 @@ export const IntegrationSettingsPage = () => {
 				confirmLabel={t("settings.panel.updateAction")}
 				colorScheme="yellow"
 				isLoading={updateMutation.isLoading}
+			/>
+			<ConfirmDialog
+				isOpen={Boolean(certificateAction)}
+				onClose={() => setCertificateAction(null)}
+				onConfirm={() => {
+					if (!certificateAction) return;
+					if (certificateAction.type === "revoke") {
+						revokeCertificateMutation.mutate(certificateAction.domain);
+						return;
+					}
+					deleteCertificateMutation.mutate(certificateAction.domain);
+				}}
+				title={
+					certificateAction?.type === "revoke"
+						? t("settings.subscriptions.revokeTitle")
+						: t("settings.subscriptions.deleteTitle")
+				}
+				description={t("settings.subscriptions.certificateActionWarning")}
+				confirmLabel={
+					certificateAction?.type === "revoke"
+						? t("settings.subscriptions.revokeAction")
+						: t("delete")
+				}
+				colorScheme={certificateAction?.type === "revoke" ? "orange" : "red"}
+				isLoading={
+					revokeCertificateMutation.isLoading ||
+					deleteCertificateMutation.isLoading
+				}
 			/>
 			<Modal
 				isOpen={isMaintenanceProgressOpen}

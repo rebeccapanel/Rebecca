@@ -116,7 +116,7 @@ type inboundInfo struct {
 	Encryption      string
 	Heartbeat       int64
 	MultiMode       bool
-	Fragment        string
+	FinalMask       map[string]any
 	RandomUserAgent bool
 }
 
@@ -136,25 +136,28 @@ type hostInfo struct {
 	IsDisabled      bool
 	MuxEnable       bool
 	FragmentSetting sql.NullString
+	NoiseSetting    sql.NullString
+	FinalMask       map[string]any
 	RandomUserAgent bool
 	UseSNIAsHost    bool
 	ServiceSort     int64
 }
 
 type generatedNode struct {
-	Remark   string
-	Protocol string
-	Address  string
-	Port     string
-	Network  string
-	TLS      string
-	SNI      string
-	Host     string
-	Path     string
-	Header   string
-	Settings map[string]any
-	Inbound  inboundInfo
-	Mux      bool
+	Remark    string
+	Protocol  string
+	Address   string
+	Port      string
+	Network   string
+	TLS       string
+	SNI       string
+	Host      string
+	Path      string
+	Header    string
+	Settings  map[string]any
+	Inbound   inboundInfo
+	Mux       bool
+	FinalMask map[string]any
 }
 
 type optionalString struct {
@@ -1644,7 +1647,7 @@ func (c *cli) loadServiceHosts(serviceID int64) ([]hostInfo, error) {
 	query := `
 SELECT h.id, h.remark, h.address, h.port, h.path, h.sni, h.host, h.security, h.alpn,
        h.fingerprint, h.inbound_tag, h.allowinsecure, h.is_disabled, h.mux_enable,
-       h.fragment_setting, h.random_user_agent, h.use_sni_as_host, sh.sort
+       h.fragment_setting, h.noise_setting, h.finalmask, h.random_user_agent, h.use_sni_as_host, sh.sort
 FROM service_hosts sh
 JOIN hosts h ON h.id = sh.host_id
 WHERE sh.service_id = ? AND (h.is_disabled IS NULL OR h.is_disabled = 0)
@@ -1667,6 +1670,7 @@ func scanHosts(rows *sql.Rows) ([]hostInfo, error) {
 		var h hostInfo
 		var address, sni, host sql.NullString
 		var tls, alpn, fingerprint sql.NullString
+		var finalMask sql.NullString
 		var allowInsecure, disabled, mux, randomUA, useSNI sql.NullBool
 		if err := rows.Scan(
 			&h.ID,
@@ -1684,6 +1688,8 @@ func scanHosts(rows *sql.Rows) ([]hostInfo, error) {
 			&disabled,
 			&mux,
 			&h.FragmentSetting,
+			&h.NoiseSetting,
+			&finalMask,
 			&randomUA,
 			&useSNI,
 			&h.ServiceSort,
@@ -1699,6 +1705,11 @@ func scanHosts(rows *sql.Rows) ([]hostInfo, error) {
 		h.AllowInsecure = allowInsecure.Valid && allowInsecure.Bool
 		h.IsDisabled = disabled.Valid && disabled.Bool
 		h.MuxEnable = mux.Valid && mux.Bool
+		if finalMask.Valid && strings.TrimSpace(finalMask.String) != "" {
+			if err := json.Unmarshal([]byte(finalMask.String), &h.FinalMask); err != nil {
+				return nil, fmt.Errorf("decode finalmask for host %d: %w", h.ID, err)
+			}
+		}
 		h.RandomUserAgent = randomUA.Valid && randomUA.Bool
 		h.UseSNIAsHost = useSNI.Valid && useSNI.Bool
 		hosts = append(hosts, h)
@@ -1755,19 +1766,20 @@ func (c *cli) buildSubscriptionNodes(user subscriptionUser, proxies []proxyRecor
 		}
 		remark := formatSubscriptionText(host.Remark, user, inbound, host)
 		node := generatedNode{
-			Remark:   remark,
-			Protocol: inbound.Protocol,
-			Address:  formatSubscriptionText(address, user, inbound, host),
-			Port:     anyToString(firstNonNil(host.Port, inbound.Port)),
-			Network:  inbound.Network,
-			TLS:      tlsValue,
-			SNI:      formatSubscriptionText(sni, user, inbound, host),
-			Host:     formatSubscriptionText(reqHost, user, inbound, host),
-			Path:     formatSubscriptionText(path, user, inbound, host),
-			Header:   inbound.HeaderType,
-			Settings: settings,
-			Inbound:  inbound,
-			Mux:      host.MuxEnable,
+			Remark:    remark,
+			Protocol:  inbound.Protocol,
+			Address:   formatSubscriptionText(address, user, inbound, host),
+			Port:      anyToString(firstNonNil(host.Port, inbound.Port)),
+			Network:   inbound.Network,
+			TLS:       tlsValue,
+			SNI:       formatSubscriptionText(sni, user, inbound, host),
+			Host:      formatSubscriptionText(reqHost, user, inbound, host),
+			Path:      formatSubscriptionText(path, user, inbound, host),
+			Header:    inbound.HeaderType,
+			Settings:  settings,
+			Inbound:   inbound,
+			Mux:       host.MuxEnable,
+			FinalMask: effectiveFinalMask(inbound.FinalMask, host),
 		}
 		if host.ALPN != "" {
 			node.Inbound.ALPN = host.ALPN
@@ -1777,9 +1789,6 @@ func (c *cli) buildSubscriptionNodes(user subscriptionUser, proxies []proxyRecor
 		}
 		if host.AllowInsecure {
 			node.Inbound.AllowInsecure = true
-		}
-		if host.FragmentSetting.Valid {
-			node.Inbound.Fragment = host.FragmentSetting.String
 		}
 		if host.RandomUserAgent {
 			node.Inbound.RandomUserAgent = true
@@ -1823,6 +1832,9 @@ func parseInbounds(config map[string]any) map[string]inboundInfo {
 		}
 		stream, _ := inboundMap["streamSettings"].(map[string]any)
 		if len(stream) > 0 {
+			if finalMask, ok := stream["finalmask"].(map[string]any); ok && len(finalMask) > 0 {
+				info.FinalMask = finalMask
+			}
 			network := stringValueDefault(stream["network"], "tcp")
 			info.Network = network
 			netSettings, _ := stream[network+"Settings"].(map[string]any)
@@ -1898,6 +1910,103 @@ func applyNetworkSettings(info *inboundInfo, network string, settings map[string
 		info.Path = stringValue(settings["path"])
 		info.Host = splitCSV(firstString(stringValue(settings["host"]), stringValue(settings["Host"])))
 	}
+}
+
+func effectiveFinalMask(inherited map[string]any, host hostInfo) map[string]any {
+	finalMask := copyMap(inherited)
+	if len(host.FinalMask) > 0 {
+		for key, value := range host.FinalMask {
+			if key != "quicParams" {
+				finalMask[key] = value
+				continue
+			}
+			quic := map[string]any{}
+			if current, ok := finalMask[key].(map[string]any); ok {
+				for currentKey, currentValue := range current {
+					quic[currentKey] = currentValue
+				}
+			}
+			if override, ok := value.(map[string]any); ok {
+				for overrideKey, overrideValue := range override {
+					quic[overrideKey] = overrideValue
+				}
+			}
+			finalMask[key] = quic
+		}
+		return finalMask
+	}
+
+	if fragment := legacyFragmentFinalMask(nullStringValue(host.FragmentSetting)); len(fragment) > 0 {
+		appendFinalMaskLayer(finalMask, "tcp", map[string]any{"type": "fragment", "settings": fragment})
+	}
+	if noise := legacyNoiseFinalMask(nullStringValue(host.NoiseSetting)); len(noise) > 0 {
+		appendFinalMaskLayer(finalMask, "udp", map[string]any{
+			"type":     "noise",
+			"settings": map[string]any{"noise": noise},
+		})
+	}
+	return finalMask
+}
+
+func appendFinalMaskLayer(finalMask map[string]any, network string, layer map[string]any) {
+	layers, _ := finalMask[network].([]any)
+	finalMask[network] = append(append([]any(nil), layers...), layer)
+}
+
+func legacyFragmentFinalMask(value string) map[string]any {
+	parts := splitCSV(value)
+	if len(parts) == 0 {
+		return nil
+	}
+	settings := map[string]any{"lengths": []any{parts[0]}}
+	if len(parts) > 1 {
+		settings["delays"] = []any{parts[1]}
+	}
+	if len(parts) > 2 {
+		settings["packets"] = parts[2]
+	}
+	if len(parts) > 3 {
+		settings["maxSplit"] = parts[3]
+	}
+	return settings
+}
+
+func legacyNoiseFinalMask(value string) []any {
+	patterns := strings.Split(value, "&")
+	result := make([]any, 0, len(patterns))
+	for _, pattern := range patterns {
+		pattern = strings.TrimSpace(pattern)
+		if pattern == "" {
+			continue
+		}
+		noiseType := "rand"
+		body := pattern
+		if before, after, ok := strings.Cut(pattern, ":"); ok {
+			noiseType = strings.ToLower(strings.TrimSpace(before))
+			body = after
+		}
+		switch noiseType {
+		case "rand", "str", "hex", "base64":
+		default:
+			noiseType = "rand"
+		}
+		parts := splitCSV(body)
+		if len(parts) == 0 {
+			continue
+		}
+		item := map[string]any{}
+		if noiseType == "rand" {
+			item["rand"] = parts[0]
+		} else {
+			item["type"] = noiseType
+			item["packet"] = parts[0]
+		}
+		if len(parts) > 1 {
+			item["delay"] = parts[1]
+		}
+		result = append(result, item)
+	}
+	return result
 }
 
 func (c *cli) getUUIDMasks() (map[string][]byte, error) {
@@ -1990,6 +2099,9 @@ func buildVMessLink(node generatedNode) string {
 		"type": node.Header,
 		"v":    "2",
 	}
+	if len(node.FinalMask) > 0 {
+		payload["fm"] = node.FinalMask
+	}
 	addTLSParams(payload, node)
 	encoded, _ := json.Marshal(payload)
 	return "vmess://" + base64.StdEncoding.EncodeToString(encoded)
@@ -2055,9 +2167,6 @@ func commonShareQuery(node generatedNode) url.Values {
 		if node.Inbound.AllowInsecure {
 			values.Set("allowInsecure", "1")
 		}
-		if node.Inbound.Fragment != "" {
-			values.Set("fragment", node.Inbound.Fragment)
-		}
 	}
 	if node.TLS == "reality" {
 		values.Set("sni", node.SNI)
@@ -2070,6 +2179,11 @@ func commonShareQuery(node generatedNode) url.Values {
 	}
 	if node.Network == "ws" && node.Inbound.Heartbeat > 0 {
 		values.Set("heartbeatPeriod", strconv.FormatInt(node.Inbound.Heartbeat, 10))
+	}
+	if len(node.FinalMask) > 0 {
+		if encoded, err := json.Marshal(node.FinalMask); err == nil {
+			values.Set("fm", string(encoded))
+		}
 	}
 	return values
 }

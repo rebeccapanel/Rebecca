@@ -110,13 +110,16 @@ export const updateTelegramSettings = async (
 	});
 };
 
-export const testTelegramSettings =
-	async (): Promise<{ ok: boolean; chat_id: number; detail: string }> => {
-		return apiFetch("/settings/telegram/test", {
-			method: "POST",
-			body: JSON.stringify({}),
-		});
-	};
+export const testTelegramSettings = async (): Promise<{
+	ok: boolean;
+	chat_id: number;
+	detail: string;
+}> => {
+	return apiFetch("/settings/telegram/test", {
+		method: "POST",
+		body: JSON.stringify({}),
+	});
+};
 
 export const sendTelegramBackup = async (
 	scope: RebeccaBackupScope,
@@ -173,7 +176,8 @@ export interface SubscriptionTemplateSettings {
 	subscription_ports: number[];
 }
 
-export type SubscriptionTemplateSettingsUpdatePayload = Partial<SubscriptionTemplateSettings>;
+export type SubscriptionTemplateSettingsUpdatePayload =
+	Partial<SubscriptionTemplateSettings>;
 
 export interface AdminSubscriptionSettings {
 	id: number;
@@ -197,6 +201,21 @@ export interface SubscriptionCertificate {
 	last_issued_at: string | null;
 	last_renewed_at: string | null;
 	path: string;
+	status:
+		| "active"
+		| "expiring"
+		| "expired"
+		| "not_yet_valid"
+		| "missing"
+		| "invalid"
+		| "revoking"
+		| "revoked";
+	not_before: string | null;
+	not_after: string | null;
+	issuer: string | null;
+	fingerprint_sha256: string | null;
+	auto_renew: boolean;
+	serve_tls: boolean;
 }
 
 export interface SubscriptionSettingsBundle {
@@ -218,10 +237,18 @@ export interface CertificateIssuePayload {
 	email: string;
 	domains: string[];
 	admin_id?: number | null;
+	provider: "letsencrypt" | "zerossl";
 }
 
 export interface CertificateRenewPayload {
-	domain?: string | null;
+	domain: string;
+}
+
+export interface CertificateImportPayload {
+	domain: string;
+	admin_id?: number | null;
+	fullchain: string;
+	private_key: string;
 }
 
 export interface RuntimeSettingsResponse {
@@ -241,9 +268,10 @@ export interface RuntimeSettingsResponse {
 
 export type RuntimeSettingsUpdatePayload = Partial<RuntimeSettingsResponse>;
 
-export const getRuntimeSettings = async (): Promise<RuntimeSettingsResponse> => {
-	return apiFetch("/settings");
-};
+export const getRuntimeSettings =
+	async (): Promise<RuntimeSettingsResponse> => {
+		return apiFetch("/settings");
+	};
 
 export const updateRuntimeSettings = async (
 	payload: RuntimeSettingsUpdatePayload,
@@ -295,6 +323,184 @@ export const disablePHPMyAdmin =
 			timeout: 600000,
 		});
 	};
+
+export interface ExternalAppRecord {
+	template: "archive" | "mirzabot";
+	name: string;
+	domain: string;
+	enabled: boolean;
+	runtime: "static" | "php";
+	version?: string;
+	source_sha?: string;
+	installed_at: string;
+	php_version?: string;
+	bot_username?: string;
+	public_url: string;
+}
+
+export interface ExternalAppTemplate {
+	id: "archive" | "mirzabot";
+	name: string;
+	supported: boolean;
+	detail?: string;
+	version?: string;
+	source_sha?: string;
+	source_url?: string;
+}
+
+export interface ExternalAppsResponse {
+	supported: boolean;
+	detail: string;
+	templates: ExternalAppTemplate[];
+	apps: ExternalAppRecord[];
+}
+
+export const getExternalApps = async (): Promise<ExternalAppsResponse> => {
+	return apiFetch("/settings/external-apps");
+};
+
+export const installExternalArchive = async (payload: {
+	domain: string;
+	name: string;
+	archive: File;
+}): Promise<ExternalAppRecord> => {
+	const body = new FormData();
+	body.set("domain", payload.domain);
+	body.set("name", payload.name);
+	body.set("archive", payload.archive);
+	return $fetch("/settings/external-apps/archive", {
+		method: "POST",
+		body,
+		timeout: 20 * 60 * 1000,
+	});
+};
+
+export const installMirzaBot = async (payload: {
+	domain: string;
+	bot_token: string;
+	admin_id: string;
+}): Promise<ExternalAppRecord> => {
+	return apiFetch("/settings/external-apps/mirzabot", {
+		method: "POST",
+		body: JSON.stringify(payload),
+		timeout: 20 * 60 * 1000,
+	});
+};
+
+export const setExternalAppEnabled = async (payload: {
+	domain: string;
+	enabled: boolean;
+}): Promise<ExternalAppRecord> => {
+	return apiFetch(
+		`/settings/external-apps/${encodeURIComponent(payload.domain)}/${payload.enabled ? "enable" : "disable"}`,
+		{ method: "POST", body: JSON.stringify({}), timeout: 120000 },
+	);
+};
+
+export const deleteExternalApp = async (domain: string): Promise<void> => {
+	await apiFetch(`/settings/external-apps/${encodeURIComponent(domain)}`, {
+		method: "DELETE",
+		timeout: 10 * 60 * 1000,
+	});
+};
+
+export interface ExternalAppFile {
+	name: string;
+	isDirectory: boolean;
+	path: string;
+	updatedAt?: string;
+	size?: number;
+}
+
+export interface ExternalAppFileContent {
+	path: string;
+	content: string;
+	updated_at: string;
+}
+
+const externalAppPath = (domain: string, suffix = "") =>
+	`/settings/external-apps/${encodeURIComponent(domain)}${suffix}`;
+
+export const getExternalAppFiles = async (
+	domain: string,
+): Promise<{ files: ExternalAppFile[] }> => {
+	return apiFetch(externalAppPath(domain, "/files"));
+};
+
+export const getExternalAppFile = async (
+	domain: string,
+	path: string,
+): Promise<ExternalAppFileContent> => {
+	return apiFetch(
+		`${externalAppPath(domain, "/files/content")}?path=${encodeURIComponent(path)}`,
+	);
+};
+
+export const saveExternalAppFile = async (payload: {
+	domain: string;
+	path: string;
+	content: string;
+}): Promise<void> => {
+	await apiFetch(externalAppPath(payload.domain, "/files/content"), {
+		method: "PUT",
+		body: JSON.stringify({ path: payload.path, content: payload.content }),
+	});
+};
+
+export const createExternalAppFolder = async (payload: {
+	domain: string;
+	path: string;
+}): Promise<void> => {
+	await apiFetch(externalAppPath(payload.domain, "/files/folder"), {
+		method: "POST",
+		body: JSON.stringify({ path: payload.path }),
+	});
+};
+
+export const moveExternalAppFile = async (payload: {
+	domain: string;
+	path: string;
+	new_path: string;
+}): Promise<void> => {
+	await apiFetch(externalAppPath(payload.domain, "/files/move"), {
+		method: "POST",
+		body: JSON.stringify(payload),
+	});
+};
+
+export const deleteExternalAppFiles = async (payload: {
+	domain: string;
+	paths: string[];
+}): Promise<void> => {
+	await apiFetch(externalAppPath(payload.domain, "/files/delete"), {
+		method: "POST",
+		body: JSON.stringify({ paths: payload.paths }),
+	});
+};
+
+const externalAppAPIBase = (apiBaseURL || "/api").replace(/\/$/, "");
+
+export const externalAppFileUploadURL = (domain: string) =>
+	`${externalAppAPIBase}${externalAppPath(domain, "/files/upload")}`;
+
+export const externalAppFileDownloadURL = (domain: string, path: string) =>
+	`${externalAppAPIBase}${externalAppPath(domain, "/files/download")}?path=${encodeURIComponent(path)}`;
+
+export const getExternalAppPHPConfig = async (
+	domain: string,
+): Promise<ExternalAppFileContent> => {
+	return apiFetch(externalAppPath(domain, "/php-config"));
+};
+
+export const saveExternalAppPHPConfig = async (payload: {
+	domain: string;
+	content: string;
+}): Promise<void> => {
+	await apiFetch(externalAppPath(payload.domain, "/php-config"), {
+		method: "PUT",
+		body: JSON.stringify({ content: payload.content }),
+	});
+};
 
 export const getPHPMyAdminEmbedHTML = async (
 	theme?: string,
@@ -413,4 +619,44 @@ export const renewSubscriptionCertificate = async (
 		method: "POST",
 		body: JSON.stringify(payload),
 	});
+};
+
+export const importSubscriptionCertificate = async (
+	payload: CertificateImportPayload,
+): Promise<SubscriptionCertificate> => {
+	return apiFetch("/settings/subscriptions/certificates/import", {
+		method: "POST",
+		body: JSON.stringify(payload),
+	});
+};
+
+export const revokeSubscriptionCertificate = async (
+	domain: string,
+): Promise<SubscriptionCertificate> => {
+	return apiFetch(
+		`/settings/subscriptions/certificates/${encodeURIComponent(domain)}/revoke`,
+		{ method: "POST", body: JSON.stringify({}) },
+	);
+};
+
+export const deleteSubscriptionCertificate = async (
+	domain: string,
+): Promise<void> => {
+	return apiFetch(
+		`/settings/subscriptions/certificates/${encodeURIComponent(domain)}`,
+		{ method: "DELETE" },
+	);
+};
+
+export const updateSubscriptionCertificateServing = async (
+	domain: string,
+	serveTLS: boolean,
+): Promise<SubscriptionCertificate> => {
+	return apiFetch(
+		`/settings/subscriptions/certificates/${encodeURIComponent(domain)}`,
+		{
+			method: "PUT",
+			body: JSON.stringify({ serve_tls: serveTLS }),
+		},
+	);
 };

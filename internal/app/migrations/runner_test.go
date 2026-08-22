@@ -53,7 +53,7 @@ func TestRunMigrationsFreshSQLiteAndDoubleRun(t *testing.T) {
 	if !version.HasGoose || version.GooseVersion != latestGooseVersion {
 		t.Fatalf("unexpected version after first run: %#v", version)
 	}
-	assertTableColumns(t, ctx, db, "sqlite", "admins", []string{"id", "username", "role", "permissions", "status", "created_traffic", "delete_user_usage_limit"})
+	assertTableColumns(t, ctx, db, "sqlite", "admins", []string{"id", "username", "created_by", "role", "permissions", "status", "created_traffic", "delete_user_usage_limit"})
 	assertTableColumns(t, ctx, db, "sqlite", "admin_api_keys", []string{"id", "admin_id", "key_hash", "created_at", "expires_at", "last_used_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "admin_usage_logs", []string{"admin_id", "used_traffic_at_reset", "created_traffic_at_reset", "reset_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "admin_created_traffic_logs", []string{"admin_id", "service_id", "amount", "action", "created_at"})
@@ -65,7 +65,7 @@ func TestRunMigrationsFreshSQLiteAndDoubleRun(t *testing.T) {
 	assertNoTable(t, ctx, db, "sqlite", "template_inbounds_association")
 	assertNoTable(t, ctx, db, "sqlite", "exclude_inbounds_association")
 	assertNoTable(t, ctx, db, "sqlite", "access_insights")
-	assertTableColumns(t, ctx, db, "sqlite", "hosts", []string{"id", "remark", "inbound_tag", "noise_setting", "random_user_agent", "dns_primary", "dns_secondary"})
+	assertTableColumns(t, ctx, db, "sqlite", "hosts", []string{"id", "remark", "inbound_tag", "noise_setting", "finalmask", "random_user_agent", "dns_primary", "dns_secondary"})
 	assertNoColumn(t, ctx, db, "sqlite", "hosts", "sort")
 	assertTableColumns(t, ctx, db, "sqlite", "nodes", []string{"id", "name", "note", "certificate", "certificate_key", "xray_config_mode"})
 	assertNoColumn(t, ctx, db, "sqlite", "nodes", "use_nobetci")
@@ -75,6 +75,8 @@ func TestRunMigrationsFreshSQLiteAndDoubleRun(t *testing.T) {
 	assertTableColumns(t, ctx, db, "sqlite", "pending_node_certificates", []string{"token", "certificate", "certificate_key", "expires_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "xray_config", []string{"id", "data", "created_at", "updated_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "outbound_traffic", []string{"outbound_id", "tag", "target_id", "node_id", "uplink", "downlink"})
+	assertTableColumns(t, ctx, db, "sqlite", "inbounds", []string{"id", "tag", "uplink", "downlink", "usage_coefficient"})
+	assertTableColumns(t, ctx, db, "sqlite", "node_usage_outbound_queue", []string{"uplink", "downlink", "inbound_uplink", "inbound_downlink"})
 	assertTableColumns(t, ctx, db, "sqlite", "services", []string{"id", "name", "description", "flow", "used_traffic", "lifetime_used_traffic", "users_usage"})
 	assertTableColumns(t, ctx, db, "sqlite", "admins_services", []string{"admin_id", "service_id", "used_traffic", "lifetime_used_traffic", "created_traffic", "data_limit", "users_limit", "traffic_limit_mode", "show_user_traffic", "delete_user_usage_limit", "deleted_users_usage"})
 	assertTableColumns(t, ctx, db, "sqlite", "service_hosts", []string{"service_id", "host_id", "sort", "created_at"})
@@ -128,6 +130,14 @@ func TestRunMigrationsExternalDatabase(t *testing.T) {
 		if err := RunMigrationsTo(ctx, pool.DB, pool.Dialect, 3); err != nil {
 			t.Fatalf("migrate external database to legacy checkpoint: %v", err)
 		}
+		if NormalizeDialect(pool.Dialect) == "mysql" {
+			if _, err := pool.DB.ExecContext(ctx, `ALTER TABLE nodes MODIFY COLUMN status ENUM('connecting', 'connected', 'error', 'disabled', 'limited') NOT NULL DEFAULT 'connecting'`); err != nil {
+				t.Fatalf("simulate legacy node status enum: %v", err)
+			}
+			if _, err := pool.DB.ExecContext(ctx, `INSERT INTO nodes (id, name, address, port, api_port, status) VALUES (?, ?, ?, ?, ?, ?)`, 9001, "legacy_external_node", "192.0.2.1", 62050, 62051, "connected"); err != nil {
+				t.Fatalf("seed external legacy node: %v", err)
+			}
+		}
 		if _, err := pool.DB.ExecContext(ctx, `INSERT INTO admins (id, username, hashed_password, role, status) VALUES (?, ?, ?, ?, ?)`, 9001, "legacy_external_admin", "hash", "standard", "active"); err != nil {
 			t.Fatalf("seed external legacy admin: %v", err)
 		}
@@ -155,6 +165,18 @@ func TestRunMigrationsExternalDatabase(t *testing.T) {
 		}
 	}
 	if !initial.HasGoose {
+		if NormalizeDialect(pool.Dialect) == "mysql" {
+			var dataType string
+			if err := pool.DB.QueryRowContext(ctx, `SELECT DATA_TYPE FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'nodes' AND column_name = 'status'`).Scan(&dataType); err != nil {
+				t.Fatalf("read migrated node status type: %v", err)
+			}
+			if !strings.EqualFold(dataType, "varchar") {
+				t.Fatalf("migrated node status type = %q, want varchar", dataType)
+			}
+			if _, err := pool.DB.ExecContext(ctx, `UPDATE nodes SET status = 'deleted' WHERE id = ?`, 9001); err != nil {
+				t.Fatalf("write deleted node status after migration: %v", err)
+			}
+		}
 		var dataLimit int64
 		if err := pool.DB.QueryRowContext(ctx, `SELECT data_limit FROM users WHERE id = ?`, 9001).Scan(&dataLimit); err != nil {
 			t.Fatalf("read migrated external legacy user: %v", err)
@@ -419,6 +441,59 @@ func TestDetectGooseVersion(t *testing.T) {
 	}
 	if !version.HasGoose || version.GooseVersion != latestGooseVersion {
 		t.Fatalf("unexpected goose version: %#v", version)
+	}
+}
+
+func TestPreGooseVersion45SchemaStillRunsHostFinalMaskMigration(t *testing.T) {
+	ctx := context.Background()
+	db := openSQLiteTestDB(t)
+	if err := RunMigrations(ctx, db, "sqlite"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `DROP TABLE goose_db_version`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `ALTER TABLE hosts DROP COLUMN finalmask`); err != nil {
+		t.Fatal(err)
+	}
+	if err := RunMigrations(ctx, db, "sqlite"); err != nil {
+		t.Fatal(err)
+	}
+	assertTableColumns(t, ctx, db, "sqlite", "hosts", []string{"finalmask"})
+}
+
+func TestPreGooseVersion46SchemaStillRunsAdminCreatedByMigration(t *testing.T) {
+	ctx := context.Background()
+	db := openSQLiteTestDB(t)
+	if err := RunMigrationsTo(ctx, db, "sqlite", 46); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO admins (id, username, hashed_password, role, status) VALUES (9101, 'legacy_admin', 'x', 'standard', 'active')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `DROP TABLE goose_db_version`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `CREATE TABLE alembic_version (version_num TEXT NOT NULL)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO alembic_version (version_num) VALUES (?)`, legacyAlembicFinalRevision); err != nil {
+		t.Fatal(err)
+	}
+	if err := RunMigrations(ctx, db, "sqlite"); err != nil {
+		t.Fatal(err)
+	}
+	assertDBStringMigration(t, db, `SELECT created_by FROM admins WHERE id = 9101`, "root")
+	if _, err := db.ExecContext(ctx, `INSERT INTO admins (id, username, hashed_password, role, status) VALUES (9102, 'default_admin', 'x', 'standard', 'active')`); err != nil {
+		t.Fatal(err)
+	}
+	assertDBStringMigration(t, db, `SELECT created_by FROM admins WHERE id = 9102`, "root")
+	if _, err := db.ExecContext(ctx, `INSERT INTO admins (id, username, hashed_password, role, status, created_by) VALUES (9103, 'api_admin', 'x', 'standard', 'active', 'pouria')`); err != nil {
+		t.Fatal(err)
+	}
+	assertDBStringMigration(t, db, `SELECT created_by FROM admins WHERE id = 9103`, "pouria")
+	if _, err := db.ExecContext(ctx, `INSERT INTO admins (id, username, hashed_password, role, status, created_by) VALUES (9104, 'invalid_admin', 'x', 'standard', 'active', NULL)`); err == nil {
+		t.Fatal("expected created_by NOT NULL constraint")
 	}
 }
 

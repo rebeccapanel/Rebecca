@@ -497,7 +497,7 @@ export function DataTable<TData>({
 	dir,
 	tableProps,
 	containerProps,
-	mobileBreakpoint = "lg",
+	mobileBreakpoint = "md",
 	ariaLabel,
 }: DataTableProps<TData>) {
 	const { t } = useTranslation();
@@ -930,7 +930,7 @@ export function DataTable<TData>({
 							: actionsColumnWidth,
 				} as Record<string, string>
 			}
-			pb={bulkChildren ? { base: 32, md: 24 } : undefined}
+			pb={bulkChildren && selectedCount > 0 ? { base: 32, md: 24 } : undefined}
 			{...rootContainerProps}
 		>
 			{isMobile ? (

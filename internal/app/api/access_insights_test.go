@@ -99,7 +99,7 @@ func TestAccessInsightsHandlerReturnsCrossProtocolOperators(t *testing.T) {
 	defer db.Close()
 	if _, err := db.Exec(`
 CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, admin_id INTEGER, status TEXT, used_traffic INTEGER, data_limit INTEGER, expire INTEGER, service_id INTEGER);
-CREATE TABLE nodes (id INTEGER PRIMARY KEY, name TEXT);
+CREATE TABLE nodes (id INTEGER PRIMARY KEY, name TEXT, status TEXT);
 CREATE TABLE services (id INTEGER PRIMARY KEY, name TEXT);
 CREATE TABLE user_online_ips (node_id INTEGER, user_id INTEGER, protocol TEXT, ip TEXT, last_seen_at DATETIME);
 CREATE TABLE vpn_user_sessions (
@@ -108,7 +108,7 @@ CREATE TABLE vpn_user_sessions (
 );
 INSERT INTO services (id, name) VALUES (11, 'Premium');
 INSERT INTO users (id, username, admin_id, status, used_traffic, data_limit, expire, service_id) VALUES (42, 'alice', 1, 'active', 123, 456, 789, 11);
-INSERT INTO nodes (id, name) VALUES (7, 'edge-de');
+INSERT INTO nodes (id, name, status) VALUES (7, 'edge-de', 'connected');
 INSERT INTO user_online_ips (node_id, user_id, protocol, ip, last_seen_at) VALUES (7, 42, 'xray', '5.52.10.20', CURRENT_TIMESTAMP);
 INSERT INTO vpn_user_sessions (node_id, user_id, protocol, inbound_tag, session_id, assigned_ip, client_ip, last_seen_at, ended_at)
 VALUES (7, 42, 'ov', 'ov-main', 'ov-1', '10.66.0.2', '5.52.10.21', CURRENT_TIMESTAMP, NULL);`); err != nil {

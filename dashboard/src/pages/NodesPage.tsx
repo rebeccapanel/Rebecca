@@ -469,6 +469,12 @@ type ServiceActionConfirm =
 			hostImpact?: NodeHostImpact;
 		};
 
+const createNodeActionBatchHeaders = () => ({
+	"X-Rebecca-Action-Batch":
+		globalThis.crypto?.randomUUID?.() ??
+		`${Date.now()}-${Math.random().toString(36).slice(2)}`,
+});
+
 type NodeHostImpact = {
 	cleanupHostNames: string[];
 	cleanupPayload: Partial<HostsSchema>;
@@ -601,8 +607,6 @@ export const NodesPage: FC = () => {
 		onClose: closeResetConfirm,
 	} = useDisclosure();
 	const [deleteCandidate, setDeleteCandidate] = useState<NodeType | null>(null);
-	const [deleteHostImpact, setDeleteHostImpact] =
-		useState<NodeHostImpact | null>(null);
 	const {
 		isOpen: isDeleteConfirmOpen,
 		onOpen: openDeleteConfirm,
@@ -703,7 +707,6 @@ export const NodesPage: FC = () => {
 				refetchNodes();
 				closeDeleteConfirm();
 				setDeleteCandidate(null);
-				setDeleteHostImpact(null);
 			},
 			onError: (err) => {
 				generateErrorMessage(err, toast);
@@ -954,35 +957,21 @@ export const NodesPage: FC = () => {
 		openResetConfirm();
 	};
 
-	const handleDeleteNodeRequest = async (node: NodeType) => {
+	const handleDeleteNodeRequest = (node: NodeType) => {
 		if (!node?.id) return;
-		try {
-			setDeleteHostImpact(await loadNodeHostImpact([node]));
-			setDeleteCandidate(node);
-			openDeleteConfirm();
-		} catch (err) {
-			generateErrorMessage(err, toast);
-		}
+		setDeleteCandidate(node);
+		openDeleteConfirm();
 	};
 
 	const handleCloseDeleteConfirm = () => {
-		if (isDeletingNode || hostCleanupLoading) return;
+		if (isDeletingNode) return;
 		closeDeleteConfirm();
 		setDeleteCandidate(null);
-		setDeleteHostImpact(null);
 	};
 
-	const confirmDeleteNode = async () => {
+	const confirmDeleteNode = () => {
 		if (!deleteCandidate) return;
-		try {
-			setHostCleanupLoading(true);
-			await applyNodeHostCleanup(deleteHostImpact);
-			deleteNodeMutate(deleteCandidate);
-		} catch (err) {
-			generateErrorMessage(err, toast);
-		} finally {
-			setHostCleanupLoading(false);
-		}
+		deleteNodeMutate(deleteCandidate);
 	};
 
 	const handleRestartNodeService = (node: NodeType) => {
@@ -1133,17 +1122,21 @@ export const NodesPage: FC = () => {
 			let successCount = 0;
 			let failedCount = 0;
 			const completedIDs: number[] = [];
-			try {
-				await applyNodeHostCleanup(hostImpact);
-			} catch (err) {
-				setBulkNodeActionLoading(null);
-				generateErrorMessage(err, toast);
-				return;
+			const recentActionHeaders = createNodeActionBatchHeaders();
+			if (actionType === "bulk-disable") {
+				try {
+					await applyNodeHostCleanup(hostImpact);
+				} catch (err) {
+					setBulkNodeActionLoading(null);
+					generateErrorMessage(err, toast);
+					return;
+				}
 			}
 			if (actionType === "bulk-update") {
 				try {
 					await apiFetch("/nodes/service/update", {
 						method: "POST",
+						headers: recentActionHeaders,
 						body: {
 							nodes: targetNodes.map((node) => ({
 								id: node.id,
@@ -1168,31 +1161,39 @@ export const NodesPage: FC = () => {
 						case "bulk-enable":
 							await apiFetch(`/node/${node.id}`, {
 								method: "PUT",
+								headers: recentActionHeaders,
 								body: { status: "connecting" },
 							});
 							break;
 						case "bulk-disable":
 							await apiFetch(`/node/${node.id}`, {
 								method: "PUT",
+								headers: recentActionHeaders,
 								body: { status: "disabled" },
 							});
 							break;
 						case "bulk-delete":
-							await apiFetch(`/node/${node.id}`, { method: "DELETE" });
+							await apiFetch(`/node/${node.id}`, {
+								method: "DELETE",
+								headers: recentActionHeaders,
+							});
 							break;
 						case "bulk-reset":
 							await apiFetch(`/node/${node.id}/usage/reset`, {
 								method: "POST",
+								headers: recentActionHeaders,
 							});
 							break;
 						case "bulk-restart":
 							await apiFetch(`/node/${node.id}/service/restart`, {
 								method: "POST",
+								headers: recentActionHeaders,
 							});
 							break;
 						case "bulk-reboot":
 							await apiFetch(`/node/${node.id}/host/reboot`, {
 								method: "POST",
+								headers: recentActionHeaders,
 							});
 							break;
 						default:
@@ -1310,6 +1311,7 @@ export const NodesPage: FC = () => {
 
 			setUpdatingBulkCore(true);
 			try {
+				const recentActionHeaders = createNodeActionBatchHeaders();
 				const results: Array<{
 					status: "fulfilled" | "rejected";
 					node: NodeType;
@@ -1318,6 +1320,7 @@ export const NodesPage: FC = () => {
 					try {
 						await apiFetch(`/node/${node.id}/xray/update`, {
 							method: "POST",
+							headers: recentActionHeaders,
 							body: { version },
 						});
 						results.push({ status: "fulfilled", node });
@@ -1452,11 +1455,13 @@ export const NodesPage: FC = () => {
 			let success = 0;
 			let failed = 0;
 			try {
+				const recentActionHeaders = createNodeActionBatchHeaders();
 				for (const node of targetNodes) {
 					if (!node.id) continue;
 					try {
 						await apiFetch(`/node/${node.id}/geo/update`, {
 							method: "POST",
+							headers: recentActionHeaders,
 							body,
 						});
 						success += 1;
@@ -1687,7 +1692,7 @@ export const NodesPage: FC = () => {
 			return;
 		}
 		let hostImpact: NodeHostImpact | undefined;
-		if (type === "bulk-disable" || type === "bulk-delete") {
+		if (type === "bulk-disable") {
 			try {
 				hostImpact = await loadNodeHostImpact(nodesForAction);
 			} catch (err) {
@@ -1807,10 +1812,7 @@ export const NodesPage: FC = () => {
 									serviceActionConfirm.hostImpact,
 								)
 							: serviceActionConfirm?.type === "bulk-delete"
-								? renderHostImpactMessage(
-										t("nodes.bulkDeleteConfirm", { count: serviceActionConfirm.count }),
-										serviceActionConfirm.hostImpact,
-									)
+								? t("nodes.bulkDeleteConfirm", { count: serviceActionConfirm.count })
 								: serviceActionConfirm?.type === "bulk-reset"
 									? t("nodes.bulkResetTrafficConfirm", { count: serviceActionConfirm.count })
 									: serviceActionConfirm?.type === "bulk-restart"
@@ -3022,18 +3024,15 @@ export const NodesPage: FC = () => {
 				onClose={handleCloseDeleteConfirm}
 				onConfirm={confirmDeleteNode}
 				title={t("delete")}
-				description={renderHostImpactMessage(
-					t("deleteNode.prompt", {
+				description={t("deleteNode.prompt", {
 						name:
 							deleteCandidate?.name ??
 							deleteCandidate?.address ??
 							t("nodes.thisNode"),
-					}),
-					deleteHostImpact,
-				)}
+					})}
 				confirmLabel={t("delete")}
 				colorScheme="red"
-				isLoading={isDeletingNode || hostCleanupLoading}
+				isLoading={isDeletingNode}
 				isConfirmDisabled={!deleteCandidate}
 			/>
 

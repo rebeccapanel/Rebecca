@@ -24,7 +24,7 @@ func NewRepository(db *sql.DB, dialect string) Repository {
 func (r Repository) configServerIP(ctx context.Context) string {
 	for _, query := range []string{
 		`SELECT address FROM nodes WHERE TRIM(COALESCE(address, '')) != '' AND LOWER(COALESCE(status, '')) = 'connected' ORDER BY id LIMIT 1`,
-		`SELECT address FROM nodes WHERE TRIM(COALESCE(address, '')) != '' ORDER BY id LIMIT 1`,
+		`SELECT address FROM nodes WHERE TRIM(COALESCE(address, '')) != '' AND LOWER(COALESCE(status, '')) <> 'deleted' ORDER BY id LIMIT 1`,
 	} {
 		var address sql.NullString
 		if err := r.db.QueryRowContext(ctx, query).Scan(&address); err == nil && address.Valid {
@@ -302,7 +302,7 @@ func (r Repository) rawXrayConfigs(ctx context.Context) ([]map[string]any, error
 		}
 	}
 
-	rows, err := r.db.QueryContext(ctx, `SELECT xray_config FROM nodes WHERE xray_config_mode = 'custom' AND xray_config IS NOT NULL ORDER BY id`)
+	rows, err := r.db.QueryContext(ctx, `SELECT xray_config FROM nodes WHERE LOWER(COALESCE(status, '')) <> 'deleted' AND xray_config_mode = 'custom' AND xray_config IS NOT NULL ORDER BY id`)
 	if err != nil {
 		return result, nil
 	}
@@ -380,7 +380,7 @@ func (r Repository) hosts(ctx context.Context) ([]Host, error) {
 		port, path, sni, sni_options, COALESCE(sni_selection_mode, ''), sni_ttl_seconds,
 		host, host_options, COALESCE(host_selection_mode, ''), host_ttl_seconds,
 		security, alpn, fingerprint, allowinsecure, is_disabled, mux_enable,
-		fragment_setting, noise_setting, random_user_agent, use_sni_as_host
+		fragment_setting, noise_setting, finalmask, random_user_agent, use_sni_as_host
 		FROM hosts ORDER BY inbound_tag, id`)
 	if err != nil {
 		return nil, err
@@ -395,7 +395,7 @@ func (r Repository) hosts(ctx context.Context) ([]Host, error) {
 		var addressOptions, sniOptions, hostOptions sql.NullString
 		var allowInsecure sql.NullBool
 		var disabled, mux, randomUA, useSNI sql.NullBool
-		var fragment, noise sql.NullString
+		var fragment, noise, finalMask sql.NullString
 		if err := rows.Scan(
 			&item.ID,
 			&item.InboundTag,
@@ -424,6 +424,7 @@ func (r Repository) hosts(ctx context.Context) ([]Host, error) {
 			&mux,
 			&fragment,
 			&noise,
+			&finalMask,
 			&randomUA,
 			&useSNI,
 		); err != nil {
@@ -447,6 +448,9 @@ func (r Repository) hosts(ctx context.Context) ([]Host, error) {
 		item.MuxEnable = nullBool(mux)
 		item.FragmentSetting = stringPtr(fragment)
 		item.NoiseSetting = stringPtr(noise)
+		if finalMask.Valid {
+			item.FinalMask = jsonMap(finalMask.String)
+		}
 		item.RandomUserAgent = nullBool(randomUA)
 		item.UseSNIAsHost = nullBool(useSNI)
 		result = append(result, item)

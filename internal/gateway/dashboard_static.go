@@ -6,12 +6,15 @@ import (
 	"io/fs"
 	"net/http"
 	"path"
+	"regexp"
 	"strings"
 	"time"
 )
 
 //go:embed static/dashboard/build/*
 var embeddedDashboardBuild embed.FS
+
+var hashedDashboardAsset = regexp.MustCompile(`\.[0-9a-f]{8,}\.[^.]+$`)
 
 type dashboardFiles struct {
 	root string
@@ -102,6 +105,10 @@ func (d *dashboardFiles) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	if path.Base(name) == "index.html" {
 		w.Header().Set("Cache-Control", "no-store")
+	} else if staticAsset && hashedDashboardAsset.MatchString(name) {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	} else if staticAsset {
+		w.Header().Set("Cache-Control", "no-cache")
 	}
 	http.ServeContent(w, r, path.Base(name), time.Time{}, bytes.NewReader(content))
 }

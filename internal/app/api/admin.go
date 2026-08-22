@@ -181,12 +181,13 @@ func (s *Server) handleCreateAdmin(w http.ResponseWriter, r *http.Request) {
 		result, err := tx.ExecContext(
 			r.Context(),
 			`INSERT INTO admins (
-	username, hashed_password, role, permissions, status, telegram_id, subscription_domain,
+	username, created_by, hashed_password, role, permissions, status, telegram_id, subscription_domain,
 	subscription_settings, users_usage, lifetime_usage, created_traffic, deleted_users_usage, data_limit, traffic_limit_mode,
 	use_service_traffic_limits, show_user_traffic, delete_user_usage_limit_enabled,
 	delete_user_usage_limit, expire, users_limit, require_2fa
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			payload.Username,
+			principal.Context.Admin.Username,
 			hash,
 			string(role),
 			string(permissionsJSON),
@@ -247,6 +248,9 @@ func (s *Server) handleAdminMutationPath(w http.ResponseWriter, r *http.Request)
 	username, suffix, ok := parseAdminPath(r.URL.Path)
 	if !ok {
 		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if s.handleAdminAPIKeyPath(w, r, username, suffix) {
 		return
 	}
 	if s.handleAdminSecurityPath(w, r, username, suffix) {
@@ -1070,6 +1074,7 @@ func adminByUsernameTx(ctx context.Context, tx *sql.Tx, username string) (admina
 		`SELECT
 	id,
 	username,
+	COALESCE(created_by, 'root'),
 	COALESCE(hashed_password, ''),
 	COALESCE(role, 'standard'),
 	permissions,
@@ -1119,6 +1124,7 @@ func scanAdminFromRow(ctx context.Context, tx *sql.Tx, row scanner) (adminapp.Ad
 	if err := row.Scan(
 		&dbadmin.ID,
 		&dbadmin.Username,
+		&dbadmin.CreatedBy,
 		&dbadmin.HashedPassword,
 		&roleText,
 		&rawPermissions,

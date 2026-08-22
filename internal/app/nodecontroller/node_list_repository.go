@@ -43,10 +43,11 @@ func (r Repository) ListNodeItems(ctx context.Context, nodeID int64) ([]NodeList
 	COALESCE(downlink, 0),
 	certificate,
 	certificate_key
-FROM nodes`
+FROM nodes
+WHERE LOWER(COALESCE(status, '')) <> 'deleted'`
 	args := []any{}
 	if nodeID > 0 {
-		query += ` WHERE id = ?`
+		query += ` AND id = ?`
 		args = append(args, nodeID)
 	}
 	query += ` ORDER BY id`

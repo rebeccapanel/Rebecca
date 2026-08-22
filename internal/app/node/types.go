@@ -11,6 +11,7 @@ const (
 	StatusError      = "error"
 	StatusDisabled   = "disabled"
 	StatusLimited    = "limited"
+	StatusDeleted    = "deleted"
 
 	GeoModeDefault        = "default"
 	XrayConfigModeDefault = "default"

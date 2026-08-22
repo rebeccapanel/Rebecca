@@ -27,6 +27,7 @@ export type HostsSchema = Record<
 		is_disabled: boolean;
 		fragment_setting: string | null;
 		noise_setting: string | null;
+		finalmask: Record<string, unknown> | null;
 		random_user_agent: boolean | null;
 		security: string;
 		alpn: string;

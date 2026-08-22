@@ -112,13 +112,14 @@ func (s *Server) collectNodeUsage(ctx context.Context) {
 		logging.Warnf(logging.ComponentNode, "usage collection failed: %v", err)
 		return
 	}
-	if result.UserSamples > 0 || result.OutboundSamples > 0 || len(result.Errors) > 0 {
+	if result.UserSamples > 0 || result.OutboundSamples > 0 || result.InboundSamples > 0 || len(result.Errors) > 0 {
 		logging.Debugf(
 			logging.ComponentNode,
-			"usage collection nodes=%d user_samples=%d outbound_samples=%d user_acked=%d outbound_acked=%d errors=%d",
+			"usage collection nodes=%d user_samples=%d outbound_samples=%d inbound_samples=%d user_acked=%d outbound_acked=%d errors=%d",
 			result.Nodes,
 			result.UserSamples,
 			result.OutboundSamples,
+			result.InboundSamples,
 			result.UserAcked,
 			result.OutboundAcked,
 			len(result.Errors),

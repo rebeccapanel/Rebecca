@@ -1,5 +1,7 @@
 package settings
 
+import certificateapp "github.com/rebeccapanel/rebecca/internal/app/certificates"
+
 type PanelSettings struct {
 	DefaultSubscriptionType string `json:"default_subscription_type"`
 }
@@ -106,17 +108,7 @@ type AdminSubscriptionSettingsUpdate struct {
 	SubscriptionSettings *map[string]any `json:"subscription_settings,omitempty"`
 }
 
-type SubscriptionCertificate struct {
-	ID            *int64   `json:"id"`
-	Domain        string   `json:"domain"`
-	AdminID       *int64   `json:"admin_id"`
-	Email         *string  `json:"email"`
-	Provider      *string  `json:"provider"`
-	AltNames      []string `json:"alt_names"`
-	LastIssuedAt  *string  `json:"last_issued_at"`
-	LastRenewedAt *string  `json:"last_renewed_at"`
-	Path          string   `json:"path"`
-}
+type SubscriptionCertificate = certificateapp.Record
 
 type SubscriptionBundle struct {
 	Settings     SubscriptionSettings        `json:"settings"`

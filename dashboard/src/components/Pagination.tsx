@@ -48,6 +48,11 @@ const ChevronIcon = chakra(ChevronDownIcon, {
 
 export type PaginationProps = {
 	for?: "users" | "admins";
+	total?: number;
+	limit?: number;
+	offset?: number;
+	onPageChange?: (page: number) => void;
+	onPageSizeChange?: (pageSize: number) => void;
 };
 
 const MINIMAL_PAGE_ITEM_COUNT = 5;
@@ -84,7 +89,14 @@ function generatePageItems(total: number, current: number, width: number) {
 	return items;
 }
 
-export const Pagination: FC<PaginationProps> = ({ for: target = "users" }) => {
+export const Pagination: FC<PaginationProps> = ({
+	for: target = "users",
+	total: controlledTotal,
+	limit: controlledLimit,
+	offset: controlledOffset,
+	onPageChange,
+	onPageSizeChange,
+}) => {
 	const {
 		filters: userFilters,
 		onFilterChange: onUserFilterChange,
@@ -101,7 +113,7 @@ export const Pagination: FC<PaginationProps> = ({ for: target = "users" }) => {
 	const direction = i18n.dir(i18n.language);
 	const isRTL = direction === "rtl";
 
-	const { filters, total, onFilterChange } = useMemo(() => {
+	const storedPagination = useMemo(() => {
 		if (target === "admins") {
 			return {
 				filters: adminFilters,
@@ -123,6 +135,14 @@ export const Pagination: FC<PaginationProps> = ({ for: target = "users" }) => {
 		usersTotal,
 		onUserFilterChange,
 	]);
+	const isControlled =
+		controlledTotal !== undefined &&
+		controlledLimit !== undefined &&
+		controlledOffset !== undefined;
+	const filters = isControlled
+		? { limit: controlledLimit ?? 10, offset: controlledOffset ?? 0 }
+		: storedPagination.filters;
+	const total = controlledTotal ?? storedPagination.total;
 
 	const { limit, offset } = filters;
 
@@ -136,14 +156,22 @@ export const Pagination: FC<PaginationProps> = ({ for: target = "users" }) => {
 	const pages = isCompactPagination ? [] : generatePageItems(noPages, page, 7);
 
 	const changePage = (p: number) => {
-		onFilterChange({
+		if (isControlled) {
+			onPageChange?.(p);
+			return;
+		}
+		storedPagination.onFilterChange({
 			...filters,
 			offset: p * perPageNum,
 		});
 	};
 
 	const handlePageSizeSelect = (next: number) => {
-		onFilterChange({
+		if (isControlled) {
+			onPageSizeChange?.(next);
+			return;
+		}
+		storedPagination.onFilterChange({
 			...filters,
 			limit: next,
 			offset: 0,

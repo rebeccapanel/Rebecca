@@ -40,10 +40,11 @@ func testRepository(t *testing.T) (Repository, *sql.DB) {
 			created_at DATETIME NOT NULL,
 			updated_at DATETIME NOT NULL
 		)`,
-		`CREATE TABLE inbounds (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL UNIQUE)`,
+		`CREATE TABLE inbounds (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL UNIQUE, uplink INTEGER NOT NULL DEFAULT 0, downlink INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE TABLE hosts (id INTEGER PRIMARY KEY AUTOINCREMENT, remark TEXT NULL, address TEXT NULL, inbound_tag TEXT NULL)`,
 		`INSERT INTO nodes (id, name, status, xray_config_mode) VALUES (7, 'de-1', 'connected', 'default')`,
 		`INSERT INTO nodes (id, name, status, xray_config_mode, xray_config) VALUES (8, 'custom-1', 'error', 'custom', '{"inbounds":[{"tag":"custom-ss","protocol":"shadowsocks","port":8080,"settings":{"clients":[],"network":"tcp,udp"}}],"outbounds":[{"tag":"DIRECT","protocol":"freedom"}]}')`,
+		`INSERT INTO nodes (id, name, status, xray_config_mode, xray_config) VALUES (9, 'deleted-1', 'deleted', 'custom', '{"inbounds":[{"tag":"deleted-vless","protocol":"vless","port":9443,"settings":{"decryption":"none"}}]}')`,
 	}
 	for _, statement := range statements {
 		if _, err := db.Exec(statement); err != nil {
@@ -167,6 +168,9 @@ func TestRepositoryListTargetsAndCollections(t *testing.T) {
 			t.Fatalf("missing tag %q in %#v", tag, tags)
 		}
 	}
+	if _, ok := tags["deleted-vless"]; ok {
+		t.Fatalf("soft-deleted node leaked into inbound discovery: %#v", tags)
+	}
 
 	manageable, err := repo.CollectManageableInbounds(ctx)
 	if err != nil {
@@ -188,6 +192,9 @@ func TestRepositoryInvalidTargetAndMissingNode(t *testing.T) {
 	}
 	if _, err := repo.SaveTargetRawConfig(ctx, NodeTargetID(404), repositoryConfig("missing", "vless", 443)); err == nil {
 		t.Fatal("expected missing node error")
+	}
+	if _, err := repo.GetTargetRawConfig(ctx, NodeTargetID(9)); err == nil {
+		t.Fatal("expected soft-deleted node to be hidden")
 	}
 	if err := repo.SetNodeConfigMode(ctx, 404, ConfigModeCustom); err == nil {
 		t.Fatal("expected missing node mode error")

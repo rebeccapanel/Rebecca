@@ -56,7 +56,7 @@ func TestHostsCRUDOnMigratedSQLite(t *testing.T) {
 		t.Fatalf("edit host status=%d body=%s", rec.Code, rec.Body.String())
 	}
 	sqliteAssertCount(t, server.db, `SELECT COUNT(*) FROM service_hosts WHERE service_id = ? AND host_id = ?`, 1, serviceID, hostID)
-	sqliteAssertCount(t, server.db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 1)
+	sqliteAssertCount(t, server.db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 0)
 
 	payload = `{"sqlite-in":[]}`
 	rec = sqliteJSONRequest(server, http.MethodPut, "/api/hosts", token, payload)
@@ -65,7 +65,7 @@ func TestHostsCRUDOnMigratedSQLite(t *testing.T) {
 	}
 	sqliteAssertCount(t, server.db, `SELECT COUNT(*) FROM hosts WHERE id = ?`, 0, hostID)
 	sqliteAssertCount(t, server.db, `SELECT COUNT(*) FROM service_hosts WHERE service_id = ? AND host_id = ?`, 0, serviceID, hostID)
-	sqliteAssertCount(t, server.db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 2)
+	sqliteAssertCount(t, server.db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 1)
 }
 
 func TestHostsMoveUsesConfigInboundMissingFromRegistry(t *testing.T) {

@@ -100,17 +100,37 @@ func TestNodeRepositoryCreateUpdateResetDeleteAndRegenerate(t *testing.T) {
 	if regenerated.NodeCertificate == nil || *regenerated.NodeCertificate == before {
 		t.Fatalf("certificate was not regenerated")
 	}
+	for _, stmt := range []string{
+		`INSERT INTO node_usages (created_at, node_id, uplink, downlink) VALUES ('2026-06-09 00:00:00', 1, 10, 20)`,
+		`INSERT INTO node_user_usages (created_at, user_id, node_id, used_traffic) VALUES ('2026-06-09 00:00:00', 1, 1, 30)`,
+	} {
+		if _, err := db.Exec(stmt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var operationsBefore int64
+	if err := db.QueryRow(`SELECT COUNT(*) FROM node_operations WHERE node_id = 1`).Scan(&operationsBefore); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := repo.DeleteNode(ctx, created.ID); err != nil {
 		t.Fatalf("DeleteNode error: %v", err)
 	}
-	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM nodes WHERE id = 1`, 0)
-	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 1`, 0)
-	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM node_usage_user_queue WHERE node_id = 1`, 0)
-	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM node_usage_outbound_queue WHERE node_id = 1`, 0)
-	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM vpn_user_sessions WHERE node_id = 1`, 0)
-	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM user_online_ips WHERE node_id = 1`, 0)
-	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM outbound_traffic WHERE node_id = 1`, 0)
+	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM nodes WHERE id = 1 AND status = 'deleted'`, 1)
+	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 1`, operationsBefore)
+	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM node_usage_user_queue WHERE node_id = 1`, 1)
+	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM node_usage_outbound_queue WHERE node_id = 1`, 1)
+	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM vpn_user_sessions WHERE node_id = 1`, 1)
+	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM user_online_ips WHERE node_id = 1`, 1)
+	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM node_usages WHERE node_id = 1`, 1)
+	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM node_user_usages WHERE node_id = 1`, 1)
+	assertNodeTestCount(t, db, `SELECT COUNT(*) FROM outbound_traffic WHERE node_id = 1`, 1)
+	if _, err := repo.GetNode(ctx, created.ID); !IsKind(err, ErrorNotFound) {
+		t.Fatalf("expected soft-deleted node to be hidden, got %v", err)
+	}
+	if err := repo.DeleteNode(ctx, created.ID); !IsKind(err, ErrorNotFound) {
+		t.Fatalf("expected repeated delete to return not found, got %v", err)
+	}
 }
 
 func TestNodeRepositoryDoesNotSyncForNonConnectionEdits(t *testing.T) {

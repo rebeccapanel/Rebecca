@@ -65,6 +65,7 @@ import {
 	generateSuccessMessage,
 } from "utils/toastHandler";
 import { copyTextToClipboard } from "utils/clipboard";
+import { AdminApiKeysDialog } from "./AdminApiKeysDialog";
 import AdminPermissionsModal from "./AdminPermissionsModal";
 import { AdminSecurityDialog } from "./AdminSecurityDialog";
 import { ConfirmDialog } from "./dialogs/ConfirmDialog";
@@ -320,9 +321,12 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 	} | null>(null);
 	const [securityAdmin, setSecurityAdmin] = useState<Admin | null>(null);
 	const securityDialog = useDisclosure();
+	const [apiKeysAdmin, setAPIKeysAdmin] = useState<Admin | null>(null);
+	const apiKeysDialog = useDisclosure();
 
 	const currentAdminUsername = userData.username;
 	const hasFullAccess = userData.role === AdminRole.FullAccess;
+	const canManageAPIKeys = hasFullAccess || userData.role === AdminRole.Sudo;
 	const adminManagement = userData.permissions?.admin_management;
 	const canEditAdmins = Boolean(
 		adminManagement?.[AdminManagementPermission.Edit] || hasFullAccess,
@@ -342,6 +346,8 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		if (target.role === AdminRole.Sudo && !canManageSudoAdmins) return false;
 		return canManageSessions || canManage2FA;
 	};
+	const canManageAPIKeysFor = (target: Admin) =>
+		canManageAPIKeys && target.role !== AdminRole.FullAccess;
 	const canManageAdminAccount = (target: Admin) => {
 		if (target.username === currentAdminUsername) {
 			return true;
@@ -1183,6 +1189,18 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			});
 		}
 
+		if (canManageAPIKeysFor(admin)) {
+			actions.push({
+				id: "apiKeys",
+				label: t("admins.apiKeys.action"),
+				icon: <KeyIcon width={16} />,
+				onClick: () => {
+					setAPIKeysAdmin(admin);
+					apiKeysDialog.onOpen();
+				},
+			});
+		}
+
 		if (meta.canManage && (admin.deleted_users_usage ?? 0) > 0) {
 			actions.push({
 				id: "resetDeleted",
@@ -1292,7 +1310,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 					onSortingChange={handleAdminTableSorting}
 					manualSorting
 					dir={isRTL ? "rtl" : "ltr"}
-					mobileBreakpoint="lg"
+					mobileBreakpoint="md"
 					tableProps={tableProps}
 				/>
 			</Stack>
@@ -1471,6 +1489,14 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 				canManageSessions={canManageSessions}
 				canManage2FA={canManage2FA}
 				onChanged={() => fetchAdmins(undefined, { force: true })}
+			/>
+			<AdminApiKeysDialog
+				admin={apiKeysAdmin}
+				isOpen={apiKeysDialog.isOpen}
+				onClose={() => {
+					apiKeysDialog.onClose();
+					setAPIKeysAdmin(null);
+				}}
 			/>
 		</>
 	);

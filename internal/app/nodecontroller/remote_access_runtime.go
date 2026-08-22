@@ -48,16 +48,21 @@ func (r Repository) AnyConnectRuntime(ctx context.Context, nodeID int64) (Remote
 }
 
 func (r Repository) remoteAccessRuntime(ctx context.Context, nodeID int64, protocol string) (RemoteAccessRuntime, error) {
-	target := xrayconfig.NodeTargetID(nodeID)
 	inbounds, err := xrayconfig.NewRepository(r.db, r.dialect, xrayconfig.Options{}).FullInbounds(ctx)
 	if err != nil {
 		return RemoteAccessRuntime{}, err
 	}
+	return r.remoteAccessRuntimeFromInbounds(ctx, nodeID, protocol, inbounds)
+}
+
+func (r Repository) remoteAccessRuntimeFromInbounds(ctx context.Context, nodeID int64, protocol string, inbounds []map[string]any) (RemoteAccessRuntime, error) {
+	target := xrayconfig.NodeTargetID(nodeID)
 	result := RemoteAccessRuntime{GeneratedAt: time.Now().UTC().Format(time.RFC3339Nano), Target: target, Inbounds: []RemoteAccessRuntimeInbound{}}
-	result.SessionCallback, err = r.RuntimeSessionCallback(ctx, NodeRow{ID: nodeID})
+	callback, err := r.RuntimeSessionCallback(ctx, NodeRow{ID: nodeID})
 	if err != nil {
 		return RemoteAccessRuntime{}, err
 	}
+	result.SessionCallback = callback
 	usedPorts := map[int]struct{}{}
 	for _, inbound := range inbounds {
 		if port := OVIntValue(inbound["port"]); port > 0 {

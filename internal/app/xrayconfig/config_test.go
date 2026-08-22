@@ -2,6 +2,7 @@ package xrayconfig
 
 import (
 	"encoding/base64"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -154,6 +155,9 @@ func TestNormalizePayloadRemovesLegacyReverseAndRemovedTLSFields(t *testing.T) {
 	if outboundTLS["verifyPeerCertByName"] != "example.com" {
 		t.Fatalf("certificate name migration failed: %#v", outboundTLS)
 	}
+	if mapValue(outboundTLS["settings"])["allowInsecure"] != true {
+		t.Fatalf("outbound allowInsecure metadata was not preserved: %#v", outboundTLS)
+	}
 }
 
 func TestParseAcceptsStreamMethod(t *testing.T) {
@@ -182,7 +186,10 @@ func TestNormalizePayloadForXrayVersionUsesMatchingTransportField(t *testing.T) 
 		}},
 	}
 
-	legacy := NormalizePayloadForXrayVersion(payload, "Xray 26.6.27")
+	legacy, warning := NormalizePayloadForXrayVersion(payload, "Xray 26.7.10")
+	if warning != "" {
+		t.Fatalf("legacy version warning = %q", warning)
+	}
 	legacyInbound := mapValue(listOfMaps(legacy["inbounds"])[0]["streamSettings"])
 	legacyOutbound := mapValue(listOfMaps(legacy["outbounds"])[0]["streamSettings"])
 	if legacyInbound["network"] != "xhttp" || legacyOutbound["network"] != "raw" {
@@ -192,7 +199,10 @@ func TestNormalizePayloadForXrayVersionUsesMatchingTransportField(t *testing.T) 
 		t.Fatalf("legacy transport retained method: %#v", legacyOutbound)
 	}
 
-	modern := NormalizePayloadForXrayVersion(payload, "Xray 26.7.11")
+	modern, warning := NormalizePayloadForXrayVersion(payload, "Xray 26.7.11")
+	if warning != "" {
+		t.Fatalf("modern version warning = %q", warning)
+	}
 	modernInbound := mapValue(listOfMaps(modern["inbounds"])[0]["streamSettings"])
 	modernOutbound := mapValue(listOfMaps(modern["outbounds"])[0]["streamSettings"])
 	if modernInbound["method"] != "xhttp" || modernOutbound["method"] != "raw" {
@@ -200,6 +210,878 @@ func TestNormalizePayloadForXrayVersionUsesMatchingTransportField(t *testing.T) 
 	}
 	if _, exists := modernInbound["network"]; exists {
 		t.Fatalf("modern transport retained network: %#v", modernInbound)
+	}
+
+	unknown, warning := NormalizePayloadForXrayVersion(payload, "custom build")
+	if !strings.Contains(warning, "unknown or invalid") {
+		t.Fatalf("unknown version warning = %q", warning)
+	}
+	unknownInbound := mapValue(listOfMaps(unknown["inbounds"])[0]["streamSettings"])
+	if unknownInbound["network"] != "xhttp" {
+		t.Fatalf("unknown version did not preserve legacy transport behavior: %#v", unknownInbound)
+	}
+}
+
+func TestNormalizePayloadForXrayVersionGatesRemovedAllowInsecure(t *testing.T) {
+	payload := NormalizePayload(map[string]any{
+		"inbounds": []any{map[string]any{
+			"tag": "server", "streamSettings": map[string]any{"security": "tls", "tlsSettings": map[string]any{"allowInsecure": true}},
+		}},
+		"outbounds": []any{
+			map[string]any{
+				"tag": "legacy-client", "protocol": "vless",
+				"settings": map[string]any{"vnext": []any{map[string]any{"address": "private.example", "users": []any{map[string]any{"encryption": "none"}}}}},
+				"streamSettings": map[string]any{"security": "tls", "tlsSettings": map[string]any{
+					"allowInsecure": true, "pinnedPeerCertSha256": []any{"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"},
+				}},
+			},
+			map[string]any{
+				"tag": "public-trojan", "protocol": "trojan",
+				"settings":       map[string]any{"servers": []any{map[string]any{"address": "public.example.com"}}},
+				"streamSettings": map[string]any{"security": "none"},
+			},
+		},
+	})
+
+	for _, tc := range []struct {
+		name        string
+		version     string
+		wantRuntime bool
+		wantWarning string
+	}{
+		{name: "last supported release", version: "Xray 26.1.23", wantRuntime: true},
+		{name: "first removed release", version: "Xray 26.1.31", wantWarning: "26.1.31+ removed tlsSettings.allowInsecure"},
+		{name: "unknown", version: "custom build", wantWarning: "metadata-only"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			normalized, warning := NormalizePayloadForXrayVersion(payload, tc.version)
+			inboundTLS := mapValue(mapValue(listOfMaps(normalized["inbounds"])[0]["streamSettings"])["tlsSettings"])
+			if _, exists := inboundTLS["allowInsecure"]; exists {
+				t.Fatalf("client-only allowInsecure was restored on an inbound: %#v", inboundTLS)
+			}
+			outboundTLS := mapValue(mapValue(listOfMaps(normalized["outbounds"])[0]["streamSettings"])["tlsSettings"])
+			_, runtimeExists := outboundTLS["allowInsecure"]
+			if runtimeExists != tc.wantRuntime {
+				t.Fatalf("runtime allowInsecure exists=%t want %t: %#v", runtimeExists, tc.wantRuntime, outboundTLS)
+			}
+			if mapValue(outboundTLS["settings"])["allowInsecure"] != true {
+				t.Fatalf("legacy allowInsecure metadata was lost: %#v", outboundTLS)
+			}
+			if tc.wantWarning == "" {
+				if strings.Contains(warning, "allowInsecure") {
+					t.Fatalf("legacy Xray received modern warning: %s", warning)
+				}
+			} else if !strings.Contains(warning, tc.wantWarning) || !strings.Contains(warning, "legacy-client") {
+				t.Fatalf("warning mismatch, want %q and tag: %s", tc.wantWarning, warning)
+			}
+			if tc.version == "Xray 26.1.31" && strings.Contains(warning, "26.7.11+") {
+				t.Fatalf("future public-outbound warning leaked below its boundary: %s", warning)
+			}
+		})
+	}
+
+	_, warning := NormalizePayloadForXrayVersion(payload, "Xray 26.7.11")
+	for _, expected := range []string{"26.1.31+ removed tlsSettings.allowInsecure", "Official VLESS transport-security guidance", "not covered by Xray's flat-config rejection", "legacy-client", "public-trojan"} {
+		if !strings.Contains(warning, expected) {
+			t.Fatalf("combined compatibility warning lost %q: %s", expected, warning)
+		}
+	}
+}
+
+func TestNormalizePayloadForXrayVersionWarnsForUnencryptedPublicOutbounds(t *testing.T) {
+	payload := map[string]any{
+		"outbounds": []any{
+			map[string]any{
+				"tag":      "public-vless-flat",
+				"protocol": "vless",
+				"settings": map[string]any{"address": "edge.public.net", "encryption": "none"},
+			},
+			map[string]any{
+				"tag":      "public-vless-nested",
+				"protocol": "vless",
+				"settings": map[string]any{"vnext": []any{map[string]any{
+					"address": "nested.public.net",
+					"users":   []any{map[string]any{"encryption": "none"}},
+				}}},
+			},
+			map[string]any{
+				"tag":      "public-trojan-nested",
+				"protocol": "trojan",
+				"settings": map[string]any{"servers": []any{map[string]any{"address": "8.8.8.8"}}},
+			},
+			map[string]any{
+				"tag":      "tls-vless",
+				"protocol": "vless",
+				"settings": map[string]any{"vnext": []any{map[string]any{
+					"address": "tls.public.net",
+					"users":   []any{map[string]any{"encryption": "none"}},
+				}}},
+				"streamSettings": map[string]any{"security": "tls"},
+			},
+			map[string]any{
+				"tag":            "reality-trojan",
+				"protocol":       "trojan",
+				"settings":       map[string]any{"servers": []any{map[string]any{"address": "reality.public.net"}}},
+				"streamSettings": map[string]any{"security": "reality"},
+			},
+			map[string]any{
+				"tag":      "encrypted-vless",
+				"protocol": "vless",
+				"settings": map[string]any{"vnext": []any{map[string]any{
+					"address": "encrypted.public.net",
+					"users":   []any{map[string]any{"encryption": "mlkem768x25519plus"}},
+				}}},
+			},
+			map[string]any{
+				"tag":      "private-ip",
+				"protocol": "vless",
+				"settings": map[string]any{"vnext": []any{map[string]any{
+					"address": "10.0.0.1",
+					"users":   []any{map[string]any{"encryption": "none"}},
+				}}},
+			},
+			map[string]any{
+				"tag":      "private-domain",
+				"protocol": "trojan",
+				"settings": map[string]any{"address": "proxy.internal"},
+			},
+		},
+	}
+
+	_, warning := NormalizePayloadForXrayVersion(payload, "Xray 26.7.10")
+	if warning != "" {
+		t.Fatalf("below-threshold warning = %q", warning)
+	}
+
+	_, warning = NormalizePayloadForXrayVersion(payload, "Xray 26.7.11")
+	var rejectWarning, guidanceWarning string
+	for _, part := range strings.Split(warning, "; ") {
+		switch {
+		case strings.Contains(part, "rejects flat unencrypted"):
+			rejectWarning = part
+		case strings.Contains(part, "Official VLESS transport-security guidance"):
+			guidanceWarning = part
+		}
+	}
+	if !strings.Contains(rejectWarning, "public-vless-flat") || strings.Contains(rejectWarning, "public-vless-nested") || strings.Contains(rejectWarning, "public-trojan-nested") {
+		t.Fatalf("flat Xray rejection warning has the wrong scope: %q", rejectWarning)
+	}
+	for _, tag := range []string{"public-vless-nested", "public-trojan-nested"} {
+		if !strings.Contains(guidanceWarning, tag) {
+			t.Fatalf("official safety-guidance warning does not include %q: %q", tag, guidanceWarning)
+		}
+	}
+	if strings.Contains(guidanceWarning, "Xray 26.7.11+ rejects") || !strings.Contains(guidanceWarning, "preserved without auto-TLS mutation") {
+		t.Fatalf("legacy nested warning overstates the core runtime guard: %q", guidanceWarning)
+	}
+	for _, tag := range []string{"tls-vless", "reality-trojan", "encrypted-vless", "private-ip", "private-domain"} {
+		if strings.Contains(warning, tag) {
+			t.Fatalf("threshold warning includes exempt outbound %q: %q", tag, warning)
+		}
+	}
+
+	_, warning = NormalizePayloadForXrayVersion(payload, "custom build")
+	if !strings.Contains(warning, "unknown or invalid") || strings.Contains(warning, "public-vless-nested") {
+		t.Fatalf("unknown-version warning = %q", warning)
+	}
+}
+
+func TestNormalizePayloadForXrayVersionGatesVLESSEncryptionWithoutMutation(t *testing.T) {
+	const decryption = "mlkem768x25519plus.native.600s.server-key"
+	const encryption = "mlkem768x25519plus.native.0rtt.client-key"
+	payload := map[string]any{
+		"inbounds": []any{map[string]any{
+			"tag": "encrypted-in", "protocol": "vless",
+			"settings": map[string]any{"decryption": decryption, "encryption": encryption},
+		}},
+		"outbounds": []any{map[string]any{
+			"tag": "encrypted-out", "protocol": "vless",
+			"settings": map[string]any{"vnext": []any{map[string]any{
+				"address": "example.com", "users": []any{map[string]any{"encryption": encryption}},
+			}}},
+		}},
+	}
+
+	for _, tc := range []struct {
+		version     string
+		wantWarning string
+	}{
+		{version: "Xray 26.3.27", wantWarning: "Xray before 26.5.9 does not accept VLESS Encryption"},
+		{version: "Xray 26.5.9"},
+		{version: "custom build", wantWarning: "VLESS Encryption support starts at 26.5.9"},
+	} {
+		normalized, warning := NormalizePayloadForXrayVersion(payload, tc.version)
+		inboundSettings := mapValue(listOfMaps(normalized["inbounds"])[0]["settings"])
+		outboundUser := listOfMaps(listOfMaps(mapValue(listOfMaps(normalized["outbounds"])[0]["settings"])["vnext"])[0]["users"])[0]
+		if inboundSettings["decryption"] != decryption || inboundSettings["encryption"] != encryption || outboundUser["encryption"] != encryption {
+			t.Fatalf("VLESS Encryption settings were mutated for %s: %#v %#v", tc.version, inboundSettings, outboundUser)
+		}
+		if tc.wantWarning == "" {
+			if strings.Contains(warning, "VLESS Encryption") {
+				t.Fatalf("supported VLESS Encryption boundary warned: %s", warning)
+			}
+		} else if !strings.Contains(warning, tc.wantWarning) || !strings.Contains(warning, "encrypted-in") || !strings.Contains(warning, "encrypted-out") {
+			t.Fatalf("VLESS Encryption warning mismatch for %s: %s", tc.version, warning)
+		}
+	}
+}
+
+func TestNormalizePayloadForXrayVersionGatesVLESSInboundDefaultFlow(t *testing.T) {
+	payload := map[string]any{
+		"inbounds": []any{map[string]any{
+			"tag": "default-flow", "protocol": "vless",
+			"settings": map[string]any{"flow": "xtls-rprx-vision"},
+		}},
+		"outbounds": []any{map[string]any{
+			"tag": "client-flow", "protocol": "vless",
+			"settings": map[string]any{"flow": "xtls-rprx-vision"},
+		}},
+	}
+
+	for _, tc := range []struct {
+		version     string
+		wantWarning string
+	}{
+		{version: "Xray 25.8.28", wantWarning: "before 25.8.29"},
+		{version: "Xray 25.8.29"},
+		{version: "custom build", wantWarning: "support starts at 25.8.29"},
+	} {
+		normalized, warning := NormalizePayloadForXrayVersion(payload, tc.version)
+		settings := mapValue(listOfMaps(normalized["inbounds"])[0]["settings"])
+		if settings["flow"] != "xtls-rprx-vision" {
+			t.Fatalf("default flow was mutated for %s: %#v", tc.version, settings)
+		}
+		if tc.wantWarning == "" {
+			if strings.Contains(warning, "default flow") {
+				t.Fatalf("supported default-flow boundary warned: %s", warning)
+			}
+		} else if !strings.Contains(warning, tc.wantWarning) || !strings.Contains(warning, "default-flow") {
+			t.Fatalf("default-flow warning mismatch for %s: %s", tc.version, warning)
+		}
+		if strings.Contains(warning, "client-flow") {
+			t.Fatalf("outbound flow was incorrectly version-gated: %s", warning)
+		}
+	}
+}
+
+func TestValidateVLESSInboundDefaultFlow(t *testing.T) {
+	const encryption = "mlkem768x25519plus.native.600s.server-key"
+	for _, tc := range []struct {
+		name       string
+		flow       string
+		decryption string
+		encryption string
+		network    string
+		security   string
+		wantErr    string
+	}{
+		{name: "TLS vision", flow: "xtls-rprx-vision", decryption: "none", network: "tcp", security: "tls"},
+		{name: "server encryption", flow: "xtls-rprx-vision", decryption: encryption, network: "xhttp", security: "none"},
+		{name: "outbound-only enum", flow: "xtls-rprx-vision-udp443", decryption: "none", network: "tcp", security: "tls", wantErr: "must be xtls-rprx-vision"},
+		{name: "client encryption is not server encryption", flow: "xtls-rprx-vision", decryption: "none", encryption: encryption, network: "xhttp", security: "none", wantErr: "requires TCP with TLS/REALITY"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := testConfig()
+			inbound := cfg["inbounds"].([]any)[0].(map[string]any)
+			inbound["settings"] = map[string]any{
+				"flow": tc.flow, "decryption": tc.decryption, "encryption": tc.encryption,
+			}
+			inbound["streamSettings"] = map[string]any{
+				"network": tc.network, "security": tc.security,
+			}
+			if tc.network == "tcp" {
+				inbound["streamSettings"].(map[string]any)["tcpSettings"] = map[string]any{
+					"header": map[string]any{"type": "none"},
+				}
+			}
+
+			_, err := Parse(cfg, Options{})
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("Parse() error = %v", err)
+				}
+			} else if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("Parse() error = %v, want %q", err, tc.wantErr)
+			}
+		})
+	}
+}
+
+func TestNormalizePayloadForXrayVersionUsesMatchingXHTTPSessionFields(t *testing.T) {
+	payload := map[string]any{
+		"inbounds": []any{map[string]any{
+			"streamSettings": map[string]any{
+				"network": "xhttp",
+				"xhttpSettings": map[string]any{
+					"sessionIDPlacement": "header",
+					"sessionIDKey":       "X-Session",
+					"sessionIDTable":     "0123456789abcdef",
+					"sessionIDLength":    12,
+					"futureOption":       "preserve-me",
+				},
+			},
+		}},
+		"outbounds": []any{map[string]any{
+			"streamSettings": map[string]any{
+				"network": "splithttp",
+				"splithttpSettings": map[string]any{
+					"sessionPlacement": "query",
+					"sessionKey":       "x_session",
+					"sessionTable":     "fedcba9876543210",
+					"sessionLength":    16,
+				},
+			},
+		}},
+	}
+
+	for _, tc := range []struct {
+		name        string
+		version     string
+		currentKeys bool
+		bothAliases bool
+		wantWarning bool
+	}{
+		{name: "below threshold", version: "26.6.21"},
+		{name: "at threshold", version: "26.6.22", currentKeys: true},
+		{name: "above threshold", version: "26.6.23", currentKeys: true},
+		{name: "unknown", bothAliases: true, wantWarning: true},
+		{name: "invalid", version: "not-a-version", bothAliases: true, wantWarning: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			normalized, warning := NormalizePayloadForXrayVersion(payload, tc.version)
+			if (warning != "") != tc.wantWarning {
+				t.Fatalf("warning = %q", warning)
+			}
+			inbound := mapValue(mapValue(listOfMaps(normalized["inbounds"])[0]["streamSettings"])["xhttpSettings"])
+			outbound := mapValue(mapValue(listOfMaps(normalized["outbounds"])[0]["streamSettings"])["splithttpSettings"])
+			assertXHTTPSessionAliases(t, inbound, "header", "X-Session", "0123456789abcdef", 12, tc.currentKeys, tc.bothAliases)
+			assertXHTTPSessionAliases(t, outbound, "query", "x_session", "fedcba9876543210", 16, tc.currentKeys, tc.bothAliases)
+			if inbound["futureOption"] != "preserve-me" {
+				t.Fatalf("unknown XHTTP field was lost: %#v", inbound)
+			}
+		})
+	}
+
+	originalInbound := mapValue(mapValue(listOfMaps(payload["inbounds"])[0]["streamSettings"])["xhttpSettings"])
+	if _, exists := originalInbound["sessionPlacement"]; exists {
+		t.Fatalf("normalization mutated persisted payload: %#v", originalInbound)
+	}
+}
+
+func TestNormalizePayloadForXrayVersionGatesHysteria2WithoutGuessingLegacySemantics(t *testing.T) {
+	compatible := func(version any) map[string]any {
+		settings := map[string]any{"clients": []any{map[string]any{"password": "secret"}}}
+		hysteria := map[string]any{"udpIdleTimeout": 60}
+		if version != nil {
+			settings["version"] = version
+			hysteria["version"] = version
+		}
+		return map[string]any{
+			"tag": "hy", "protocol": "hysteria", "settings": settings,
+			"streamSettings": map[string]any{
+				"network": "hysteria", "security": "tls", "hysteriaSettings": hysteria,
+			},
+		}
+	}
+	tests := []struct {
+		name        string
+		version     string
+		shape       map[string]any
+		wantVersion int
+		warning     string
+	}{
+		{name: "boundary below stable support", version: "Xray 26.3.26", shape: compatible(nil), wantVersion: 0, warning: "before 26.3.27"},
+		{name: "stable support boundary", version: "Xray 26.3.27", shape: compatible(nil), wantVersion: 2, warning: "Normalized compatible Hysteria"},
+		{name: "current supported", version: "Xray 26.7.28", shape: compatible(nil), wantVersion: 2, warning: "Normalized compatible Hysteria"},
+		{name: "explicit legacy semantics", version: "Xray 26.7.28", shape: compatible(1), wantVersion: 1, warning: "not safely recognizable"},
+		{name: "unknown version", version: "custom build", shape: compatible(nil), wantVersion: 0, warning: "preserving Hysteria settings"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := map[string]any{"inbounds": []any{tc.shape}}
+			normalized, warning := NormalizePayloadForXrayVersion(payload, tc.version)
+			inbound := listOfMaps(normalized["inbounds"])[0]
+			settings := mapValue(inbound["settings"])
+			streamVersion := intValue(mapValue(mapValue(inbound["streamSettings"])["hysteriaSettings"])["version"])
+			if got := intValue(settings["version"]); got != tc.wantVersion || streamVersion != tc.wantVersion {
+				t.Fatalf("versions settings=%d stream=%d want=%d normalized=%#v", got, streamVersion, tc.wantVersion, normalized)
+			}
+			if !strings.Contains(warning, tc.warning) {
+				t.Fatalf("warning %q does not contain %q", warning, tc.warning)
+			}
+			original := tc.shape
+			if got := intValue(mapValue(original["settings"])["version"]); got != 0 && tc.wantVersion == 2 {
+				t.Fatalf("original settings were mutated: %#v", original)
+			}
+		})
+	}
+}
+
+func TestNormalizePayloadForXrayVersionUsesEarlierHysteriaOutboundBoundary(t *testing.T) {
+	outbound := map[string]any{
+		"tag": "hy-out", "protocol": "hysteria",
+		"settings": map[string]any{"address": "example.com", "port": 443},
+		"streamSettings": map[string]any{
+			"network": "hysteria", "security": "tls", "hysteriaSettings": map[string]any{"udpIdleTimeout": 60},
+		},
+	}
+	normalized, warning := NormalizePayloadForXrayVersion(map[string]any{"outbounds": []any{outbound}}, "Xray 26.1.23")
+	got := listOfMaps(normalized["outbounds"])[0]
+	if intValue(mapValue(got["settings"])["version"]) != 2 || intValue(mapValue(mapValue(got["streamSettings"])["hysteriaSettings"])["version"]) != 2 {
+		t.Fatalf("pre-26.3.27 Hysteria outbound was not normalized to required version 2: %#v", got)
+	}
+	if !strings.Contains(warning, "Hysteria outbound") {
+		t.Fatalf("outbound normalization warning missing: %s", warning)
+	}
+	inbound := deepCopyMap(outbound)
+	inbound["settings"] = map[string]any{"clients": []any{}}
+	normalized, warning = NormalizePayloadForXrayVersion(map[string]any{"inbounds": []any{inbound}}, "Xray 26.1.23")
+	got = listOfMaps(normalized["inbounds"])[0]
+	if intValue(mapValue(got["settings"])["version"]) != 0 || !strings.Contains(warning, "before 26.3.27") {
+		t.Fatalf("pre-26.3.27 Hysteria inbound should remain untouched with warning: %#v warning=%s", got, warning)
+	}
+}
+
+func TestNormalizePayloadForXrayVersionGatesTLSPinAndPeerNameSyntax(t *testing.T) {
+	const pin = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	colonPin := strings.Join([]string{
+		"fe", "dc", "ba", "98", "76", "54", "32", "10",
+		"fe", "dc", "ba", "98", "76", "54", "32", "10",
+		"fe", "dc", "ba", "98", "76", "54", "32", "10",
+		"fe", "dc", "ba", "98", "76", "54", "32", "10",
+	}, ":")
+	payload := NormalizePayload(map[string]any{
+		"outbounds": []any{map[string]any{
+			"tag": "tls-client", "protocol": "vless",
+			"streamSettings": map[string]any{"security": "tls", "tlsSettings": map[string]any{
+				"allowInsecure":         true,
+				"pinnedPeerCertSha256":  colonPin + "~" + pin,
+				"verifyPeerCertInNames": []any{"one.example", "two.example"},
+			}},
+		}},
+	})
+
+	legacy, warning := NormalizePayloadForXrayVersion(payload, "Xray 26.1.23")
+	if strings.Contains(warning, "Malformed") {
+		t.Fatalf("valid legacy pins were rejected: %s", warning)
+	}
+	legacyTLS := mapValue(mapValue(listOfMaps(legacy["outbounds"])[0]["streamSettings"])["tlsSettings"])
+	wantLegacyPin := strings.ReplaceAll(colonPin, ":", "") + "~" + pin
+	if legacyTLS["pinnedPeerCertSha256"] != wantLegacyPin || legacyTLS["allowInsecure"] != true {
+		t.Fatalf("legacy TLS syntax mismatch: %#v", legacyTLS)
+	}
+	if got := stringList(legacyTLS["verifyPeerCertInNames"]); len(got) != 2 || got[0] != "one.example" || got[1] != "two.example" {
+		t.Fatalf("legacy peer-name array mismatch: %#v", legacyTLS)
+	}
+	if _, exists := legacyTLS["verifyPeerCertByName"]; exists {
+		t.Fatalf("legacy runtime emitted modern peer-name field: %#v", legacyTLS)
+	}
+
+	modern, warning := NormalizePayloadForXrayVersion(payload, "Xray 26.1.31")
+	if !strings.Contains(warning, "removed tlsSettings.allowInsecure") {
+		t.Fatalf("modern allowInsecure warning missing: %s", warning)
+	}
+	modernTLS := mapValue(mapValue(listOfMaps(modern["outbounds"])[0]["streamSettings"])["tlsSettings"])
+	if modernTLS["pinnedPeerCertSha256"] != colonPin+","+pin || modernTLS["verifyPeerCertByName"] != "one.example,two.example" {
+		t.Fatalf("modern TLS syntax mismatch: %#v", modernTLS)
+	}
+	if _, exists := modernTLS["allowInsecure"]; exists {
+		t.Fatalf("modern runtime restored removed allowInsecure: %#v", modernTLS)
+	}
+	if _, exists := modernTLS["verifyPeerCertInNames"]; exists {
+		t.Fatalf("modern runtime emitted removed peer-name field: %#v", modernTLS)
+	}
+
+	unknown, warning := NormalizePayloadForXrayVersion(payload, "custom build")
+	unknownTLS := mapValue(mapValue(listOfMaps(unknown["outbounds"])[0]["streamSettings"])["tlsSettings"])
+	if unknownTLS["pinnedPeerCertSha256"] != colonPin+"~"+pin || unknownTLS["verifyPeerCertByName"] != "one.example,two.example" {
+		t.Fatalf("unknown runtime did not preserve canonical metadata conservatively: %#v", unknownTLS)
+	}
+	if _, exists := unknownTLS["verifyPeerCertInNames"]; exists || !strings.Contains(warning, "mutually incompatible aliases") {
+		t.Fatalf("unknown TLS alias handling mismatch: %#v warning=%s", unknownTLS, warning)
+	}
+}
+
+func TestNormalizePayloadForXrayVersionMigratesLegacyMKCPWithoutLoss(t *testing.T) {
+	payload := map[string]any{"outbounds": []any{map[string]any{
+		"tag": "kcp-out", "protocol": "vless",
+		"streamSettings": map[string]any{
+			"network": "kcp",
+			"kcpSettings": map[string]any{
+				"mtu": 1350, "tti": 20, "seed": "seed-value",
+				"header": map[string]any{"type": "dns", "domain": "dns.example"},
+			},
+			"finalmask": map[string]any{"udp": []any{map[string]any{"type": "noise", "settings": map[string]any{"packet": "x"}}}},
+		},
+	}}}
+
+	legacy, warning := NormalizePayloadForXrayVersion(payload, "Xray 26.1.23")
+	legacyStream := mapValue(listOfMaps(legacy["outbounds"])[0]["streamSettings"])
+	if mapValue(legacyStream["kcpSettings"])["seed"] != "seed-value" || strings.Contains(warning, "Moved legacy mKCP") {
+		t.Fatalf("old core did not retain legacy mKCP fields: %#v warning=%s", legacyStream, warning)
+	}
+
+	stable, warning := NormalizePayloadForXrayVersion(payload, "Xray 26.1.31")
+	stableStream := mapValue(listOfMaps(stable["outbounds"])[0]["streamSettings"])
+	stableKCP := mapValue(stableStream["kcpSettings"])
+	if _, exists := stableKCP["seed"]; exists {
+		t.Fatalf("new core retained removed mKCP seed: %#v", stableKCP)
+	}
+	udp := stableStream["finalmask"].(map[string]any)["udp"].([]any)
+	if len(udp) != 3 || mapValue(udp[0])["type"] != "mkcp-aes128gcm" || mapValue(udp[1])["type"] != "header-dns" || mapValue(udp[2])["type"] != "noise" {
+		t.Fatalf("v26.1.31 FinalMask order/shape mismatch: %#v", udp)
+	}
+	if mapValue(mapValue(udp[0])["settings"])["password"] != "seed-value" || mapValue(mapValue(udp[1])["settings"])["domain"] != "dns.example" || !strings.Contains(warning, "Moved legacy mKCP") {
+		t.Fatalf("v26.1.31 mKCP semantics were lost: %#v warning=%s", udp, warning)
+	}
+
+	prerelease, _ := NormalizePayloadForXrayVersion(payload, "Xray 26.6.1")
+	preStream := mapValue(listOfMaps(prerelease["outbounds"])[0]["streamSettings"])
+	udp = preStream["finalmask"].(map[string]any)["udp"].([]any)
+	if mapValue(udp[0])["type"] != "mkcp-legacy" || mapValue(mapValue(udp[0])["settings"])["value"] != "seed-value" || mapValue(mapValue(udp[1])["settings"])["header"] != "dns" {
+		t.Fatalf("v26.6.1 mkcp-legacy shape mismatch: %#v", udp)
+	}
+
+	unknown, warning := NormalizePayloadForXrayVersion(payload, "custom build")
+	unknownKCP := mapValue(mapValue(listOfMaps(unknown["outbounds"])[0]["streamSettings"])["kcpSettings"])
+	if unknownKCP["seed"] != "seed-value" || !strings.Contains(warning, "version-sensitive legacy mKCP") {
+		t.Fatalf("unknown core did not preserve mKCP fields: %#v warning=%s", unknownKCP, warning)
+	}
+}
+
+func TestNormalizePayloadForXrayVersionKeepsRequiredUDPOuterMaskFirst(t *testing.T) {
+	for _, outerType := range []string{"realm", "xicmp"} {
+		t.Run(outerType, func(t *testing.T) {
+			payload := map[string]any{"outbounds": []any{map[string]any{
+				"tag": "kcp-out", "protocol": "vless",
+				"streamSettings": map[string]any{
+					"network": "kcp",
+					"kcpSettings": map[string]any{
+						"seed": "seed-value", "header": map[string]any{"type": "dns", "domain": "dns.example"},
+					},
+					"finalmask": map[string]any{"udp": []any{
+						map[string]any{"type": outerType},
+						map[string]any{"type": "noise"},
+						map[string]any{"type": "sudoku"},
+					}},
+				},
+			}}}
+
+			normalized, _ := NormalizePayloadForXrayVersion(payload, "Xray 26.6.22")
+			stream := mapValue(listOfMaps(normalized["outbounds"])[0]["streamSettings"])
+			udp := listOfMaps(mapValue(stream["finalmask"])["udp"])
+			want := []string{outerType, "mkcp-legacy", "mkcp-legacy", "noise", "sudoku"}
+			if len(udp) != len(want) {
+				t.Fatalf("UDP masks = %#v, want %#v", udp, want)
+			}
+			for index, maskType := range want {
+				if stringValue(udp[index]["type"]) != maskType {
+					t.Fatalf("UDP order = %#v, want %#v", udp, want)
+				}
+			}
+			kcpSettings := mapValue(stream["kcpSettings"])
+			_, hasHeader := kcpSettings["header"]
+			_, hasSeed := kcpSettings["seed"]
+			if hasHeader || hasSeed {
+				t.Fatalf("legacy KCP fields were retained: %#v", stream["kcpSettings"])
+			}
+			originalStream := mapValue(listOfMaps(payload["outbounds"])[0]["streamSettings"])
+			if mapValue(originalStream["kcpSettings"])["seed"] != "seed-value" {
+				t.Fatalf("input payload was mutated: %#v", originalStream)
+			}
+		})
+	}
+}
+
+func TestNormalizePayloadForXrayVersionWarnsForRemovedHTTPAndQUICTransports(t *testing.T) {
+	payload := map[string]any{"inbounds": []any{
+		map[string]any{"tag": "legacy-h2", "streamSettings": map[string]any{"network": "h2"}},
+		map[string]any{"tag": "legacy-quic", "streamSettings": map[string]any{"network": "quic", "quicSettings": map[string]any{"security": "aes-128-gcm", "key": "secret"}}},
+	}}
+	if _, warning := NormalizePayloadForXrayVersion(payload, "Xray 26.1.23"); strings.Contains(warning, "removed HTTP/H2/H3") {
+		t.Fatalf("removed transport warning leaked below boundary: %s", warning)
+	}
+	if _, warning := NormalizePayloadForXrayVersion(payload, "Xray 26.1.31"); !strings.Contains(warning, "legacy-h2") || !strings.Contains(warning, "legacy-quic") || !strings.Contains(warning, "review QUIC") {
+		t.Fatalf("removed transport warning incomplete: %s", warning)
+	}
+	if _, warning := NormalizePayloadForXrayVersion(payload, "custom build"); !strings.Contains(warning, "were preserved without a lossy migration") {
+		t.Fatalf("unknown transport warning missing: %s", warning)
+	}
+}
+
+func TestParseValidatesMKCPMTUAndTTIBoundaries(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		mtu  any
+		tti  int
+		ok   bool
+	}{
+		{name: "canonical minimum", mtu: 21, tti: 10, ok: true},
+		{name: "modern below legacy", mtu: 575, tti: 20, ok: true},
+		{name: "minimum", mtu: 576, tti: 10, ok: true},
+		{name: "legacy maximum", mtu: 1460, tti: 100, ok: true},
+		{name: "modern above legacy", mtu: 1500, tti: 20, ok: true},
+		{name: "uint32 maximum", mtu: "4294967295", tti: 20, ok: true},
+		{name: "current above legacy", mtu: 1350, tti: 101, ok: true},
+		{name: "canonical maximum", mtu: 1350, tti: 5000, ok: true},
+		{name: "mtu below canonical", mtu: 20, tti: 20},
+		{name: "mtu above uint32", mtu: "4294967296", tti: 20},
+		{name: "tti below", mtu: 1350, tti: 9},
+		{name: "tti above canonical", mtu: 1350, tti: 5001},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := testConfig()
+			stream := mapValue(listOfMaps(payload["inbounds"])[0]["streamSettings"])
+			stream["network"] = "kcp"
+			stream["security"] = "none"
+			delete(stream, "tcpSettings")
+			stream["kcpSettings"] = map[string]any{"mtu": tc.mtu, "tti": tc.tti}
+			_, err := Parse(payload, Options{})
+			if (err == nil) != tc.ok {
+				t.Fatalf("Parse() error=%v ok=%t", err, tc.ok)
+			}
+		})
+	}
+}
+
+func TestNormalizePayloadForXrayVersionWarnsForLegacyMKCPMTUWithoutClamping(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		version     string
+		mtu         int
+		wantWarning bool
+	}{
+		{name: "legacy compatible", version: "26.1.23", mtu: 1460},
+		{name: "legacy below range", version: "26.1.23", mtu: 575, wantWarning: true},
+		{name: "legacy above range", version: "26.1.23", mtu: 1500, wantWarning: true},
+		{name: "first relaxed release", version: "26.1.31", mtu: 1500},
+		{name: "stable relaxed", version: "26.3.27", mtu: 1500},
+		{name: "unknown compatible", version: "custom", mtu: 1350},
+		{name: "unknown version-sensitive", version: "custom", mtu: 1500, wantWarning: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := map[string]any{"outbounds": []any{map[string]any{
+				"tag": "kcp-out", "streamSettings": map[string]any{
+					"network": "kcp", "kcpSettings": map[string]any{"mtu": tc.mtu},
+				},
+			}}}
+			normalized, warning := NormalizePayloadForXrayVersion(payload, tc.version)
+			got := intValue(mapValue(mapValue(listOfMaps(normalized["outbounds"])[0]["streamSettings"])["kcpSettings"])["mtu"])
+			if got != tc.mtu {
+				t.Fatalf("mtu was mutated: got=%d want=%d", got, tc.mtu)
+			}
+			if strings.Contains(warning, "mKCP mtu") != tc.wantWarning {
+				t.Fatalf("warning=%q wantWarning=%t", warning, tc.wantWarning)
+			}
+		})
+	}
+}
+
+func TestNormalizePayloadForXrayVersionUsesVersionedMKCPTTIMaximum(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		version     string
+		tti         int
+		wantWarning bool
+	}{
+		{name: "legacy maximum", version: "26.2.6", tti: 100},
+		{name: "legacy over maximum", version: "26.2.6", tti: 101, wantWarning: true},
+		{name: "expanded first tag", version: "26.3.23", tti: 5000},
+		{name: "expanded stable", version: "26.3.27", tti: 5000},
+		{name: "narrowed first tag maximum", version: "26.4.13", tti: 1000},
+		{name: "narrowed first tag over maximum", version: "26.4.13", tti: 1001, wantWarning: true},
+		{name: "latest prerelease over maximum", version: "26.7.28", tti: 5000, wantWarning: true},
+		{name: "unknown conservative maximum", version: "custom", tti: 100},
+		{name: "unknown version-sensitive", version: "custom", tti: 101, wantWarning: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := map[string]any{"outbounds": []any{map[string]any{
+				"tag": "kcp-out", "streamSettings": map[string]any{
+					"network": "kcp", "kcpSettings": map[string]any{"tti": tc.tti},
+				},
+			}}}
+			normalized, warning := NormalizePayloadForXrayVersion(payload, tc.version)
+			got := intValue(mapValue(mapValue(listOfMaps(normalized["outbounds"])[0]["streamSettings"])["kcpSettings"])["tti"])
+			if got != tc.tti {
+				t.Fatalf("tti was mutated: got=%d want=%d", got, tc.tti)
+			}
+			if strings.Contains(warning, "mKCP tti") != tc.wantWarning {
+				t.Fatalf("warning=%q wantWarning=%t", warning, tc.wantWarning)
+			}
+		})
+	}
+}
+
+func TestNormalizePayloadForXrayVersionUsesFragmentAliases(t *testing.T) {
+	payload := map[string]any{"outbounds": []any{map[string]any{
+		"tag": "fragment-out", "streamSettings": map[string]any{
+			"network": "raw", "finalmask": map[string]any{"tcp": []any{map[string]any{
+				"type": "fragment", "settings": map[string]any{
+					"packets": "tlshello", "lengths": []any{"1-2"}, "delays": []any{"0-1"},
+				},
+			}}},
+		},
+	}}}
+
+	legacy, warning := NormalizePayloadForXrayVersion(payload, "26.6.1")
+	legacySettings := fragmentSettingsFromPayload(t, legacy)
+	if legacySettings["length"] != "1-2" || legacySettings["delay"] != "0-1" || legacySettings["lengths"] != nil || legacySettings["delays"] != nil || !strings.Contains(warning, "Normalized FinalMask") {
+		t.Fatalf("legacy fragment aliases mismatch: %#v warning=%s", legacySettings, warning)
+	}
+
+	modern, _ := NormalizePayloadForXrayVersion(legacy, "26.6.22")
+	modernSettings := fragmentSettingsFromPayload(t, modern)
+	if got := stringList(modernSettings["lengths"]); len(got) != 1 || got[0] != "1-2" || modernSettings["length"] != nil {
+		t.Fatalf("modern fragment aliases mismatch: %#v", modernSettings)
+	}
+
+	multi := deepCopyMap(payload)
+	fragmentSettingsFromPayload(t, multi)["lengths"] = []any{"1-2", "3-4"}
+	preserved, warning := NormalizePayloadForXrayVersion(multi, "26.6.1")
+	if got := stringList(fragmentSettingsFromPayload(t, preserved)["lengths"]); len(got) != 2 || !strings.Contains(warning, "cannot be represented losslessly") {
+		t.Fatalf("multi-range fragment was not preserved visibly: %#v warning=%s", got, warning)
+	}
+
+	unknown, warning := NormalizePayloadForXrayVersion(payload, "custom")
+	if got := stringList(fragmentSettingsFromPayload(t, unknown)["lengths"]); len(got) != 1 || !strings.Contains(warning, "version-sensitive FinalMask") {
+		t.Fatalf("unknown fragment syntax mismatch: %#v warning=%s", got, warning)
+	}
+}
+
+func TestFragmentFinalMaskNormalizationIsAtomicOnIncompatibleMasks(t *testing.T) {
+	stream := map[string]any{"finalmask": map[string]any{"tcp": []any{
+		map[string]any{"type": "fragment", "settings": map[string]any{"lengths": []any{"1-2"}, "delays": []any{"0-1"}}},
+		map[string]any{"type": "fragment", "settings": map[string]any{"lengths": []any{"3-4", "5-6"}, "delays": []any{"2-3"}}},
+	}}}
+	before, err := json.Marshal(stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := normalizeFragmentFinalMaskForXrayVersion(stream, false, true); got != fragmentIncompatible {
+		t.Fatalf("normalization status=%v want fragmentIncompatible", got)
+	}
+	after, err := json.Marshal(stream)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatalf("incompatible FinalMask was partially mutated:\nbefore=%s\nafter=%s", before, after)
+	}
+}
+
+func TestNormalizePayloadForXrayVersionWarnsForHysteriaGeckoBoundary(t *testing.T) {
+	payload := map[string]any{"outbounds": []any{map[string]any{
+		"tag": "gecko-out", "protocol": "hysteria",
+		"settings": map[string]any{"address": "example.com", "port": 443, "version": 2},
+		"streamSettings": map[string]any{
+			"network": "hysteria", "security": "tls", "hysteriaSettings": map[string]any{"version": 2},
+			"finalmask": map[string]any{"udp": []any{map[string]any{
+				"type": "salamander", "settings": map[string]any{"password": "mask", "packetSize": "512-1200"},
+			}}},
+		},
+	}}}
+	if _, warning := NormalizePayloadForXrayVersion(payload, "26.3.27"); !strings.Contains(warning, "before 26.6.1") || !strings.Contains(warning, "gecko-out") {
+		t.Fatalf("old-node Gecko warning missing: %s", warning)
+	}
+	if _, warning := NormalizePayloadForXrayVersion(payload, "26.6.1"); strings.Contains(warning, "Gecko FinalMask") {
+		t.Fatalf("Gecko warning leaked at supported boundary: %s", warning)
+	}
+	if _, warning := NormalizePayloadForXrayVersion(payload, "custom"); !strings.Contains(warning, "Gecko FinalMask support starts") {
+		t.Fatalf("unknown-node Gecko warning missing: %s", warning)
+	}
+}
+
+func fragmentSettingsFromPayload(t *testing.T, payload map[string]any) map[string]any {
+	t.Helper()
+	stream := mapValue(listOfMaps(payload["outbounds"])[0]["streamSettings"])
+	mask := listOfMaps(mapValue(stream["finalmask"])["tcp"])[0]
+	return mapValue(mask["settings"])
+}
+
+func TestNormalizePayloadForXrayVersionAggregatesHysteriaAndVLESSWarnings(t *testing.T) {
+	payload := map[string]any{
+		"inbounds": []any{map[string]any{
+			"tag": "hy", "protocol": "hysteria", "settings": map[string]any{"clients": []any{}},
+			"streamSettings": map[string]any{
+				"network": "hysteria", "security": "tls", "hysteriaSettings": map[string]any{"udpIdleTimeout": 60},
+			},
+		}},
+		"outbounds": []any{map[string]any{
+			"tag": "public-vless", "protocol": "vless",
+			"settings": map[string]any{"vnext": []any{map[string]any{
+				"address": "example.com", "users": []any{map[string]any{"encryption": "none"}},
+			}}},
+			"streamSettings": map[string]any{"network": "raw", "security": "none"},
+		}},
+	}
+	_, warning := NormalizePayloadForXrayVersion(payload, "Xray 26.7.11")
+	for _, expected := range []string{"Normalized compatible Hysteria", "Official VLESS transport-security guidance", "not covered by Xray's flat-config rejection", "public-vless"} {
+		if !strings.Contains(warning, expected) {
+			t.Fatalf("aggregated warning lost %q: %s", expected, warning)
+		}
+	}
+}
+
+func TestParseValidatesXHTTPSessionIDEntropy(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		table  string
+		length any
+		ok     bool
+	}{
+		{name: "legacy fields absent", ok: true},
+		{name: "predefined Base62", table: "Base62", length: "16-32", ok: true},
+		{name: "custom ASCII", table: "abcdef0123456789", length: 8, ok: true},
+		{name: "non ASCII", table: "abc✓", length: 16},
+		{name: "zero range", table: "Base62", length: "0-16"},
+		{name: "too small", table: "ab", length: 8},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			payload := testConfig()
+			stream := mapValue(listOfMaps(payload["inbounds"])[0]["streamSettings"])
+			stream["network"] = "xhttp"
+			delete(stream, "tcpSettings")
+			settings := map[string]any{"path": "/x"}
+			if tc.table != "" {
+				settings["sessionIDTable"] = tc.table
+				settings["sessionIDLength"] = tc.length
+			}
+			stream["xhttpSettings"] = settings
+			_, err := Parse(payload, Options{})
+			if (err == nil) != tc.ok {
+				t.Fatalf("Parse() error=%v ok=%t settings=%#v", err, tc.ok, settings)
+			}
+		})
+	}
+}
+
+func assertXHTTPSessionAliases(t *testing.T, settings map[string]any, wantPlacement, wantKey, wantTable string, wantLength int, currentKeys, bothAliases bool) {
+	t.Helper()
+	wantCurrent := currentKeys || bothAliases
+	wantLegacy := !currentKeys || bothAliases
+	if got, exists := settings["sessionIDPlacement"]; exists != wantCurrent || (exists && got != wantPlacement) {
+		t.Fatalf("current placement = %#v, exists=%t, settings=%#v", got, exists, settings)
+	}
+	if got, exists := settings["sessionIDKey"]; exists != wantCurrent || (exists && got != wantKey) {
+		t.Fatalf("current key = %#v, exists=%t, settings=%#v", got, exists, settings)
+	}
+	if got, exists := settings["sessionPlacement"]; exists != wantLegacy || (exists && got != wantPlacement) {
+		t.Fatalf("legacy placement = %#v, exists=%t, settings=%#v", got, exists, settings)
+	}
+	if got, exists := settings["sessionKey"]; exists != wantLegacy || (exists && got != wantKey) {
+		t.Fatalf("legacy key = %#v, exists=%t, settings=%#v", got, exists, settings)
+	}
+	if got, exists := settings["sessionIDTable"]; exists != wantCurrent || (exists && got != wantTable) {
+		t.Fatalf("current table = %#v, exists=%t, settings=%#v", got, exists, settings)
+	}
+	if got, exists := settings["sessionIDLength"]; exists != wantCurrent || (exists && intValue(got) != wantLength) {
+		t.Fatalf("current length = %#v, exists=%t, settings=%#v", got, exists, settings)
+	}
+	if got, exists := settings["sessionTable"]; exists != wantLegacy || (exists && got != wantTable) {
+		t.Fatalf("legacy table = %#v, exists=%t, settings=%#v", got, exists, settings)
+	}
+	if got, exists := settings["sessionLength"]; exists != wantLegacy || (exists && intValue(got) != wantLength) {
+		t.Fatalf("legacy length = %#v, exists=%t, settings=%#v", got, exists, settings)
 	}
 }
 
@@ -427,6 +1309,56 @@ func TestParseRejectsInvalidExecutableInbound(t *testing.T) {
 			},
 			want: "xPaddingBytes",
 		},
+		{
+			name: "bad xhttp mode",
+			edit: func(cfg map[string]any) {
+				inbound := cfg["inbounds"].([]any)[0].(map[string]any)
+				stream := inbound["streamSettings"].(map[string]any)
+				stream["network"] = "xhttp"
+				stream["xhttpSettings"] = map[string]any{"path": "/x", "mode": "invalid"}
+			},
+			want: "unsupported XHTTP mode",
+		},
+		{
+			name: "GET outside packet-up",
+			edit: func(cfg map[string]any) {
+				inbound := cfg["inbounds"].([]any)[0].(map[string]any)
+				stream := inbound["streamSettings"].(map[string]any)
+				stream["network"] = "xhttp"
+				stream["xhttpSettings"] = map[string]any{"path": "/x", "mode": "auto", "uplinkHTTPMethod": "GET"}
+			},
+			want: "GET requires packet-up",
+		},
+		{
+			name: "unsafe session token",
+			edit: func(cfg map[string]any) {
+				inbound := cfg["inbounds"].([]any)[0].(map[string]any)
+				stream := inbound["streamSettings"].(map[string]any)
+				stream["network"] = "xhttp"
+				stream["xhttpSettings"] = map[string]any{"path": "/x", "sessionIDKey": "X-Session\r\nInjected"}
+			},
+			want: "valid HTTP token",
+		},
+		{
+			name: "bad uplink range",
+			edit: func(cfg map[string]any) {
+				inbound := cfg["inbounds"].([]any)[0].(map[string]any)
+				stream := inbound["streamSettings"].(map[string]any)
+				stream["network"] = "xhttp"
+				stream["xhttpSettings"] = map[string]any{"path": "/x", "uplinkChunkSize": "4000-3000"}
+			},
+			want: "range start",
+		},
+		{
+			name: "negative server header bytes",
+			edit: func(cfg map[string]any) {
+				inbound := cfg["inbounds"].([]any)[0].(map[string]any)
+				stream := inbound["streamSettings"].(map[string]any)
+				stream["network"] = "xhttp"
+				stream["xhttpSettings"] = map[string]any{"path": "/x", "serverMaxHeaderBytes": -1}
+			},
+			want: "non-negative 32-bit integer",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -438,6 +1370,46 @@ func TestParseRejectsInvalidExecutableInbound(t *testing.T) {
 			}
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Fatalf("expected error containing %q, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
+func TestParseNormalizesXHTTPSessionAliases(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		placement string
+		key       string
+	}{
+		{name: "current", placement: "sessionIDPlacement", key: "sessionIDKey"},
+		{name: "legacy", placement: "sessionPlacement", key: "sessionKey"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := testConfig()
+			inbound := cfg["inbounds"].([]any)[0].(map[string]any)
+			stream := inbound["streamSettings"].(map[string]any)
+			stream["network"] = "xhttp"
+			stream["xhttpSettings"] = map[string]any{
+				"path":         "/x",
+				tc.placement:   "header",
+				tc.key:         "X-Session",
+				"futureOption": "preserve-me",
+			}
+
+			parsed, err := Parse(cfg, Options{})
+			if err != nil {
+				t.Fatalf("Parse() error = %v", err)
+			}
+			resolved := parsed.InboundsByTag()["vless-tcp"]
+			if got := stringValue(resolved["sessionIDPlacement"]); got != "header" {
+				t.Fatalf("sessionIDPlacement = %q, want header: %#v", got, resolved)
+			}
+			if got := stringValue(resolved["sessionIDKey"]); got != "X-Session" {
+				t.Fatalf("sessionIDKey = %q, want X-Session: %#v", got, resolved)
+			}
+			rawSettings := mapValue(mapValue(listOfMaps(parsed.Raw()["inbounds"])[0]["streamSettings"])["xhttpSettings"])
+			if rawSettings[tc.placement] != "header" || rawSettings[tc.key] != "X-Session" || rawSettings["futureOption"] != "preserve-me" {
+				t.Fatalf("raw XHTTP settings did not round-trip: %#v", rawSettings)
 			}
 		})
 	}
@@ -758,6 +1730,44 @@ func TestPPTPRejectsPoolLargerThan24(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "/24 or narrower") {
 		t.Fatalf("expected PPTP pool validation error, got %v", err)
+	}
+}
+
+func TestMergePolicyPreservesIndependentInboundStatsToggles(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		uplink   bool
+		downlink bool
+	}{
+		{name: "both disabled"},
+		{name: "uplink only", uplink: true},
+		{name: "downlink only", downlink: true},
+		{name: "both enabled", uplink: true, downlink: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			runtime := map[string]any{"policy": map[string]any{"system": map[string]any{
+				"statsInboundUplink":   test.uplink,
+				"statsInboundDownlink": test.downlink,
+			}}}
+			mergePolicy(runtime)
+			system := mapValue(mapValue(runtime["policy"])["system"])
+			if system["statsInboundUplink"] != test.uplink || system["statsInboundDownlink"] != test.downlink {
+				t.Fatalf("inbound stats toggles changed: %#v", system)
+			}
+			if system["statsOutboundUplink"] != true || system["statsOutboundDownlink"] != true {
+				t.Fatalf("outbound stats were not enabled: %#v", system)
+			}
+		})
+	}
+
+	runtime := map[string]any{}
+	mergePolicy(runtime)
+	system := mapValue(mapValue(runtime["policy"])["system"])
+	if _, exists := system["statsInboundUplink"]; exists {
+		t.Fatalf("missing inbound toggle should retain Xray's false default: %#v", system)
+	}
+	if _, exists := system["statsInboundDownlink"]; exists {
+		t.Fatalf("missing inbound toggle should retain Xray's false default: %#v", system)
 	}
 }
 

@@ -118,23 +118,18 @@ export const UserUsageBar: FC<UserUsageBarProps> = ({
 			maxW="full"
 			overflow="hidden"
 		>
-			<Flex align="center" gap={2} w="full" minW={0}>
+			<Flex align="center" gap={0} w="full" minW={0}>
 				{track}
 				<Text
 					className="rb-user-usage-percent"
 					flex={`0 0 ${PERCENT_SLOT_WIDTH}`}
-					textAlign="end"
+					textAlign="start"
 					dir="ltr"
 				>
 					{percentLabel}
 				</Text>
 			</Flex>
-			<Flex
-				align="center"
-				w="full"
-				minW={0}
-				gap={2}
-			>
+			<Flex align="center" w="full" minW={0} gap={2}>
 				<Flex
 					align="center"
 					flex="1 1 auto"

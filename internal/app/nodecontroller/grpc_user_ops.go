@@ -10,17 +10,23 @@ import (
 	nodev1 "github.com/rebeccapanel/rebecca/internal/proto/node/v1"
 )
 
-func (c Controller) grpcApplyUserOperation(ctx context.Context, client *nodeclient.Client, node NodeRow, operation OperationRow) error {
+func (c Controller) grpcApplyUserOperation(ctx context.Context, client *nodeclient.Client, node NodeRow, operation OperationRow, prepared *preparedRuntimeConfig) error {
 	email, err := c.legacyOperationEmail(ctx, operation)
 	if err != nil {
 		if operation.OperationType == "remove_user" || operation.OperationType == "disable_user" {
-			configJSON, syncErr := c.buildRuntimeConfig(ctx, node)
-			if syncErr != nil {
-				return syncErr
-			}
-			runtimeReq, syncErr := c.runtimeConfigRequest(ctx, node, fmt.Sprintf("%s-missing-user-%d", operation.OperationType, operation.ID), configJSON)
-			if syncErr != nil {
-				return syncErr
+			operationID := fmt.Sprintf("%s-missing-user-%d", operation.OperationType, operation.ID)
+			var runtimeReq *nodev1.RuntimeConfigRequest
+			if prepared != nil && prepared.nodeID == node.ID && strings.TrimSpace(prepared.configJSON) != "" {
+				runtimeReq = &nodev1.RuntimeConfigRequest{OperationId: operationID, ConfigJson: prepared.configJSON, OvRuntimeJson: prepared.ovRuntimeJSON}
+			} else {
+				configJSON, syncErr := c.buildRuntimeConfig(ctx, node)
+				if syncErr != nil {
+					return syncErr
+				}
+				runtimeReq, syncErr = c.runtimeConfigRequest(ctx, node, operationID, configJSON)
+				if syncErr != nil {
+					return syncErr
+				}
 			}
 			res, syncErr := client.Runtime().SyncConfig(ctx, runtimeReq)
 			if syncErr != nil {
@@ -46,29 +52,31 @@ func (c Controller) grpcApplyUserOperation(ctx context.Context, client *nodeclie
 	}
 }
 
-func (c Controller) grpcRemoveUserFromNode(ctx context.Context, client *nodeclient.Client, node NodeRow, operation OperationRow, email string) error {
+func (c Controller) grpcRemoveUserFromNode(ctx context.Context, client *nodeclient.Client, node NodeRow, operation OperationRow, legacyEmail string) error {
 	tags, err := c.legacyRuntimeInboundTags(ctx, node)
 	if err != nil {
 		return err
 	}
 	var lastErr error
 	for _, tag := range tags {
-		_, err := client.Runtime().RemoveUser(ctx, &nodev1.RemoveInboundUserRequest{
-			OperationId: fmt.Sprintf("%s-%d-%s", operation.OperationType, operation.ID, tag),
-			InboundTag:  tag,
-			Email:       email,
-		})
-		if err != nil {
-			if isIgnorableLegacyRemoveError(err) {
-				continue
+		for index, email := range []string{taggedRuntimeUserEmail(legacyEmail, tag), legacyEmail} {
+			_, err := client.Runtime().RemoveUser(ctx, &nodev1.RemoveInboundUserRequest{
+				OperationId: fmt.Sprintf("%s-%d-%s-%d", operation.OperationType, operation.ID, tag, index),
+				InboundTag:  tag,
+				Email:       email,
+			})
+			if err != nil {
+				if isIgnorableLegacyRemoveError(err) {
+					continue
+				}
+				lastErr = err
 			}
-			lastErr = err
 		}
 	}
 	return lastErr
 }
 
-func (c Controller) grpcAddUserToNode(ctx context.Context, client *nodeclient.Client, node NodeRow, operation OperationRow, email string, refreshExisting bool) error {
+func (c Controller) grpcAddUserToNode(ctx context.Context, client *nodeclient.Client, node NodeRow, operation OperationRow, legacyEmail string, refreshExisting bool) error {
 	raw, err := c.repo.NodeRawConfig(ctx, node)
 	if err != nil {
 		return err
@@ -119,14 +127,17 @@ func (c Controller) grpcAddUserToNode(ctx context.Context, client *nodeclient.Cl
 			if flow := stringValue(settings["flow"]); flow != "" && !flowSupportedForInbound(inbound) {
 				delete(settings, "flow")
 			}
+			email := taggedRuntimeUserEmail(legacyEmail, tag)
 			settings["email"] = email
 			settings["protocol"] = protocol
 			if refreshExisting {
-				_, _ = client.Runtime().RemoveUser(ctx, &nodev1.RemoveInboundUserRequest{
-					OperationId: fmt.Sprintf("%s-remove-%d-%s", operation.OperationType, operation.ID, tag),
-					InboundTag:  tag,
-					Email:       email,
-				})
+				for index, existingEmail := range []string{email, legacyEmail} {
+					_, _ = client.Runtime().RemoveUser(ctx, &nodev1.RemoveInboundUserRequest{
+						OperationId: fmt.Sprintf("%s-remove-%d-%s-%d", operation.OperationType, operation.ID, tag, index),
+						InboundTag:  tag,
+						Email:       existingEmail,
+					})
+				}
 			}
 			_, err = client.Runtime().AddUser(ctx, &nodev1.InboundUserRequest{
 				OperationId: fmt.Sprintf("%s-%d-%s", operation.OperationType, operation.ID, tag),
@@ -145,14 +156,11 @@ func (c Controller) grpcAddUserToNode(ctx context.Context, client *nodeclient.Cl
 		}
 	}
 	if applied == 0 {
-		if !eligibleServiceUser {
+		if !eligibleServiceUser || matched == 0 {
 			return nil
 		}
 		if lastErr != nil {
 			return lastErr
-		}
-		if matched == 0 {
-			return fmt.Errorf("no matching service inbounds found for user %d on node %d", operation.UserID.Int64, node.ID)
 		}
 		return fmt.Errorf("no service inbound user was applied for user %d on node %d", operation.UserID.Int64, node.ID)
 	}

@@ -169,6 +169,9 @@ export type InboundType = {
 	protocol: ProtocolType;
 	network: string;
 	tls: string;
+	alpn?: string;
+	flow?: string;
+	settings?: Record<string, unknown>;
 	port?: number;
 };
 export type Inbounds = Map<ProtocolType, InboundType[]>;

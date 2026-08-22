@@ -32,6 +32,13 @@ func (c Controller) CollectUsage(ctx context.Context, req CollectUsageRequest) (
 	if err != nil {
 		return CollectUsageResult{}, err
 	}
+	inboundCoefficients := map[string]float64{}
+	if collectUsers {
+		inboundCoefficients, err = c.repo.InboundUsageCoefficients(ctx)
+		if err != nil {
+			return CollectUsageResult{}, err
+		}
+	}
 
 	result := CollectUsageResult{}
 	collectorID := "master-" + strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
@@ -61,7 +68,7 @@ func (c Controller) CollectUsage(ctx context.Context, req CollectUsageRequest) (
 				return
 			}
 
-			nodeResult := c.collectUsageForNode(ctx, node, collectUsers, collectOutbound, reset, collectorID, persistOptions)
+			nodeResult := c.collectUsageForNode(ctx, node, collectUsers, collectOutbound, reset, collectorID, inboundCoefficients, persistOptions)
 			mu.Lock()
 			mergeCollectUsageResult(&result, nodeResult)
 			mu.Unlock()
@@ -78,12 +85,14 @@ func (c Controller) collectUsageForNode(
 	collectOutbound bool,
 	reset bool,
 	collectorID string,
+	inboundCoefficients map[string]float64,
 	persistOptions UsagePersistOptions,
 ) CollectUsageResult {
 	result := CollectUsageResult{Nodes: 1}
 	nodeCtx, cancel := WithDefaultTimeout(ctx)
 	client, _, err := c.dial(nodeCtx, node.ID)
 	if err != nil {
+		_ = c.repo.SetError(ctx, node.ID, err.Error())
 		cancel()
 		result.Errors = append(result.Errors, fmt.Sprintf("node %d: %s", node.ID, err.Error()))
 		return result
@@ -95,6 +104,7 @@ func (c Controller) collectUsageForNode(
 	var outboundBatch *nodev1.OutboundUsageBatch
 	var userDeltas []UserUsageDelta
 	var outboundDeltas []OutboundUsageDelta
+	var inboundDeltas []InboundUsageDelta
 
 	if collectUsers {
 		userBatch, err = client.Usage().CollectUserUsage(nodeCtx, &nodev1.CollectUsageRequest{
@@ -102,6 +112,7 @@ func (c Controller) collectUsageForNode(
 			Reset_:      reset,
 		})
 		if err != nil {
+			_ = c.repo.SetError(ctx, node.ID, err.Error())
 			result.Errors = append(result.Errors, fmt.Sprintf("node %d user usage: %s", node.ID, err.Error()))
 			return result
 		}
@@ -120,11 +131,15 @@ func (c Controller) collectUsageForNode(
 				continue
 			}
 			if value > 0 {
-				userDeltas = append(userDeltas, UserUsageDelta{UserID: userID, Value: value, Online: true})
+				coefficient := 1.0
+				if tag := strings.TrimSpace(sample.GetInboundTag()); tag != "" {
+					coefficient = normalizeUsageFactor(inboundCoefficients[tag])
+				}
+				userDeltas = append(userDeltas, UserUsageDelta{UserID: userID, Value: value, Online: true, InboundCoefficient: coefficient})
 				result.UserSamples++
 			}
 		}
-		if err := c.repo.StoreNodeOnlineIPs(ctx, node.ID, onlineIPSamplesFromBatch(userBatch.GetOnlineIps())); err != nil {
+		if err := c.storeNodeOnlineIPsWithRetry(ctx, node.ID, onlineIPSamplesFromBatch(userBatch.GetOnlineIps())); err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("node %d online IPs: %s", node.ID, err.Error()))
 		}
 	}
@@ -135,6 +150,7 @@ func (c Controller) collectUsageForNode(
 			Reset_:      reset,
 		})
 		if err != nil {
+			_ = c.repo.SetError(ctx, node.ID, err.Error())
 			result.Errors = append(result.Errors, fmt.Sprintf("node %d outbound usage: %s", node.ID, err.Error()))
 			return result
 		}
@@ -143,13 +159,26 @@ func (c Controller) collectUsageForNode(
 		}
 		for _, sample := range outboundBatch.GetStats() {
 			tag := strings.TrimSpace(sample.GetTag())
-			up := int64(sample.GetUp())
-			down := int64(sample.GetDown())
+			up, upOK := usageUint64ToInt64(sample.GetUp())
+			down, downOK := usageUint64ToInt64(sample.GetDown())
+			if !upOK || !downOK {
+				continue
+			}
 			if tag == "" || (up <= 0 && down <= 0) {
 				continue
 			}
 			outboundDeltas = append(outboundDeltas, OutboundUsageDelta{Tag: tag, Up: up, Down: down})
 			result.OutboundSamples++
+		}
+		for _, sample := range outboundBatch.GetInboundStats() {
+			tag := strings.TrimSpace(sample.GetTag())
+			up, upOK := usageUint64ToInt64(sample.GetUp())
+			down, downOK := usageUint64ToInt64(sample.GetDown())
+			if tag == "" || !upOK || !downOK || (up <= 0 && down <= 0) {
+				continue
+			}
+			inboundDeltas = append(inboundDeltas, InboundUsageDelta{Tag: tag, Up: up, Down: down})
+			result.InboundSamples++
 		}
 	}
 
@@ -161,7 +190,7 @@ func (c Controller) collectUsageForNode(
 	if outboundBatch != nil {
 		outboundBatchID = outboundBatch.GetBatchId()
 	}
-	if err := c.storeCollectedUsageWithRetry(ctx, node, userBatchID, userDeltas, outboundBatchID, outboundDeltas, persistOptions); err != nil {
+	if err := c.storeCollectedUsageWithRetry(ctx, node, userBatchID, userDeltas, outboundBatchID, outboundDeltas, inboundDeltas, persistOptions); err != nil {
 		result.Errors = append(result.Errors, fmt.Sprintf("node %d DB write: %s", node.ID, err.Error()))
 		return result
 	}
@@ -175,6 +204,7 @@ func (c Controller) collectUsageForNode(
 		if ack, err := client.Usage().AckUserUsage(nodeCtx, &nodev1.AckUsageRequest{BatchId: userBatch.GetBatchId()}); err == nil && ack.GetAcknowledged() {
 			result.UserAcked++
 		} else if err != nil {
+			_ = c.repo.SetError(ctx, node.ID, err.Error())
 			result.Errors = append(result.Errors, fmt.Sprintf("node %d ack user usage: %s", node.ID, err.Error()))
 		}
 	}
@@ -182,6 +212,7 @@ func (c Controller) collectUsageForNode(
 		if ack, err := client.Usage().AckOutboundUsage(nodeCtx, &nodev1.AckUsageRequest{BatchId: outboundBatch.GetBatchId()}); err == nil && ack.GetAcknowledged() {
 			result.OutboundAcked++
 		} else if err != nil {
+			_ = c.repo.SetError(ctx, node.ID, err.Error())
 			result.Errors = append(result.Errors, fmt.Sprintf("node %d ack outbound usage: %s", node.ID, err.Error()))
 		}
 	}
@@ -194,6 +225,7 @@ func mergeCollectUsageResult(result *CollectUsageResult, next CollectUsageResult
 	result.OutboundBatches += next.OutboundBatches
 	result.UserSamples += next.UserSamples
 	result.OutboundSamples += next.OutboundSamples
+	result.InboundSamples += next.InboundSamples
 	result.UserAcked += next.UserAcked
 	result.OutboundAcked += next.OutboundAcked
 	result.Errors = append(result.Errors, next.Errors...)
@@ -204,6 +236,13 @@ func usageCollectionShouldReset(req CollectUsageRequest) bool {
 		return false
 	}
 	return true
+}
+
+func usageUint64ToInt64(value uint64) (int64, bool) {
+	if value > uint64(^uint64(0)>>1) {
+		return 0, false
+	}
+	return int64(value), true
 }
 
 const onlineUsageSamplePrefix = "online:"
@@ -244,25 +283,27 @@ func isUserUsageProtocolPrefix(value string) bool {
 }
 
 func (c Controller) persistCollectedUsageWithRetry(ctx context.Context, node NodeRow, userDeltas []UserUsageDelta, outboundDeltas []OutboundUsageDelta, options UsagePersistOptions) error {
-	var err error
-	for attempt := 0; attempt < 3; attempt++ {
-		err = c.repo.PersistCollectedUsage(ctx, node, userDeltas, outboundDeltas, options)
-		if err == nil || !isTransientUsagePersistError(err) {
-			return err
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(time.Duration(attempt+1) * 100 * time.Millisecond):
-		}
-	}
-	return err
+	return retryTransientUsageWrite(ctx, func() error {
+		return c.repo.PersistCollectedUsage(ctx, node, userDeltas, outboundDeltas, options)
+	})
 }
 
-func (c Controller) storeCollectedUsageWithRetry(ctx context.Context, node NodeRow, userBatchID string, userDeltas []UserUsageDelta, outboundBatchID string, outboundDeltas []OutboundUsageDelta, options UsagePersistOptions) error {
+func (c Controller) storeCollectedUsageWithRetry(ctx context.Context, node NodeRow, userBatchID string, userDeltas []UserUsageDelta, outboundBatchID string, outboundDeltas []OutboundUsageDelta, inboundDeltas []InboundUsageDelta, options UsagePersistOptions) error {
+	return retryTransientUsageWrite(ctx, func() error {
+		return c.repo.StoreCollectedUsageWithInbounds(ctx, node, userBatchID, userDeltas, outboundBatchID, outboundDeltas, inboundDeltas, options)
+	})
+}
+
+func (c Controller) storeNodeOnlineIPsWithRetry(ctx context.Context, nodeID int64, samples []OnlineIPSample) error {
+	return retryTransientUsageWrite(ctx, func() error {
+		return c.repo.StoreNodeOnlineIPs(ctx, nodeID, samples)
+	})
+}
+
+func retryTransientUsageWrite(ctx context.Context, write func() error) error {
 	var err error
 	for attempt := 0; attempt < 3; attempt++ {
-		err = c.repo.StoreCollectedUsage(ctx, node, userBatchID, userDeltas, outboundBatchID, outboundDeltas, options)
+		err = write()
 		if err == nil || !isTransientUsagePersistError(err) {
 			return err
 		}

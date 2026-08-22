@@ -1,25 +1,23 @@
 ---
 title: "Panel overview"
 weight: 1
-description: "Rebecca panel to create, manage, and troubleshoot users, admins, and nodes. Main areas: Dashboard, Users, Admins, Services, Hosts, Nodes, Integrations, My Account."
+description: "Rebecca panel is a VPN service management panel. After evaluating various options, the Vento team stopped the development of its proprietary panel due to the comprehensive structure and features of this panel, and chose Rebecca as the main platform. This panel is used to create and manage customer accounts."
 cascade:
   params:
     noindex: true
 ---
 
-This page is a quick walk-through so you can ship accounts fast without touching the backend.
+This page is the operational guide for the panel. Reading it before getting started is recommended.
 
-Rebecca panel to create, manage, and troubleshoot users, admins, and nodes. Main areas: Dashboard, Users, Admins, Services, Hosts, Nodes, Integrations, My Account.
+Rebecca panel is a VPN service management panel. After evaluating various options, the Vento team stopped the development of its proprietary panel due to the comprehensive structure and features of this panel, and chose Rebecca as the main platform. This panel is used to create and manage customer accounts.
 
-- Create/renew users, statuses (active/on hold/limited/expired), links/QR, Auto Renew.
-- Admins with roles and permissions, data limit and user limit.
-- Nodes with a dedicated certificate bundle; monitor connectivity and metrics from Node settings.
-- Settings for runtime behavior, backups, Telegram, subscriptions, and templates.
-- My Account: API keys, password change, daily and per-node usage charts.
+- Create and renew users with active / on hold / limited / expired statuses, links and QR codes, and Auto Renew.
+- Quick search for users by username, link, or subscription code.
+- My Account: API keys, password change, daily and per-node usage reports.
 - Open source—if it helps you, please star the GitHub repo.
 
-- [GitHub](https://github.com/rebeccapanel/rebecca)
-- [Telegram](https://t.me/rebeccapanel)
+- [Rebecca Panel GitHub](https://github.com/rebeccapanel/rebecca)
+- [Vento Team Support](https://t.me/V2raySam)
 
 ## Start with a task
 

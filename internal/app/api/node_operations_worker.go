@@ -20,18 +20,17 @@ func (s *Server) runNodeOperationsWorker(ctx context.Context) {
 	}
 	logging.Infof(logging.ComponentNode, "operation queue worker started interval=%s batch=%d", interval, defaultNodeOperationsBatchSize)
 
+	timer := time.NewTimer(0)
+	defer timer.Stop()
 	for {
-		s.processNodeOperations(ctx)
-		if ctx.Err() != nil {
-			return
-		}
-		timer := time.NewTimer(interval)
 		select {
 		case <-ctx.Done():
-			timer.Stop()
 			return
 		case <-timer.C:
+		case <-s.nodeOperationsKick:
 		}
+		s.processNodeOperations(ctx)
+		timer.Reset(interval)
 	}
 }
 
@@ -39,7 +38,22 @@ func (s *Server) processNodeOperations(ctx context.Context) {
 	workerCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 	defer cancel()
 
+	// A global sync fans out node-specific full syncs on the first pass.
+	// Process the fanout immediately instead of waiting for the next poll.
 	s.processNodeOperationsWithContext(workerCtx, defaultNodeOperationsBatchSize)
+	if workerCtx.Err() == nil {
+		s.processNodeOperationsWithContext(workerCtx, defaultNodeOperationsBatchSize)
+	}
+}
+
+func (s *Server) kickNodeOperationsSoon() {
+	if s.nodeOperationsKick == nil {
+		return
+	}
+	select {
+	case s.nodeOperationsKick <- struct{}{}:
+	default:
+	}
 }
 
 func (s *Server) processNodeOperationsWithContext(ctx context.Context, limit int) {

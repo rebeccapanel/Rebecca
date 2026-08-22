@@ -20,7 +20,7 @@ func TestOnlineAccessRecordsCombineProtocolsAndHideTunnelIP(t *testing.T) {
 	defer db.Close()
 	if _, err := db.ExecContext(ctx, `
 CREATE TABLE users (id INTEGER PRIMARY KEY, username TEXT, status TEXT, admin_id INTEGER, used_traffic INTEGER, data_limit INTEGER, expire INTEGER, service_id INTEGER);
-CREATE TABLE nodes (id INTEGER PRIMARY KEY, name TEXT);
+CREATE TABLE nodes (id INTEGER PRIMARY KEY, name TEXT, status TEXT);
 CREATE TABLE services (id INTEGER PRIMARY KEY, name TEXT);
 CREATE TABLE user_online_ips (node_id INTEGER, user_id INTEGER, protocol TEXT, ip TEXT, last_seen_at DATETIME);
 CREATE TABLE vpn_user_sessions (
@@ -33,7 +33,7 @@ CREATE TABLE vpn_user_sessions (
 	if _, err := db.ExecContext(ctx, `
 INSERT INTO services (id, name) VALUES (1, 'Premium');
 INSERT INTO users (id, username, status, admin_id, used_traffic, data_limit, expire, service_id) VALUES (42, 'alice', 'active', 9, 1024, 2048, 0, 1), (43, 'other', 'active', 10, 0, 0, 0, NULL);
-INSERT INTO nodes (id, name) VALUES (7, 'edge-de');
+INSERT INTO nodes (id, name, status) VALUES (7, 'edge-de', 'connected');
 INSERT INTO user_online_ips (node_id, user_id, protocol, ip, last_seen_at) VALUES
   (7, 42, 'xray', '203.0.113.10', ?),
   (7, 42, 'xray', '10.66.0.2', ?),

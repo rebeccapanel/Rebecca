@@ -93,7 +93,7 @@ func newIntegrityTestDB(t *testing.T) *sql.DB {
 		`CREATE TABLE users (id INTEGER PRIMARY KEY, service_id INTEGER NULL)`,
 		`CREATE TABLE services (id INTEGER PRIMARY KEY)`,
 		`CREATE TABLE hosts (id INTEGER PRIMARY KEY, inbound_tag TEXT NOT NULL)`,
-		`CREATE TABLE inbounds (id INTEGER PRIMARY KEY, tag TEXT NOT NULL)`,
+		`CREATE TABLE inbounds (id INTEGER PRIMARY KEY, tag TEXT NOT NULL, uplink INTEGER NOT NULL DEFAULT 0, downlink INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE TABLE service_hosts (service_id INTEGER NOT NULL, host_id INTEGER NOT NULL)`,
 		`CREATE TABLE admins (id INTEGER PRIMARY KEY)`,
 		`CREATE TABLE admins_services (admin_id INTEGER NOT NULL, service_id INTEGER NOT NULL)`,

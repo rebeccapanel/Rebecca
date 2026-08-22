@@ -4,13 +4,29 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
 
 	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
 )
+
+func TestRetryHostModificationAfterDeadlock(t *testing.T) {
+	attempts := 0
+	hosts, err := retryHostModification(context.Background(), func() (map[string][]hostResponse, error) {
+		attempts++
+		if attempts < 3 {
+			return nil, errors.New("Error 1213 (40001): Deadlock found when trying to get lock; try restarting transaction")
+		}
+		return map[string][]hostResponse{"in": nil}, nil
+	})
+	if err != nil || attempts != 3 || hosts == nil {
+		t.Fatalf("attempts=%d hosts=%v err=%v", attempts, hosts, err)
+	}
+}
 
 func TestHostsListCreatesDefaultHosts(t *testing.T) {
 	server, db := testAdminServer(t)
@@ -175,7 +191,7 @@ func TestHostsBulkModifyMoveDisableAndEnqueue(t *testing.T) {
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM hosts WHERE inbound_tag = 'info'`, 2)
 }
 
-func TestHostsBulkModifySubscriptionChangeEnqueuesRuntimeSync(t *testing.T) {
+func TestHostsBulkModifySubscriptionOnlyChangeDoesNotEnqueueRuntimeSync(t *testing.T) {
 	server, db := testAdminServer(t)
 	insertMasterAPIAdmin(t, db, 1, "pouria", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
 	insertRawMasterXrayConfig(t, db, inboundConfig(inboundEntry("cdn", "vless", 443)))
@@ -206,7 +222,7 @@ func TestHostsBulkModifySubscriptionChangeEnqueuesRuntimeSync(t *testing.T) {
 		t.Fatalf("hosts update status=%d body=%s", rec.Code, rec.Body.String())
 	}
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM service_hosts WHERE service_id = 10 AND host_id = `+itoa(hostID), 1)
-	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 1)
+	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 0)
 }
 
 func TestWireGuardHostDNSPersists(t *testing.T) {
@@ -248,7 +264,7 @@ func TestWireGuardHostDNSPersists(t *testing.T) {
 	}
 }
 
-func TestHostsBulkModifyDeletingDuplicateInboundHostEnqueuesRuntimeSync(t *testing.T) {
+func TestHostsBulkModifyDeletingDuplicateInboundHostDoesNotEnqueueRuntimeSync(t *testing.T) {
 	server, db := testAdminServer(t)
 	insertMasterAPIAdmin(t, db, 1, "pouria", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
 	insertRawMasterXrayConfig(t, db, inboundConfig(inboundEntry("cdn", "vless", 443)))
@@ -283,7 +299,7 @@ func TestHostsBulkModifyDeletingDuplicateInboundHostEnqueuesRuntimeSync(t *testi
 	}
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM hosts WHERE id = 55`, 0)
 	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM service_hosts WHERE service_id = 10 AND host_id = `+itoa(firstHostID), 1)
-	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations WHERE operation_type = 'sync_config'`, 1)
+	assertMasterAPICount(t, db, `SELECT COUNT(*) FROM node_operations`, 0)
 }
 
 func TestHostsRejectUnknownInbound(t *testing.T) {
@@ -295,5 +311,258 @@ func TestHostsRejectUnknownInbound(t *testing.T) {
 	rec := adminJSONRequest(t, server, http.MethodPut, "/api/hosts", token, `{"missing":[]}`)
 	if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "Inbound missing") {
 		t.Fatalf("unknown inbound status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestHostFinalMaskRoundTripAndValidation(t *testing.T) {
+	var payload hostPayload
+	if err := json.Unmarshal([]byte(`{"remark":"finalmask","address":"edge.example.com","finalmask":{
+		"tcp":[
+			{"type":"header-custom","settings":{}},
+			{"type":"fragment","settings":{"packets":"tlshello","lengths":["3-5","6-8"],"delays":["10-20"],"maxSplit":"3-6"}},
+			{"type":"SUDOKU","settings":{"ascii":"prefer_entropy"}}
+		],
+		"udp":[
+			{"type":"realm","settings":{"url":"realm://token@example.com/id","stunServers":["stun.example.com:3478"],"tlsConfig":{"allowInsecure":false,"fingerprint":"HelloChrome_106_Shuffle","future":{"enabled":true}}}},
+			{"type":"header-custom","settings":{}},
+			{"type":"mkcp-legacy","settings":{"header":"dns","value":"example.com"}},
+			{"type":"noise","settings":{"noise":[]}},
+			{"type":"salamander","settings":{"password":"secret","packetSize":"1200-1400"}},
+			{"type":"xdns","settings":{"domains":["t.example.com:txt"],"resolvers":["t.example.com:txt+udp://8.8.8.8:53"]}},
+			{"type":"sudoku","settings":{}}
+		],
+		"quicParams":{"congestion":"bbr","bbrProfile":"standard","debug":false,"brutalUp":"1 mbps","brutalDown":"2 mbps","initStreamReceiveWindow":16384,"maxStreamReceiveWindow":32768,"initConnectionReceiveWindow":65536,"maxConnectionReceiveWindow":131072,"maxIdleTimeout":30,"keepAlivePeriod":10,"disablePathMTUDiscovery":true,"maxIncomingStreams":8}
+	}}`), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateHostPayload(payload); err != nil {
+		t.Fatalf("documented FinalMask was rejected: %v", err)
+	}
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.Exec(`CREATE TABLE hosts (
+		id INTEGER PRIMARY KEY AUTOINCREMENT, remark TEXT, address TEXT, dns_primary TEXT, dns_secondary TEXT,
+		address_options TEXT, address_selection_mode TEXT, address_ttl_seconds INTEGER, port INTEGER, path TEXT,
+		sni TEXT, sni_options TEXT, sni_selection_mode TEXT, sni_ttl_seconds INTEGER, host TEXT, host_options TEXT,
+		host_selection_mode TEXT, host_ttl_seconds INTEGER, security TEXT, alpn TEXT, fingerprint TEXT, inbound_tag TEXT,
+		allowinsecure INTEGER, is_disabled INTEGER, mux_enable INTEGER, fragment_setting TEXT, noise_setting TEXT,
+		finalmask TEXT, random_user_agent INTEGER, use_sni_as_host INTEGER
+	)`); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := insertHostTx(context.Background(), tx, "cdn", normalizeHostPayload(payload))
+	if err != nil {
+		_ = tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	storedHost, err := scanHostResponse(db.QueryRow(hostSelectSQL()+" WHERE id = ?", id))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(storedHost.FinalMask) == 0 {
+		t.Fatal("FinalMask was not persisted by the Host SQL path")
+	}
+	stored, ok := hostFinalMaskValue(payload.FinalMask).(string)
+	if !ok || !strings.Contains(stored, `"realm"`) {
+		t.Fatalf("FinalMask was not encoded: %q", stored)
+	}
+	mask := decodeHostFinalMask(sql.NullString{String: stored, Valid: true})
+	if len(mask["tcp"].([]any)) != 3 || len(mask["udp"].([]any)) != 7 || mask["quicParams"].(map[string]any)["bbrProfile"] != "standard" {
+		t.Fatalf("FinalMask did not round-trip: %#v", mask)
+	}
+	payload.ID = &id
+	payload.Remark = "updated"
+	tx, err = db.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := updateHostTx(context.Background(), tx, "cdn", payload); err != nil {
+		_ = tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT remark FROM hosts WHERE id = ?`, id).Scan(&stored); err != nil || stored != "updated" {
+		t.Fatalf("Host update did not preserve FinalMask-capable SQL: remark=%q err=%v", stored, err)
+	}
+	if err := validateHostFinalMask(map[string]any{"tcp": []any{map[string]any{"type": "noise"}}}); err == nil || !strings.Contains(err.Error(), "Unsupported FinalMask") {
+		t.Fatalf("invalid FinalMask was accepted: %v", err)
+	}
+	for name, invalid := range map[string]map[string]any{
+		"fragment":         {"tcp": []any{map[string]any{"type": "fragment", "settings": map[string]any{}}}},
+		"xdns":             {"udp": []any{map[string]any{"type": "xdns", "settings": map[string]any{}}}},
+		"realm":            {"udp": []any{map[string]any{"type": "realm", "settings": map[string]any{}}}},
+		"short salamander": {"udp": []any{map[string]any{"type": "salamander", "settings": map[string]any{"password": "abc"}}}},
+		"sudoku order": {"udp": []any{
+			map[string]any{"type": "sudoku", "settings": map[string]any{}},
+			map[string]any{"type": "noise", "settings": map[string]any{}},
+		}},
+		"socket order": {"udp": []any{
+			map[string]any{"type": "noise", "settings": map[string]any{}},
+			map[string]any{"type": "xicmp", "settings": map[string]any{}},
+		}},
+		"socket conflict": {"udp": []any{
+			map[string]any{"type": "realm", "settings": map[string]any{"url": "realm://token@example.com/id", "stunServers": []any{"stun.example.com:3478"}}},
+			map[string]any{"type": "xicmp", "settings": map[string]any{}},
+		}},
+		"udp hop conflict": {
+			"udp":        []any{map[string]any{"type": "xicmp", "settings": map[string]any{}}},
+			"quicParams": map[string]any{"udpHop": map[string]any{"ports": "20000-30000"}},
+		},
+	} {
+		if err := validateHostFinalMask(invalid); err == nil {
+			t.Fatalf("invalid %s FinalMask settings were accepted", name)
+		}
+	}
+	if err := validateHostFinalMask(map[string]any{
+		"udp":        []any{map[string]any{"type": "xicmp", "settings": map[string]any{"dgram": true}}},
+		"quicParams": map[string]any{"congestion": "bbr"},
+	}); err != nil {
+		t.Fatalf("valid xicmp FinalMask was rejected: %v", err)
+	}
+	if err := validateHostFinalMask(map[string]any{
+		"tcp": []any{
+			map[string]any{"type": "sudoku", "settings": map[string]any{}},
+			map[string]any{"type": "header-custom", "settings": map[string]any{}},
+			map[string]any{"type": "sudoku", "settings": map[string]any{}},
+		},
+	}); err != nil {
+		t.Fatalf("valid TCP Sudoku chain was rejected: %v", err)
+	}
+}
+
+func TestHostFinalMaskBoundaryValidation(t *testing.T) {
+	realmTLS := func(tlsConfig map[string]any) map[string]any {
+		return map[string]any{"udp": []any{map[string]any{"type": "realm", "settings": map[string]any{
+			"url": "realm://token@example.com/id", "stunServers": []any{"stun.example.com:3478"}, "tlsConfig": tlsConfig,
+		}}}}
+	}
+	valid := []struct {
+		name string
+		mask map[string]any
+	}{
+		{
+			name: "all QUIC fields",
+			mask: map[string]any{"quicParams": map[string]any{
+				"congestion": "force-brutal", "bbrProfile": "aggressive", "debug": true,
+				"brutalUp": "512 kbps", "brutalDown": "1 mbps",
+				"udpHop":                  map[string]any{"ports": " 20000, 20002-20004 ", "interval": "5-10"},
+				"initStreamReceiveWindow": 16384, "maxStreamReceiveWindow": 32768,
+				"initConnectionReceiveWindow": 65536, "maxConnectionReceiveWindow": 131072,
+				"maxIdleTimeout": 4, "keepAlivePeriod": 2,
+				"disablePathMTUDiscovery": false, "maxIncomingStreams": 8,
+			}},
+		},
+		{
+			name: "XDNS client resolver",
+			mask: map[string]any{"udp": []any{map[string]any{"type": "xdns", "settings": map[string]any{
+				"domains":   []any{"t.example.com:a"},
+				"resolvers": []any{"t.example.com:aaaa+udp://[2001:4860:4860::8888]:53"},
+			}}}},
+		},
+		{
+			name: "Realm future TLS fields",
+			mask: map[string]any{"udp": []any{map[string]any{"type": "realm", "settings": map[string]any{
+				"url": "realm://token@example.com/id", "stunServers": []any{"stun.example.com:3478"},
+				"tlsConfig": map[string]any{"allowInsecure": false, "fingerprint": "HelloChrome_106_Shuffle", "future": map[string]any{"value": 1}},
+			}}}},
+		},
+		{
+			name: "Realm known TLS fields",
+			mask: realmTLS(map[string]any{
+				"serverName": "realm.example.com", "verifyPeerCertByName": "realm.example.com",
+				"minVersion": "1.2", "maxVersion": "1.3", "cipherSuites": "", "fingerprint": "HelloChrome_106_Shuffle",
+				"pinnedPeerCertSha256": strings.Repeat("ab", 32), "masterKeyLog": "", "echServerKeys": "AQID", "echConfigList": "",
+				"rejectUnknownSni": true, "allowInsecure": false, "disableSystemRoot": true, "enableSessionResumption": false,
+				"alpn": []any{"fromMitM"}, "curvePreferences": []any{"X25519"},
+				"certificates": []any{
+					map[string]any{"certificate": []any{"certificate PEM"}, "key": []any{"key PEM"}, "usage": "VERIFY", "ocspStapling": 0, "oneTimeLoading": true, "buildChain": false, "future": true},
+					map[string]any{"certificateFile": "/tmp/certificate.pem", "keyFile": "/tmp/key.pem", "usage": ""},
+				},
+				"future": map[string]any{"enabled": true},
+			}),
+		},
+		{
+			name: "empty UDP hop does not conflict with XICMP",
+			mask: map[string]any{
+				"udp":        []any{map[string]any{"type": "xicmp", "settings": map[string]any{}}},
+				"quicParams": map[string]any{"udpHop": map[string]any{"ports": "   "}},
+			},
+		},
+		{
+			name: "Realm token with colon",
+			mask: map[string]any{"udp": []any{map[string]any{"type": "realm", "settings": map[string]any{
+				"url": "realm://token:part@example.com/id", "stunServers": []any{"stun.example.com:3478"},
+			}}}},
+		},
+		{
+			name: "active UDP hop default interval",
+			mask: map[string]any{"quicParams": map[string]any{
+				"udpHop": map[string]any{"ports": 20000, "interval": "0-10"},
+			}},
+		},
+	}
+	for _, test := range valid {
+		t.Run(test.name, func(t *testing.T) {
+			if err := validateHostFinalMask(test.mask); err != nil {
+				t.Fatalf("valid FinalMask rejected: %v", err)
+			}
+		})
+	}
+
+	invalid := []struct {
+		name string
+		mask map[string]any
+		want string
+	}{
+		{"XDNS domains only", map[string]any{"udp": []any{map[string]any{"type": "xdns", "settings": map[string]any{"domains": []any{"t.example.com"}}}}}, "requires resolvers"},
+		{"XDNS resolver hostname", map[string]any{"udp": []any{map[string]any{"type": "xdns", "settings": map[string]any{"resolvers": []any{"t.example.com+udp://dns.example.com:53"}}}}}, "invalid xdns resolver"},
+		{"Realm insecure TLS", map[string]any{"udp": []any{map[string]any{"type": "realm", "settings": map[string]any{"url": "realm://token@example.com/id", "stunServers": []any{"stun.example.com:3478"}, "tlsConfig": map[string]any{"allowInsecure": true}}}}}, "cannot be true"},
+		{"Realm TLS boolean type", map[string]any{"udp": []any{map[string]any{"type": "realm", "settings": map[string]any{"url": "realm://token@example.com/id", "stunServers": []any{"stun.example.com:3478"}, "tlsConfig": map[string]any{"allowInsecure": "false"}}}}}, "must be a boolean"},
+		{"Realm TLS fingerprint", map[string]any{"udp": []any{map[string]any{"type": "realm", "settings": map[string]any{"url": "realm://token@example.com/id", "stunServers": []any{"stun.example.com:3478"}, "tlsConfig": map[string]any{"fingerprint": "typo"}}}}}, "fingerprint"},
+		{"Realm TLS string type", realmTLS(map[string]any{"serverName": true}), "serverName must be a string"},
+		{"Realm TLS ALPN type", realmTLS(map[string]any{"alpn": "h2"}), "alpn must be an array"},
+		{"Realm TLS ALPN value", realmTLS(map[string]any{"alpn": []any{""}}), "non-empty strings"},
+		{"Realm TLS FromMitM", realmTLS(map[string]any{"alpn": []any{"fromMitM", "h2"}}), "only ALPN"},
+		{"Realm TLS version enum", realmTLS(map[string]any{"minVersion": "TLS1.2"}), "minVersion is invalid"},
+		{"Realm TLS version order", realmTLS(map[string]any{"minVersion": "1.3", "maxVersion": "1.2"}), "cannot exceed"},
+		{"Realm TLS pinned hash", realmTLS(map[string]any{"pinnedPeerCertSha256": "aa"}), "pinnedPeerCertSha256 is invalid"},
+		{"Realm TLS ECH base64", realmTLS(map[string]any{"echServerKeys": "AQI"}), "standard base64"},
+		{"Realm TLS certificates type", realmTLS(map[string]any{"certificates": map[string]any{}}), "certificates must be an array"},
+		{"Realm TLS certificate object", realmTLS(map[string]any{"certificates": []any{"certificate"}}), "must be an object"},
+		{"Realm TLS certificate content", realmTLS(map[string]any{"certificates": []any{map[string]any{}}}), "requires certificate content"},
+		{"Realm TLS certificate string type", realmTLS(map[string]any{"certificates": []any{map[string]any{"certificateFile": 1}}}), "certificateFile must be a string"},
+		{"Realm TLS certificate array type", realmTLS(map[string]any{"certificates": []any{map[string]any{"certificate": "PEM"}}}), "certificate must be an array"},
+		{"Realm TLS certificate boolean type", realmTLS(map[string]any{"certificates": []any{map[string]any{"certificate": []any{"PEM"}, "buildChain": 1}}}), "buildChain must be a boolean"},
+		{"Realm TLS certificate usage", realmTLS(map[string]any{"certificates": []any{map[string]any{"certificate": []any{"PEM"}, "usage": "server"}}}), "usage is invalid"},
+		{"Realm TLS certificate OCSP", realmTLS(map[string]any{"certificates": []any{map[string]any{"certificate": []any{"PEM"}, "ocspStapling": -1}}}), "non-negative integer"},
+		{"force brutal without upload", map[string]any{"quicParams": map[string]any{"congestion": "force-brutal", "brutalUp": "0"}}, "requires brutalUp"},
+		{"low brutal rate", map[string]any{"quicParams": map[string]any{"brutalUp": "511 kbps"}}, "at least 65536"},
+		{"small QUIC window", map[string]any{"quicParams": map[string]any{"initStreamReceiveWindow": 16383}}, "at least 16384"},
+		{"idle timeout range", map[string]any{"quicParams": map[string]any{"maxIdleTimeout": 121}}, "between 4 and 120"},
+		{"keepalive range", map[string]any{"quicParams": map[string]any{"keepAlivePeriod": 1}}, "between 2 and 60"},
+		{"incoming stream range", map[string]any{"quicParams": map[string]any{"maxIncomingStreams": 7}}, "at least 8"},
+		{"bad UDP hop port", map[string]any{"quicParams": map[string]any{"udpHop": map[string]any{"ports": "65536"}}}, "ports are invalid"},
+		{"zero numeric UDP hop port", map[string]any{"quicParams": map[string]any{"udpHop": map[string]any{"ports": 0}}}, "port expression"},
+		{"bad inactive UDP hop interval", map[string]any{"quicParams": map[string]any{"udpHop": map[string]any{"interval": 1}}}, "at least 5"},
+	}
+	for _, test := range invalid {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateHostFinalMask(test.mask)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error = %v, want substring %q", err, test.want)
+			}
+		})
 	}
 }

@@ -133,20 +133,19 @@ func BackupDue(settings Settings, now time.Time) bool {
 	if interval <= 0 {
 		return false
 	}
-	if settings.BackupLastSentAt == nil || strings.TrimSpace(*settings.BackupLastSentAt) == "" {
-		if settings.BackupLastError != nil && strings.TrimSpace(*settings.BackupLastError) != "" && settings.LastErrorAt != nil {
-			lastAttempt, err := parseBackupTime(*settings.LastErrorAt)
-			if err == nil {
-				return !lastAttempt.Add(interval).After(now.UTC())
-			}
+	lastAttempt := time.Time{}
+	if settings.BackupLastSentAt != nil {
+		lastAttempt, _ = parseBackupTime(*settings.BackupLastSentAt)
+	}
+	if settings.BackupLastError != nil && strings.TrimSpace(*settings.BackupLastError) != "" && settings.LastErrorAt != nil {
+		if failedAt, err := parseBackupTime(*settings.LastErrorAt); err == nil && failedAt.After(lastAttempt) {
+			lastAttempt = failedAt
 		}
+	}
+	if lastAttempt.IsZero() {
 		return true
 	}
-	lastSent, err := parseBackupTime(*settings.BackupLastSentAt)
-	if err != nil {
-		return true
-	}
-	return !lastSent.Add(interval).After(now.UTC())
+	return !lastAttempt.Add(interval).After(now.UTC())
 }
 
 func parseBackupTime(value string) (time.Time, error) {

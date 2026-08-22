@@ -297,7 +297,7 @@ func (s *Server) outboundConfigTargets(ctx context.Context) ([]outboundTrafficTa
 		Name:   "Master",
 		Config: master,
 	}}
-	rows, err := s.db.QueryContext(ctx, `SELECT id, COALESCE(name, ''), COALESCE(xray_config_mode, 'default'), xray_config FROM nodes ORDER BY id`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, COALESCE(name, ''), COALESCE(xray_config_mode, 'default'), xray_config FROM nodes WHERE LOWER(COALESCE(status, '')) <> 'deleted' ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}

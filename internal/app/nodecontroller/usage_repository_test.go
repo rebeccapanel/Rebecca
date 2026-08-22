@@ -3,6 +3,7 @@ package nodecontroller
 import (
 	"context"
 	"database/sql"
+	"math"
 	"path/filepath"
 	"testing"
 
@@ -33,23 +34,23 @@ INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`)
 	err = repo.PersistCollectedUsage(
 		ctx,
 		NodeRow{ID: 7, UsageCoefficient: 1.5},
-		[]UserUsageDelta{{UserID: 10, Value: 100}},
+		[]UserUsageDelta{{UserID: 10, Value: 100, InboundCoefficient: 2}},
 		[]OutboundUsageDelta{{Tag: "direct", Up: 11, Down: 22}},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	assertInt64(t, db, `SELECT used_traffic FROM users WHERE id = 10`, 150)
+	assertInt64(t, db, `SELECT used_traffic FROM users WHERE id = 10`, 300)
 	assertString(t, db, `SELECT status FROM users WHERE id = 10`, "limited")
-	assertInt64(t, db, `SELECT users_usage FROM admins WHERE id = 1`, 150)
-	assertInt64(t, db, `SELECT lifetime_usage FROM admins WHERE id = 1`, 150)
-	assertInt64(t, db, `SELECT used_traffic FROM services WHERE id = 2`, 150)
-	assertInt64(t, db, `SELECT lifetime_used_traffic FROM services WHERE id = 2`, 150)
-	assertInt64(t, db, `SELECT users_usage FROM services WHERE id = 2`, 150)
-	assertInt64(t, db, `SELECT used_traffic FROM admins_services WHERE admin_id = 1 AND service_id = 2`, 150)
-	assertInt64(t, db, `SELECT lifetime_used_traffic FROM admins_services WHERE admin_id = 1 AND service_id = 2`, 150)
-	assertInt64(t, db, `SELECT used_traffic FROM node_user_usages WHERE user_id = 10 AND node_id = 7`, 150)
+	assertInt64(t, db, `SELECT users_usage FROM admins WHERE id = 1`, 300)
+	assertInt64(t, db, `SELECT lifetime_usage FROM admins WHERE id = 1`, 300)
+	assertInt64(t, db, `SELECT used_traffic FROM services WHERE id = 2`, 300)
+	assertInt64(t, db, `SELECT lifetime_used_traffic FROM services WHERE id = 2`, 300)
+	assertInt64(t, db, `SELECT users_usage FROM services WHERE id = 2`, 300)
+	assertInt64(t, db, `SELECT used_traffic FROM admins_services WHERE admin_id = 1 AND service_id = 2`, 300)
+	assertInt64(t, db, `SELECT lifetime_used_traffic FROM admins_services WHERE admin_id = 1 AND service_id = 2`, 300)
+	assertInt64(t, db, `SELECT used_traffic FROM node_user_usages WHERE user_id = 10 AND node_id = 7`, 300)
 	assertInt64(t, db, `SELECT uplink FROM node_usages WHERE node_id = 7`, 11)
 	assertInt64(t, db, `SELECT downlink FROM node_usages WHERE node_id = 7`, 22)
 	assertInt64(t, db, `SELECT uplink FROM system WHERE id = 1`, 11)
@@ -261,6 +262,7 @@ INSERT INTO services (id, used_traffic, lifetime_used_traffic, users_usage, upda
 INSERT INTO admins_services (admin_id, service_id, used_traffic, lifetime_used_traffic, updated_at) VALUES (1, 2, 0, 0, CURRENT_TIMESTAMP);
 INSERT INTO users (id, status, used_traffic, data_limit, admin_id, service_id) VALUES (10, 'active', 0, 100000, 1, 2);
 INSERT INTO nodes (id, status, uplink, downlink, data_limit, usage_coefficient) VALUES (7, 'connected', 0, 0, NULL, 2);
+INSERT INTO inbounds (tag) VALUES ('direct');
 INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`)
 	if err != nil {
 		t.Fatal(err)
@@ -356,6 +358,7 @@ INSERT INTO services (id, used_traffic, lifetime_used_traffic, users_usage, upda
 INSERT INTO admins_services (admin_id, service_id, used_traffic, lifetime_used_traffic, updated_at) VALUES (1, 2, 0, 0, CURRENT_TIMESTAMP);
 INSERT INTO users (id, status, used_traffic, data_limit, admin_id, service_id) VALUES (10, 'active', 0, 100000, 1, 2);
 INSERT INTO nodes (id, status, uplink, downlink, data_limit, usage_coefficient) VALUES (7, 'connected', 0, 0, NULL, 2);
+INSERT INTO inbounds (tag) VALUES ('direct');
 INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`)
 	if err != nil {
 		t.Fatal(err)
@@ -363,13 +366,14 @@ INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`)
 
 	repo := NewRepository(db, "sqlite")
 	for i := 0; i < 2; i++ {
-		if err := repo.StoreCollectedUsage(
+		if err := repo.StoreCollectedUsageWithInbounds(
 			ctx,
 			NodeRow{ID: 7, UsageCoefficient: 2},
 			"users-batch-1",
 			[]UserUsageDelta{{UserID: 10, Value: 100, Online: true}},
 			"out-batch-1",
 			[]OutboundUsageDelta{{Tag: "direct", Up: 11, Down: 22}},
+			[]InboundUsageDelta{{Tag: "direct", Up: 5, Down: 6}},
 		); err != nil {
 			t.Fatal(err)
 		}
@@ -391,8 +395,24 @@ INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`)
 	assertInt64(t, db, `SELECT used_traffic FROM node_user_usages WHERE user_id = 10 AND node_id = 7`, 200)
 	assertInt64(t, db, `SELECT uplink FROM nodes WHERE id = 7`, 11)
 	assertInt64(t, db, `SELECT downlink FROM nodes WHERE id = 7`, 22)
+	assertInt64(t, db, `SELECT uplink FROM inbounds WHERE tag = 'direct'`, 5)
+	assertInt64(t, db, `SELECT downlink FROM inbounds WHERE tag = 'direct'`, 6)
 	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_user_queue WHERE processed_at IS NULL`, 0)
 	assertInt64(t, db, `SELECT COUNT(*) FROM node_usage_outbound_queue WHERE processed_at IS NULL`, 0)
+
+	if err := repo.StoreCollectedUsageWithInbounds(
+		ctx,
+		NodeRow{ID: 7, UsageCoefficient: 2},
+		"users-batch-1",
+		[]UserUsageDelta{{UserID: 10, Value: 100, Online: true}},
+		"out-batch-1",
+		[]OutboundUsageDelta{{Tag: "direct", Up: 111, Down: 222}},
+		[]InboundUsageDelta{{Tag: "direct", Up: 50, Down: 60}},
+	); err != nil {
+		t.Fatal(err)
+	}
+	assertInt64(t, db, `SELECT inbound_uplink FROM node_usage_outbound_queue WHERE node_id = 7 AND batch_id = 'out-batch-1' AND tag = 'direct'`, 5)
+	assertInt64(t, db, `SELECT inbound_downlink FROM node_usage_outbound_queue WHERE node_id = 7 AND batch_id = 'out-batch-1' AND tag = 'direct'`, 6)
 
 	result, err = repo.FlushStagedUsage(ctx, 100)
 	if err != nil {
@@ -402,6 +422,87 @@ INSERT INTO system (id, uplink, downlink) VALUES (1, 0, 0);`)
 		t.Fatalf("second flush should be empty: %#v", result)
 	}
 	assertInt64(t, db, `SELECT used_traffic FROM users WHERE id = 10`, 200)
+	assertInt64(t, db, `SELECT uplink FROM inbounds WHERE tag = 'direct'`, 5)
+	assertInt64(t, db, `SELECT downlink FROM inbounds WHERE tag = 'direct'`, 6)
+}
+
+func TestRepositoryAggregatesInboundUsageAcrossNodesAndBatches(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "inbound-usage.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	createUsageTables(t, ctx, db)
+	if _, err := db.ExecContext(ctx, `
+INSERT INTO nodes (id, status, usage_coefficient) VALUES (7, 'connected', 1), (8, 'connected', 1);
+INSERT INTO inbounds (tag) VALUES ('shared'), ('upload-only'), ('download-only');`); err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewRepository(db, "sqlite")
+	store := func(nodeID int64, batchID string, deltas []InboundUsageDelta) {
+		t.Helper()
+		if err := repo.StoreCollectedUsageWithInbounds(ctx, NodeRow{ID: nodeID, UsageCoefficient: 1}, "", nil, batchID, nil, deltas); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for range 2 {
+		store(7, "batch-1", []InboundUsageDelta{
+			{Tag: "shared", Up: 10, Down: 20},
+			{Tag: "upload-only", Up: 5},
+			{Tag: "download-only", Down: 6},
+			{Tag: "unknown", Up: 999, Down: 999},
+			{Tag: "shared", Up: -1, Down: -1},
+		})
+	}
+	store(8, "batch-1", []InboundUsageDelta{{Tag: "shared", Up: 3, Down: 4}})
+
+	if result, err := repo.FlushStagedUsage(ctx, 100); err != nil {
+		t.Fatal(err)
+	} else if result.OutboundRows != 5 {
+		t.Fatalf("unexpected staged traffic rows: %#v", result)
+	}
+	assertInt64(t, db, `SELECT uplink FROM inbounds WHERE tag = 'shared'`, 13)
+	assertInt64(t, db, `SELECT downlink FROM inbounds WHERE tag = 'shared'`, 24)
+	assertInt64(t, db, `SELECT uplink FROM inbounds WHERE tag = 'upload-only'`, 5)
+	assertInt64(t, db, `SELECT downlink FROM inbounds WHERE tag = 'upload-only'`, 0)
+	assertInt64(t, db, `SELECT uplink FROM inbounds WHERE tag = 'download-only'`, 0)
+	assertInt64(t, db, `SELECT downlink FROM inbounds WHERE tag = 'download-only'`, 6)
+
+	for range 2 {
+		store(7, "batch-2", []InboundUsageDelta{{Tag: "shared", Up: 2, Down: 3}})
+	}
+	if _, err := repo.FlushStagedUsage(ctx, 100); err != nil {
+		t.Fatal(err)
+	}
+	assertInt64(t, db, `SELECT uplink FROM inbounds WHERE tag = 'shared'`, 15)
+	assertInt64(t, db, `SELECT downlink FROM inbounds WHERE tag = 'shared'`, 27)
+
+	if err := repo.StoreCollectedUsageWithInbounds(ctx, NodeRow{ID: 7}, "", nil, "", nil, nil); err != nil {
+		t.Fatalf("old node payload should be a no-op: %v", err)
+	}
+}
+
+func TestRepositoryInboundUsageSaturatesWithoutOverflow(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "inbound-overflow.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	createUsageTables(t, ctx, db)
+	if _, err := db.ExecContext(ctx, `INSERT INTO inbounds (tag, uplink, downlink) VALUES ('near-max', ?, ?), ('negative', -5, -6)`, math.MaxInt64-2, math.MaxInt64-3); err != nil {
+		t.Fatal(err)
+	}
+	repo := NewRepository(db, "sqlite")
+	if err := repo.StoreCollectedUsageWithInbounds(ctx, NodeRow{ID: 7}, "", nil, "", nil, []InboundUsageDelta{{Tag: "near-max", Up: 10, Down: 10}, {Tag: "negative", Up: 7, Down: 8}}); err != nil {
+		t.Fatal(err)
+	}
+	assertInt64(t, db, `SELECT uplink FROM inbounds WHERE tag = 'near-max'`, math.MaxInt64)
+	assertInt64(t, db, `SELECT downlink FROM inbounds WHERE tag = 'near-max'`, math.MaxInt64)
+	assertInt64(t, db, `SELECT uplink FROM inbounds WHERE tag = 'negative'`, 7)
+	assertInt64(t, db, `SELECT downlink FROM inbounds WHERE tag = 'negative'`, 8)
 }
 
 func TestRepositoryFlushesOnHoldUsageWithLongExpireDuration(t *testing.T) {
@@ -488,6 +589,27 @@ func TestParseUserUsageSampleUID(t *testing.T) {
 	}
 }
 
+func TestUsageUint64ToInt64RejectsOverflow(t *testing.T) {
+	if value, ok := usageUint64ToInt64(uint64(math.MaxInt64)); !ok || value != math.MaxInt64 {
+		t.Fatalf("max int64 should be accepted: value=%d ok=%v", value, ok)
+	}
+	if value, ok := usageUint64ToInt64(uint64(math.MaxInt64) + 1); ok || value != 0 {
+		t.Fatalf("overflowing delta should be rejected: value=%d ok=%v", value, ok)
+	}
+}
+
+func TestScaleUserUsageCombinesFactorsAndSaturates(t *testing.T) {
+	if got := scaleUserUsage(100, 1.5, 2); got != 300 {
+		t.Fatalf("combined usage=%d want=300", got)
+	}
+	if got := scaleUserUsage(math.MaxInt64, 100, 100); got != math.MaxInt64 {
+		t.Fatalf("overflow wrapped: %d", got)
+	}
+	if got := scaleUserUsage(100, 0, 2); got != 200 {
+		t.Fatalf("invalid factor should fall back to one: %d", got)
+	}
+}
+
 func createUsageTables(t *testing.T, ctx context.Context, db *sql.DB) {
 	t.Helper()
 	statements := []string{
@@ -499,10 +621,11 @@ func createUsageTables(t *testing.T, ctx context.Context, db *sql.DB) {
 		`CREATE TABLE node_user_usages (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at DATETIME NOT NULL, user_id INTEGER NOT NULL, node_id INTEGER NOT NULL, used_traffic INTEGER NOT NULL DEFAULT 0, UNIQUE(created_at, user_id, node_id))`,
 		`CREATE TABLE node_usages (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at DATETIME NOT NULL, node_id INTEGER NOT NULL, uplink INTEGER NOT NULL DEFAULT 0, downlink INTEGER NOT NULL DEFAULT 0, UNIQUE(created_at, node_id))`,
 		`CREATE TABLE outbound_traffic (id INTEGER PRIMARY KEY AUTOINCREMENT, target_id TEXT NOT NULL, node_id INTEGER NULL, outbound_id TEXT NOT NULL, tag TEXT NULL, uplink INTEGER NOT NULL DEFAULT 0, downlink INTEGER NOT NULL DEFAULT 0, created_at DATETIME NULL, updated_at DATETIME NULL, UNIQUE(target_id, outbound_id))`,
+		`CREATE TABLE inbounds (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL UNIQUE, uplink INTEGER NOT NULL DEFAULT 0, downlink INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE TABLE system (id INTEGER PRIMARY KEY, uplink INTEGER NOT NULL DEFAULT 0, downlink INTEGER NOT NULL DEFAULT 0)`,
 		`CREATE TABLE node_operations (id INTEGER PRIMARY KEY AUTOINCREMENT, operation_type TEXT NOT NULL, node_id INTEGER NULL, user_id INTEGER NULL, payload TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT NULL, idempotency_key TEXT NOT NULL UNIQUE, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL)`,
 		`CREATE TABLE node_usage_user_queue (id INTEGER PRIMARY KEY AUTOINCREMENT, node_id INTEGER NOT NULL, batch_id TEXT NOT NULL, user_id INTEGER NOT NULL, used_traffic INTEGER NOT NULL DEFAULT 0, online INTEGER NOT NULL DEFAULT 0, created_at DATETIME NOT NULL, processed_at DATETIME NULL, UNIQUE(node_id, batch_id, user_id))`,
-		`CREATE TABLE node_usage_outbound_queue (id INTEGER PRIMARY KEY AUTOINCREMENT, node_id INTEGER NOT NULL, batch_id TEXT NOT NULL, tag TEXT NOT NULL, uplink INTEGER NOT NULL DEFAULT 0, downlink INTEGER NOT NULL DEFAULT 0, created_at DATETIME NOT NULL, processed_at DATETIME NULL, UNIQUE(node_id, batch_id, tag))`,
+		`CREATE TABLE node_usage_outbound_queue (id INTEGER PRIMARY KEY AUTOINCREMENT, node_id INTEGER NOT NULL, batch_id TEXT NOT NULL, tag TEXT NOT NULL, uplink INTEGER NOT NULL DEFAULT 0, downlink INTEGER NOT NULL DEFAULT 0, inbound_uplink INTEGER NOT NULL DEFAULT 0, inbound_downlink INTEGER NOT NULL DEFAULT 0, created_at DATETIME NOT NULL, processed_at DATETIME NULL, UNIQUE(node_id, batch_id, tag))`,
 	}
 	for _, stmt := range statements {
 		if _, err := db.ExecContext(ctx, stmt); err != nil {

@@ -194,6 +194,10 @@ func remoteHost(remoteAddr string) string {
 }
 
 func fastCGIRequest(network string, address string, params map[string]string, body io.Reader) ([]byte, []byte, error) {
+	return fastCGIRequestLimited(network, address, params, body, 0)
+}
+
+func fastCGIRequestLimited(network string, address string, params map[string]string, body io.Reader, maxOutput int64) ([]byte, []byte, error) {
 	conn, err := net.Dial(network, address)
 	if err != nil {
 		return nil, nil, err
@@ -219,13 +223,23 @@ func fastCGIRequest(network string, address string, params map[string]string, bo
 		}
 		switch recordType {
 		case fcgiStdout:
+			if fastCGIOutputExceeds(maxOutput, stdout.Len()+stderr.Len(), len(content)) {
+				return nil, nil, errors.New("FastCGI response exceeds the configured limit")
+			}
 			stdout.Write(content)
 		case fcgiStderr:
+			if fastCGIOutputExceeds(maxOutput, stdout.Len()+stderr.Len(), len(content)) {
+				return nil, nil, errors.New("FastCGI response exceeds the configured limit")
+			}
 			stderr.Write(content)
 		case fcgiEnd:
 			return stdout.Bytes(), stderr.Bytes(), nil
 		}
 	}
+}
+
+func fastCGIOutputExceeds(limit int64, current, incoming int) bool {
+	return limit > 0 && int64(current)+int64(incoming) > limit
 }
 
 func writeFastCGIParams(w io.Writer, params map[string]string) error {

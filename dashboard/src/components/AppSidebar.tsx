@@ -16,6 +16,7 @@ import {
 	ChartBarIcon,
 	CircleStackIcon,
 	ClockIcon,
+	CommandLineIcon,
 	CodeBracketSquareIcon,
 	Cog6ToothIcon,
 	Cog8ToothIcon,
@@ -41,11 +42,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, useHref, useLocation, useNavigate } from "react-router-dom";
-import {
-	AdminRole,
-	AdminSection,
-	AdminSudoScope,
-} from "types/Admin";
+import { AdminRole, AdminSection, AdminSudoScope } from "types/Admin";
 import {
 	getTutorialManifestUrl,
 	getTutorialSeenKey,
@@ -77,6 +74,7 @@ const XraySettingsIconStyled = chakra(WrenchScrewdriverIcon, iconProps);
 const XrayLogsIconStyled = chakra(DocumentTextIcon, iconProps);
 const ApiDocsIconStyled = chakra(CodeBracketSquareIcon, iconProps);
 const PHPMyAdminIconStyled = chakra(CircleStackIcon, iconProps);
+const ExternalAppsIconStyled = chakra(CommandLineIcon, iconProps);
 const TutorialUpdateIconStyled = chakra(BellAlertIcon, {
 	baseStyle: {
 		w: 3,
@@ -257,6 +255,13 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 					icon: PHPMyAdminIconStyled,
 				}
 			: null,
+		isPrivilegedAdmin
+			? {
+					title: t("externalApps.menu"),
+					url: "/external-apps",
+					icon: ExternalAppsIconStyled,
+				}
+			: null,
 		{
 			title: t("tutorials.menu"),
 			url: tutorialsUrl,
@@ -380,6 +385,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 				pickSetting("/recent-actions"),
 				pickSetting("/api-docs"),
 				pickSetting("/phpmyadmin"),
+				pickSetting("/external-apps"),
 				pickSetting(tutorialsUrl),
 			],
 		},

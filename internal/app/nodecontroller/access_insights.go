@@ -90,7 +90,8 @@ FROM user_online_ips uoi
 JOIN users u ON u.id = uoi.user_id
 LEFT JOIN nodes n ON n.id = uoi.node_id
 LEFT JOIN services s ON s.id = u.service_id
-WHERE uoi.last_seen_at >= ? AND u.status != 'deleted'`+where+`
+WHERE uoi.last_seen_at >= ? AND u.status != 'deleted'
+  AND (n.id IS NULL OR LOWER(COALESCE(n.status, '')) <> 'deleted')`+where+`
 ORDER BY uoi.last_seen_at DESC
 LIMIT ?`, args...)
 	if err != nil {
@@ -128,7 +129,8 @@ FROM vpn_user_sessions vus
 JOIN users u ON u.id = vus.user_id
 LEFT JOIN nodes n ON n.id = vus.node_id
 LEFT JOIN services s ON s.id = u.service_id
-WHERE vus.ended_at IS NULL AND vus.last_seen_at >= ? AND u.status != 'deleted'`+where+`
+WHERE vus.ended_at IS NULL AND vus.last_seen_at >= ? AND u.status != 'deleted'
+  AND (n.id IS NULL OR LOWER(COALESCE(n.status, '')) <> 'deleted')`+where+`
 ORDER BY vus.last_seen_at DESC
 LIMIT ?`, args...)
 	if err != nil {

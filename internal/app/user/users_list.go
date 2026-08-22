@@ -618,7 +618,7 @@ func extractConfigIdentifiers(value string) (map[string]struct{}, map[string]str
 	if err != nil {
 		return uuids, passwords
 	}
-	userInfo := parsed.User.Username()
+	userInfo := decodedURLUserInfo(parsed.User)
 	if lowerHasScheme(lower, "ss") {
 		if userInfo != "" && !strings.Contains(userInfo, ":") {
 			if decoded, err := decodeBase64Flexible(userInfo); err == nil {

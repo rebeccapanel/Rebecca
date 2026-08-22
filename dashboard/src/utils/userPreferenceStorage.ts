@@ -1,6 +1,8 @@
 const NUM_USERS_PER_PAGE_LOCAL_STORAGE_KEY = "rebecca-num-users-per-page";
 const NUM_ADMINS_PER_PAGE_LOCAL_STORAGE_KEY = "rebecca-num-admins-per-page";
 const NUM_NODES_PER_PAGE_LOCAL_STORAGE_KEY = "rebecca-num-nodes-per-page";
+const NUM_RECENT_ACTIONS_PER_PAGE_LOCAL_STORAGE_KEY =
+	"rebecca-num-recent-actions-per-page";
 const NUM_NODES_PER_PAGE_COOKIE_KEY = "rebecca-num-nodes-per-page";
 const NUM_PER_PAGE_DEFAULT = 10;
 const NUM_NODES_PER_PAGE_DEFAULT = 12;
@@ -44,6 +46,13 @@ export const getAdminsPerPageLimitSize = () =>
 	readPerPage(NUM_ADMINS_PER_PAGE_LOCAL_STORAGE_KEY);
 export const setAdminsPerPageLimitSize = (value: string) =>
 	writePerPage(NUM_ADMINS_PER_PAGE_LOCAL_STORAGE_KEY, value);
+
+export const getRecentActionsPerPageLimitSize = () => {
+	const value = readPerPage(NUM_RECENT_ACTIONS_PER_PAGE_LOCAL_STORAGE_KEY);
+	return [10, 20, 30, 50, 100].includes(value) ? value : 20;
+};
+export const setRecentActionsPerPageLimitSize = (value: string) =>
+	writePerPage(NUM_RECENT_ACTIONS_PER_PAGE_LOCAL_STORAGE_KEY, value);
 
 export const getNodesPerPageLimitSize = () => {
 	const value =

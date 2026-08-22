@@ -188,7 +188,7 @@ func (r Repository) SetNodeConfigMode(ctx context.Context, nodeID int64, mode st
 			return err
 		}
 	} else {
-		if _, err := tx.ExecContext(ctx, `UPDATE nodes SET xray_config_mode = ?, xray_config = NULL WHERE id = ?`, ConfigModeDefault, nodeID); err != nil {
+		if _, err := tx.ExecContext(ctx, `UPDATE nodes SET xray_config_mode = ?, xray_config = NULL WHERE id = ? AND LOWER(COALESCE(status, '')) <> 'deleted'`, ConfigModeDefault, nodeID); err != nil {
 			return err
 		}
 	}
@@ -238,7 +238,7 @@ func (r Repository) ListConfigTargets(ctx context.Context) ([]Target, error) {
 		Name: "Master",
 		Mode: ConfigModeCustom,
 	}}
-	rows, err := r.db.QueryContext(ctx, `SELECT id, COALESCE(name, ''), COALESCE(xray_config_mode, 'default'), COALESCE(status, '') FROM nodes ORDER BY id`)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, COALESCE(name, ''), COALESCE(xray_config_mode, 'default'), COALESCE(status, '') FROM nodes WHERE LOWER(COALESCE(status, '')) <> 'deleted' ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -268,7 +268,7 @@ func (r Repository) IterStoredConfigs(ctx context.Context) ([]StoredConfig, erro
 		return nil, err
 	}
 	result := []StoredConfig{{TargetID: MasterTargetID, Config: master}}
-	rows, err := r.db.QueryContext(ctx, `SELECT id, xray_config FROM nodes WHERE xray_config_mode = 'custom' AND xray_config IS NOT NULL ORDER BY id`)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, xray_config FROM nodes WHERE LOWER(COALESCE(status, '')) <> 'deleted' AND xray_config_mode = 'custom' AND xray_config IS NOT NULL ORDER BY id`)
 	if err != nil {
 		return result, nil
 	}
@@ -354,18 +354,18 @@ func (r Repository) saveNodeRawConfigTx(ctx context.Context, tx *sql.Tx, nodeID 
 	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE nodes SET xray_config_mode = ?, xray_config = ? WHERE id = ?`, ConfigModeCustom, string(raw), nodeID)
+	_, err = tx.ExecContext(ctx, `UPDATE nodes SET xray_config_mode = ?, xray_config = ? WHERE id = ? AND LOWER(COALESCE(status, '')) <> 'deleted'`, ConfigModeCustom, string(raw), nodeID)
 	return err
 }
 
 func (r Repository) setNodeModeTx(ctx context.Context, tx *sql.Tx, nodeID int64, mode string) error {
-	_, err := tx.ExecContext(ctx, `UPDATE nodes SET xray_config_mode = ? WHERE id = ?`, mode, nodeID)
+	_, err := tx.ExecContext(ctx, `UPDATE nodes SET xray_config_mode = ? WHERE id = ? AND LOWER(COALESCE(status, '')) <> 'deleted'`, mode, nodeID)
 	return err
 }
 
 func (r Repository) ensureNodeExistsTx(ctx context.Context, tx *sql.Tx, nodeID int64) error {
 	var existing int64
-	err := tx.QueryRowContext(ctx, `SELECT id FROM nodes WHERE id = ? LIMIT 1`, nodeID).Scan(&existing)
+	err := tx.QueryRowContext(ctx, `SELECT id FROM nodes WHERE id = ? AND LOWER(COALESCE(status, '')) <> 'deleted' LIMIT 1`, nodeID).Scan(&existing)
 	if err == sql.ErrNoRows {
 		return fmt.Errorf("node not found")
 	}
@@ -375,7 +375,7 @@ func (r Repository) ensureNodeExistsTx(ctx context.Context, tx *sql.Tx, nodeID i
 func (r Repository) nodeConfigFields(ctx context.Context, nodeID int64) (map[string]any, string, error) {
 	var raw any
 	var mode string
-	err := r.db.QueryRowContext(ctx, `SELECT xray_config, COALESCE(xray_config_mode, 'default') FROM nodes WHERE id = ? LIMIT 1`, nodeID).Scan(&raw, &mode)
+	err := r.db.QueryRowContext(ctx, `SELECT xray_config, COALESCE(xray_config_mode, 'default') FROM nodes WHERE id = ? AND LOWER(COALESCE(status, '')) <> 'deleted' LIMIT 1`, nodeID).Scan(&raw, &mode)
 	if err == sql.ErrNoRows {
 		return nil, "", fmt.Errorf("node not found")
 	}
@@ -388,7 +388,7 @@ func (r Repository) nodeConfigFields(ctx context.Context, nodeID int64) (map[str
 func (r Repository) nodeConfigFieldsTx(ctx context.Context, tx *sql.Tx, nodeID int64) (map[string]any, string, error) {
 	var raw any
 	var mode string
-	err := tx.QueryRowContext(ctx, `SELECT xray_config, COALESCE(xray_config_mode, 'default') FROM nodes WHERE id = ? LIMIT 1`, nodeID).Scan(&raw, &mode)
+	err := tx.QueryRowContext(ctx, `SELECT xray_config, COALESCE(xray_config_mode, 'default') FROM nodes WHERE id = ? AND LOWER(COALESCE(status, '')) <> 'deleted' LIMIT 1`, nodeID).Scan(&raw, &mode)
 	if err == sql.ErrNoRows {
 		return nil, "", fmt.Errorf("node not found")
 	}

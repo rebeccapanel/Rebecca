@@ -71,6 +71,11 @@ type RecoverNodesResult struct {
 	Errors    []string `json:"errors,omitempty"`
 }
 
+type HealthCheckNodesResult struct {
+	Checked int      `json:"checked"`
+	Errors  []string `json:"errors,omitempty"`
+}
+
 type CollectUsageRequest struct {
 	NodeID                   int64 `json:"node_id,omitempty"`
 	Limit                    int   `json:"limit,omitempty"`
@@ -88,6 +93,7 @@ type CollectUsageResult struct {
 	OutboundBatches int      `json:"outbound_batches"`
 	UserSamples     int      `json:"user_samples"`
 	OutboundSamples int      `json:"outbound_samples"`
+	InboundSamples  int      `json:"inbound_samples"`
 	UserAcked       int      `json:"user_acked"`
 	OutboundAcked   int      `json:"outbound_acked"`
 	Errors          []string `json:"errors,omitempty"`

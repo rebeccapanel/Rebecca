@@ -126,6 +126,7 @@ func (r Repository) scanAdmin(ctx context.Context, where string, args ...any) (A
 	query := `SELECT
 	id,
 	username,
+	COALESCE(created_by, 'root'),
 	COALESCE(hashed_password, ''),
 	COALESCE(role, 'standard'),
 	permissions,
@@ -166,6 +167,7 @@ FROM admins ` + where + ` LIMIT 1`
 	err := r.db.QueryRowContext(ctx, query, args...).Scan(
 		&admin.ID,
 		&admin.Username,
+		&admin.CreatedBy,
 		&admin.HashedPassword,
 		&roleText,
 		&rawPermissions,

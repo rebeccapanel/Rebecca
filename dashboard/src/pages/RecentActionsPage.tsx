@@ -29,6 +29,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { PanelSelect as Select } from "components/common/PanelSelect";
 import { JsonEditor } from "components/JsonEditor";
+import { Pagination } from "components/Pagination";
 import {
 	DataTable,
 	type DataTableColumn,
@@ -38,12 +39,17 @@ import {
 } from "components/ui";
 import dayjs from "dayjs";
 import useGetUser from "hooks/useGetUser";
-import { type FC, useCallback, useMemo, useState } from "react";
+import debounce from "lodash.debounce";
+import { type FC, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "react-query";
 import { fetch } from "service/http";
 import { AdminRole, AdminSudoScope } from "types/Admin";
 import { buildJsonDiff } from "utils/jsonDiff";
+import {
+	getRecentActionsPerPageLimitSize,
+	setRecentActionsPerPageLimitSize,
+} from "utils/userPreferenceStorage";
 
 type RecentActionOperation =
 	| "created"
@@ -86,11 +92,15 @@ type RecentAction = {
 	created_at: string;
 	snapshot_expires_at?: string | null;
 	preview?: RecentActionPreview;
+	affected_resources?: string[];
 };
 
 type RecentActionsResponse = {
 	actions: RecentAction[];
+	total?: number;
 	next_before_id?: number | null;
+	action_types?: string[];
+	resource_types?: string[];
 };
 
 type RecentActionDetail = {
@@ -473,25 +483,67 @@ export const RecentActionsPage: FC = () => {
 		(userData.role === AdminRole.FullAccess ||
 			(userData.role === AdminRole.Sudo &&
 				Boolean(userData.permissions?.sudo?.[AdminSudoScope.Xray])));
-	const [pageCursors, setPageCursors] = useState<Array<number | null>>([null]);
 	const [pageIndex, setPageIndex] = useState(0);
-	const [pageSize, setPageSize] = useState(20);
+	const [pageSize, setPageSize] = useState(() =>
+		getRecentActionsPerPageLimitSize(),
+	);
 	const [selectedID, setSelectedID] = useState<number | null>(null);
 	const [search, setSearch] = useState("");
+	const [searchQuery, setSearchQuery] = useState("");
 	const [actionTypesFilter, setActionTypesFilter] = useState<string[]>([]);
 	const [resourceTypesFilter, setResourceTypesFilter] = useState<string[]>([]);
 	const [statusesFilter, setStatusesFilter] = useState<string[]>([]);
+	const [dayFilter, setDayFilter] = useState("");
+	const resetPagination = useCallback(() => {
+		setPageIndex(0);
+		setSelectedID(null);
+	}, []);
+	const debouncedSearchChange = useMemo(
+		() =>
+			debounce((value: string) => {
+				setSearchQuery(value.trim());
+				resetPagination();
+			}, 300),
+		[resetPagination],
+	);
+	useEffect(
+		() => () => debouncedSearchChange.cancel(),
+		[debouncedSearchChange],
+	);
 
-	const beforeID = pageCursors[pageIndex] ?? null;
+	const actionsQueryString = useMemo(() => {
+		const params = new URLSearchParams({
+			limit: String(pageSize),
+			offset: String(pageIndex * pageSize),
+		});
+		if (searchQuery) params.set("search", searchQuery);
+		if (dayFilter) params.set("day", dayFilter);
+		for (const value of actionTypesFilter) params.append("action_type", value);
+		for (const value of resourceTypesFilter)
+			params.append("resource_type", value);
+		for (const value of statusesFilter) params.append("status", value);
+		return params.toString();
+	}, [
+		actionTypesFilter,
+		dayFilter,
+		pageIndex,
+		pageSize,
+		resourceTypesFilter,
+		searchQuery,
+		statusesFilter,
+	]);
 	const actionsQuery = useQuery(
-		["recent-actions", beforeID, pageSize],
+		["recent-actions", actionsQueryString],
 		() =>
 			fetch<RecentActionsResponse>(
-				beforeID
-					? `/core/recent-actions?limit=${pageSize}&before_id=${beforeID}`
-					: `/core/recent-actions?limit=${pageSize}`,
+				`/core/recent-actions?${actionsQueryString}`,
 			),
-		{ enabled: canView, staleTime: 15_000, refetchOnWindowFocus: false },
+		{
+			enabled: canView,
+			staleTime: 15_000,
+			refetchOnWindowFocus: false,
+			keepPreviousData: true,
+		},
 	);
 	const detailQuery = useQuery(
 		["recent-action", selectedID],
@@ -512,10 +564,20 @@ export const RecentActionsPage: FC = () => {
 	);
 
 	const actions = actionsQuery.data?.actions ?? [];
+	const totalActions = actionsQuery.data?.total ?? actions.length;
+	useEffect(() => {
+		const lastPage = Math.max(0, Math.ceil(totalActions / pageSize) - 1);
+		if (pageIndex > lastPage) setPageIndex(lastPage);
+	}, [pageIndex, pageSize, totalActions]);
+	const selectedAction =
+		selectedID === null
+			? undefined
+			: actions.find((action) => action.id === selectedID);
 	const actionTypes = useMemo(
 		() =>
+			actionsQuery.data?.action_types ??
 			Array.from(new Set(actions.map((action) => action.action_type))).sort(),
-		[actions],
+		[actions, actionsQuery.data?.action_types],
 	);
 	const actionTypeLabel = useCallback((type: string) => {
 		const labelKey = recentActionLabelKeys[type];
@@ -525,46 +587,10 @@ export const RecentActionsPage: FC = () => {
 	}, [t]);
 	const resourceTypes = useMemo(
 		() =>
+			actionsQuery.data?.resource_types ??
 			Array.from(new Set(actions.map((action) => action.resource_type))).sort(),
-		[actions],
+		[actions, actionsQuery.data?.resource_types],
 	);
-	const filteredActions = useMemo(() => {
-		const term = search.trim().toLowerCase();
-		return actions.filter((action) => {
-			if (
-				actionTypesFilter.length > 0 &&
-				!actionTypesFilter.includes(action.action_type)
-			)
-				return false;
-			if (
-				resourceTypesFilter.length > 0 &&
-				!resourceTypesFilter.includes(action.resource_type)
-			)
-				return false;
-			if (
-				statusesFilter.length > 0 &&
-				!statusesFilter.includes(action.rollback_status)
-			)
-				return false;
-			if (!term) return true;
-			return [
-				action.summary,
-				action.action_type,
-				action.resource_type,
-				action.resource_key,
-				action.actor_username,
-				action.preview?.field,
-				action.preview?.before,
-				action.preview?.after,
-				action.preview?.operation,
-				action.preview?.resource,
-			]
-				.filter(Boolean)
-				.join(" ")
-				.toLowerCase()
-				.includes(term);
-		});
-	}, [actionTypesFilter, actions, resourceTypesFilter, search, statusesFilter]);
 
 	const rollback = (action: RecentAction) => {
 		if (!window.confirm(t("recentActions.rollbackConfirm"))) return;
@@ -575,18 +601,10 @@ export const RecentActionsPage: FC = () => {
 	}, []);
 	const changePageSize = (value: string | string[]) => {
 		const next = Number(Array.isArray(value) ? value[0] : value);
-		if (![10, 20, 50].includes(next)) return;
+		if (![10, 20, 30, 50, 100].includes(next)) return;
 		setPageSize(next);
-		setPageCursors([null]);
-		setPageIndex(0);
-		setSelectedID(null);
-	};
-	const showNextPage = () => {
-		const next = actionsQuery.data?.next_before_id;
-		if (!next) return;
-		setPageCursors((current) => [...current.slice(0, pageIndex + 1), next]);
-		setPageIndex((current) => current + 1);
-		setSelectedID(null);
+		setRecentActionsPerPageLimitSize(String(next));
+		resetPagination();
 	};
 	const columns = useMemo<DataTableColumn<RecentAction>[]>(
 		() => [
@@ -601,8 +619,9 @@ export const RecentActionsPage: FC = () => {
 					const operation = lifecycle.operation;
 					const visual = actionOperationVisual(operation, action.action_type);
 					const label =
-						action.action_type === "node.service_update" &&
-						action.resource_key.endsWith(" nodes")
+						(action.affected_resources?.length ?? 0) > 1 ||
+						(action.action_type === "node.service_update" &&
+							action.resource_key.endsWith(" nodes"))
 							? action.summary
 							: actionTypeLabel(action.action_type);
 					return (
@@ -726,7 +745,10 @@ export const RecentActionsPage: FC = () => {
 
 	const detail = detailQuery.data;
 	const eventChanges = detail?.changes ?? [];
-	const affectedResources = detail?.affected_resources ?? [];
+	const affectedResources =
+		detail?.affected_resources?.length
+			? detail.affected_resources
+			: (selectedAction?.affected_resources ?? []);
 	const configChanges = detail?.config_changes ?? [];
 	const configPreviews = detail?.config_previews ?? [];
 	const displayConfigChanges: RecentActionConfigDisplay[] =
@@ -753,12 +775,9 @@ export const RecentActionsPage: FC = () => {
 	const rollbackConflictPaths = rollbackError?.data?.conflict_paths ?? [];
 	const renderDetailPanel = () => (
 		<Box borderTopWidth="1px" borderColor="panel.border" pt={4}>
-			<HStack justify="space-between" mb={4}>
-				<Text fontWeight="semibold">{t("recentActions.changePreview")}</Text>
-				<Button size="sm" variant="ghost" onClick={() => setSelectedID(null)}>
-					{t("close")}
-				</Button>
-			</HStack>
+			<Text fontWeight="semibold" mb={4}>
+				{t("recentActions.changePreview")}
+			</Text>
 			{detailQuery.isLoading ? (
 				<HStack justify="center" py={10}>
 					<Spinner />
@@ -768,7 +787,7 @@ export const RecentActionsPage: FC = () => {
 					<AlertIcon />
 					{t("recentActions.loadFailed")}
 				</Alert>
-			) : detail?.snapshot_available ? (
+			) : detail?.snapshot_available || affectedResources.length > 0 ? (
 				<Stack spacing={4}>
 					{eventChanges.length > 0 && (
 						<Stack spacing={2}>
@@ -856,7 +875,7 @@ export const RecentActionsPage: FC = () => {
 							})}
 						</Stack>
 					) : eventChanges.length === 0 && affectedResources.length === 0 ? (
-						<JsonDiffEditors before={detail.before} after={detail.after} />
+						<JsonDiffEditors before={detail?.before} after={detail?.after} />
 					) : null}
 				</Stack>
 			) : (
@@ -917,10 +936,10 @@ export const RecentActionsPage: FC = () => {
 			<ResourceListCard
 				title={t("recentActions.title")}
 				summaryItems={[
-					{ label: t("total"), value: actions.length },
+					{ label: t("total"), value: totalActions },
 					{
 						label: t("usersPage.filtered"),
-						value: filteredActions.length,
+						value: totalActions,
 						colorScheme: "green",
 					},
 				]}
@@ -936,7 +955,10 @@ export const RecentActionsPage: FC = () => {
 						</InputLeftElement>
 						<Input
 							value={search}
-							onChange={(event) => setSearch(event.target.value)}
+							onChange={(event) => {
+								setSearch(event.target.value);
+								debouncedSearchChange(event.target.value);
+							}}
 							placeholder={t("recentActions.searchPlaceholder")}
 							aria-label={t("recentActions.searchPlaceholder")}
 						/>
@@ -945,9 +967,10 @@ export const RecentActionsPage: FC = () => {
 						mode="multiple"
 						size="sm"
 						value={actionTypesFilter}
-						onValueChange={(value) =>
-							setActionTypesFilter(Array.isArray(value) ? value : [value])
-						}
+						onValueChange={(value) => {
+							setActionTypesFilter(Array.isArray(value) ? value : [value]);
+							resetPagination();
+						}}
 						options={actionTypes.map((type) => ({
 							label: actionTypeLabel(type),
 							value: type,
@@ -960,9 +983,10 @@ export const RecentActionsPage: FC = () => {
 						mode="multiple"
 						size="sm"
 						value={resourceTypesFilter}
-						onValueChange={(value) =>
-							setResourceTypesFilter(Array.isArray(value) ? value : [value])
-						}
+						onValueChange={(value) => {
+							setResourceTypesFilter(Array.isArray(value) ? value : [value]);
+							resetPagination();
+						}}
 						options={resourceTypes.map((type) => ({
 							label: t(resourceTranslationKey(type)),
 							value: type,
@@ -975,9 +999,10 @@ export const RecentActionsPage: FC = () => {
 						mode="multiple"
 						size="sm"
 						value={statusesFilter}
-						onValueChange={(value) =>
-							setStatusesFilter(Array.isArray(value) ? value : [value])
-						}
+						onValueChange={(value) => {
+							setStatusesFilter(Array.isArray(value) ? value : [value]);
+							resetPagination();
+						}}
 						options={[
 							"available",
 							"undone",
@@ -992,12 +1017,23 @@ export const RecentActionsPage: FC = () => {
 						aria-label={t("recentActions.filters.status")}
 						w={{ base: "full", xl: "190px" }}
 					/>
+					<Input
+						type="date"
+						size="sm"
+						value={dayFilter}
+						onChange={(event) => {
+							setDayFilter(event.target.value);
+							resetPagination();
+						}}
+						aria-label={t("recentActions.filters.day")}
+						w={{ base: "full", xl: "170px" }}
+					/>
 				</Stack>
 			</ResourceListCard>
 
 			<DataTable
 				ariaLabel={t("recentActions.title")}
-				data={filteredActions}
+				data={actions}
 				columns={columns}
 				getRowId={(action) => String(action.id)}
 				isLoading={actionsQuery.isLoading}
@@ -1043,50 +1079,18 @@ export const RecentActionsPage: FC = () => {
 				onRowClick={(action) => toggleDetails(action.id)}
 				isRowExpanded={(action) => action.id === selectedID}
 				renderExpandedRow={renderDetailPanel}
-				mobileBreakpoint="lg"
+				mobileBreakpoint="md"
 				pagination={
-					<HStack justify="space-between" flexWrap="wrap" spacing={3}>
-						<HStack spacing={2}>
-							<Text fontSize="sm" color="panel.textMuted">
-								{t("itemsPerPage")}
-							</Text>
-							<Select
-								size="sm"
-								value={String(pageSize)}
-								onValueChange={changePageSize}
-								options={[10, 20, 50].map((value) => ({
-									label: String(value),
-									value: String(value),
-								}))}
-								aria-label={t("itemsPerPage")}
-								w="88px"
-							/>
-						</HStack>
-						<HStack spacing={2}>
-							<Button
-								size="sm"
-								variant="outline"
-								onClick={() => {
-									setPageIndex((current) => Math.max(0, current - 1));
-									setSelectedID(null);
-								}}
-								isDisabled={pageIndex === 0}
-							>
-								{t("previous")}
-							</Button>
-							<Text fontSize="sm" minW="28px" textAlign="center">
-								{pageIndex + 1}
-							</Text>
-							<Button
-								size="sm"
-								variant="outline"
-								onClick={showNextPage}
-								isDisabled={!actionsQuery.data?.next_before_id}
-							>
-								{t("next")}
-							</Button>
-						</HStack>
-					</HStack>
+					<Pagination
+						total={totalActions}
+						limit={pageSize}
+						offset={pageIndex * pageSize}
+						onPageChange={(page) => {
+							setPageIndex(page);
+							setSelectedID(null);
+						}}
+						onPageSizeChange={(next) => changePageSize(String(next))}
+					/>
 				}
 			/>
 		</VStack>

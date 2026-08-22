@@ -21,12 +21,19 @@ const usageOnlineTouchInterval = 90 * time.Second
 var usageFlushMu sync.Mutex
 
 type UserUsageDelta struct {
-	UserID int64
-	Value  int64
-	Online bool
+	UserID             int64
+	Value              int64
+	Online             bool
+	InboundCoefficient float64
 }
 
 type OutboundUsageDelta struct {
+	Tag  string
+	Up   int64
+	Down int64
+}
+
+type InboundUsageDelta struct {
 	Tag  string
 	Up   int64
 	Down int64
@@ -63,11 +70,13 @@ type stagedUserUsageRow struct {
 }
 
 type stagedOutboundUsageRow struct {
-	ID       int64
-	NodeID   int64
-	Tag      string
-	Uplink   int64
-	Downlink int64
+	ID              int64
+	NodeID          int64
+	Tag             string
+	Uplink          int64
+	Downlink        int64
+	InboundUplink   int64
+	InboundDownlink int64
 }
 
 type usageLifecycleRow struct {
@@ -136,6 +145,27 @@ WHERE LOWER(COALESCE(status, '')) = 'connected'`
 			return nil, err
 		}
 		result = append(result, row)
+	}
+	return result, rows.Err()
+}
+
+func (r Repository) InboundUsageCoefficients(ctx context.Context) (map[string]float64, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT tag, COALESCE(usage_coefficient, 1) FROM inbounds`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := map[string]float64{}
+	for rows.Next() {
+		var tag string
+		var coefficient float64
+		if err := rows.Scan(&tag, &coefficient); err != nil {
+			return nil, err
+		}
+		tag = strings.TrimSpace(tag)
+		if tag != "" {
+			result[tag] = normalizeUsageFactor(coefficient)
+		}
 	}
 	return result, rows.Err()
 }
@@ -213,7 +243,11 @@ func (r Repository) PersistCollectedUsage(ctx context.Context, node NodeRow, use
 }
 
 func (r Repository) StoreCollectedUsage(ctx context.Context, node NodeRow, userBatchID string, userDeltas []UserUsageDelta, outboundBatchID string, outboundDeltas []OutboundUsageDelta, optionValues ...UsagePersistOptions) error {
-	if len(userDeltas) == 0 && len(outboundDeltas) == 0 {
+	return r.StoreCollectedUsageWithInbounds(ctx, node, userBatchID, userDeltas, outboundBatchID, outboundDeltas, nil, optionValues...)
+}
+
+func (r Repository) StoreCollectedUsageWithInbounds(ctx context.Context, node NodeRow, userBatchID string, userDeltas []UserUsageDelta, outboundBatchID string, outboundDeltas []OutboundUsageDelta, inboundDeltas []InboundUsageDelta, optionValues ...UsagePersistOptions) error {
+	if len(userDeltas) == 0 && len(outboundDeltas) == 0 && len(inboundDeltas) == 0 {
 		return nil
 	}
 	options := mergeUsagePersistOptions(optionValues)
@@ -222,7 +256,8 @@ func (r Repository) StoreCollectedUsage(ctx context.Context, node NodeRow, userB
 
 	normalizedUsers, onlineUsers := aggregateUserUsageForStage(node, userDeltas)
 	normalizedOutbound := aggregateOutboundUsageForStage(outboundDeltas)
-	if len(normalizedUsers) == 0 && len(onlineUsers) == 0 && len(normalizedOutbound) == 0 {
+	normalizedInbound := aggregateInboundUsageForStage(inboundDeltas)
+	if len(normalizedUsers) == 0 && len(onlineUsers) == 0 && len(normalizedOutbound) == 0 && len(normalizedInbound) == 0 {
 		return nil
 	}
 
@@ -257,13 +292,18 @@ func (r Repository) StoreCollectedUsage(ctx context.Context, node NodeRow, userB
 			operations = append(operations, ops...)
 		}
 	}
-	if len(normalizedOutbound) > 0 {
+	if len(normalizedOutbound) > 0 || len(normalizedInbound) > 0 {
 		if outboundBatchID != "" {
-			if err := r.insertStagedOutboundUsage(ctx, tx, node.ID, outboundBatchID, normalizedOutbound, now); err != nil {
+			if err := r.insertStagedOutboundUsage(ctx, tx, node.ID, outboundBatchID, normalizedOutbound, normalizedInbound, now); err != nil {
 				return fmt.Errorf("stage outbound usage: %w", err)
 			}
-		} else if err := r.persistOutboundUsage(ctx, tx, node, outboundMapToDeltas(normalizedOutbound), now.Truncate(time.Hour), now, options); err != nil {
-			return fmt.Errorf("persist unbatched outbound usage: %w", err)
+		} else {
+			if err := r.persistOutboundUsage(ctx, tx, node, outboundMapToDeltas(normalizedOutbound), now.Truncate(time.Hour), now, options); err != nil {
+				return fmt.Errorf("persist unbatched outbound usage: %w", err)
+			}
+			if err := r.persistInboundUsage(ctx, tx, inboundMapToDeltas(normalizedInbound)); err != nil {
+				return fmt.Errorf("persist unbatched inbound usage: %w", err)
+			}
 		}
 	}
 	if len(operations) > 0 {
@@ -317,11 +357,20 @@ func (r Repository) FlushStagedUsage(ctx context.Context, limit int, optionValue
 	}
 	for nodeID, rows := range groupStagedOutboundsByNode(outboundRows) {
 		deltas := make([]OutboundUsageDelta, 0, len(rows))
+		inboundDeltas := make([]InboundUsageDelta, 0, len(rows))
 		for _, row := range rows {
-			deltas = append(deltas, OutboundUsageDelta{Tag: row.Tag, Up: row.Uplink, Down: row.Downlink})
+			if row.Uplink > 0 || row.Downlink > 0 {
+				deltas = append(deltas, OutboundUsageDelta{Tag: row.Tag, Up: row.Uplink, Down: row.Downlink})
+			}
+			if row.InboundUplink > 0 || row.InboundDownlink > 0 {
+				inboundDeltas = append(inboundDeltas, InboundUsageDelta{Tag: row.Tag, Up: row.InboundUplink, Down: row.InboundDownlink})
+			}
 		}
 		if err := r.persistOutboundUsage(ctx, tx, NodeRow{ID: nodeID, UsageCoefficient: 1}, deltas, bucket, now, options); err != nil {
 			return UsageFlushResult{}, fmt.Errorf("flush staged outbound usage node=%d: %w", nodeID, err)
+		}
+		if err := r.persistInboundUsage(ctx, tx, inboundDeltas); err != nil {
+			return UsageFlushResult{}, fmt.Errorf("flush staged inbound usage node=%d: %w", nodeID, err)
 		}
 	}
 	if len(operations) > 0 {
@@ -356,10 +405,6 @@ func mergeUsagePersistOptions(optionValues []UsagePersistOptions) UsagePersistOp
 func aggregateUserUsageForStage(node NodeRow, deltas []UserUsageDelta) (map[int64]int64, map[int64]struct{}) {
 	aggregated := map[int64]int64{}
 	onlineUsers := map[int64]struct{}{}
-	coefficient := node.UsageCoefficient
-	if coefficient <= 0 {
-		coefficient = 1
-	}
 	for _, delta := range deltas {
 		if delta.UserID <= 0 {
 			continue
@@ -370,14 +415,42 @@ func aggregateUserUsageForStage(node NodeRow, deltas []UserUsageDelta) (map[int6
 		if delta.Value <= 0 {
 			continue
 		}
-		value := int64(math.Round(float64(delta.Value) * coefficient))
+		value := scaleUserUsage(delta.Value, node.UsageCoefficient, delta.InboundCoefficient)
 		if value <= 0 {
 			continue
 		}
-		aggregated[delta.UserID] += value
+		aggregated[delta.UserID] = addUsageDelta(aggregated[delta.UserID], value)
 		onlineUsers[delta.UserID] = struct{}{}
 	}
 	return aggregated, onlineUsers
+}
+
+func normalizeUsageFactor(value float64) float64 {
+	if value <= 0 || math.IsNaN(value) || math.IsInf(value, 0) {
+		return 1
+	}
+	return value
+}
+
+func scaleUserUsage(value int64, factors ...float64) int64 {
+	if value <= 0 {
+		return 0
+	}
+	factor := 1.0
+	for _, item := range factors {
+		factor *= normalizeUsageFactor(item)
+		if math.IsInf(factor, 0) || factor >= float64(math.MaxInt64) {
+			return math.MaxInt64
+		}
+	}
+	scaled := math.Round(float64(value) * factor)
+	if math.IsInf(scaled, 0) || scaled >= float64(math.MaxInt64) {
+		return math.MaxInt64
+	}
+	if scaled <= 0 {
+		return 0
+	}
+	return int64(scaled)
 }
 
 func aggregateOutboundUsageForStage(deltas []OutboundUsageDelta) map[string]OutboundUsageDelta {
@@ -389,13 +462,41 @@ func aggregateOutboundUsageForStage(deltas []OutboundUsageDelta) map[string]Outb
 		}
 		item := byTag[tag]
 		item.Tag = tag
-		item.Up += maxInt64Usage(delta.Up, 0)
-		item.Down += maxInt64Usage(delta.Down, 0)
+		item.Up = addUsageDelta(item.Up, delta.Up)
+		item.Down = addUsageDelta(item.Down, delta.Down)
 		if item.Up != 0 || item.Down != 0 {
 			byTag[tag] = item
 		}
 	}
 	return byTag
+}
+
+func aggregateInboundUsageForStage(deltas []InboundUsageDelta) map[string]InboundUsageDelta {
+	byTag := map[string]InboundUsageDelta{}
+	for _, delta := range deltas {
+		tag := strings.TrimSpace(delta.Tag)
+		if tag == "" {
+			continue
+		}
+		item := byTag[tag]
+		item.Tag = tag
+		item.Up = addUsageDelta(item.Up, delta.Up)
+		item.Down = addUsageDelta(item.Down, delta.Down)
+		if item.Up != 0 || item.Down != 0 {
+			byTag[tag] = item
+		}
+	}
+	return byTag
+}
+
+func addUsageDelta(current int64, delta int64) int64 {
+	if delta <= 0 {
+		return current
+	}
+	if current > math.MaxInt64-delta {
+		return math.MaxInt64
+	}
+	return current + delta
 }
 
 func usageMapToDeltas(usageByUser map[int64]int64, onlineUsers map[int64]struct{}) []UserUsageDelta {
@@ -429,6 +530,19 @@ func outboundMapToDeltas(byTag map[string]OutboundUsageDelta) []OutboundUsageDel
 	return result
 }
 
+func inboundMapToDeltas(byTag map[string]InboundUsageDelta) []InboundUsageDelta {
+	tags := make([]string, 0, len(byTag))
+	for tag := range byTag {
+		tags = append(tags, tag)
+	}
+	sort.Strings(tags)
+	result := make([]InboundUsageDelta, 0, len(tags))
+	for _, tag := range tags {
+		result = append(result, byTag[tag])
+	}
+	return result
+}
+
 func (r Repository) persistUserUsage(ctx context.Context, tx *sql.Tx, node NodeRow, deltas []UserUsageDelta, bucket time.Time, now time.Time, options UsagePersistOptions) (map[int64]int64, []usageQueuedOperation, error) {
 	aggregated := map[int64]int64{}
 	onlineUsers := map[int64]struct{}{}
@@ -442,11 +556,11 @@ func (r Repository) persistUserUsage(ctx context.Context, tx *sql.Tx, node NodeR
 		if delta.Value <= 0 {
 			continue
 		}
-		value := int64(math.Round(float64(delta.Value) * node.UsageCoefficient))
+		value := scaleUserUsage(delta.Value, node.UsageCoefficient, delta.InboundCoefficient)
 		if value <= 0 {
 			continue
 		}
-		aggregated[delta.UserID] += value
+		aggregated[delta.UserID] = addUsageDelta(aggregated[delta.UserID], value)
 		onlineUsers[delta.UserID] = struct{}{}
 	}
 	if len(aggregated) == 0 && len(onlineUsers) == 0 {
@@ -662,27 +776,52 @@ func (r Repository) insertStagedUserUsage(ctx context.Context, tx *sql.Tx, nodeI
 	})
 }
 
-func (r Repository) insertStagedOutboundUsage(ctx context.Context, tx *sql.Tx, nodeID int64, batchID string, byTag map[string]OutboundUsageDelta, now time.Time) error {
-	deltas := outboundMapToDeltas(byTag)
-	return forEachOutboundChunk(deltas, usagePersistBatchSize, func(chunk []OutboundUsageDelta) error {
+func (r Repository) insertStagedOutboundUsage(ctx context.Context, tx *sql.Tx, nodeID int64, batchID string, outbounds map[string]OutboundUsageDelta, inbounds map[string]InboundUsageDelta, now time.Time) error {
+	tagSet := make(map[string]struct{}, len(outbounds)+len(inbounds))
+	for tag := range outbounds {
+		tagSet[tag] = struct{}{}
+	}
+	for tag := range inbounds {
+		tagSet[tag] = struct{}{}
+	}
+	tags := make([]string, 0, len(tagSet))
+	for tag := range tagSet {
+		tags = append(tags, tag)
+	}
+	sort.Strings(tags)
+	for start := 0; start < len(tags); start += usagePersistBatchSize {
+		end := start + usagePersistBatchSize
+		if end > len(tags) {
+			end = len(tags)
+		}
+		chunk := tags[start:end]
 		var builder strings.Builder
-		builder.WriteString(`INSERT INTO node_usage_outbound_queue (node_id, batch_id, tag, uplink, downlink, created_at) VALUES `)
-		args := make([]any, 0, len(chunk)*6)
-		for i, delta := range chunk {
+		builder.WriteString(`INSERT INTO node_usage_outbound_queue (node_id, batch_id, tag, uplink, downlink, inbound_uplink, inbound_downlink, created_at) VALUES `)
+		args := make([]any, 0, len(chunk)*8)
+		for i, tag := range chunk {
 			if i > 0 {
 				builder.WriteString(",")
 			}
-			builder.WriteString("(?, ?, ?, ?, ?, ?)")
-			args = append(args, nodeID, batchID, delta.Tag, delta.Up, delta.Down, r.timeArg(now))
+			outbound := outbounds[tag]
+			inbound := inbounds[tag]
+			builder.WriteString("(?, ?, ?, ?, ?, ?, ?, ?)")
+			args = append(args, nodeID, batchID, tag, outbound.Up, outbound.Down, inbound.Up, inbound.Down, r.timeArg(now))
 		}
 		if r.dialect == "sqlite" {
-			builder.WriteString(` ON CONFLICT(node_id, batch_id, tag) DO NOTHING`)
+			builder.WriteString(` ON CONFLICT(node_id, batch_id, tag) DO UPDATE SET
+inbound_uplink = CASE WHEN excluded.inbound_uplink > node_usage_outbound_queue.inbound_uplink THEN excluded.inbound_uplink ELSE node_usage_outbound_queue.inbound_uplink END,
+inbound_downlink = CASE WHEN excluded.inbound_downlink > node_usage_outbound_queue.inbound_downlink THEN excluded.inbound_downlink ELSE node_usage_outbound_queue.inbound_downlink END
+WHERE node_usage_outbound_queue.processed_at IS NULL`)
 		} else {
-			builder.WriteString(` ON DUPLICATE KEY UPDATE tag = tag`)
+			builder.WriteString(` ON DUPLICATE KEY UPDATE
+inbound_uplink = IF(processed_at IS NULL, GREATEST(inbound_uplink, VALUES(inbound_uplink)), inbound_uplink),
+inbound_downlink = IF(processed_at IS NULL, GREATEST(inbound_downlink, VALUES(inbound_downlink)), inbound_downlink)`)
 		}
-		_, err := tx.ExecContext(ctx, builder.String(), args...)
-		return err
-	})
+		if _, err := tx.ExecContext(ctx, builder.String(), args...); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r Repository) batchIncrementUsersUsage(ctx context.Context, tx *sql.Tx, usageByUser map[int64]int64) error {
@@ -861,8 +1000,8 @@ func (r Repository) persistOutboundUsage(ctx context.Context, tx *sql.Tx, node N
 		}
 		item := byTag[tag]
 		item.Tag = tag
-		item.Up += maxInt64Usage(delta.Up, 0)
-		item.Down += maxInt64Usage(delta.Down, 0)
+		item.Up = addUsageDelta(item.Up, delta.Up)
+		item.Down = addUsageDelta(item.Down, delta.Down)
 		byTag[tag] = item
 	}
 	if len(byTag) == 0 {
@@ -871,8 +1010,8 @@ func (r Repository) persistOutboundUsage(ctx context.Context, tx *sql.Tx, node N
 
 	var totalUp, totalDown int64
 	for _, delta := range byTag {
-		totalUp += delta.Up
-		totalDown += delta.Down
+		totalUp = addUsageDelta(totalUp, delta.Up)
+		totalDown = addUsageDelta(totalDown, delta.Down)
 		if err := r.upsertOutboundTraffic(ctx, tx, node.ID, delta, now); err != nil {
 			return fmt.Errorf("upsert outbound traffic tag=%s node=%d: %w", delta.Tag, node.ID, err)
 		}
@@ -891,7 +1030,8 @@ func (r Repository) persistOutboundUsage(ctx context.Context, tx *sql.Tx, node N
 			`UPDATE nodes
 SET uplink = COALESCE(uplink, 0) + ?,
     downlink = COALESCE(downlink, 0) + ?
-WHERE id = ?`,
+WHERE id = ?
+  AND LOWER(COALESCE(status, '')) <> 'deleted'`,
 			totalUp,
 			totalDown,
 			node.ID,
@@ -905,6 +1045,7 @@ SET status = 'limited',
     message = 'Data limit reached',
     last_status_change = ?
 WHERE id = ?
+  AND LOWER(COALESCE(status, '')) <> 'deleted'
   AND data_limit IS NOT NULL
   AND data_limit > 0
   AND (COALESCE(uplink, 0) + COALESCE(downlink, 0)) >= data_limit`,
@@ -912,6 +1053,37 @@ WHERE id = ?
 			node.ID,
 		); err != nil {
 			return fmt.Errorf("limit node %d by data limit: %w", node.ID, err)
+		}
+	}
+	return nil
+}
+
+func (r Repository) persistInboundUsage(ctx context.Context, tx *sql.Tx, deltas []InboundUsageDelta) error {
+	byTag := aggregateInboundUsageForStage(deltas)
+	tags := make([]string, 0, len(byTag))
+	for tag := range byTag {
+		tags = append(tags, tag)
+	}
+	sort.Strings(tags)
+	for _, tag := range tags {
+		delta := byTag[tag]
+		if _, err := tx.ExecContext(ctx, `UPDATE inbounds
+SET uplink = CASE
+		WHEN COALESCE(uplink, 0) < 0 THEN ?
+        WHEN COALESCE(uplink, 0) > ? THEN ?
+        ELSE COALESCE(uplink, 0) + ?
+    END,
+    downlink = CASE
+		WHEN COALESCE(downlink, 0) < 0 THEN ?
+        WHEN COALESCE(downlink, 0) > ? THEN ?
+        ELSE COALESCE(downlink, 0) + ?
+    END
+WHERE tag = ?`,
+			delta.Up, math.MaxInt64-delta.Up, math.MaxInt64, delta.Up,
+			delta.Down, math.MaxInt64-delta.Down, math.MaxInt64, delta.Down,
+			tag,
+		); err != nil {
+			return fmt.Errorf("increment inbound %q: %w", tag, err)
 		}
 	}
 	return nil
@@ -1326,7 +1498,7 @@ LIMIT ?`, limit)
 }
 
 func (r Repository) pendingStagedOutboundUsage(ctx context.Context, limit int) ([]stagedOutboundUsageRow, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, node_id, tag, uplink, downlink
+	rows, err := r.db.QueryContext(ctx, `SELECT id, node_id, tag, uplink, downlink, inbound_uplink, inbound_downlink
 FROM node_usage_outbound_queue
 WHERE processed_at IS NULL
 ORDER BY id
@@ -1338,7 +1510,7 @@ LIMIT ?`, limit)
 	result := make([]stagedOutboundUsageRow, 0, limit)
 	for rows.Next() {
 		var row stagedOutboundUsageRow
-		if err := rows.Scan(&row.ID, &row.NodeID, &row.Tag, &row.Uplink, &row.Downlink); err != nil {
+		if err := rows.Scan(&row.ID, &row.NodeID, &row.Tag, &row.Uplink, &row.Downlink, &row.InboundUplink, &row.InboundDownlink); err != nil {
 			return nil, err
 		}
 		result = append(result, row)

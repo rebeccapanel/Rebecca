@@ -40,12 +40,16 @@ type PPTPRuntimeUser struct {
 }
 
 func (r Repository) PPTPRuntime(ctx context.Context, nodeID int64) (PPTPRuntime, error) {
-	target := xrayconfig.NodeTargetID(nodeID)
 	configRepo := xrayconfig.NewRepository(r.db, r.dialect, xrayconfig.Options{})
 	inbounds, err := configRepo.FullInbounds(ctx)
 	if err != nil {
 		return PPTPRuntime{}, err
 	}
+	return r.pptpRuntime(ctx, nodeID, inbounds)
+}
+
+func (r Repository) pptpRuntime(ctx context.Context, nodeID int64, inbounds []map[string]any) (PPTPRuntime, error) {
+	target := xrayconfig.NodeTargetID(nodeID)
 	usedPorts := map[int]struct{}{}
 	for _, inbound := range inbounds {
 		if port := OVIntValue(inbound["port"]); port > 0 {

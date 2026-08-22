@@ -525,7 +525,7 @@ const AccessInsightsPage: FC = () => {
 						</Text>
 					}
 					pagination={pagination}
-					mobileBreakpoint="lg"
+					mobileBreakpoint="md"
 					dir={isRTL ? "rtl" : "ltr"}
 					tableProps={{
 						className: isRTL ? "rb-rtl-table" : undefined,

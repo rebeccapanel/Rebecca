@@ -17,6 +17,7 @@ func main() {
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	runManagedDatabaseMaintenance(ctx)
 
 	apiCfg, err := api.LoadConfig()
 	if err != nil {

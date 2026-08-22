@@ -1460,7 +1460,7 @@
           "Nodes"
         ],
         "summary": "Delete node",
-        "description": "Delete node records and related runtime usage rows.\n\nAuthentication: send `Authorization: Bearer <api_key>` for bots and third-party integrations. Create personal admin API keys from My Account -> API Keys; each key inherits the owner admin permissions and limits. The current dashboard JWT from `POST /api/admin/token` is also accepted for interactive dashboard sessions and for Swagger UI when opened from inside the panel.\n\nPermissions: Requires sudo/full_access. Node calls use Go node controller and gRPC/mTLS where runtime communication is needed.\n\nSide effects: this is a mutation. Database writes are transactional where applicable; runtime-affecting changes enqueue node operations or call the node controller as documented by the route.",
+        "description": "Soft-delete a node. The node is hidden from operational APIs while its configuration, usage, traffic, sessions, and operation history remain stored.\n\nAuthentication: send `Authorization: Bearer <api_key>` for bots and third-party integrations. Create personal admin API keys from My Account -> API Keys; each key inherits the owner admin permissions and limits. The current dashboard JWT from `POST /api/admin/token` is also accepted for interactive dashboard sessions and for Swagger UI when opened from inside the panel.\n\nPermissions: Requires sudo/full_access. Node calls use Go node controller and gRPC/mTLS where runtime communication is needed.\n\nSide effects: this is a mutation. Database writes are transactional where applicable; runtime-affecting changes enqueue node operations or call the node controller as documented by the route.",
         "parameters": [
           {
             "$ref": "#/components/parameters/NodeID"
@@ -3277,9 +3277,21 @@
           "Settings"
         ],
         "summary": "Issue subscription certificate",
-        "description": "Temporarily disabled. Certificate management will be rebuilt as a new Go-native flow.\n\nAuthentication: send `Authorization: Bearer <api_key>` for bots and third-party integrations. Create personal admin API keys from My Account -> API Keys; each key inherits the owner admin permissions and limits. The current dashboard JWT from `POST /api/admin/token` is also accepted for interactive dashboard sessions and for Swagger UI when opened from inside the panel.\n\nPermissions: Panel read requires an authenticated admin. Settings mutation, backup, templates, and TODO/410 settings routes require sudo/full_access.\n\nSide effects: this is a mutation. Database writes are transactional where applicable; runtime-affecting changes enqueue node operations or call the node controller as documented by the route.\n\nRoute details: Intentionally disabled. Do not build integrations around this route until the new Go-native certificate flow is implemented.",
+        "description": "Issue a multi-domain certificate through Certbot using Let's Encrypt or ZeroSSL. ZeroSSL obtains free EAB credentials through email-based ACME registration; no access key is required or stored. HTTP-01 requires public port 80. Requires sudo/full_access.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/JSON"
+        },
         "responses": {
-          "410": {
+          "200": {
+            "$ref": "#/components/responses/JSON"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "502": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -3292,13 +3304,137 @@
           "Settings"
         ],
         "summary": "Renew subscription certificate",
-        "description": "Temporarily disabled. Certificate management will be rebuilt as a new Go-native flow.\n\nAuthentication: send `Authorization: Bearer <api_key>` for bots and third-party integrations. Create personal admin API keys from My Account -> API Keys; each key inherits the owner admin permissions and limits. The current dashboard JWT from `POST /api/admin/token` is also accepted for interactive dashboard sessions and for Swagger UI when opened from inside the panel.\n\nPermissions: Panel read requires an authenticated admin. Settings mutation, backup, templates, and TODO/410 settings routes require sudo/full_access.\n\nSide effects: this is a mutation. Database writes are transactional where applicable; runtime-affecting changes enqueue node operations or call the node controller as documented by the route.\n\nRoute details: Intentionally disabled. Do not build integrations around this route until the new Go-native certificate flow is implemented.",
+        "description": "Force renewal of one managed ACME certificate. Manually imported and revoked certificates must be imported or issued again. Requires sudo/full_access.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/JSON"
+        },
         "responses": {
-          "410": {
+          "200": {
+            "$ref": "#/components/responses/JSON"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          },
+          "502": {
             "$ref": "#/components/responses/Error"
           }
         },
         "operationId": "postSettingsSubscriptionsCertificatesRenew"
+      }
+    },
+    "/api/settings/subscriptions/certificates/import": {
+      "post": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Import subscription certificate",
+        "description": "Validate and import a matching fullchain.pem/private key pair for one domain. Private material is stored with owner-only permissions. Requires sudo/full_access.",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/JSON"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JSON"
+          },
+          "400": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "operationId": "postSettingsSubscriptionsCertificatesImport"
+      }
+    },
+    "/api/settings/subscriptions/certificates/{domain}": {
+      "put": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Configure certificate serving",
+        "description": "Enable or disable this managed certificate for panel and subscription TLS. Enabled certificates are selected by SNI; the certificate paths configured through ENV remain the fallback. Requires sudo/full_access.",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/JSON"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JSON"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "operationId": "putSettingsSubscriptionsCertificatesDomain"
+      },
+      "delete": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Delete subscription certificate",
+        "description": "Remove one managed certificate and its metadata. Requires sudo/full_access.",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Certificate deleted."
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "operationId": "deleteSettingsSubscriptionsCertificatesDomain"
+      }
+    },
+    "/api/settings/subscriptions/certificates/{domain}/revoke": {
+      "post": {
+        "tags": [
+          "Settings"
+        ],
+        "summary": "Revoke subscription certificate",
+        "description": "Revoke an ACME certificate at its issuing CA and stop serving it through SNI. Requires sudo/full_access.",
+        "parameters": [
+          {
+            "name": "domain",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JSON"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          },
+          "422": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "operationId": "postSettingsSubscriptionsCertificatesDomainRevoke"
       }
     },
     "/sub/{identifier}": {
@@ -4092,6 +4228,93 @@
           }
         },
         "operationId": "deleteAuthSession"
+      }
+    },
+    "/api/admin/{username}/api-keys": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "List admin API keys",
+        "description": "List masked API keys for a target sudo, reseller, or standard admin. The key secret is never returned by this operation. Requires a full_access or sudo actor; full_access targets cannot be managed through this route.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Username"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JSON"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "operationId": "getAdminApiKeys"
+      },
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Create admin API key",
+        "description": "Create an API key that authenticates as the target sudo, reseller, or standard admin. The plaintext secret is returned only in this response. Requires a full_access or sudo actor; full_access targets cannot be managed through this route. The request lifetime must be 1m, 3m, 6m, 12m, or forever.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Username"
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/JSON"
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/JSON"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "operationId": "postAdminApiKeys"
+      }
+    },
+    "/api/admin/{username}/api-keys/{key_id}": {
+      "delete": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Delete admin API key",
+        "description": "Permanently revoke one API key owned by the target sudo, reseller, or standard admin. Requires a full_access or sudo actor. The key ID is owner-scoped and returns 404 when it belongs to another admin.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Username"
+          },
+          {
+            "name": "key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "API key revoked."
+          },
+          "403": {
+            "$ref": "#/components/responses/Error"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "operationId": "deleteAdminApiKey"
       }
     },
     "/api/admin/{username}/sessions": {

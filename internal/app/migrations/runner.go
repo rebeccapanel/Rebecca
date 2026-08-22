@@ -20,7 +20,7 @@ var gooseMu sync.Mutex
 var migrationDialect string
 
 const (
-	latestGooseVersion         int64 = 42
+	latestGooseVersion         int64 = 47
 	legacyAlembicFinalRevision       = "23_drop_access_insights"
 	legacyAlembicFinalBaseline int64 = 16
 )
@@ -173,6 +173,20 @@ func runPreGooseLegacyRepairs(ctx context.Context, db *sql.DB, dialect string) e
 func legacyGooseBaseline(ctx context.Context, db *sql.DB, dialect string, revision string) (int64, error) {
 	if ok, err := schemaLooksGoLatest(ctx, db, dialect); err != nil || ok {
 		if ok {
+			hasFinalMask, err := HasColumn(ctx, db, dialect, "hosts", "finalmask")
+			if err != nil {
+				return 0, err
+			}
+			if !hasFinalMask {
+				return 45, nil
+			}
+			hasAdminCreatedBy, err := HasColumn(ctx, db, dialect, "admins", "created_by")
+			if err != nil {
+				return 0, err
+			}
+			if !hasAdminCreatedBy {
+				return 46, nil
+			}
 			return latestGooseVersion, nil
 		}
 		return 0, err
@@ -202,6 +216,7 @@ func schemaLooksGoLatest(ctx context.Context, db *sql.DB, dialect string) (bool,
 		{"hosts", "dns_primary"},
 		{"hosts", "dns_secondary"},
 		{"admins", "require_2fa"},
+		{"inbounds", "usage_coefficient"},
 	}
 	for _, check := range checks {
 		ok, err := HasColumn(ctx, db, dialect, check.table, check.column)

@@ -88,6 +88,7 @@ message RuntimeState {
   string install_mode = 5;
   string update_channel = 6;
   string message = 7;
+  repeated string capabilities = 8;
 }
 
 message RuntimeConfigRequest {
@@ -322,6 +323,7 @@ message UserUsageBatch {
 message UserUsageSample {
   string uid = 1;
   uint64 value = 2;
+  string inbound_tag = 3;
 }
 
 message OnlineUserIP {
@@ -338,9 +340,16 @@ message OnlineIP {
 message OutboundUsageBatch {
   string batch_id = 1;
   repeated OutboundUsageSample stats = 2;
+  repeated InboundUsageSample inbound_stats = 3;
 }
 
 message OutboundUsageSample {
+  string tag = 1;
+  uint64 up = 2;
+  uint64 down = 3;
+}
+
+message InboundUsageSample {
   string tag = 1;
   uint64 up = 2;
   uint64 down = 3;

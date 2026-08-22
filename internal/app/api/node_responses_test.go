@@ -28,6 +28,8 @@ func TestFlattenNodeStaticItemOmitsRuntimeFields(t *testing.T) {
 	})
 
 	for _, key := range []string{
+		"status",
+		"message",
 		"node_service_version",
 		"cpu_usage_percent",
 		"upload_speed",

@@ -257,7 +257,7 @@ func (s *Server) geoDefaultNodes(ctx context.Context) ([]geoTargetNode, error) {
 	rows, err := s.db.QueryContext(
 		ctx,
 		`SELECT id, COALESCE(name, ''), address, port, api_port FROM nodes
-WHERE status NOT IN ('disabled', 'limited')
+WHERE LOWER(COALESCE(status, '')) NOT IN ('disabled', 'limited', 'deleted')
   AND COALESCE(geo_mode, 'default') = 'default'
 ORDER BY id`,
 	)

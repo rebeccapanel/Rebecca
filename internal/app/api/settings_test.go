@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
@@ -502,32 +501,29 @@ func TestSubscriptionTemplateContentRoutes(t *testing.T) {
 	}
 }
 
-func TestSettingsDisabledRoutes(t *testing.T) {
+func TestCertificateRoutesValidateRequests(t *testing.T) {
 	server, db := testAdminServer(t)
 	createSettingsTables(t, db)
 	insertMasterAPIAdmin(t, db, 1, "pouria", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
 	token := adminBearerToken(t, server, "pouria", "pass123")
 
-	cases := []struct {
-		method string
-		path   string
-		detail string
-	}{
-		{http.MethodPost, "/api/settings/subscriptions/certificates/issue", subscriptionCertificateDisabledDetail},
-		{http.MethodPost, "/api/settings/subscriptions/certificates/renew", subscriptionCertificateDisabledDetail},
-	}
-	for _, tc := range cases {
-		rec := adminJSONRequest(t, server, tc.method, tc.path, token, `{}`)
-		if rec.Code != http.StatusGone {
-			t.Fatalf("%s %s status = %d body=%s", tc.method, tc.path, rec.Code, rec.Body.String())
-		}
-		if !strings.Contains(rec.Body.String(), tc.detail) {
-			t.Fatalf("%s %s detail mismatch: %s", tc.method, tc.path, rec.Body.String())
+	for _, path := range []string{
+		"/api/settings/subscriptions/certificates/issue",
+		"/api/settings/subscriptions/certificates/renew",
+		"/api/settings/subscriptions/certificates/import",
+	} {
+		rec := adminJSONRequest(t, server, http.MethodPost, path, token, `{}`)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("POST %s status = %d body=%s", path, rec.Code, rec.Body.String())
 		}
 	}
 
 	rec := adminJSONRequest(t, server, http.MethodGet, "/api/settings/subscriptions/certificates/issue", token, `{}`)
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("certificate GET status = %d body=%s", rec.Code, rec.Body.String())
+	}
+	rec = adminJSONRequest(t, server, http.MethodPut, "/api/settings/subscriptions/certificates/example.com", token, `{}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("certificate serve TLS validation status = %d body=%s", rec.Code, rec.Body.String())
 	}
 }

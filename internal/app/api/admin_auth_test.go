@@ -22,6 +22,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
 	backupapp "github.com/rebeccapanel/rebecca/internal/app/backup"
+	certificateapp "github.com/rebeccapanel/rebecca/internal/app/certificates"
 	nodeapp "github.com/rebeccapanel/rebecca/internal/app/node"
 	"github.com/rebeccapanel/rebecca/internal/app/nodecontroller"
 	settingsapp "github.com/rebeccapanel/rebecca/internal/app/settings"
@@ -43,6 +44,7 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 		`CREATE TABLE admins (
 			id INTEGER PRIMARY KEY,
 			username TEXT NOT NULL,
+			created_by TEXT NOT NULL DEFAULT 'root',
 			hashed_password TEXT,
 			role TEXT NOT NULL,
 			permissions TEXT,
@@ -141,7 +143,9 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 		)`,
 		`CREATE TABLE inbounds (
 			id INTEGER PRIMARY KEY,
-			tag TEXT NOT NULL UNIQUE
+			tag TEXT NOT NULL UNIQUE,
+			uplink INTEGER NOT NULL DEFAULT 0,
+			downlink INTEGER NOT NULL DEFAULT 0
 		)`,
 		`CREATE TABLE hosts (
 			id INTEGER PRIMARY KEY,
@@ -299,6 +303,9 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 		configRepo:     xrayconfig.NewRepository(db, "sqlite", xrayconfig.Options{}),
 		settingsRepo:   settingsapp.NewRepository(db, "sqlite"),
 		backupService:  backupapp.NewService(db, "sqlite", "sqlite:///"+filepath.ToSlash(path)),
+		certificateManager: certificateapp.NewManager(db, certificateapp.Config{
+			BaseDir: filepath.Join(t.TempDir(), "certificates"),
+		}),
 	}
 	telegramRepo := telegramapp.NewRepository(db, "sqlite")
 	telegramSender := telegramapp.NewSender(telegramRepo, "")
@@ -761,6 +768,7 @@ func TestAdminManagementCreateUpdateAndBulkPermissions(t *testing.T) {
 
 	rec := adminJSONRequest(t, server, http.MethodPost, "/api/admin", token, `{
 		"username":"seller",
+		"created_by":"spoofed",
 		"password":"secret1",
 		"role":"standard",
 		"permissions":{"admin_management":{"can_view":true}},
@@ -773,12 +781,16 @@ func TestAdminManagementCreateUpdateAndBulkPermissions(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
 		t.Fatal(err)
 	}
-	if created["username"] != "seller" || created["role"] != "standard" {
+	if created["username"] != "seller" || created["created_by"] != "pouria" || created["role"] != "standard" {
 		t.Fatalf("unexpected created admin: %#v", created)
 	}
 	var usersUsage, lifetimeUsage, createdTraffic, deletedUsersUsage int64
-	if err := db.QueryRow(`SELECT users_usage, lifetime_usage, created_traffic, deleted_users_usage FROM admins WHERE username = 'seller'`).Scan(&usersUsage, &lifetimeUsage, &createdTraffic, &deletedUsersUsage); err != nil {
+	var createdBy string
+	if err := db.QueryRow(`SELECT created_by, users_usage, lifetime_usage, created_traffic, deleted_users_usage FROM admins WHERE username = 'seller'`).Scan(&createdBy, &usersUsage, &lifetimeUsage, &createdTraffic, &deletedUsersUsage); err != nil {
 		t.Fatal(err)
+	}
+	if createdBy != "pouria" {
+		t.Fatalf("created_by = %q, want pouria", createdBy)
 	}
 	if usersUsage != 0 || lifetimeUsage != 0 || createdTraffic != 0 || deletedUsersUsage != 0 {
 		t.Fatalf("unexpected admin counters users=%d lifetime=%d created=%d deleted=%d", usersUsage, lifetimeUsage, createdTraffic, deletedUsersUsage)
@@ -1244,6 +1256,103 @@ func TestMyAccountAPIKeyLifecycle(t *testing.T) {
 	server.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("deleted api key validate status = %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestManagedAdminAPIKeyLifecycleAndRoleBoundaries(t *testing.T) {
+	server, db := testAdminServer(t)
+	insertMasterAPIAdmin(t, db, 1, "root", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
+	insertMasterAPIAdmin(t, db, 2, "operator", "pass123", adminapp.RoleSudo, adminapp.StatusActive)
+	insertMasterAPIAdmin(t, db, 3, "sudo-target", "pass123", adminapp.RoleSudo, adminapp.StatusActive)
+	insertMasterAPIAdmin(t, db, 4, "reseller-target", "pass123", adminapp.RoleReseller, adminapp.StatusActive)
+	insertMasterAPIAdmin(t, db, 5, "standard-target", "pass123", adminapp.RoleStandard, adminapp.StatusActive)
+	insertMasterAPIAdmin(t, db, 6, "full-target", "pass123", adminapp.RoleFullAccess, adminapp.StatusActive)
+	insertMasterAPIAdmin(t, db, 7, "standard-actor", "pass123", adminapp.RoleStandard, adminapp.StatusActive)
+
+	rootToken := adminBearerToken(t, server, "root", "pass123")
+	sudoToken := adminBearerToken(t, server, "operator", "pass123")
+	standardToken := adminBearerToken(t, server, "standard-actor", "pass123")
+
+	for _, test := range []struct {
+		name   string
+		token  string
+		target string
+	}{
+		{name: "standard actor", token: standardToken, target: "standard-target"},
+		{name: "full access target", token: rootToken, target: "full-target"},
+		{name: "sudo cannot manage full access", token: sudoToken, target: "full-target"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rec := adminJSONRequest(t, server, http.MethodPost, "/api/admin/"+test.target+"/api-keys", test.token, `{"lifetime":"forever"}`)
+			if rec.Code != http.StatusForbidden {
+				t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+
+	rec := adminJSONRequest(t, server, http.MethodPost, "/api/admin/reseller-target/api-keys", rootToken, `{"lifetime":"forever"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("full access create status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var created apiKeyResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.APIKey == nil || !strings.HasPrefix(*created.APIKey, "rk_") {
+		t.Fatalf("missing one-time secret: %#v", created)
+	}
+
+	rec = adminJSONRequest(t, server, http.MethodGet, "/api/admin/reseller-target/api-keys", sudoToken, ``)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("sudo list status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var listed []apiKeyResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &listed); err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 1 || listed[0].APIKey != nil {
+		t.Fatalf("list must contain one masked key without secret: %#v", listed)
+	}
+
+	rec = adminJSONRequest(t, server, http.MethodGet, "/api/admin", "Bearer "+*created.APIKey, ``)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"username":"reseller-target"`) {
+		t.Fatalf("managed key owner status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	rec = adminJSONRequest(t, server, http.MethodDelete, fmt.Sprintf("/api/admin/standard-target/api-keys/%d", created.ID), rootToken, ``)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("cross-owner delete status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	rec = adminJSONRequest(t, server, http.MethodGet, "/api/admin", "Bearer "+*created.APIKey, ``)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("cross-owner delete must preserve key, status=%d", rec.Code)
+	}
+
+	rec = adminJSONRequest(t, server, http.MethodDelete, fmt.Sprintf("/api/admin/reseller-target/api-keys/%d", created.ID), sudoToken, ``)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("sudo delete status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	rec = adminJSONRequest(t, server, http.MethodGet, "/api/admin", "Bearer "+*created.APIKey, ``)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("deleted managed key status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	rec = adminJSONRequest(t, server, http.MethodPost, "/api/admin/standard-target/api-keys", sudoToken, `{"lifetime":"1m"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("sudo create for standard status=%d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var actionCount int
+	var auditText string
+	if err := db.QueryRow(`SELECT COUNT(*), COALESCE(GROUP_CONCAT(action_type || ' ' || summary || ' ' || COALESCE(snapshot, ''), ' '), '')
+		FROM recent_actions WHERE action_type IN ('admin.api_key.create', 'admin.api_key.delete')`).Scan(&actionCount, &auditText); err != nil {
+		t.Fatal(err)
+	}
+	if actionCount != 3 {
+		t.Fatalf("recent action count=%d text=%q", actionCount, auditText)
+	}
+	if strings.Contains(auditText, *created.APIKey) {
+		t.Fatal("API key secret leaked into recent actions")
 	}
 }
 

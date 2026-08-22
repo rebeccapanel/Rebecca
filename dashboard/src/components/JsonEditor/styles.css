@@ -13,7 +13,15 @@
 	border: 0;
 }
 
-.rebecca-json-editor .jsoneditor,
+.rebecca-json-editor .jsoneditor {
+	position: absolute;
+	inset: 0;
+	height: auto;
+	min-height: 0;
+	border-radius: 0;
+	overscroll-behavior: contain;
+}
+
 .rebecca-json-editor .ace_editor {
 	border-radius: 0;
 	height: 100%;

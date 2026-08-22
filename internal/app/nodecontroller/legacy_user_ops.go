@@ -2,10 +2,13 @@ package nodecontroller
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
 )
+
+const inboundRuntimeEmailMarker = "rb1_"
 
 func (c Controller) legacyOperationEmail(ctx context.Context, operation OperationRow) (string, error) {
 	if len(operation.Payload) > 0 {
@@ -23,7 +26,26 @@ func (c Controller) legacyOperationEmail(ctx context.Context, operation Operatio
 	if err != nil {
 		return "", err
 	}
-	return fmt.Sprintf("%d.%s", identity.ID, identity.Username), nil
+	return legacyRuntimeUserEmail(identity.ID, identity.Username), nil
+}
+
+func legacyRuntimeUserEmail(userID int64, username string) string {
+	return fmt.Sprintf("%d.%s", userID, username)
+}
+
+func inboundRuntimeUserEmail(userID int64, username, inboundTag string) string {
+	return taggedRuntimeUserEmail(legacyRuntimeUserEmail(userID, username), inboundTag)
+}
+
+func taggedRuntimeUserEmail(legacyEmail, inboundTag string) string {
+	legacyEmail = strings.TrimSpace(legacyEmail)
+	inboundTag = strings.TrimSpace(inboundTag)
+	userID, username, ok := strings.Cut(legacyEmail, ".")
+	if !ok || strings.TrimSpace(userID) == "" || inboundTag == "" {
+		return legacyEmail
+	}
+	encodedTag := base64.RawURLEncoding.EncodeToString([]byte(inboundTag))
+	return strings.TrimSpace(userID) + "." + inboundRuntimeEmailMarker + encodedTag + "." + username
 }
 
 func (c Controller) legacyRuntimeInboundTags(ctx context.Context, node NodeRow) ([]string, error) {

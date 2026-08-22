@@ -402,9 +402,11 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 						(item) => item.toLowerCase() !== option.value.toLowerCase(),
 					),
 				);
-				return;
+			} else {
+				updateMultipleValues([...selectedValues, option.value]);
 			}
-			updateMultipleValues([...selectedValues, option.value]);
+			setCustomInput("");
+			setSearch("");
 		};
 
 		const removeValue = (option: string) => {
@@ -445,7 +447,15 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 		const handleCustomKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
 			if (event.key === "Enter") {
 				event.preventDefault();
-				commitCustomInput();
+				const suggestedOption = filteredOptions.find(
+					(option) =>
+						!option.disabled && !selectedSet.has(option.value.toLowerCase()),
+				);
+				if (customInput.trim() && suggestedOption) {
+					toggleValue(suggestedOption);
+				} else {
+					commitCustomInput();
+				}
 				return;
 			}
 			if (event.key === "Backspace" && !customInput && selectedValues.length) {

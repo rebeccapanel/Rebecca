@@ -26,10 +26,16 @@ import { useTranslation } from "react-i18next";
 import { fetch } from "service/http";
 import {
 	buildInboundPayload,
+	getInboundTraffic,
 	type InboundFormValues,
 	protocolOptions,
 	type RawInbound,
 } from "utils/inbounds";
+import { SizeFormatter } from "utils/outbound";
+import {
+	sortByTraffic,
+	type TrafficSortOrder,
+} from "utils/trafficSort";
 import { DeleteConfirmDialog } from "../dialogs/ConfirmDialog";
 import { SearchableTagSelect } from "../common/SearchableTagSelect";
 import {
@@ -45,6 +51,7 @@ import { InboundFormModal } from "./FormDrawer";
 type FilterState = {
 	protocol: string;
 	search: string;
+	traffic: TrafficSortOrder;
 };
 
 const normalizeTargetRefs = (value: unknown): string[] => {
@@ -87,6 +94,7 @@ export const InboundsManager: FC = () => {
 	const [filter, setFilter] = useState<FilterState>({
 		protocol: "all",
 		search: "",
+		traffic: "default",
 	});
 	const [selectedInboundTags, setSelectedInboundTags] = useState<string[]>([]);
 	const [selected, setSelected] = useState<RawInbound | null>(null);
@@ -118,7 +126,7 @@ export const InboundsManager: FC = () => {
 
 	const filtered = useMemo(() => {
 		const term = filter.search.trim().toLowerCase();
-		return inbounds.filter((inbound) => {
+		const matches = inbounds.filter((inbound) => {
 			if (filter.protocol !== "all" && inbound.protocol !== filter.protocol) {
 				return false;
 			}
@@ -128,6 +136,11 @@ export const InboundsManager: FC = () => {
 				inbound.port?.toString().includes(term)
 			);
 		});
+		return sortByTraffic(
+			matches,
+			filter.traffic,
+			(inbound) => getInboundTraffic(inbound).total,
+		);
 	}, [inbounds, filter]);
 	const targetNameById = useMemo(
 		() =>
@@ -541,13 +554,41 @@ export const InboundsManager: FC = () => {
 				},
 			},
 			{
+				id: "traffic",
+				header: t("inbounds.traffic"),
+				priority: "medium",
+				width: "175px",
+				maxWidth: "195px",
+				mobilePriority: 5,
+				mobileMetaLabel: t("inbounds.traffic"),
+				cell: (inbound) => {
+					const traffic = getInboundTraffic(inbound);
+					return (
+						<HStack
+							spacing={3}
+							whiteSpace="nowrap"
+							fontSize="xs"
+							dir="ltr"
+							sx={{ fontVariantNumeric: "tabular-nums", unicodeBidi: "isolate" }}
+						>
+							<Text color="teal.400">
+								↑ {SizeFormatter.sizeFormat(traffic.upload)}
+							</Text>
+							<Text color="blue.400">
+								↓ {SizeFormatter.sizeFormat(traffic.download)}
+							</Text>
+						</HStack>
+					);
+				},
+			},
+			{
 				id: "sniffing",
 				header: t("inbounds.sniffing"),
 				priority: "low",
 				hideBelow: "xl",
 				width: "150px",
 				maxWidth: "170px",
-				mobilePriority: 5,
+				mobilePriority: 6,
 				mobileMetaLabel: t("inbounds.sniffing"),
 				cell: (inbound) =>
 					inbound.sniffing?.enabled ? (
@@ -567,7 +608,7 @@ export const InboundsManager: FC = () => {
 				hideBelow: "lg",
 				width: "210px",
 				maxWidth: "260px",
-				mobilePriority: 6,
+				mobilePriority: 7,
 				mobileMetaLabel: t("inbounds.targets"),
 				cell: (inbound) => {
 					const targetIds = getInboundTargetIds(inbound);
@@ -709,6 +750,23 @@ export const InboundsManager: FC = () => {
 							setFilter((prev) => ({ ...prev, protocol: String(value) }))
 						}
 					/>
+					<SearchableTagSelect
+						size="sm"
+						width="190px"
+						value={filter.traffic}
+						options={[
+							{ value: "default", label: t("trafficSort.default") },
+							{ value: "highest", label: t("trafficSort.highest") },
+							{ value: "lowest", label: t("trafficSort.lowest") },
+						]}
+						placeholder={t("trafficSort.label")}
+						onChange={(value) =>
+							setFilter((prev) => ({
+								...prev,
+								traffic: String(value) as TrafficSortOrder,
+							}))
+						}
+					/>
 				</Stack>
 			</ResourceListCard>
 
@@ -764,7 +822,7 @@ export const InboundsManager: FC = () => {
 						</Button>
 					</DeleteConfirmDialog>
 				)}
-				mobileBreakpoint="lg"
+				mobileBreakpoint="md"
 				tableProps={{
 					w: "full",
 					sx: {

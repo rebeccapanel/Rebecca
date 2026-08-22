@@ -1,0 +1,26 @@
+.external-app-files--dark.file-explorer,
+.external-app-files--dark .folders-preview,
+.external-app-files--dark .item-action,
+.external-app-files--dark .fm-context-menu,
+.external-app-files--dark .fm-context-menu .sub-menu,
+.external-app-files--dark .toggle-view,
+.external-app-files--dark .files.list .files-header,
+.external-app-files--dark .fm-modal {
+	background: #1a202c;
+	border-color: #4a5568;
+	color: #edf2f7;
+}
+
+.external-app-files--dark .file-item-container:hover,
+.external-app-files--dark .file-item:hover,
+.external-app-files--dark .sb-folders-list-item:hover,
+.external-app-files--dark .item-action:hover,
+.external-app-files--dark .fm-context-menu li:hover {
+	background: #ffffff14;
+}
+
+.external-app-files--dark .fm-modal-heading,
+.external-app-files--dark input,
+.external-app-files--dark textarea {
+	color: #edf2f7;
+}

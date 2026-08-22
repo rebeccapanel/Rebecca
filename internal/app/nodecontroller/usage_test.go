@@ -3,11 +3,29 @@ package nodecontroller
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"path/filepath"
 	"testing"
 
 	_ "modernc.org/sqlite"
 )
+
+func TestRetryTransientUsageWriteRetriesDeadlock(t *testing.T) {
+	attempts := 0
+	err := retryTransientUsageWrite(context.Background(), func() error {
+		attempts++
+		if attempts < 3 {
+			return errors.New("Error 1213 (40001): Deadlock found when trying to get lock; try restarting transaction")
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 3 {
+		t.Fatalf("attempts = %d, want 3", attempts)
+	}
+}
 
 func TestUsageCollectionResetsXrayCountersByDefault(t *testing.T) {
 	cases := []struct {
@@ -30,7 +48,7 @@ func TestUsageCollectionResetsXrayCountersByDefault(t *testing.T) {
 	}
 }
 
-func TestCollectUsageFailureDoesNotMarkNodeError(t *testing.T) {
+func TestCollectUsageDialFailureMarksNodeError(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-status.db")+"?_pragma=busy_timeout(30000)")
 	if err != nil {
@@ -59,6 +77,11 @@ CREATE TABLE nodes (
 	xray_config TEXT,
 	usage_coefficient REAL DEFAULT 1,
 	last_status_change DATETIME
+);
+CREATE TABLE inbounds (
+	id INTEGER PRIMARY KEY,
+	tag TEXT NOT NULL UNIQUE,
+	usage_coefficient REAL NOT NULL DEFAULT 1
 );
 CREATE TABLE node_operations (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -94,6 +117,6 @@ INSERT INTO nodes (
 	if len(result.Errors) == 0 {
 		t.Fatal("expected usage collection error")
 	}
-	assertString(t, db, `SELECT status FROM nodes WHERE id = 7`, "connected")
+	assertString(t, db, `SELECT status FROM nodes WHERE id = 7`, "error")
 	assertInt64(t, db, `SELECT COUNT(*) FROM node_operations`, 0)
 }

@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/rebeccapanel/rebecca/internal/app/externalapps"
 )
 
 func TestAPIRequestBodyLimitRejectsLargeDeclaredBody(t *testing.T) {
@@ -77,5 +79,32 @@ func TestAPIRequestBodyLimitRejectsOversizedPHPMyAdminUpload(t *testing.T) {
 	handler.ServeHTTP(response, req)
 	if response.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("status = %d, want %d", response.Code, http.StatusRequestEntityTooLarge)
+	}
+}
+
+func TestAPIRequestBodyLimitUsesExternalAppArchiveLimit(t *testing.T) {
+	for _, requestPath := range []string{
+		"/api/settings/external-apps/archive",
+		"/api/settings/external-apps/app.example.com/files/upload",
+	} {
+		for _, test := range []struct {
+			name   string
+			size   int64
+			status int
+		}{
+			{name: "allowed", size: externalapps.MaxRequestBodyBytes, status: http.StatusOK},
+			{name: "rejected", size: externalapps.MaxRequestBodyBytes + 1, status: http.StatusRequestEntityTooLarge},
+		} {
+			t.Run(requestPath+"/"+test.name, func(t *testing.T) {
+				handler := withAPIRequestBodyLimit(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+				req := httptest.NewRequest(http.MethodPost, requestPath, strings.NewReader("x"))
+				req.ContentLength = test.size
+				response := httptest.NewRecorder()
+				handler.ServeHTTP(response, req)
+				if response.Code != test.status {
+					t.Fatalf("status = %d, want %d", response.Code, test.status)
+				}
+			})
+		}
 	}
 }

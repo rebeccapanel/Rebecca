@@ -141,6 +141,10 @@ func TestNodeMutationHandlersCreateUpdateResetRegenerateDelete(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO node_usages (created_at, node_id, uplink, downlink) VALUES ('2026-06-09 00:00:00', 1, 100, 200)`); err != nil {
 		t.Fatal(err)
 	}
+	var operationsBefore int64
+	if err := db.QueryRow(`SELECT COUNT(*) FROM node_operations WHERE node_id = 1`).Scan(&operationsBefore); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := db.Exec(`INSERT INTO node_user_usages (created_at, user_id, node_id, used_traffic) VALUES ('2026-06-09 00:00:00', 1, 1, 300)`); err != nil {
 		t.Fatal(err)
 	}
@@ -183,12 +187,25 @@ func TestNodeMutationHandlersCreateUpdateResetRegenerateDelete(t *testing.T) {
 	if after == "" || after == before {
 		t.Fatalf("certificate was not regenerated")
 	}
+	if _, err := db.Exec(`INSERT INTO node_usages (created_at, node_id, uplink, downlink) VALUES ('2026-06-09 00:00:00', 1, 100, 200)`); err != nil {
+		t.Fatal(err)
+	}
 
 	rec = adminJSONRequest(t, server, http.MethodDelete, "/api/node/1", token, `{}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("delete node status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	assertDBInt64(t, db, `SELECT COUNT(*) FROM nodes WHERE id = 1`, 0)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM nodes WHERE id = 1 AND status = 'deleted'`, 1)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_usages WHERE node_id = 1`, 1)
+	assertDBInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 1`, operationsBefore)
+	rec = adminJSONRequest(t, server, http.MethodGet, "/api/nodes", token, ``)
+	if rec.Code != http.StatusOK || strings.Contains(rec.Body.String(), `"de-1-edit"`) {
+		t.Fatalf("soft-deleted node remained in operational list: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	rec = adminJSONRequest(t, server, http.MethodDelete, "/api/node/1", token, `{}`)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("second delete status=%d body=%s", rec.Code, rec.Body.String())
+	}
 	for _, actionType := range []string{
 		"node.create",
 		"node.reconnect",

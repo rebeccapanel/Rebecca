@@ -23,15 +23,16 @@ func TestXrayHelperRoutesGoNative(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("vlessenc status=%d body=%s", rec.Code, rec.Body.String())
 	}
+	if rec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("vlessenc secret response is cacheable: %q", rec.Header().Get("Cache-Control"))
+	}
 	var vlessenc struct {
 		Auths []map[string]string `json:"auths"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &vlessenc); err != nil {
 		t.Fatal(err)
 	}
-	if len(vlessenc.Auths) != 1 || vlessenc.Auths[0]["label"] != "none" || vlessenc.Auths[0]["encryption"] != "none" || vlessenc.Auths[0]["decryption"] != "none" {
-		t.Fatalf("unexpected vlessenc response: %#v", vlessenc)
-	}
+	assertVLESSEncAuthBlocks(t, vlessenc.Auths)
 
 	rec = adminJSONRequest(t, server, http.MethodGet, "/api/xray/reality-keypair", token, "")
 	if rec.Code != http.StatusOK {

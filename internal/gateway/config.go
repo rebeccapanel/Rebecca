@@ -14,6 +14,7 @@ type Config struct {
 	ExtraListenPorts []int
 	TLSCertFile      string
 	TLSKeyFile       string
+	CertificateBase  string
 	DashboardPath    string
 	APIHandler       http.Handler
 }
@@ -21,10 +22,11 @@ type Config struct {
 func LoadConfig() Config {
 	env := loadEnvFiles()
 	return Config{
-		Addr:          gatewayListenAddr(env),
-		TLSCertFile:   lookupEnv(env, "UVICORN_SSL_CERTFILE", ""),
-		TLSKeyFile:    lookupEnv(env, "UVICORN_SSL_KEYFILE", ""),
-		DashboardPath: "/dashboard/",
+		Addr:            gatewayListenAddr(env),
+		TLSCertFile:     lookupEnv(env, "UVICORN_SSL_CERTFILE", ""),
+		TLSKeyFile:      lookupEnv(env, "UVICORN_SSL_KEYFILE", ""),
+		CertificateBase: lookupEnv(env, "REBECCA_CERT_BASE", "/var/lib/rebecca/certificates"),
+		DashboardPath:   "/dashboard/",
 	}
 }
 

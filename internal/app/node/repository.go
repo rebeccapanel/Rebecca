@@ -356,8 +356,9 @@ func (r Repository) UpdateNode(ctx context.Context, nodeID int64, payload NodeMo
 		finalStatus = StatusConnecting
 	}
 	if len(updates) > 0 {
-		args = append(args, nodeID)
-		if _, err := tx.ExecContext(ctx, `UPDATE nodes SET `+strings.Join(updates, ", ")+` WHERE id = ?`, args...); err != nil {
+		args = append(args, nodeID, StatusDeleted)
+		_, err := tx.ExecContext(ctx, `UPDATE nodes SET `+strings.Join(updates, ", ")+` WHERE id = ? AND LOWER(COALESCE(status, '')) <> ?`, args...)
+		if err != nil {
 			if isUniqueConstraint(err) {
 				return NodeResponse{}, typedError(ErrorConflict, "Node name already exists")
 			}
@@ -399,20 +400,15 @@ func (r Repository) DeleteNode(ctx context.Context, nodeID int64) error {
 	if err != nil {
 		return err
 	}
-	for _, stmt := range []string{
-		`DELETE FROM node_operations WHERE node_id = ?`,
-		`DELETE FROM node_usage_user_queue WHERE node_id = ?`,
-		`DELETE FROM node_usage_outbound_queue WHERE node_id = ?`,
-		`DELETE FROM vpn_user_sessions WHERE node_id = ?`,
-		`DELETE FROM user_online_ips WHERE node_id = ?`,
-		`DELETE FROM node_usages WHERE node_id = ?`,
-		`DELETE FROM node_user_usages WHERE node_id = ?`,
-		`DELETE FROM outbound_traffic WHERE node_id = ?`,
-		`DELETE FROM nodes WHERE id = ?`,
-	} {
-		if _, err := tx.ExecContext(ctx, stmt, nodeID); err != nil {
-			return err
-		}
+	now := dbTimestamp(r.now().UTC())
+	result, err := tx.ExecContext(ctx, `UPDATE nodes
+SET status = ?, last_status_change = ?
+WHERE id = ? AND LOWER(COALESCE(status, '')) <> ?`, StatusDeleted, now, nodeID, StatusDeleted)
+	if err != nil {
+		return err
+	}
+	if err := requireActiveNodeUpdate(result); err != nil {
+		return err
 	}
 	if err := r.recordRecentActionTx(ctx, tx, "node.delete", node.Name, "Deleted node"); err != nil {
 		return err
@@ -438,7 +434,7 @@ func (r Repository) ResetNodeUsage(ctx context.Context, nodeID int64) (NodeRespo
 			return NodeResponse{}, err
 		}
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE nodes SET uplink = 0, downlink = 0, status = ?, message = NULL WHERE id = ?`, StatusConnected, nodeID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE nodes SET uplink = 0, downlink = 0, status = ?, message = NULL WHERE id = ? AND LOWER(COALESCE(status, '')) <> ?`, StatusConnected, nodeID, StatusDeleted); err != nil {
 		return NodeResponse{}, err
 	}
 	if err := r.enqueueNodeOperationTx(ctx, tx, NodeOperationSyncConfig, &nodeID, nil, map[string]any{"node_id": nodeID, "usage_reset": true}, r.now().UTC()); err != nil {
@@ -475,7 +471,9 @@ func (r Repository) RegenerateNodeCertificate(ctx context.Context, nodeID int64)
 	if err != nil {
 		return NodeResponse{}, err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE nodes SET certificate = ?, certificate_key = ? WHERE id = ?`, cert, key, nodeID); err != nil {
+	if result, err := tx.ExecContext(ctx, `UPDATE nodes SET certificate = ?, certificate_key = ? WHERE id = ? AND LOWER(COALESCE(status, '')) <> ?`, cert, key, nodeID, StatusDeleted); err != nil {
+		return NodeResponse{}, err
+	} else if err := requireActiveNodeUpdate(result); err != nil {
 		return NodeResponse{}, err
 	}
 	if err := r.recordRecentActionTx(ctx, tx, "node.certificate_regenerate", node.Name, "Regenerated node certificate"); err != nil {
@@ -497,6 +495,17 @@ func (r Repository) recordRecentActionTx(ctx context.Context, tx *sql.Tx, action
 		return nil
 	}
 	return r.recentActionRecorder(ctx, tx, actionType, "node", resourceKey, summary)
+}
+
+func requireActiveNodeUpdate(result sql.Result) error {
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return typedError(ErrorNotFound, "Node not found")
+	}
+	return nil
 }
 
 func nodeUpdateRecentAction(before, after string) (string, string) {
@@ -601,7 +610,7 @@ func (r Repository) consumePendingCertificateTx(ctx context.Context, tx *sql.Tx,
 
 func (r Repository) nodeStoredXrayConfigExistsTx(ctx context.Context, tx *sql.Tx, nodeID int64) (bool, error) {
 	var raw sql.NullString
-	err := tx.QueryRowContext(ctx, `SELECT xray_config FROM nodes WHERE id = ? LIMIT 1`, nodeID).Scan(&raw)
+	err := tx.QueryRowContext(ctx, `SELECT xray_config FROM nodes WHERE id = ? AND LOWER(COALESCE(status, '')) <> ? LIMIT 1`, nodeID, StatusDeleted).Scan(&raw)
 	if err == nil {
 		return raw.Valid && strings.TrimSpace(raw.String) != "", nil
 	}
@@ -621,7 +630,7 @@ func (r Repository) getNode(ctx context.Context, q queryer, nodeID int64, defaul
 	proxy_username, proxy_password, status, message, xray_version,
 	COALESCE(geo_mode, 'default'), COALESCE(xray_config_mode, 'default'),
 	COALESCE(uplink, 0), COALESCE(downlink, 0), certificate
-FROM nodes WHERE id = ? LIMIT 1`, nodeID).Scan(
+FROM nodes WHERE id = ? AND LOWER(COALESCE(status, '')) <> ? LIMIT 1`, nodeID, StatusDeleted).Scan(
 		&row.ID, &row.Name, &note, &row.Address, &row.Port, &row.APIPort, &row.UsageCoefficient, &dataLimit,
 		&proxyEnabled, &proxyType, &proxyHost, &proxyPort,
 		&proxyUsername, &proxyPassword, &row.Status, &message, &xrayVersion,

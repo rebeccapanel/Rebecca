@@ -8,6 +8,15 @@ import (
 	"time"
 )
 
+type testHostAwareHandler struct {
+	host string
+	http.Handler
+}
+
+func (h testHostAwareHandler) HandlesHost(host string) bool {
+	return strings.EqualFold(host, h.host)
+}
+
 func TestGatewayForwardsAPIDirectlyToInProcessHandler(t *testing.T) {
 	hits := []string{}
 	api := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -98,6 +107,33 @@ func TestGatewayServesEmbeddedDashboardAndStatics(t *testing.T) {
 	server.server.Handler.ServeHTTP(missingModule, httptest.NewRequest(http.MethodGet, "/assets/SwaggerDocsViewer.missing.js", nil))
 	if missingModule.Code != http.StatusNotFound || strings.Contains(strings.ToLower(missingModule.Body.String()), "<!doctype html>") {
 		t.Fatalf("missing module status=%d body=%s", missingModule.Code, missingModule.Body.String())
+	}
+}
+
+func TestGatewayLetsHostedDomainOverrideDashboardRoutes(t *testing.T) {
+	api := testHostAwareHandler{
+		host: "app.example.com",
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("hosted:" + r.URL.Path))
+		}),
+	}
+	server, err := NewServer(Config{DashboardPath: "/dashboard/", APIHandler: api})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	hosted := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "https://app.example.com/dashboard/login", nil)
+	server.server.Handler.ServeHTTP(hosted, request)
+	if hosted.Code != http.StatusOK || hosted.Body.String() != "hosted:/dashboard/login" {
+		t.Fatalf("hosted status=%d body=%q", hosted.Code, hosted.Body.String())
+	}
+
+	panel := httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "https://panel.example.com/dashboard/login", nil)
+	server.server.Handler.ServeHTTP(panel, request)
+	if panel.Code != http.StatusOK || !strings.Contains(strings.ToLower(panel.Body.String()), "<!doctype html>") {
+		t.Fatalf("panel status=%d body=%q", panel.Code, panel.Body.String())
 	}
 }
 

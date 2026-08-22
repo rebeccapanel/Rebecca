@@ -28,6 +28,7 @@ func testAdminRepository(t *testing.T) (Repository, *sql.DB) {
 		`CREATE TABLE admins (
 			id INTEGER PRIMARY KEY,
 			username TEXT NOT NULL,
+			created_by TEXT NOT NULL DEFAULT 'root',
 			hashed_password TEXT,
 			role TEXT NOT NULL,
 			permissions TEXT,
@@ -167,7 +168,7 @@ func TestRepositoryLoadsAdminContext(t *testing.T) {
 	if !found {
 		t.Fatal("expected admin")
 	}
-	if dbadmin.Username != "CaseAdmin" || dbadmin.HashedPassword != hash || dbadmin.Role != RoleStandard {
+	if dbadmin.Username != "CaseAdmin" || dbadmin.CreatedBy != "root" || dbadmin.HashedPassword != hash || dbadmin.Role != RoleStandard {
 		t.Fatalf("unexpected admin: %#v", dbadmin)
 	}
 	if !VerifyPassword(dbadmin.HashedPassword, "password") {

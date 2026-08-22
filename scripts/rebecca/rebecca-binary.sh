@@ -50,6 +50,7 @@ PARSED_DOMAINS=()
 REBECCA_SCRIPT_FLAVOR="${REBECCA_SCRIPT_FLAVOR:-binary}"
 REBECCA_SCRIPT_SOURCE_FILE="${REBECCA_SCRIPT_SOURCE_FILE:-rebecca-binary.sh}"
 REBECCA_SCRIPT_INSTALL_PATH="${REBECCA_SCRIPT_INSTALL_PATH:-/usr/local/bin/rebecca}"
+REBECCA_MYSQL_CONFIG_ROOT="${REBECCA_MYSQL_CONFIG_ROOT:-/etc/mysql}"
 
 colorized_echo() {
     local color=$1
@@ -76,6 +77,24 @@ colorized_echo() {
 
 ui_is_tty() {
     [ -t 1 ] && [ -z "${NO_COLOR:-}" ]
+}
+
+ui_supports_cursor_motion() {
+    ui_is_tty && [ "${TERM:-dumb}" != "dumb" ]
+}
+
+ui_terminal_columns() {
+    local columns="${COLUMNS:-}"
+    if ! [[ "$columns" =~ ^[0-9]+$ ]] || [ "$columns" -lt 20 ]; then
+        columns=""
+        if command -v tput >/dev/null 2>&1; then
+            columns=$(tput cols 2>/dev/null || true)
+        fi
+    fi
+    if ! [[ "$columns" =~ ^[0-9]+$ ]] || [ "$columns" -lt 20 ]; then
+        columns=80
+    fi
+    printf "%s" "$columns"
 }
 
 ui_color() {
@@ -131,20 +150,33 @@ ui_menu_item() {
     local command="$2"
     local description="$3"
     local selected="${4:-0}"
+    local columns command_width=20 description_width command_label description_text
+    columns=$(ui_terminal_columns)
+    if [ "$columns" -lt 30 ]; then
+        command_width=$((columns - 10))
+    fi
+    [ "$command_width" -lt 1 ] && command_width=1
+    description_width=$((columns - 10 - command_width))
+    printf -v command_label "%-${command_width}.${command_width}s" "$command"
+    if [ "$description_width" -gt 0 ]; then
+        description_text="${description:0:$description_width}"
+    else
+        description_text=""
+    fi
     printf "  "
     if [ "$selected" = "1" ]; then
-        ui_color "38;5;16;48;5;45;1" " ▶ "
+        ui_color "38;5;16;48;5;45;1" " > "
     else
         printf "   "
     fi
     ui_color "38;5;45;1" "$(printf '%2s' "$number")"
     printf "  "
     if [ "$selected" = "1" ]; then
-        ui_color "38;5;231;1" "$(printf '%-18s' "$command")"
-        ui_color "38;5;231" "$description"
+        ui_color "38;5;231;1" "$command_label"
+        ui_color "38;5;231" "$description_text"
     else
-        ui_color "38;5;231;1" "$(printf '%-18s' "$command")"
-        ui_color "38;5;245" "$description"
+        ui_color "38;5;231;1" "$command_label"
+        ui_color "38;5;245" "$description_text"
     fi
     printf "\n"
 }
@@ -173,15 +205,21 @@ ui_read_menu_choice() {
             return
         ;;
         $'\033')
-            IFS= read -rsn2 -t 0.05 rest || true
+            rest=""
+            while [ "${#rest}" -lt 8 ] && IFS= read -rsn1 -t 0.05 key; do
+                rest="${rest}${key}"
+                case "$key" in
+                    [A-Za-z~]) break ;;
+                esac
+            done
             case "$rest" in
-                "[A")
+                *A)
                     selected=$((selected - 1))
                     [ "$selected" -lt 1 ] && selected="$total"
                     echo "move:$selected"
                     return
                 ;;
-                "[B")
+                *B)
                     selected=$((selected + 1))
                     [ "$selected" -gt "$total" ] && selected=1
                     echo "move:$selected"
@@ -1499,6 +1537,43 @@ max_input_time=0"
     if [ "$wrote" = "1" ]; then
         systemctl reload php*-fpm >/dev/null 2>&1 || systemctl restart php*-fpm >/dev/null 2>&1 || true
     fi
+}
+
+prepare_external_app_hosting() {
+    if ! is_binary_install; then
+        colorized_echo red "PHP application hosting is available only in binary installations."
+        return 1
+    fi
+
+    local package php_version
+    if command -v php >/dev/null 2>&1 && command -v composer >/dev/null 2>&1 && command -v curl >/dev/null 2>&1; then
+        php_version=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
+        if php -r 'foreach (["curl","zip","mbstring","dom","gd","intl","bcmath","pdo_mysql"] as $ext) { if (!extension_loaded($ext)) exit(1); }' \
+            && { systemctl is-active --quiet "php${php_version}-fpm" || systemctl is-active --quiet php-fpm; } \
+            && { systemctl is-active --quiet cron || systemctl is-active --quiet crond; }; then
+            colorized_echo green "PHP application hosting prerequisites are ready."
+            return 0
+        fi
+    fi
+
+    detect_os
+    for package in php-cli php-fpm php-mysql php-curl php-zip php-mbstring php-xml php-gd php-intl php-bcmath composer unzip curl cron; do
+        install_package "$package"
+    done
+    command -v php >/dev/null 2>&1 && command -v composer >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 || {
+        colorized_echo red "PHP hosting prerequisites are incomplete."
+        return 1
+    }
+    php_version=$(php -r 'echo PHP_MAJOR_VERSION.".".PHP_MINOR_VERSION;')
+    systemctl enable --now "php${php_version}-fpm" >/dev/null 2>&1 || systemctl enable --now php-fpm >/dev/null 2>&1 || {
+        colorized_echo red "Could not start PHP-FPM."
+        return 1
+    }
+    systemctl enable --now cron >/dev/null 2>&1 || systemctl enable --now crond >/dev/null 2>&1 || {
+        colorized_echo red "Could not start the cron service."
+        return 1
+    }
+    colorized_echo green "PHP application hosting prerequisites are ready (Apache was not installed)."
 }
 
 phpmyadmin_nginx_config_path() {
@@ -3347,7 +3422,7 @@ install_binary_rebecca() {
     set_rebecca_source_for_version "$rebecca_version"
 
     detect_os
-    for package in curl jq tar gzip unzip; do
+    for package in curl jq tar gzip unzip certbot; do
         if ! command -v "$package" >/dev/null 2>&1; then
             install_package "$package"
         fi
@@ -3626,6 +3701,133 @@ mysql_root_command() {
     fi
 }
 
+managed_database_url_is_local() {
+    local db_url authority host_port
+    db_url=$(get_env_value "SQLALCHEMY_DATABASE_URL")
+    [[ "$db_url" == mysql*://* ]] || return 1
+    authority="${db_url#*://}"
+    authority="${authority%%/*}"
+    host_port="${authority##*@}"
+    case "$host_port" in
+        127.0.0.1|127.0.0.1:*|localhost|localhost:*|\[::1\]|\[::1\]:*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+managed_database_has_replication() {
+    local status gtid
+    if grep -RhsEi '^[[:space:]]*(log[-_]bin|server[-_]id|gtid[-_]mode|relay[-_]log|replicate[-_]|binlog[-_](do|ignore)[-_]db)[[:space:]]*=' "$REBECCA_MYSQL_CONFIG_ROOT" 2>/dev/null | grep -q .; then
+        return 0
+    fi
+
+    status=$(mysql_root_command --batch --skip-column-names -e "SHOW REPLICA STATUS" 2>/dev/null || true)
+    [ -n "$status" ] && return 0
+    status=$(mysql_root_command --batch --skip-column-names -e "SHOW SLAVE STATUS" 2>/dev/null || true)
+    [ -n "$status" ] && return 0
+    status=$(mysql_root_command --batch --skip-column-names -e "SHOW REPLICAS" 2>/dev/null || true)
+    [ -n "$status" ] && return 0
+    status=$(mysql_root_command --batch --skip-column-names -e "SHOW SLAVE HOSTS" 2>/dev/null || true)
+    [ -n "$status" ] && return 0
+
+    gtid=$(mysql_root_command --batch --skip-column-names -e "SELECT @@GLOBAL.gtid_mode" 2>/dev/null || true)
+    [ -n "$gtid" ] && [ "${gtid^^}" != "OFF" ]
+}
+
+restart_managed_database() {
+    local service_name="$1"
+    systemctl restart "$service_name" >/dev/null 2>&1
+}
+
+wait_for_managed_database() {
+    local attempts=30
+    while [ "$attempts" -gt 0 ]; do
+        if mysql_root_command --batch --skip-column-names -e "SELECT 1" >/dev/null 2>&1; then
+            return 0
+        fi
+        attempts=$((attempts - 1))
+        sleep 1
+    done
+    return 1
+}
+
+disable_managed_database_binary_log() {
+    local database_type config_file service_name extra_databases log_bin backup_file setting_added=0
+
+    is_binary_install || return 0
+    managed_database_url_is_local || return 0
+    database_type=$(get_configured_database_type)
+    case "$database_type" in
+        mysql)
+            config_file="$REBECCA_MYSQL_CONFIG_ROOT/mysql.conf.d/rebecca.cnf"
+            service_name="mysql"
+        ;;
+        mariadb)
+            config_file="$REBECCA_MYSQL_CONFIG_ROOT/mariadb.conf.d/60-rebecca.cnf"
+            service_name="mariadb"
+        ;;
+        *) return 0 ;;
+    esac
+    [ -f "$config_file" ] || return 0
+
+    extra_databases=$(mysql_root_command --batch --skip-column-names -e "SELECT COUNT(*) FROM information_schema.schemata WHERE schema_name NOT IN ('information_schema','mysql','performance_schema','sys','rebecca','phpmyadmin')" 2>/dev/null) || {
+        colorized_echo yellow "Could not inspect the managed database; binary logging was left unchanged."
+        return 1
+    }
+    if [ "$extra_databases" != "0" ]; then
+        colorized_echo yellow "Binary logging was left unchanged because this MySQL/MariaDB instance contains databases not managed by Rebecca."
+        return 0
+    fi
+    if managed_database_has_replication; then
+        colorized_echo yellow "Binary logging was left unchanged because replication or explicit binlog settings were detected."
+        return 0
+    fi
+
+    log_bin=$(mysql_root_command --batch --skip-column-names -e "SELECT @@GLOBAL.log_bin" 2>/dev/null) || {
+        colorized_echo yellow "Could not read the managed database binary-log status."
+        return 1
+    }
+    if ! grep -Eq '^[[:space:]]*skip-log-bin([[:space:]]*=.*)?[[:space:]]*$' "$config_file"; then
+        backup_file=$(mktemp)
+        cp -p "$config_file" "$backup_file"
+        printf '\nskip-log-bin\n' >> "$config_file"
+        setting_added=1
+    fi
+    if [ "$log_bin" = "0" ]; then
+        [ -n "${backup_file:-}" ] && rm -f "$backup_file"
+        return 0
+    fi
+
+    if ! mysql_root_command -e "PURGE BINARY LOGS BEFORE NOW() - INTERVAL 1 HOUR" >/dev/null 2>&1; then
+        [ "$setting_added" = "1" ] && cp -p "$backup_file" "$config_file"
+        [ -n "${backup_file:-}" ] && rm -f "$backup_file"
+        colorized_echo yellow "Could not safely purge old MySQL/MariaDB binary logs; configuration was left unchanged."
+        return 1
+    fi
+    if ! restart_managed_database "$service_name" || ! wait_for_managed_database; then
+        [ "$setting_added" = "1" ] && cp -p "$backup_file" "$config_file"
+        restart_managed_database "$service_name" || true
+        [ -n "${backup_file:-}" ] && rm -f "$backup_file"
+        colorized_echo yellow "MySQL/MariaDB did not restart with binary logging disabled; the previous configuration was restored."
+        return 1
+    fi
+    log_bin=$(mysql_root_command --batch --skip-column-names -e "SELECT @@GLOBAL.log_bin" 2>/dev/null || true)
+    if [ "$log_bin" != "0" ]; then
+        [ "$setting_added" = "1" ] && cp -p "$backup_file" "$config_file"
+        restart_managed_database "$service_name" || true
+        [ -n "${backup_file:-}" ] && rm -f "$backup_file"
+        colorized_echo yellow "Binary logging remained enabled; the previous configuration was restored."
+        return 1
+    fi
+
+    [ -n "${backup_file:-}" ] && rm -f "$backup_file"
+    colorized_echo green "Binary logging disabled for Rebecca's dedicated local MySQL/MariaDB service."
+}
+
+database_maintenance_command() {
+    check_running_as_root
+    disable_managed_database_binary_log
+}
+
 install_host_database() {
     local database_type="$1"
     local package_name
@@ -3636,12 +3838,12 @@ install_host_database() {
         mysql)
             package_name="mysql-server"
             service_name="mysql"
-            config_file="/etc/mysql/mysql.conf.d/rebecca.cnf"
+            config_file="$REBECCA_MYSQL_CONFIG_ROOT/mysql.conf.d/rebecca.cnf"
         ;;
         mariadb)
             package_name="mariadb-server"
             service_name="mariadb"
-            config_file="/etc/mysql/mariadb.conf.d/60-rebecca.cnf"
+            config_file="$REBECCA_MYSQL_CONFIG_ROOT/mariadb.conf.d/60-rebecca.cnf"
         ;;
         *)
             return 0
@@ -3711,6 +3913,7 @@ EOF
     upsert_env_assignment "MYSQL_PASSWORD" "$MYSQL_PASSWORD"
     upsert_env_assignment "MYSQL_ROOT_PASSWORD" "$MYSQL_ROOT_PASSWORD"
     upsert_env_assignment "SQLALCHEMY_DATABASE_URL" "mysql+pymysql://rebecca:${mysql_password_url_encoded}@127.0.0.1:3306/rebecca"
+    disable_managed_database_binary_log
 }
 
 configure_binary_database() {
@@ -4739,7 +4942,7 @@ print_menu() {
     local selected="${1:-0}"
     local previous_category=""
     local idx=1
-    local cmd category desc is_selected
+    local cmd category desc is_selected columns tip_width tip
     ui_header "Rebecca Panel" "Control center"
     ui_section "Status"
     print_menu_status_summary
@@ -4757,9 +4960,53 @@ print_menu() {
         idx=$((idx + 1))
     done
     printf "\n"
-    ui_color "38;5;245" "Tip: use ↑/↓ and Enter, or type a number/command directly. Press q to exit."
+    columns=$(ui_terminal_columns)
+    tip_width=$((columns - 1))
+    tip="Tip: arrow keys move, Enter selects, q exits; numbers and commands also work."
+    ui_color "38;5;245" "${tip:0:$tip_width}"
     printf "\n"
     echo
+}
+
+ui_menu_lines_below_item() {
+    local target="$1"
+    local idx=1 lines=4 previous_category="" cmd category
+    for cmd in $(menu_commands); do
+        category=$(menu_category_for "$cmd")
+        if [ "$idx" -gt "$target" ]; then
+            [ "$category" != "$previous_category" ] && lines=$((lines + 2))
+            lines=$((lines + 1))
+        fi
+        previous_category="$category"
+        idx=$((idx + 1))
+    done
+    printf "%s" "$lines"
+}
+
+ui_redraw_menu_item() {
+    local index="$1" selected="$2" distance
+    local commands=($(menu_commands))
+    local command="${commands[$((index - 1))]}"
+    distance=$(ui_menu_lines_below_item "$index")
+    printf "\033[%sA\r\033[2K" "$distance"
+    ui_menu_item "$index" "$command" "$(menu_description_for "$command")" "$selected"
+    if [ "$distance" -gt 1 ]; then
+        printf "\033[%sB\r" "$((distance - 1))"
+    fi
+}
+
+ui_menu_prompt() {
+    local columns prompt
+    columns=$(ui_terminal_columns)
+    if [ "$columns" -lt 30 ]; then
+        prompt="Select: "
+    elif [ "$columns" -lt 55 ]; then
+        prompt="Select (arrows/Enter/number): "
+    else
+        prompt="Select option (arrow keys, Enter, number, command): "
+    fi
+    prompt="${prompt:0:$((columns - 1))}"
+    ui_color "38;5;45;1" "$prompt"
 }
 
 map_choice_to_command() {
@@ -4774,7 +5021,7 @@ map_choice_to_command() {
 
 read_menu_command() {
     MENU_COMMAND=""
-    if ! ui_is_tty; then
+    if ! ui_supports_cursor_motion; then
         print_menu
         ui_color "38;5;45;1" "Select option"
         printf " "
@@ -4787,30 +5034,38 @@ read_menu_command() {
 
     local commands=($(menu_commands))
     local selected=1
-    local action kind value mapped
+    local action kind value mapped previous_selected
+    ui_clear
+    print_menu "$selected"
+    ui_menu_prompt
     while true; do
-        ui_clear
-        print_menu "$selected"
-        ui_color "38;5;45;1" "Select option"
-        printf " "
-        ui_color "38;5;245" "(↑/↓, Enter, number, command): "
         action=$(ui_read_menu_choice "$selected" "${#commands[@]}") || return 1
         kind="${action%%:*}"
         value="${action#*:}"
         case "$kind" in
             move)
+                previous_selected="$selected"
                 selected="$value"
+                if [ "$selected" -ne "$previous_selected" ]; then
+                    ui_redraw_menu_item "$previous_selected" 0
+                    ui_redraw_menu_item "$selected" 1
+                    printf "\r\033[2K"
+                    ui_menu_prompt
+                fi
             ;;
             enter)
                 MENU_COMMAND="${commands[$(($value - 1))]}"
+                printf "\n"
                 return
             ;;
             value)
                 mapped=$(map_choice_to_command "$value")
                 [ -n "$mapped" ] && MENU_COMMAND="$mapped"
+                printf "\n"
                 return
             ;;
             quit)
+                printf "\n"
                 return 1
             ;;
         esac
@@ -4845,6 +5100,7 @@ usage() {
     colorized_echo yellow "  core-update     - Deprecated; Xray is managed by nodes"
     colorized_echo yellow "  enable-phpmyadmin - Enable phpMyAdmin for local MySQL/MariaDB"
     colorized_echo yellow "  disable-phpmyadmin - Disable phpMyAdmin"
+    colorized_echo yellow "  prepare-external-app-hosting - Install PHP-FPM hosting prerequisites without Apache"
     colorized_echo yellow "  edit            - Edit docker-compose.yml (via nano or vi editor)"
     colorized_echo yellow "  edit-env        - Edit environment file (via nano or vi editor)"
     colorized_echo yellow "  ssl             - Issue or renew SSL certificates"
@@ -4894,6 +5150,7 @@ dispatch_command() {
         migrate) cli_command migrate "$@" ;;
         backup) backup_command "$@" ;;
         backup-service) backup_service "$@" ;;
+        database-maintenance) database_maintenance_command "$@" ;;
         install) install_command "$@" ;;
         update) update_command "$@" ;;
         uninstall) uninstall_command "$@" ;;
@@ -4903,6 +5160,7 @@ dispatch_command() {
         core-update) update_core_command "$@" ;;
         enable-phpmyadmin) enable_phpmyadmin "$@" ;;
         disable-phpmyadmin) disable_phpmyadmin "$@" ;;
+        prepare-external-app-hosting) prepare_external_app_hosting "$@" ;;
         ssl) ssl_command "$@" ;;
         edit) edit_command "$@" ;;
         edit-env) edit_env_command "$@" ;;
@@ -4911,9 +5169,11 @@ dispatch_command() {
     esac
 }
 
-if [ $# -eq 0 ]; then
-    read_menu_command || exit 0
-    set -- $MENU_COMMAND
-fi
+if [ "${REBECCA_SOURCE_ONLY:-0}" != "1" ]; then
+    if [ $# -eq 0 ]; then
+        read_menu_command || exit 0
+        set -- $MENU_COMMAND
+    fi
 
-dispatch_command "$@"
+    dispatch_command "$@"
+fi
