@@ -30,8 +30,14 @@ export const ChartBox: FC<ChartBoxProps> = ({
 			borderRadius="xl"
 			bg={bg}
 			overflow="hidden"
-			transition="all 0.25s cubic-bezier(0.4, 0, 0.2, 1)"
-			_hover={{ "@media (min-width: 768px)": { boxShadow: "sm", borderColor: "panel.borderStrong" } }}
+			transition="box-shadow 0.2s ease, border-color 0.2s ease"
+			_motionReduce={{ transition: "none" }}
+			_hover={{
+				"@media (min-width: 768px)": {
+					boxShadow: "sm",
+					borderColor: "panel.borderStrong",
+				},
+			}}
 			{...props}
 		>
 			{(title || headerActions) && (
