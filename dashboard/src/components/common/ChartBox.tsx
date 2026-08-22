@@ -31,7 +31,11 @@ export const ChartBox: FC<ChartBoxProps> = ({
 			bg={bg}
 			overflow="hidden"
 			transition="box-shadow 0.2s ease, border-color 0.2s ease"
-			_motionReduce={{ transition: "none" }}
+			sx={{
+				"@media (prefers-reduced-motion: reduce)": {
+					transition: "none",
+				},
+			}}
 			_hover={{
 				"@media (min-width: 768px)": {
 					boxShadow: "sm",
