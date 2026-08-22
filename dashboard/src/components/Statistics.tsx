@@ -7,6 +7,7 @@ import {
 	Flex,
 	HStack,
 	Modal,
+	ModalBody,
 	ModalCloseButton,
 	ModalContent,
 	ModalFooter,
@@ -623,7 +624,12 @@ const UsageMetricCard: FC<{
 			p={4}
 			minH={history ? "136px" : "106px"}
 			transition="transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease"
-			_motionReduce={{ transition: "none", transform: "none" }}
+			sx={{
+				"@media (prefers-reduced-motion: reduce)": {
+					transition: "none",
+					transform: "none",
+				},
+			}}
 			_hover={{
 				"@media (min-width: 768px)": {
 					transform: "translateY(-2px)",
@@ -713,7 +719,12 @@ const SpeedItem: FC<{
 			py={3}
 			minH="80px"
 			transition="transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease"
-			_motionReduce={{ transition: "none", transform: "none" }}
+			sx={{
+				"@media (prefers-reduced-motion: reduce)": {
+					transition: "none",
+					transform: "none",
+				},
+			}}
 			_hover={{
 				"@media (min-width: 768px)": {
 					transform: "translateY(-2px)",
@@ -767,7 +778,11 @@ const NetworkSpeedCard: FC<{
 			bg={bg}
 			p={4}
 			transition="box-shadow 0.2s ease, border-color 0.2s ease"
-			_motionReduce={{ transition: "none" }}
+			sx={{
+				"@media (prefers-reduced-motion: reduce)": {
+					transition: "none",
+				},
+			}}
 			_hover={{
 				"@media (min-width: 768px)": {
 					boxShadow: "sm",
@@ -842,7 +857,12 @@ const MetricBadge: FC<{
 			overflow="hidden"
 			minH="80px"
 			transition="transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease"
-			_motionReduce={{ transition: "none", transform: "none" }}
+			sx={{
+				"@media (prefers-reduced-motion: reduce)": {
+					transition: "none",
+					transform: "none",
+				},
+			}}
 			_hover={{
 				"@media (min-width: 768px)": {
 					transform: "translateY(-2px)",
