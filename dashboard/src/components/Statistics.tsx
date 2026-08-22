@@ -8,6 +8,9 @@ import {
 	HStack,
 	Modal,
 	ModalCloseButton,
+	ModalContent,
+	ModalFooter,
+	ModalHeader,
 	ModalOverlay,
 	Progress,
 	SimpleGrid,
@@ -36,12 +39,6 @@ import { formatBytes, numberWithCommas } from "utils/formatByte";
 import { formatDuration } from "utils/formatDuration";
 import { getAPIWebSocketURL } from "utils/websocket";
 import { ChartBox } from "./common/ChartBox";
-import {
-	XrayModalBody,
-	XrayModalContent,
-	XrayModalFooter,
-	XrayModalHeader,
-} from "./xray/XrayDialog";
 
 export const StatisticsQueryKey = "statistics-query-key";
 
@@ -304,8 +301,8 @@ const HistoryModal: FC<{
 	t: TFunction;
 }> = ({ isOpen, onClose, payload, intervalSeconds, onIntervalChange, t }) => {
 	const { colorMode } = useColorMode();
-	const gridColor = useColorModeValue("#e2e8f0", "#262626");
-	const mutedTextColor = useColorModeValue("#64748b", "#737373");
+	const gridColor = useColorModeValue("rgba(0, 0, 0, 0.08)", "rgba(255, 255, 255, 0.08)");
+	const mutedTextColor = useColorModeValue("#64748b", "#8a8a8a");
 
 	const latestTimestamp = useMemo(() => {
 		if (!payload) return Math.floor(Date.now() / 1000);
@@ -323,7 +320,9 @@ const HistoryModal: FC<{
 		}
 		return extractLatest(payload.entries) ?? Math.floor(Date.now() / 1000);
 	}, [payload]);
+
 	const cutoff = latestTimestamp - intervalSeconds;
+
 	const filteredStandardEntries = useMemo(() => {
 		if (!payload || payload.type === "network" || payload.type === "panel") {
 			return [];
@@ -426,15 +425,7 @@ const HistoryModal: FC<{
 		() => ({
 			chart: {
 				type: "area" as const,
-				animations: { 
-					enabled: true,
-					easing: "easeinout" as const,
-					speed: 600,
-					dynamicAnimation: {
-						enabled: true,
-						speed: 350
-					}
-				},
+				animations: { enabled: false },
 				toolbar: { show: false },
 				zoom: { enabled: false },
 				background: "transparent",
@@ -445,14 +436,14 @@ const HistoryModal: FC<{
 				type: "gradient",
 				gradient: {
 					shadeIntensity: 1,
-					opacityFrom: 0.35,
+					opacityFrom: 0.3,
 					opacityTo: 0.0,
 					stops: [0, 100],
 				},
 			},
 			dataLabels: { enabled: false },
 			theme: { mode: colorMode },
-			stroke: { 
+			stroke: {
 				curve: "smooth" as const,
 				width: 2,
 			},
@@ -461,10 +452,12 @@ const HistoryModal: FC<{
 				strokeDashArray: 4,
 				xaxis: { lines: { show: false } },
 				yaxis: { lines: { show: true } },
-				padding: { top: 10, right: 0, bottom: 0, left: 10 },
+				padding: { top: 10, right: 10, bottom: 0, left: 10 },
 			},
 			xaxis: {
 				type: "datetime" as const,
+				min: cutoff * 1000,
+				max: latestTimestamp * 1000,
 				axisBorder: { show: false },
 				axisTicks: { show: false },
 				labels: {
@@ -480,12 +473,12 @@ const HistoryModal: FC<{
 				},
 			},
 			legend: {
-				position: "top" as const,
+				position: "bottom" as const,
 				horizontalAlign: "center" as const,
-				offsetY: 0,
+				offsetY: 8,
 				markers: { radius: 12 },
 				labels: { colors: mutedTextColor },
-				itemMargin: { horizontal: 15, vertical: 5 },
+				itemMargin: { horizontal: 10, vertical: 0 },
 			},
 			tooltip: {
 				theme: colorMode,
@@ -493,19 +486,29 @@ const HistoryModal: FC<{
 				style: { fontSize: "12px", fontFamily: "inherit" },
 			},
 		}),
-		[colorMode, gridColor, mutedTextColor],
+		[colorMode, gridColor, mutedTextColor, cutoff, latestTimestamp],
 	);
 
 	return (
 		<Modal isOpen={isOpen} onClose={onClose} size="2xl" scrollBehavior="inside">
-			<ModalOverlay bg="blackAlpha.400" backdropFilter="blur(4px)" />
-			<XrayModalContent>
-				<XrayModalHeader pt={6} pb={4} display="flex" alignItems="center" lineHeight="1">
-					{t("historyModalTitle", { metric: payload?.title ?? "" })}
-				</XrayModalHeader>
-				<ModalCloseButton top={4} insetEnd={5} />
-				<XrayModalBody py={2}>
-					<Stack spacing={6}>
+			<ModalOverlay bg="blackAlpha.500" backdropFilter="blur(4px)" />
+			<ModalContent bg="panel.surface" borderWidth="1px" borderColor="panel.border" borderRadius="2xl">
+				<ModalHeader
+					display="flex"
+					alignItems="center"
+					justifyContent="space-between"
+					px={6}
+					py={4}
+					borderBottomWidth="1px"
+					borderColor="panel.border"
+					fontSize="md"
+					fontWeight="bold"
+				>
+					<Text>{t("historyModalTitle", { metric: payload?.title ?? "" })}</Text>
+					<ModalCloseButton position="static" insetInlineEnd="auto" />
+				</ModalHeader>
+				<ModalBody px={6} py={5}>
+					<Stack spacing={5}>
 						<Flex wrap="wrap" gap={2}>
 							{HISTORY_INTERVALS.map((interval) => (
 								<Button
@@ -522,37 +525,23 @@ const HistoryModal: FC<{
 								</Button>
 							))}
 						</Flex>
-						<Box
-							mx="-10px"
-							sx={{
-								".apexcharts-legend-series": {
-									display: "inline-flex !important",
-									alignItems: "center",
-									gap: "6px",
-								},
-								".apexcharts-legend-marker": {
-									margin: "0 !important",
-								},
-								".apexcharts-legend-text": {
-									padding: "0 !important",
-									margin: "0 !important",
-								},
-							}}
-						>
+						<Box mx="-10px">
 							<Chart
-								key={`chart-interval-${intervalSeconds}`}
+								key={`chart-interval-${intervalSeconds}-${latestTimestamp}`}
 								options={options}
 								series={chartSeries}
 								type="area"
-								height={320}
+								height={300}
 							/>
 						</Box>
 					</Stack>
-				</XrayModalBody>
-				<XrayModalFooter py={5}>
-					<Button onClick={onClose} borderRadius="full" variant="ghost">{t("close")}</Button>
-				</XrayModalFooter>
-			</XrayModalContent>
+				</ModalBody>
+				<ModalFooter px={6} py={4} borderTopWidth="1px" borderColor="panel.border">
+					<Button onClick={onClose} borderRadius="full" variant="ghost" size="sm">
+						{t("close")}
+					</Button>
+				</ModalFooter>
+			</ModalContent>
 		</Modal>
 	);
 };
@@ -590,7 +579,6 @@ const HistorySparkline: FC<{ values: number[]; accent?: string }> = ({
 						h={`${height}px`}
 						bg={accent ?? defaultColor}
 						borderRadius="full"
-						transition="all 0.2s ease"
 					/>
 				);
 			})}
@@ -634,8 +622,15 @@ const UsageMetricCard: FC<{
 			overflow="hidden"
 			p={4}
 			minH={history ? "136px" : "106px"}
-			transition="all 0.25s cubic-bezier(0.4, 0, 0.2, 1)"
-			_hover={{ "@media (min-width: 768px)": { transform: "translateY(-2px)", shadow: "sm", borderColor: "panel.borderStrong" } }}
+			transition="transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease"
+			_motionReduce={{ transition: "none", transform: "none" }}
+			_hover={{
+				"@media (min-width: 768px)": {
+					transform: "translateY(-2px)",
+					boxShadow: "sm",
+					borderColor: "panel.borderStrong",
+				},
+			}}
 		>
 			<Stack spacing={3}>
 				<Flex justifyContent="space-between" alignItems="center" gap={2} wrap="wrap">
@@ -656,7 +651,14 @@ const UsageMetricCard: FC<{
 					)}
 				</Flex>
 				<Flex justifyContent="space-between" alignItems="baseline" gap={2} wrap="wrap">
-					<Text fontSize="3xl" lineHeight="1" fontWeight="bold" color={valueColor} whiteSpace="nowrap" sx={{ fontVariantNumeric: "tabular-nums" }}>
+					<Text
+						fontSize="3xl"
+						lineHeight="1"
+						fontWeight="bold"
+						color={valueColor}
+						whiteSpace="nowrap"
+						sx={{ fontVariantNumeric: "tabular-nums" }}
+					>
 						{Math.max(0, percent).toFixed(1)}%
 					</Text>
 					{detail && (
@@ -710,8 +712,15 @@ const SpeedItem: FC<{
 			px={4}
 			py={3}
 			minH="80px"
-			transition="all 0.25s cubic-bezier(0.4, 0, 0.2, 1)"
-			_hover={{ "@media (min-width: 768px)": { transform: "translateY(-2px)", shadow: "sm", borderColor: "panel.borderStrong" } }}
+			transition="transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease"
+			_motionReduce={{ transition: "none", transform: "none" }}
+			_hover={{
+				"@media (min-width: 768px)": {
+					transform: "translateY(-2px)",
+					boxShadow: "sm",
+					borderColor: "panel.borderStrong",
+				},
+			}}
 		>
 			<Flex w={10} h={10} align="center" justify="center" bg={accentBg} color={iconColor} borderRadius="lg" flexShrink={0}>
 				{icon}
@@ -727,7 +736,12 @@ const SpeedItem: FC<{
 				>
 					{label}
 				</Text>
-				<Text fontSize={{ base: "lg", md: "xl" }} fontWeight="bold" mt={0.5} sx={{ fontVariantNumeric: "tabular-nums" }}>
+				<Text
+					fontSize={{ base: "lg", md: "xl" }}
+					fontWeight="bold"
+					mt={0.5}
+					sx={{ fontVariantNumeric: "tabular-nums" }}
+				>
 					{value}
 				</Text>
 			</Box>
@@ -752,8 +766,14 @@ const NetworkSpeedCard: FC<{
 			borderRadius="xl"
 			bg={bg}
 			p={4}
-			transition="all 0.25s cubic-bezier(0.4, 0, 0.2, 1)"
-			_hover={{ "@media (min-width: 768px)": { shadow: "sm", borderColor: "panel.borderStrong" } }}
+			transition="box-shadow 0.2s ease, border-color 0.2s ease"
+			_motionReduce={{ transition: "none" }}
+			_hover={{
+				"@media (min-width: 768px)": {
+					boxShadow: "sm",
+					borderColor: "panel.borderStrong",
+				},
+			}}
 		>
 			<Stack spacing={4}>
 				<Flex justifyContent="space-between" alignItems="center" gap={2} wrap="wrap">
@@ -821,8 +841,15 @@ const MetricBadge: FC<{
 			position="relative"
 			overflow="hidden"
 			minH="80px"
-			transition="all 0.25s cubic-bezier(0.4, 0, 0.2, 1)"
-			_hover={{ "@media (min-width: 768px)": { transform: "translateY(-2px)", shadow: "sm", borderColor: "panel.borderStrong" } }}
+			transition="transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease"
+			_motionReduce={{ transition: "none", transform: "none" }}
+			_hover={{
+				"@media (min-width: 768px)": {
+					transform: "translateY(-2px)",
+					boxShadow: "sm",
+					borderColor: "panel.borderStrong",
+				},
+			}}
 		>
 			<HStack spacing={2} mb={2}>
 				<Box w="8px" h="8px" borderRadius="full" bg={accent} flexShrink={0} />
@@ -839,7 +866,13 @@ const MetricBadge: FC<{
 					{label}
 				</Text>
 			</HStack>
-			<Text fontWeight="bold" fontSize="2xl" color={valueColor} lineHeight="1" sx={{ fontVariantNumeric: "tabular-nums" }}>
+			<Text
+				fontWeight="bold"
+				fontSize="2xl"
+				color={valueColor}
+				lineHeight="1"
+				sx={{ fontVariantNumeric: "tabular-nums" }}
+			>
 				{valueClassName ? (
 					<chakra.span className={valueClassName}>{value}</chakra.span>
 				) : (
@@ -1274,7 +1307,16 @@ const AdminOverviewCard: FC<{
 					/>
 				</SimpleGrid>
 				{data.top_admin_username && (
-					<Flex wrap="wrap" gap={4} alignItems="center" bg="panel.input" p={4} borderRadius="xl" borderWidth="1px" borderColor="panel.border">
+					<Flex
+						wrap="wrap"
+						gap={4}
+						alignItems="center"
+						bg="panel.input"
+						p={4}
+						borderRadius="xl"
+						borderWidth="1px"
+						borderColor="panel.border"
+					>
 						<Text fontSize="sm" fontWeight="medium" color="panel.textSecondary">
 							{t("topAdmin")}:{" "}
 							<Text as="span" fontWeight="bold" color="panel.text">
