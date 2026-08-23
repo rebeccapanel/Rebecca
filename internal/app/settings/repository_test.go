@@ -45,6 +45,8 @@ func TestReadTemplateContentIgnoresPersistentDirectoryWhenDBDirectoryIsEmpty(t *
 		subscription_path TEXT NULL,
 		subscription_aliases TEXT NULL,
 		subscription_ports TEXT NULL,
+		subscription_placeholder_enabled INTEGER NULL,
+		subscription_placeholder_remark TEXT NULL,
 		created_at DATETIME NULL,
 		updated_at DATETIME NULL
 	)`); err != nil {

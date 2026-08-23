@@ -308,6 +308,9 @@ func applySubscriptionDefaults(settings *SubscriptionSettings) {
 	if settings.SubscriptionPorts == nil {
 		settings.SubscriptionPorts = []int{}
 	}
+	if settings.SubscriptionPlaceholderRemark == "" {
+		settings.SubscriptionPlaceholderRemark = defaultSubscriptionPlaceholderRemark
+	}
 }
 
 func nullableString(value *string) any {

@@ -174,6 +174,8 @@ export interface SubscriptionTemplateSettings {
 	subscription_path: string;
 	subscription_aliases: string[];
 	subscription_ports: number[];
+	subscription_placeholder_enabled: boolean;
+	subscription_placeholder_remark: string;
 }
 
 export type SubscriptionTemplateSettingsUpdatePayload =

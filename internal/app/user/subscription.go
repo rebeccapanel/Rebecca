@@ -417,6 +417,12 @@ func (s Service) generateSubscriptionConfig(ctx context.Context, user UserDetail
 		return "", err
 	}
 	connectable := connectableConfigLinks(links)
+	if placeholder, ok := s.subscriptionPlaceholderLink(ctx, user); ok {
+		connectable = ConfigLinksResponse{
+			Links:    []string{placeholder},
+			Metadata: []ConfigLinkMetadata{{}},
+		}
+	}
 	raw := connectable.Links
 	switch config.Format {
 	case "v2ray":
@@ -473,6 +479,70 @@ func (s Service) generateSubscriptionConfig(ctx context.Context, user UserDetail
 	default:
 		return "", clientError(404, "Unsupported client type")
 	}
+}
+
+// subscriptionPlaceholderLink returns a single synthetic config link that
+// replaces the user's real configs when the user is not active (expired, data
+// limited, or disabled) and the placeholder feature is enabled. The returned
+// link carries the admin-defined remark so it shows up as a named entry in the
+// client while carrying no working config, mirroring the Marzneshin behaviour.
+func (s Service) subscriptionPlaceholderLink(ctx context.Context, user UserDetail) (string, bool) {
+	settings := s.effectiveSettings(ctx, user.AdminID)
+	if !settings.SubscriptionPlaceholderEnabled {
+		return "", false
+	}
+	if !subscriptionUserIsPlaceholderEligible(user.Status) {
+		return "", false
+	}
+	remark := strings.TrimSpace(settings.SubscriptionPlaceholderRemark)
+	if remark == "" {
+		remark = "disabled"
+	}
+	item := ConfigLinkUser{
+		ID:                   user.ID,
+		Username:             user.Username,
+		Status:               user.Status,
+		UsedTraffic:          user.UsedTraffic,
+		DataLimit:            user.DataLimit,
+		Expire:               user.Expire,
+		OnHoldExpireDuration: user.OnHoldExpireDuration,
+	}
+	remark = applyFormat(remark, configFormatVariables(item))
+	return buildSubscriptionPlaceholderLink(remark), true
+}
+
+// subscriptionUserIsPlaceholderEligible reports whether the user's status means
+// the placeholder config should be served instead of the real configs. Active
+// and on-hold users keep their real configs; everyone else (expired, limited,
+// disabled) receives the placeholder.
+func subscriptionUserIsPlaceholderEligible(status string) bool {
+	switch status {
+	case "active", "on_hold":
+		return false
+	default:
+		return true
+	}
+}
+
+// buildSubscriptionPlaceholderLink encodes a minimal, non-connectable vmess link
+// whose only purpose is to display the given remark in the client subscription.
+func buildSubscriptionPlaceholderLink(remark string) string {
+	payload := map[string]any{
+		"add":  "127.0.0.1",
+		"aid":  "0",
+		"host": "",
+		"id":   "00000000-0000-0000-0000-000000000000",
+		"net":  "tcp",
+		"path": "",
+		"port": "1",
+		"ps":   remark,
+		"scy":  "auto",
+		"tls":  "",
+		"type": "none",
+		"v":    "2",
+	}
+	encoded, _ := json.Marshal(payload)
+	return "vmess://" + base64.StdEncoding.EncodeToString(encoded)
 }
 
 func connectableSubscriptionLinks(links []string) []string {
