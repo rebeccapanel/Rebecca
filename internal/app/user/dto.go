@@ -292,6 +292,11 @@ type Host struct {
 	ServiceIDs           []int64        `json:"service_ids,omitempty"`
 }
 
+type ClientRoutingRule struct {
+	Pattern string `json:"pattern"`
+	Result  string `json:"result"`
+}
+
 type SubscriptionSettings struct {
 	DefaultSubscriptionType        string                         `json:"default_subscription_type"`
 	SubscriptionURLPrefix          string                         `json:"subscription_url_prefix"`
@@ -301,12 +306,7 @@ type SubscriptionSettings struct {
 	SubscriptionPath               string                         `json:"subscription_path"`
 	SubscriptionPorts              []int                          `json:"subscription_ports"`
 	SubscriptionAliases            []string                       `json:"subscription_aliases"`
-	UseCustomJSONDefault           bool                           `json:"use_custom_json_default"`
-	UseCustomJSONForV2rayN         bool                           `json:"use_custom_json_for_v2rayn"`
-	UseCustomJSONForV2rayNG        bool                           `json:"use_custom_json_for_v2rayng"`
-	UseCustomJSONForStreisand      bool                           `json:"use_custom_json_for_streisand"`
-	UseCustomJSONForHapp           bool                           `json:"use_custom_json_for_happ"`
-	UseCustomJSONForIncy           bool                           `json:"use_custom_json_for_incy"`
+	ClientRoutingRules             []ClientRoutingRule            `json:"client_routing_rules"`
 	SubscriptionPlaceholderEnabled bool                           `json:"subscription_placeholder_enabled"`
 	SubscriptionPlaceholderRemark  string                         `json:"subscription_placeholder_remark"`
 	SubscriptionPlaceholderPolicy  *SubscriptionPlaceholderPolicy `json:"-"`

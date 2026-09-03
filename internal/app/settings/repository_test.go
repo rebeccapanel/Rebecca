@@ -36,12 +36,7 @@ func TestReadTemplateContentIgnoresPersistentDirectoryWhenDBDirectoryIsEmpty(t *
 		singbox_subscription_template TEXT NULL,
 		singbox_settings_template TEXT NULL,
 		mux_template TEXT NULL,
-		use_custom_json_default INTEGER NULL,
-		use_custom_json_for_v2rayn INTEGER NULL,
-		use_custom_json_for_v2rayng INTEGER NULL,
-		use_custom_json_for_streisand INTEGER NULL,
-		use_custom_json_for_happ INTEGER NULL,
-		use_custom_json_for_incy INTEGER NULL,
+		client_routing_rules TEXT NULL,
 		subscription_placeholder_enabled INTEGER NULL,
 		subscription_placeholder_remark TEXT NULL,
 		subscription_path TEXT NULL,
@@ -78,17 +73,12 @@ func TestReadTemplateContentIgnoresPersistentDirectoryWhenDBDirectoryIsEmpty(t *
 		singbox_subscription_template,
 		singbox_settings_template,
 		mux_template,
-		use_custom_json_default,
-		use_custom_json_for_v2rayn,
-		use_custom_json_for_v2rayng,
-		use_custom_json_for_streisand,
-		use_custom_json_for_happ,
-		use_custom_json_for_incy,
 		subscription_placeholder_enabled,
 		subscription_placeholder_remark,
 		subscription_path,
 		subscription_aliases,
-		subscription_ports
+		subscription_ports,
+		client_routing_rules
 	) VALUES (
 		'', 'Subscription', 'https://t.me/', '12', NULL,
 		'clash/default.yml', 'clash/settings.yml',
@@ -97,7 +87,7 @@ func TestReadTemplateContentIgnoresPersistentDirectoryWhenDBDirectoryIsEmpty(t *
 		'v2ray/default.json', 'v2ray/default.json',
 		'singbox/default.json', 'singbox/settings.json',
 		'mux/default.json',
-		0, 0, 0, 0, 0, 0, 0, 'disabled', 'sub', '[]', '[]'
+		0, 'disabled', 'sub', '[]', '[]', '` + defaultClientRoutingRules + `'
 	)`); err != nil {
 		t.Fatal(err)
 	}

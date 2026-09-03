@@ -18,6 +18,17 @@ func TestSubscriptionClientOutputsCoverExplicitFormatsAndAutoDetect(t *testing.T
 	if _, err := service.repo.subscriptionUserByKeyOnly(ctx, key); err != nil {
 		t.Fatalf("subscription user lookup by key failed: %v", err)
 	}
+	rules := `[
+		{"pattern": "(?i)^Happ/1\\.63\\.1", "result": "happ"},
+		{"pattern": "(?i)^Incy/2\\.0", "result": "incy"},
+		{"pattern": "(?i)^Karing/1\\.0", "result": "karing"},
+		{"pattern": "(?i)^HiddifyNext", "result": "hiddify"},
+		{"pattern": "(?i)^Shadowrocket", "result": "shadowrocket"},
+		{"pattern": "(?i)^ClashMi", "result": "clash-mi"}
+	]`
+	if _, err := service.repo.db.Exec(`UPDATE subscription_settings SET client_routing_rules = ?`, rules); err != nil {
+		t.Fatalf("failed to seed routing rules: %v", err)
+	}
 
 	tests := []struct {
 		name      string
@@ -412,10 +423,8 @@ func TestV2rayNGSubscriptionsKeepAddressAndPort(t *testing.T) {
 		}
 	}
 
-	if _, err := service.repo.db.Exec(`ALTER TABLE subscription_settings ADD COLUMN use_custom_json_for_v2rayng INTEGER DEFAULT 0`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := service.repo.db.Exec(`UPDATE subscription_settings SET use_custom_json_for_v2rayng = 1`); err != nil {
+	rules := `[{"pattern": "(?i)^v2rayNG", "result": "v2ray-json"}]`
+	if _, err := service.repo.db.Exec(`UPDATE subscription_settings SET client_routing_rules = ?`, rules); err != nil {
 		t.Fatal(err)
 	}
 	structured, err := service.RenderSubscription(ctx, SubscriptionRenderRequest{Identifier: key, UserAgent: "v2rayNG/1.10.28"})
@@ -443,10 +452,8 @@ func TestV2rayNGSubscriptionsKeepAddressAndPort(t *testing.T) {
 func TestAutomaticCustomJSONRefreshesCurrentCustomNodeHostFinalMask(t *testing.T) {
 	service, key := newSubscriptionClientTestService(t)
 	ctx := context.Background()
-	if _, err := service.repo.db.Exec(`ALTER TABLE subscription_settings ADD COLUMN use_custom_json_for_v2rayng INTEGER DEFAULT 0`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := service.repo.db.Exec(`UPDATE subscription_settings SET use_custom_json_for_v2rayng = 1`); err != nil {
+	rules := `[{"pattern": "(?i)^v2rayNG", "result": "v2ray-json"}]`
+	if _, err := service.repo.db.Exec(`UPDATE subscription_settings SET client_routing_rules = ?`, rules); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.repo.db.Exec(`UPDATE nodes SET xray_config_mode = 'custom', xray_config = (SELECT data FROM xray_config WHERE id = 1) WHERE id = 1`); err != nil {
@@ -707,9 +714,7 @@ func newSubscriptionClientTestService(t *testing.T) (Service, string) {
 			subscription_update_interval TEXT,
 			subscription_path TEXT,
 			subscription_ports TEXT,
-			use_custom_json_default INTEGER DEFAULT 0,
-			use_custom_json_for_happ INTEGER DEFAULT 0,
-			use_custom_json_for_incy INTEGER DEFAULT 0,
+			client_routing_rules TEXT,
 			subscription_placeholder_enabled INTEGER DEFAULT 0,
 			subscription_placeholder_remark TEXT DEFAULT 'disabled'
 		)`,
@@ -837,9 +842,9 @@ func newSubscriptionClientTestService(t *testing.T) (Service, string) {
 		`INSERT INTO subscription_settings (
 			id, subscription_url_prefix, subscription_profile_title, subscription_support_url,
 			subscription_update_interval, subscription_path, subscription_ports,
-			use_custom_json_for_happ, use_custom_json_for_incy
+			client_routing_rules
 		) VALUES (
-			1, 'https://panel.example', 'Subscription', 'https://t.me/rebecca', '12', 'sub', '[]', 1, 1
+			1, 'https://panel.example', 'Subscription', 'https://t.me/rebecca', '12', 'sub', '[]', '[]'
 		)`,
 		`INSERT INTO admins (id, username, subscription_domain, subscription_settings) VALUES (1, 'owner', NULL, '{}')`,
 		`INSERT INTO services (id, name) VALUES (1, 'All protocols')`,

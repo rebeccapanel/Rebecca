@@ -34,6 +34,7 @@ const (
 	defaultSingBoxSettingsTemplate       = "singbox/settings.json"
 	defaultMuxTemplate                   = "mux/default.json"
 	defaultSubscriptionPath              = "sub"
+	defaultClientRoutingRules            = `[{"pattern":"^([Cc]lash-verge|[Cc]lash[-\\.]?[Mm]eta|[Ff][Ll][Cc]lash|[Mm]ihomo)","result":"clash-meta"},{"pattern":"(?i)^clash\\s*mi|(?i)^clashmi","result":"clash-mi"},{"pattern":"^([Cc]lash|[Ss]tash)","result":"clash"},{"pattern":"(?i)^karing","result":"karing"},{"pattern":"(?i)^hiddifynextx?","result":"hiddify"},{"pattern":"^(SFA|SFI|SFM|SFT)","result":"sing-box"},{"pattern":"(?i)^v2raytun","result":"v2raytun"},{"pattern":"(?i)^shadowrocket","result":"shadowrocket"},{"pattern":"(?i)^(nekobox|nekoboxforandroid)","result":"nekobox"},{"pattern":"(?i)^passwall","result":"passwall"},{"pattern":"(?i)^thron(e)?","result":"throne"},{"pattern":"^(SS|SSR|SSD|SSS|Outline|Shadowsocks|SSconf)","result":"outline"},{"pattern":"^v2rayN/(?:6\\.[4-9]\\d*|[7-9]\\.\\d+|[1-9]\\d{1,}\\.\\d+)","result":"v2ray-json"},{"pattern":"(?i)^v2rayng/\\d+\\.\\d+","result":"v2ray-json"},{"pattern":"^Happ/(?:1\\.63\\.[1-9]|1\\.6[4-9]\\d*|1\\.[7-9]\\d*|[2-9]\\.\\d+)","result":"happ"},{"pattern":"(?i)^incy","result":"incy"},{"pattern":"^Streisand","result":"v2ray-json"}]`
 )
 
 var allowedSubscriptionTypes = map[string]bool{
@@ -216,8 +217,18 @@ func (r Repository) UpdateSubscriptionSettings(ctx context.Context, raw map[stri
 			}
 			encoded, _ := json.Marshal(normalizePorts(ports))
 			add(key, string(encoded))
-		case "use_custom_json_default", "use_custom_json_for_v2rayn", "use_custom_json_for_v2rayng", "use_custom_json_for_streisand", "use_custom_json_for_happ", "use_custom_json_for_incy", "subscription_placeholder_enabled":
-			add(key, rawBoolDefault(value, false))
+		case "client_routing_rules":
+			var rules []ClientRoutingRule
+			if string(value) != "null" {
+				if err := json.Unmarshal(value, &rules); err != nil {
+					return SubscriptionSettings{}, fmt.Errorf("client_routing_rules must be a valid array")
+				}
+			}
+			if rules == nil {
+				rules = []ClientRoutingRule{}
+			}
+			encoded, _ := json.Marshal(rules)
+			add(key, string(encoded))
 		case "custom_templates_directory":
 			if string(value) == "null" {
 				add(key, nil)
@@ -449,22 +460,16 @@ incy_subscription_template,
 singbox_subscription_template,
 singbox_settings_template,
 mux_template,
-COALESCE(use_custom_json_default, 0),
-COALESCE(use_custom_json_for_v2rayn, 0),
-COALESCE(use_custom_json_for_v2rayng, 0),
-COALESCE(use_custom_json_for_streisand, 0),
-COALESCE(use_custom_json_for_happ, 0),
-COALESCE(use_custom_json_for_incy, 0),
 subscription_path,
 subscription_aliases,
 subscription_ports,
+COALESCE(client_routing_rules, '[]'),
 COALESCE(subscription_placeholder_enabled, 0),
 COALESCE(subscription_placeholder_remark, '')
 FROM subscription_settings ORDER BY id DESC LIMIT 1`)
 	var result SubscriptionSettings
 	var customDir sql.NullString
-	var aliasesRaw, portsRaw sql.NullString
-	var useDefault, useV2RayN, useV2RayNG, useStreisand, useHapp, useIncy sql.NullBool
+	var aliasesRaw, portsRaw, clientRoutingRulesRaw sql.NullString
 	var placeholderEnabled sql.NullBool
 	var placeholderRemark sql.NullString
 	if err := row.Scan(
@@ -484,15 +489,10 @@ FROM subscription_settings ORDER BY id DESC LIMIT 1`)
 		&result.SingBoxSubscriptionTemplate,
 		&result.SingBoxSettingsTemplate,
 		&result.MuxTemplate,
-		&useDefault,
-		&useV2RayN,
-		&useV2RayNG,
-		&useStreisand,
-		&useHapp,
-		&useIncy,
 		&result.SubscriptionPath,
 		&aliasesRaw,
 		&portsRaw,
+		&clientRoutingRulesRaw,
 		&placeholderEnabled,
 		&placeholderRemark,
 	); err != nil {
@@ -501,12 +501,6 @@ FROM subscription_settings ORDER BY id DESC LIMIT 1`)
 	if customDir.Valid {
 		result.CustomTemplatesDirectory = &customDir.String
 	}
-	result.UseCustomJSONDefault = useDefault.Valid && useDefault.Bool
-	result.UseCustomJSONForV2RayN = useV2RayN.Valid && useV2RayN.Bool
-	result.UseCustomJSONForV2RayNG = useV2RayNG.Valid && useV2RayNG.Bool
-	result.UseCustomJSONForStreisand = useStreisand.Valid && useStreisand.Bool
-	result.UseCustomJSONForHapp = useHapp.Valid && useHapp.Bool
-	result.UseCustomJSONForIncy = useIncy.Valid && useIncy.Bool
 	result.SubscriptionPlaceholderEnabled = placeholderEnabled.Valid && placeholderEnabled.Bool
 	if placeholderRemark.Valid {
 		result.SubscriptionPlaceholderRemark = placeholderRemark.String
@@ -516,6 +510,9 @@ FROM subscription_settings ORDER BY id DESC LIMIT 1`)
 	result.SubscriptionPath = normalizePath(result.SubscriptionPath)
 	result.SubscriptionAliases = decodeStringArray(aliasesRaw.String)
 	result.SubscriptionPorts = decodeIntArray(portsRaw.String)
+	if clientRoutingRulesRaw.Valid && clientRoutingRulesRaw.String != "" {
+		_ = json.Unmarshal([]byte(clientRoutingRulesRaw.String), &result.ClientRoutingRules)
+	}
 	applySubscriptionDefaults(&result)
 	return result, nil
 }
@@ -546,20 +543,15 @@ incy_subscription_template,
 singbox_subscription_template,
 singbox_settings_template,
 mux_template,
-use_custom_json_default,
-use_custom_json_for_v2rayn,
-use_custom_json_for_v2rayng,
-use_custom_json_for_streisand,
-use_custom_json_for_happ,
-use_custom_json_for_incy,
 subscription_path,
 subscription_aliases,
 subscription_ports,
+client_routing_rules,
 subscription_placeholder_enabled,
 subscription_placeholder_remark,
 created_at,
 updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		"",
 		defaultSubscriptionProfileTitle,
 		defaultSubscriptionSupportURL,
@@ -576,15 +568,10 @@ updated_at
 		defaultSingBoxSubscriptionTemplate,
 		defaultSingBoxSettingsTemplate,
 		defaultMuxTemplate,
-		false,
-		false,
-		false,
-		false,
-		false,
-		false,
 		defaultSubscriptionPath,
 		"[]",
 		"[]",
+		defaultClientRoutingRules,
 		false,
 		defaultSubscriptionPlaceholderRemark,
 		now,

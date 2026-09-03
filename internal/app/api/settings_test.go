@@ -41,7 +41,7 @@ func createSettingsTables(t *testing.T, db *sql.DB) {
 			updated_at DATETIME NULL
 		)`,
 		`CREATE TABLE subscription_settings (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
+id INTEGER PRIMARY KEY AUTOINCREMENT,
 			subscription_url_prefix TEXT NOT NULL DEFAULT '',
 			subscription_profile_title TEXT NOT NULL DEFAULT 'Subscription',
 			subscription_support_url TEXT NOT NULL DEFAULT 'https://t.me/',
@@ -60,12 +60,7 @@ func createSettingsTables(t *testing.T, db *sql.DB) {
 			singbox_subscription_template TEXT NOT NULL DEFAULT 'singbox/default.json',
 			singbox_settings_template TEXT NOT NULL DEFAULT 'singbox/settings.json',
 			mux_template TEXT NOT NULL DEFAULT 'mux/default.json',
-			use_custom_json_default INTEGER NOT NULL DEFAULT 0,
-			use_custom_json_for_v2rayn INTEGER NOT NULL DEFAULT 0,
-			use_custom_json_for_v2rayng INTEGER NOT NULL DEFAULT 0,
-			use_custom_json_for_streisand INTEGER NOT NULL DEFAULT 0,
-			use_custom_json_for_happ INTEGER NOT NULL DEFAULT 0,
-			use_custom_json_for_incy INTEGER NOT NULL DEFAULT 0,
+			client_routing_rules TEXT NOT NULL DEFAULT '[]',
 			subscription_placeholder_enabled INTEGER NOT NULL DEFAULT 0,
 			subscription_placeholder_remark TEXT NOT NULL DEFAULT 'disabled',
 			subscription_aliases TEXT NOT NULL DEFAULT '[]',
@@ -352,7 +347,6 @@ func TestSubscriptionSettingsRoutes(t *testing.T) {
 		"subscription_path":"/custom-sub/",
 		"subscription_aliases":["/a/{identifier}","/a/","//b//"],
 		"subscription_ports":[443,443,0,65536,8443],
-		"use_custom_json_default":"true"
 	}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("update subscriptions status = %d body=%s", rec.Code, rec.Body.String())
@@ -363,8 +357,7 @@ func TestSubscriptionSettingsRoutes(t *testing.T) {
 	}
 	if updated["subscription_url_prefix"] != "https://example.com" ||
 		updated["subscription_support_url"] != "https://support.example.com" ||
-		updated["subscription_path"] != "custom-sub" ||
-		updated["use_custom_json_default"] != true {
+		updated["subscription_path"] != "custom-sub" {
 		t.Fatalf("unexpected updated settings: %#v", updated)
 	}
 	aliases := updated["subscription_aliases"].([]any)
@@ -444,7 +437,7 @@ func TestAdminSubscriptionSettingsRoute(t *testing.T) {
 
 	rec := adminJSONRequest(t, server, http.MethodPut, "/api/settings/subscriptions/admins/2", token, `{
 		"subscription_domain":" seller.example.com ",
-		"subscription_settings":{"subscription_path":"seller-sub","use_custom_json_default":true}
+		"subscription_settings":{"subscription_path":"seller-sub"}
 	}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("admin subscription update status = %d body=%s", rec.Code, rec.Body.String())
@@ -461,7 +454,7 @@ func TestAdminSubscriptionSettingsRoute(t *testing.T) {
 	if payload.ID != 2 || payload.Username != "seller" || payload.SubscriptionDomain == nil || *payload.SubscriptionDomain != "seller.example.com" {
 		t.Fatalf("unexpected admin settings response: %#v", payload)
 	}
-	if payload.SubscriptionSettings["subscription_path"] != "seller-sub" || payload.SubscriptionSettings["use_custom_json_default"] != true {
+	if payload.SubscriptionSettings["subscription_path"] != "seller-sub" {
 		t.Fatalf("unexpected admin override settings: %#v", payload.SubscriptionSettings)
 	}
 

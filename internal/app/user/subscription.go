@@ -150,6 +150,12 @@ func (s Service) RenderSubscription(ctx context.Context, req SubscriptionRenderR
 	if clientType == "" {
 		clientType = selectSubscriptionClientType(req.UserAgent, settings)
 	}
+	if clientType == "blocked" {
+		return SubscriptionHTTPResponse{
+			MediaType: "text/plain",
+			Body:      []byte(""),
+		}, nil
+	}
 	config, ok := subscriptionClientConfigs[clientType]
 	if !ok {
 		return SubscriptionHTTPResponse{}, clientError(404, "Unsupported client type")
@@ -1057,60 +1063,19 @@ func matchSubscriptionQueryAlias(alias string, path string, query url.Values) st
 
 func selectSubscriptionClientType(userAgent string, settings SubscriptionSettings) string {
 	ua := strings.TrimSpace(userAgent)
-	if regexp.MustCompile(`^([Cc]lash-verge|[Cc]lash[-\.]?[Mm]eta|[Ff][Ll][Cc]lash|[Mm]ihomo)`).MatchString(ua) {
-		return "clash-meta"
-	}
-	if regexp.MustCompile(`(?i)^clash\s*mi`).MatchString(ua) || regexp.MustCompile(`(?i)^clashmi`).MatchString(ua) {
-		return "clash-mi"
-	}
-	if regexp.MustCompile(`^([Cc]lash|[Ss]tash)`).MatchString(ua) {
-		return "clash"
-	}
-	if regexp.MustCompile(`(?i)^karing`).MatchString(ua) {
-		return "karing"
-	}
-	if regexp.MustCompile(`(?i)^hiddifynextx?`).MatchString(ua) {
-		return "hiddify"
-	}
-	if regexp.MustCompile(`^(SFA|SFI|SFM|SFT)`).MatchString(ua) {
-		return "sing-box"
-	}
-	if regexp.MustCompile(`(?i)^v2raytun`).MatchString(ua) {
-		return "v2raytun"
-	}
-	if regexp.MustCompile(`(?i)^shadowrocket`).MatchString(ua) {
-		return "shadowrocket"
-	}
-	if regexp.MustCompile(`(?i)^(nekobox|nekoboxforandroid)`).MatchString(ua) {
-		return "nekobox"
-	}
-	if regexp.MustCompile(`(?i)^passwall`).MatchString(ua) {
-		return "passwall"
-	}
-	if regexp.MustCompile(`(?i)^thron(e)?`).MatchString(ua) {
-		return "throne"
-	}
-	if regexp.MustCompile(`^(SS|SSR|SSD|SSS|Outline|Shadowsocks|SSconf)`).MatchString(ua) {
-		return "outline"
-	}
-	if (settings.UseCustomJSONDefault || settings.UseCustomJSONForV2rayN) && regexp.MustCompile(`^v2rayN/(\d+\.\d+)`).MatchString(ua) {
-		if versionAtLeast(firstVersion(ua), "6.40") {
-			return "v2ray-json"
+	for _, rule := range settings.ClientRoutingRules {
+		if rule.Pattern == "" {
+			continue
 		}
-	}
-	if (settings.UseCustomJSONDefault || settings.UseCustomJSONForV2rayNG) && regexp.MustCompile(`(?i)^v2rayng/(\d+\.\d+)`).MatchString(ua) {
-		return "v2ray-json"
-	}
-	if (settings.UseCustomJSONDefault || settings.UseCustomJSONForHapp) && regexp.MustCompile(`^Happ/(\d+\.\d+\.\d+)`).MatchString(ua) {
-		if versionAtLeast(firstVersion(ua), "1.63.1") {
-			return "happ"
+		
+		re, err := regexp.Compile(rule.Pattern)
+		if err != nil {
+			continue
 		}
-	}
-	if (settings.UseCustomJSONDefault || settings.UseCustomJSONForIncy) && regexp.MustCompile(`(?i)^incy`).MatchString(ua) {
-		return "incy"
-	}
-	if (settings.UseCustomJSONDefault || settings.UseCustomJSONForStreisand) && strings.HasPrefix(ua, "Streisand") {
-		return "v2ray-json"
+		
+		if re.MatchString(ua) {
+			return rule.Result
+		}
 	}
 	return "v2ray"
 }

@@ -2470,8 +2470,25 @@ func TestSubscriptionClientAliasesAndAppUserAgents(t *testing.T) {
 	}
 
 	settings := SubscriptionSettings{
-		UseCustomJSONForHapp: true,
-		UseCustomJSONForIncy: true,
+		ClientRoutingRules: []ClientRoutingRule{
+			{Pattern: `^([Cc]lash-verge|[Cc]lash[-\.]?[Mm]eta|[Ff][Ll][Cc]lash|[Mm]ihomo)`, Result: "clash-meta"},
+			{Pattern: `(?i)^clash\s*mi|(?i)^clashmi`, Result: "clash-mi"},
+			{Pattern: `^([Cc]lash|[Ss]tash)`, Result: "clash"},
+			{Pattern: `(?i)^karing`, Result: "karing"},
+			{Pattern: `(?i)^hiddifynextx?`, Result: "hiddify"},
+			{Pattern: `^(SFA|SFI|SFM|SFT)`, Result: "sing-box"},
+			{Pattern: `(?i)^v2raytun`, Result: "v2raytun"},
+			{Pattern: `(?i)^shadowrocket`, Result: "shadowrocket"},
+			{Pattern: `(?i)^(nekobox|nekoboxforandroid)`, Result: "nekobox"},
+			{Pattern: `(?i)^passwall`, Result: "passwall"},
+			{Pattern: `(?i)^thron(e)?`, Result: "throne"},
+			{Pattern: `^(SS|SSR|SSD|SSS|Outline|Shadowsocks|SSconf)`, Result: "outline"},
+			{Pattern: `^v2rayN/(?:6\.[4-9]\d*|[7-9]\.\d+|[1-9]\d{1,}\.\d+)`, Result: "v2ray-json"},
+			{Pattern: `(?i)^v2rayng/\d+\.\d+`, Result: "v2ray-json"},
+			{Pattern: `^Happ/(?:1\.63\.[1-9]|1\.6[4-9]\d*|1\.[7-9]\d*|[2-9]\.\d+)`, Result: "happ"},
+			{Pattern: `(?i)^incy`, Result: "incy"},
+			{Pattern: `^Streisand`, Result: "v2ray-json"},
+		},
 	}
 	for ua, expected := range map[string]string{
 		"v2RayTun/4.1":       "v2raytun",

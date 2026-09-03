@@ -143,12 +143,7 @@ func (r Repository) subscriptionSettings(ctx context.Context) (SubscriptionSetti
 	}
 	result.SubscriptionPorts = normalizePorts(row["subscription_ports"])
 	result.SubscriptionAliases = normalizeAliases(row["subscription_aliases"])
-	result.UseCustomJSONDefault = truthy(row["use_custom_json_default"])
-	result.UseCustomJSONForV2rayN = truthy(row["use_custom_json_for_v2rayn"])
-	result.UseCustomJSONForV2rayNG = truthy(row["use_custom_json_for_v2rayng"])
-	result.UseCustomJSONForStreisand = truthy(row["use_custom_json_for_streisand"])
-	result.UseCustomJSONForHapp = truthy(row["use_custom_json_for_happ"])
-	result.UseCustomJSONForIncy = truthy(row["use_custom_json_for_incy"])
+	result.ClientRoutingRules = normalizeClientRoutingRules(row["client_routing_rules"])	
 	result.SubscriptionPlaceholderEnabled = truthy(row["subscription_placeholder_enabled"])
 	result.SubscriptionPlaceholderRemark = firstNonEmptyString(stringValue(row["subscription_placeholder_remark"]), "disabled")
 	result.RawSubscriptionSettings = json.RawMessage(mustJSON(row))
@@ -482,7 +477,7 @@ func (r Repository) hosts(ctx context.Context) ([]Host, error) {
 			&hostName,
 			&hostOptions,
 			&item.HostMode,
-			&hostTTL,
+			&item.HostTTL,
 			&item.Security,
 			&item.ALPN,
 			&item.Fingerprint,
@@ -876,6 +871,33 @@ func normalizeAliases(raw any) []string {
 		result = append(result, alias)
 	}
 	return result
+}
+
+func normalizeClientRoutingRules(raw any) []ClientRoutingRule {
+	if raw == nil {
+		return []ClientRoutingRule{}
+	}
+	text := ""
+	switch typed := raw.(type) {
+	case string:
+		text = typed
+	case []byte:
+		text = string(typed)
+	default:
+		text = fmt.Sprint(raw)
+	}
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return []ClientRoutingRule{}
+	}
+	var rules []ClientRoutingRule
+	if err := json.Unmarshal([]byte(text), &rules); err == nil {
+		if rules == nil {
+			return []ClientRoutingRule{}
+		}
+		return rules
+	}
+	return []ClientRoutingRule{}
 }
 
 func mustJSON(value any) []byte {

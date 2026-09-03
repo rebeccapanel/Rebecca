@@ -33,12 +33,14 @@ import {
 	useColorModeValue,
 	useToast,
 	VStack,
+	IconButton,
 } from "@chakra-ui/react";
 import { PanelSelect as Select } from "components/common/PanelSelect";
 import {
 	ArrowPathIcon,
 	ArrowUpTrayIcon,
 	ChevronDownIcon as HeroChevronDownIcon,
+	ChevronUpIcon,
 	NoSymbolIcon,
 	PaperAirplaneIcon,
 	PlusIcon,
@@ -54,7 +56,7 @@ import {
 	useMemo,
 	useState,
 } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, useFieldArray } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery, useQueryClient } from "react-query";
 import { Link as RouterLink } from "react-router-dom";
@@ -109,6 +111,48 @@ import {
 	type DataTableColumn,
 	type DataTableRowAction,
 } from "../components/ui";
+
+const CLIENT_OPTIONS = [
+	"clash-meta",
+	"clash-mi",
+	"clash",
+	"karing",
+	"hiddify",
+	"sing-box",
+	"v2raytun",
+	"shadowrocket",
+	"nekobox",
+	"passwall",
+	"throne",
+	"outline",
+	"v2ray-json",
+	"xray-json",
+	"happ",
+	"incy",
+	"v2ray",
+	"base64-links",
+	"blocked"
+];
+
+const DEFAULT_CLIENT_ROUTING_RULES = [
+	{ pattern: "^([Cc]lash-verge|[Cc]lash[-\\.]?[Mm]eta|[Ff][Ll][Cc]lash|[Mm]ihomo)", result: "clash-meta" },
+	{ pattern: "(?i)^clash\\s*mi|(?i)^clashmi", result: "clash-mi" },
+	{ pattern: "^([Cc]lash|[Ss]tash)", result: "clash" },
+	{ pattern: "(?i)^karing", result: "karing" },
+	{ pattern: "(?i)^hiddifynextx?", result: "hiddify" },
+	{ pattern: "^(SFA|SFI|SFM|SFT)", result: "sing-box" },
+	{ pattern: "(?i)^v2raytun", result: "v2raytun" },
+	{ pattern: "(?i)^shadowrocket", result: "shadowrocket" },
+	{ pattern: "(?i)^(nekobox|nekoboxforandroid)", result: "nekobox" },
+	{ pattern: "(?i)^passwall", result: "passwall" },
+	{ pattern: "(?i)^thron(e)?", result: "throne" },
+	{ pattern: "^(SS|SSR|SSD|SSS|Outline|Shadowsocks|SSconf)", result: "outline" },
+	{ pattern: "^v2rayN/(?:6\\.[4-9]\\d*|[7-9]\\.\\d+|[1-9]\\d{1,}\\.\\d+)", result: "v2ray-json" },
+	{ pattern: "(?i)^v2rayng/\\d+\\.\\d+", result: "v2ray-json" },
+	{ pattern: "^Happ/(?:1\\.63\\.[1-9]|1\\.6[4-9]\\d*|1\\.[7-9]\\d*|[2-9]\\.\\d+)", result: "happ" },
+	{ pattern: "(?i)^incy", result: "incy" },
+	{ pattern: "^Streisand", result: "v2ray-json" },
+];
 
 type EventToggleItem = {
 	key: string;
@@ -530,6 +574,7 @@ const buildDefaultValues = (settings: TelegramSettingsResponse): FormValues => {
 type SubscriptionFormValues = SubscriptionTemplateSettings & {
 	subscription_aliases_text: string;
 	subscription_ports_text: string;
+	client_routing_rules: { pattern: string; result: string }[];
 };
 
 const parseSubscriptionPortsInput = (raw: string): number[] => {
@@ -574,13 +619,6 @@ const buildSubscriptionDefaults = (
 	singbox_subscription_template: settings?.singbox_subscription_template ?? "",
 	singbox_settings_template: settings?.singbox_settings_template ?? "",
 	mux_template: settings?.mux_template ?? "",
-	use_custom_json_default: settings?.use_custom_json_default ?? false,
-	use_custom_json_for_v2rayn: settings?.use_custom_json_for_v2rayn ?? false,
-	use_custom_json_for_v2rayng: settings?.use_custom_json_for_v2rayng ?? false,
-	use_custom_json_for_streisand:
-		settings?.use_custom_json_for_streisand ?? false,
-	use_custom_json_for_happ: settings?.use_custom_json_for_happ ?? false,
-	use_custom_json_for_incy: settings?.use_custom_json_for_incy ?? false,
 	subscription_path: settings?.subscription_path ?? "sub",
 	subscription_aliases: settings?.subscription_aliases ?? [],
 	subscription_ports: settings?.subscription_ports ?? [],
@@ -592,6 +630,7 @@ const buildSubscriptionDefaults = (
 	subscription_ports_text: formatSubscriptionPorts(
 		settings?.subscription_ports ?? [],
 	),
+	client_routing_rules: settings?.client_routing_rules ?? [],
 });
 
 const cleanOverridePayload = (
@@ -723,12 +762,6 @@ const buildSubscriptionPayload = (
 	singbox_subscription_template: values.singbox_subscription_template.trim(),
 	singbox_settings_template: values.singbox_settings_template.trim(),
 	mux_template: values.mux_template.trim(),
-	use_custom_json_default: values.use_custom_json_default,
-	use_custom_json_for_v2rayn: values.use_custom_json_for_v2rayn,
-	use_custom_json_for_v2rayng: values.use_custom_json_for_v2rayng,
-	use_custom_json_for_streisand: values.use_custom_json_for_streisand,
-	use_custom_json_for_happ: values.use_custom_json_for_happ,
-	use_custom_json_for_incy: values.use_custom_json_for_incy,
 	subscription_path: values.subscription_path?.trim() || "sub",
 	subscription_aliases: (values.subscription_aliases_text || "")
 		.split(/\r?\n/)
@@ -736,6 +769,9 @@ const buildSubscriptionPayload = (
 		.filter(Boolean),
 	subscription_ports: parseSubscriptionPortsInput(
 		values.subscription_ports_text || "",
+	),
+	client_routing_rules: (values.client_routing_rules || []).filter(
+		(rule) => rule.pattern.trim() !== ""
 	),
 	subscription_placeholder_enabled: values.subscription_placeholder_enabled,
 	subscription_placeholder_remark:
@@ -971,6 +1007,16 @@ export const IntegrationSettingsPage = () => {
 		formState: { isDirty: isSubscriptionDirty },
 	} = useForm<SubscriptionFormValues>({
 		defaultValues: buildSubscriptionDefaults(subscriptionBundle?.settings),
+	});
+
+	const {
+		fields: routingRules,
+		append: appendRoutingRule,
+		remove: removeRoutingRule,
+		move: moveRoutingRule
+	} = useFieldArray({
+		control: subscriptionControl,
+		name: "client_routing_rules",
 	});
 
 	useEffect(() => {
@@ -2983,146 +3029,105 @@ export const IntegrationSettingsPage = () => {
 										</FormHelperText>
 									</FormControl>
 								</SimpleGrid>
-								<Divider my={4} />
-								<Text fontSize="sm" fontWeight="semibold" mb={3}>
-									{t("settings.subscriptions.clientJsonSection")}
-								</Text>
-								<SimpleGrid columns={{ base: 1, md: 2 }} spacing={4}>
-									<Controller
-										control={subscriptionControl}
-										name="use_custom_json_default"
-										render={({ field }) => (
-											<FormControl display="flex" alignItems="center">
-												<Box flex="1">
-													<Text fontWeight="medium">
-														{t("settings.subscriptions.customJsonDefault")}
-													</Text>
-													<Text fontSize="sm" color="gray.500">
-														{t("settings.subscriptions.customJsonDefaultHint")}
-													</Text>
-												</Box>
-												<Switch
-													isChecked={field.value}
-													onChange={(event) =>
-														field.onChange(event.target.checked)
-													}
+
+								<Box mt={6} gridColumn={{ base: "1 / -1", md: "1 / -1" }}>
+									<Divider mb={4} />
+									<Flex justify="space-between" align={{ base: "flex-start", md: "center" }} mb={4} flexDirection={{ base: "column", sm: "row" }} gap={2}>
+										<Box>
+											<Heading size="sm" mb={1}>{t("settings.subscriptions.routingRulesTitle")}</Heading>
+											<Text fontSize="sm" color="gray.500">{t("settings.subscriptions.routingRulesDesc")}</Text>
+										</Box>
+										<Button
+											size="xs"
+											variant="outline"
+											colorScheme="orange"
+											leftIcon={<ArrowPathIcon width={14} height={14} />}
+											onClick={() => {
+												setSubscriptionValue("client_routing_rules", DEFAULT_CLIENT_ROUTING_RULES, {
+													shouldDirty: true,
+													shouldValidate: true,
+												});
+											}}
+										>
+											{t("settings.subscriptions.resetToDefault")}
+										</Button>
+									</Flex>
+
+									<VStack spacing={3} align="stretch">
+										<Flex fontWeight="semibold" fontSize="sm" px={2} display={{ base: "none", md: "flex" }}>
+											<Box flex="1">{t("settings.subscriptions.rulePattern")}</Box>
+											<Box w="220px" ml={4}>{t("settings.subscriptions.ruleResult")}</Box>
+											<Box w="100px" ml={4}></Box>
+										</Flex>
+										
+										{routingRules.map((field, index) => (
+											<Flex key={field.id} gap={3} align={{ base: "stretch", md: "center" }} flexDirection={{ base: "column", md: "row" }} bg={fieldBg} p={2} borderRadius="md" borderWidth="1px">
+												<Input 
+													flex="1" 
+													placeholder="^([Cc]lash|[Ss]tash)" 
+													fontFamily="mono" 
+													fontSize="sm"
+													{...subscriptionRegister(`client_routing_rules.${index}.pattern` as const)} 
 												/>
-											</FormControl>
-										)}
-									/>
-									<Controller
-										control={subscriptionControl}
-										name="use_custom_json_for_v2rayn"
-										render={({ field }) => (
-											<FormControl display="flex" alignItems="center">
-												<Box flex="1">
-													<Text fontWeight="medium">
-														{t("settings.subscriptions.customJsonV2rayn")}
-													</Text>
-													<Text fontSize="sm" color="gray.500">
-														{t("settings.subscriptions.customJsonV2raynHint")}
-													</Text>
-												</Box>
-												<Switch
-													isChecked={field.value}
-													onChange={(event) =>
-														field.onChange(event.target.checked)
-													}
+												
+												<Controller
+													control={subscriptionControl}
+													name={`client_routing_rules.${index}.result` as const}
+													render={({ field: controllerField }) => (
+														<Select
+															{...controllerField}
+															w={{ base: "full", md: "220px" }}
+															showSearch={false}
+														>
+															{CLIENT_OPTIONS.map((opt) => (
+																<option key={opt} value={opt}>
+																	{opt}
+																</option>
+															))}
+														</Select>
+													)}
 												/>
-											</FormControl>
-										)}
-									/>
-									<Controller
-										control={subscriptionControl}
-										name="use_custom_json_for_v2rayng"
-										render={({ field }) => (
-											<FormControl display="flex" alignItems="center">
-												<Box flex="1">
-													<Text fontWeight="medium">
-														{t("settings.subscriptions.customJsonV2rayng")}
-													</Text>
-													<Text fontSize="sm" color="gray.500">
-														{t("settings.subscriptions.customJsonV2rayngHint")}
-													</Text>
-												</Box>
-												<Switch
-													isChecked={field.value}
-													onChange={(event) =>
-														field.onChange(event.target.checked)
-													}
-												/>
-											</FormControl>
-										)}
-									/>
-									<Controller
-										control={subscriptionControl}
-										name="use_custom_json_for_streisand"
-										render={({ field }) => (
-											<FormControl display="flex" alignItems="center">
-												<Box flex="1">
-													<Text fontWeight="medium">
-														{t("settings.subscriptions.customJsonStreisand")}
-													</Text>
-													<Text fontSize="sm" color="gray.500">
-														{t(
-															"settings.subscriptions.customJsonStreisandHint",
-														)}
-													</Text>
-												</Box>
-												<Switch
-													isChecked={field.value}
-													onChange={(event) =>
-														field.onChange(event.target.checked)
-													}
-												/>
-											</FormControl>
-										)}
-									/>
-									<Controller
-										control={subscriptionControl}
-										name="use_custom_json_for_happ"
-										render={({ field }) => (
-											<FormControl display="flex" alignItems="center">
-												<Box flex="1">
-													<Text fontWeight="medium">
-														{t("settings.subscriptions.customJsonHapp")}
-													</Text>
-													<Text fontSize="sm" color="gray.500">
-														{t("settings.subscriptions.customJsonHappHint")}
-													</Text>
-												</Box>
-												<Switch
-													isChecked={field.value}
-													onChange={(event) =>
-														field.onChange(event.target.checked)
-													}
-												/>
-											</FormControl>
-										)}
-									/>
-									<Controller
-										control={subscriptionControl}
-										name="use_custom_json_for_incy"
-										render={({ field }) => (
-											<FormControl display="flex" alignItems="center">
-												<Box flex="1">
-													<Text fontWeight="medium">
-														{t("settings.subscriptions.customJsonIncy")}
-													</Text>
-													<Text fontSize="sm" color="gray.500">
-														{t("settings.subscriptions.customJsonIncyHint")}
-													</Text>
-												</Box>
-												<Switch
-													isChecked={field.value}
-													onChange={(event) =>
-														field.onChange(event.target.checked)
-													}
-												/>
-											</FormControl>
-										)}
-									/>
-								</SimpleGrid>
+
+												<HStack spacing={1} justify="flex-end">
+													<IconButton
+														aria-label="Move Up"
+														icon={<ChevronUpIcon width={16} />}
+														size="sm"
+														variant="ghost"
+														isDisabled={index === 0}
+														onClick={() => moveRoutingRule(index, index - 1)}
+													/>
+													<IconButton
+														aria-label="Move Down"
+														icon={<HeroChevronDownIcon width={16} />}
+														size="sm"
+														variant="ghost"
+														isDisabled={index === routingRules.length - 1}
+														onClick={() => moveRoutingRule(index, index + 1)}
+													/>
+													<IconButton
+														aria-label="Delete"
+														icon={<TrashIcon width={16} />}
+														size="sm"
+														colorScheme="red"
+														variant="ghost"
+														onClick={() => removeRoutingRule(index)}
+													/>
+												</HStack>
+											</Flex>
+										))}
+										
+										<Button 
+											alignSelf="flex-start" 
+											leftIcon={<PlusIcon width={16} />} 
+											size="sm" 
+											variant="outline" 
+											onClick={() => appendRoutingRule({ pattern: "", result: "v2ray" })}
+										>
+											{t("settings.subscriptions.addRule")}
+										</Button>
+									</VStack>
+								</Box>
 							</Box>
 							<Box className="master-settings-card">
 								<Heading size="sm" mb={1}>
@@ -3711,186 +3716,6 @@ export const IntegrationSettingsPage = () => {
 															</SimpleGrid>
 
 															<Divider my={4} />
-
-															<SimpleGrid
-																columns={{ base: 1, md: 2 }}
-																spacing={4}
-															>
-																<FormControl display="flex" alignItems="center">
-																	<Box flex="1">
-																		<Text fontWeight="medium">
-																			{t(
-																				"settings.subscriptions.customJsonDefault",
-																			)}
-																		</Text>
-																		<Text fontSize="sm" color="gray.500">
-																			{t(
-																				"settings.subscriptions.customJsonDefaultHint",
-																			)}
-																		</Text>
-																	</Box>
-																	<Switch
-																		isChecked={
-																			settings.use_custom_json_default ??
-																			subscriptionBundle?.settings
-																				.use_custom_json_default ??
-																			false
-																		}
-																		onChange={(event) =>
-																			handleAdminTemplateChange(
-																				admin.id,
-																				"use_custom_json_default",
-																				event.target.checked,
-																			)
-																		}
-																	/>
-																</FormControl>
-																<FormControl display="flex" alignItems="center">
-																	<Box flex="1">
-																		<Text fontWeight="medium">
-																			{t(
-																				"settings.subscriptions.customJsonV2rayn",
-																			)}
-																		</Text>
-																		<Text fontSize="sm" color="gray.500">
-																			{t(
-																				"settings.subscriptions.customJsonV2raynHint",
-																			)}
-																		</Text>
-																	</Box>
-																	<Switch
-																		isChecked={
-																			settings.use_custom_json_for_v2rayn ??
-																			subscriptionBundle?.settings
-																				.use_custom_json_for_v2rayn ??
-																			false
-																		}
-																		onChange={(event) =>
-																			handleAdminTemplateChange(
-																				admin.id,
-																				"use_custom_json_for_v2rayn",
-																				event.target.checked,
-																			)
-																		}
-																	/>
-																</FormControl>
-																<FormControl display="flex" alignItems="center">
-																	<Box flex="1">
-																		<Text fontWeight="medium">
-																			{t(
-																				"settings.subscriptions.customJsonV2rayng",
-																			)}
-																		</Text>
-																		<Text fontSize="sm" color="gray.500">
-																			{t(
-																				"settings.subscriptions.customJsonV2rayngHint",
-																			)}
-																		</Text>
-																	</Box>
-																	<Switch
-																		isChecked={
-																			settings.use_custom_json_for_v2rayng ??
-																			subscriptionBundle?.settings
-																				.use_custom_json_for_v2rayng ??
-																			false
-																		}
-																		onChange={(event) =>
-																			handleAdminTemplateChange(
-																				admin.id,
-																				"use_custom_json_for_v2rayng",
-																				event.target.checked,
-																			)
-																		}
-																	/>
-																</FormControl>
-																<FormControl display="flex" alignItems="center">
-																	<Box flex="1">
-																		<Text fontWeight="medium">
-																			{t(
-																				"settings.subscriptions.customJsonStreisand",
-																			)}
-																		</Text>
-																		<Text fontSize="sm" color="gray.500">
-																			{t(
-																				"settings.subscriptions.customJsonStreisandHint",
-																			)}
-																		</Text>
-																	</Box>
-																	<Switch
-																		isChecked={
-																			settings.use_custom_json_for_streisand ??
-																			subscriptionBundle?.settings
-																				.use_custom_json_for_streisand ??
-																			false
-																		}
-																		onChange={(event) =>
-																			handleAdminTemplateChange(
-																				admin.id,
-																				"use_custom_json_for_streisand",
-																				event.target.checked,
-																			)
-																		}
-																	/>
-																</FormControl>
-																<FormControl display="flex" alignItems="center">
-																	<Box flex="1">
-																		<Text fontWeight="medium">
-																			{t(
-																				"settings.subscriptions.customJsonHapp",
-																			)}
-																		</Text>
-																		<Text fontSize="sm" color="gray.500">
-																			{t(
-																				"settings.subscriptions.customJsonHappHint",
-																			)}
-																		</Text>
-																	</Box>
-																	<Switch
-																		isChecked={
-																			settings.use_custom_json_for_happ ??
-																			subscriptionBundle?.settings
-																				.use_custom_json_for_happ ??
-																			false
-																		}
-																		onChange={(event) =>
-																			handleAdminTemplateChange(
-																				admin.id,
-																				"use_custom_json_for_happ",
-																				event.target.checked,
-																			)
-																		}
-																	/>
-																</FormControl>
-																<FormControl display="flex" alignItems="center">
-																	<Box flex="1">
-																		<Text fontWeight="medium">
-																			{t(
-																				"settings.subscriptions.customJsonIncy",
-																			)}
-																		</Text>
-																		<Text fontSize="sm" color="gray.500">
-																			{t(
-																				"settings.subscriptions.customJsonIncyHint",
-																			)}
-																		</Text>
-																	</Box>
-																	<Switch
-																		isChecked={
-																			settings.use_custom_json_for_incy ??
-																			subscriptionBundle?.settings
-																				.use_custom_json_for_incy ??
-																			false
-																		}
-																		onChange={(event) =>
-																			handleAdminTemplateChange(
-																				admin.id,
-																				"use_custom_json_for_incy",
-																				event.target.checked,
-																			)
-																		}
-																	/>
-																</FormControl>
-															</SimpleGrid>
 
 															<Flex
 																className="master-settings-action-row"

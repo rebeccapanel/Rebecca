@@ -148,6 +148,11 @@ export interface RebeccaBackupImportResponse {
 	warnings: string[];
 }
 
+export type ClientRoutingRule = {
+  pattern: string;
+  result: string;
+};
+
 export interface SubscriptionTemplateSettings {
 	subscription_url_prefix: string;
 	subscription_profile_title: string;
@@ -165,15 +170,10 @@ export interface SubscriptionTemplateSettings {
 	singbox_subscription_template: string;
 	singbox_settings_template: string;
 	mux_template: string;
-	use_custom_json_default: boolean;
-	use_custom_json_for_v2rayn: boolean;
-	use_custom_json_for_v2rayng: boolean;
-	use_custom_json_for_streisand: boolean;
-	use_custom_json_for_happ: boolean;
-	use_custom_json_for_incy: boolean;
 	subscription_path: string;
 	subscription_aliases: string[];
 	subscription_ports: number[];
+	client_routing_rules?: ClientRoutingRule[];
 	subscription_placeholder_enabled: boolean;
 	subscription_placeholder_remark: string;
 }

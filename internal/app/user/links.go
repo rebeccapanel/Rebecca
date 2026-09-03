@@ -93,12 +93,7 @@ func effectiveSubscriptionSettings(base SubscriptionSettings, admin AdminLinkSet
 		SubscriptionPath:               normalizePath(base.SubscriptionPath),
 		SubscriptionPorts:              normalizePorts(base.SubscriptionPorts),
 		SubscriptionAliases:            append([]string{}, base.SubscriptionAliases...),
-		UseCustomJSONDefault:           base.UseCustomJSONDefault,
-		UseCustomJSONForV2rayN:         base.UseCustomJSONForV2rayN,
-		UseCustomJSONForV2rayNG:        base.UseCustomJSONForV2rayNG,
-		UseCustomJSONForStreisand:      base.UseCustomJSONForStreisand,
-		UseCustomJSONForHapp:           base.UseCustomJSONForHapp,
-		UseCustomJSONForIncy:           base.UseCustomJSONForIncy,
+		ClientRoutingRules:         	append([]ClientRoutingRule{}, base.ClientRoutingRules...), // <--- این خط حتماً باید اضافه شود
 		SubscriptionPlaceholderEnabled: base.SubscriptionPlaceholderEnabled,
 		SubscriptionPlaceholderRemark:  firstNonEmptyString(base.SubscriptionPlaceholderRemark, "disabled"),
 		RawPanelSettings:               base.RawPanelSettings,
@@ -138,18 +133,13 @@ func effectiveSubscriptionSettings(base SubscriptionSettings, admin AdminLinkSet
 			effective.SubscriptionPorts = normalizePorts(value)
 		case "subscription_aliases":
 			effective.SubscriptionAliases = normalizeAliases(value)
-		case "use_custom_json_default":
-			effective.UseCustomJSONDefault = truthy(value)
-		case "use_custom_json_for_v2rayn":
-			effective.UseCustomJSONForV2rayN = truthy(value)
-		case "use_custom_json_for_v2rayng":
-			effective.UseCustomJSONForV2rayNG = truthy(value)
-		case "use_custom_json_for_streisand":
-			effective.UseCustomJSONForStreisand = truthy(value)
-		case "use_custom_json_for_happ":
-			effective.UseCustomJSONForHapp = truthy(value)
-		case "use_custom_json_for_incy":
-			effective.UseCustomJSONForIncy = truthy(value)
+		case "client_routing_rules":
+			if text, ok := coerceString(value); ok {
+				var rules []ClientRoutingRule
+				if err := json.Unmarshal([]byte(text), &rules); err == nil {
+					effective.ClientRoutingRules = rules
+				}
+			}
 		case "subscription_placeholder_enabled":
 			effective.SubscriptionPlaceholderEnabled = truthy(value)
 		case "subscription_placeholder_remark":
