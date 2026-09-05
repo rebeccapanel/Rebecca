@@ -1,10 +1,6 @@
 import { extendTheme } from "@chakra-ui/react";
 import { mode, type StyleFunctionProps } from "@chakra-ui/theme-tools";
 
-// The theme uses CSS variables for the primary color palette so we can
-// switch named palettes at runtime by toggling a class on documentElement.
-// The variables below provide sensible defaults which match the previous
-// primary color scale.
 const sharedThemeConfig = {
 	config: {
 		initialColorMode: "dark",
@@ -42,8 +38,6 @@ const sharedThemeConfig = {
 			light: "var(--surface-light)",
 			dark: "var(--surface-dark)",
 		},
-		// primary color scale reads from CSS variables so swapping theme is just
-		// adding/removing a class that sets a different set of --primary-* vars.
 		primary: {
 			50: "var(--primary-50)",
 			100: "var(--primary-100)",
@@ -60,8 +54,6 @@ const sharedThemeConfig = {
 			750: "#222C3B",
 		},
 	},
-	// global styles: panel tokens and primary colors are CSS variables so
-	// theme/accent can switch at runtime without remounting the app.
 	styles: {
 		global: {
 			".chakra-modal__overlay": {
@@ -110,18 +102,18 @@ const sharedThemeConfig = {
 				"--surface-dark": "#242424",
 			},
 			".rb-theme-light": {
-				"--rb-panel-bg": "#f4f5f7",
-				"--rb-panel-main": "#f7f8fa",
+				"--rb-panel-bg": "#f0f2f5",
+				"--rb-panel-main": "#f3f5f8",
 				"--rb-panel-sidebar": "#ffffff",
 				"--rb-panel-surface": "#ffffff",
-				"--rb-panel-elevated": "#eef0f3",
-				"--rb-panel-border": "#d8dce2",
-				"--rb-panel-border-strong": "#c2c8d0",
-				"--rb-panel-text": "#17191c",
-				"--rb-panel-text-secondary": "#4f5661",
-				"--rb-panel-text-muted": "#7a828e",
-				"--bg-light": "#f4f5f7",
-				"--bg-dark": "#f4f5f7",
+				"--rb-panel-elevated": "#e2e6eb",
+				"--rb-panel-border": "#cbd2d9",
+				"--rb-panel-border-strong": "#9aa5b1",
+				"--rb-panel-text": "#101318",
+				"--rb-panel-text-secondary": "#3e4651",
+				"--rb-panel-text-muted": "#626d7a",
+				"--bg-light": "#f0f2f5",
+				"--bg-dark": "#f0f2f5",
 				"--surface-light": "#ffffff",
 				"--surface-dark": "#ffffff",
 			},
