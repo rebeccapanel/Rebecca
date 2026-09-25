@@ -1083,6 +1083,7 @@ export const NodesPage: FC = () => {
 				});
 				generateSuccessMessage(t("nodes.updateServiceTriggered"), toast);
 				queryClient.invalidateQueries(FetchNodesQueryKey);
+				queryClient.invalidateQueries(["maintenance-info"]);
 				setServiceUpdateTarget(null);
 			} catch (err) {
 				generateErrorMessage(err, toast);
@@ -1111,6 +1112,7 @@ export const NodesPage: FC = () => {
 				toast,
 			);
 			queryClient.invalidateQueries(FetchNodesQueryKey);
+			queryClient.invalidateQueries(["maintenance-info"]);
 			setServiceUpdateTarget(null);
 		} catch (err) {
 			generateErrorMessage(err, toast);
