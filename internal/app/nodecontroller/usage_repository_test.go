@@ -741,6 +741,57 @@ func TestScaleUserUsageCombinesFactorsAndSaturates(t *testing.T) {
 	}
 }
 
+func TestCompactOldNodeUserUsageDayPreservesTraffic(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "usage-compaction.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	createUsageTables(t, ctx, db)
+
+	repo := NewRepository(db, "sqlite")
+	oldDay := time.Date(2026, time.January, 2, 0, 0, 0, 0, time.UTC)
+	recent := time.Date(2026, time.January, 12, 4, 0, 0, 0, time.UTC)
+	rows := []struct {
+		created time.Time
+		userID  int64
+		nodeID  int64
+		traffic int64
+	}{
+		{oldDay, 10, 7, 5},
+		{oldDay.Add(time.Hour), 10, 7, 7},
+		{oldDay.Add(23 * time.Hour), 10, 7, 8},
+		{oldDay.Add(2 * time.Hour), 11, 7, 11},
+		{oldDay.Add(3 * time.Hour), 10, 8, 13},
+		{recent, 10, 7, 17},
+	}
+	for _, row := range rows {
+		if _, err := db.ExecContext(ctx, `INSERT INTO node_user_usages (created_at, user_id, node_id, used_traffic) VALUES (?, ?, ?, ?)`, repo.timeArg(row.created), row.userID, row.nodeID, row.traffic); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	compacted, err := repo.CompactOldNodeUserUsageDay(ctx, time.Date(2026, time.January, 10, 0, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if compacted != 5 {
+		t.Fatalf("compacted source rows=%d want=5", compacted)
+	}
+	assertInt64(t, db, `SELECT COUNT(*) FROM node_user_usages`, 4)
+	assertInt64(t, db, `SELECT COALESCE(SUM(used_traffic), 0) FROM node_user_usages`, 61)
+	assertInt64(t, db, `SELECT used_traffic FROM node_user_usages WHERE created_at = '2026-01-02 00:00:00.000000' AND user_id = 10 AND node_id = 7`, 20)
+	assertInt64(t, db, `SELECT used_traffic FROM node_user_usages WHERE created_at = '2026-01-02 00:00:00.000000' AND user_id = 11 AND node_id = 7`, 11)
+	assertInt64(t, db, `SELECT used_traffic FROM node_user_usages WHERE created_at = '2026-01-02 00:00:00.000000' AND user_id = 10 AND node_id = 8`, 13)
+	assertInt64(t, db, `SELECT used_traffic FROM node_user_usages WHERE created_at = '2026-01-12 04:00:00.000000'`, 17)
+
+	compacted, err = repo.CompactOldNodeUserUsageDay(ctx, time.Date(2026, time.January, 10, 0, 0, 0, 0, time.UTC))
+	if err != nil || compacted != 0 {
+		t.Fatalf("second compaction rows=%d error=%v", compacted, err)
+	}
+}
+
 func createUsageTables(t *testing.T, ctx context.Context, db *sql.DB) {
 	t.Helper()
 	statements := []string{

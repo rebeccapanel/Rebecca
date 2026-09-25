@@ -422,6 +422,16 @@ func (c Controller) PruneProcessedUsageQueue(ctx context.Context, cutoff time.Ti
 	return deleted, err
 }
 
+func (c Controller) CompactOldNodeUserUsageDay(ctx context.Context, cutoff time.Time) (int, error) {
+	var compacted int
+	err := retryTransientUsageWrite(ctx, func() error {
+		var err error
+		compacted, err = c.repo.CompactOldNodeUserUsageDay(ctx, cutoff)
+		return err
+	})
+	return compacted, err
+}
+
 func isTransientUsagePersistError(err error) bool {
 	if errors.Is(err, driver.ErrBadConn) {
 		return true

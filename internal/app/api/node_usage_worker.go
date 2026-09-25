@@ -15,6 +15,8 @@ const nodeUsageHistoryFlushInterval = 30 * time.Second
 const nodeUsageQueueCleanupInterval = time.Minute
 const nodeUsageQueueRetention = 5 * time.Minute
 const nodeUsageHistoryBatchSize = 50000
+const nodeUserUsageHourlyRetention = 7 * 24 * time.Hour
+const nodeUserUsageCompactionInterval = 24 * time.Hour
 
 func (s *Server) runNodeUsageCollector(ctx context.Context) {
 	interval := parseNodeUsageCollectionInterval(s.cfg.NodeUsageCollectionInterval)
@@ -70,6 +72,39 @@ func (s *Server) runNodeUsageFlushWorker(ctx context.Context) {
 			return
 		}
 		timer := time.NewTimer(interval)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+	}
+}
+
+func (s *Server) runNodeUserUsageCompactionWorker(ctx context.Context) {
+	for {
+		cutoff := time.Now().UTC().Truncate(24 * time.Hour).Add(-nodeUserUsageHourlyRetention)
+		workerCtx, cancel := context.WithTimeout(ctx, 30*time.Minute)
+		total := 0
+		for {
+			compacted, err := s.nodeController.CompactOldNodeUserUsageDay(workerCtx, cutoff)
+			if err != nil {
+				if ctx.Err() == nil {
+					logging.Warnf(logging.ComponentNode, "usage history compaction failed: %v", err)
+				}
+				break
+			}
+			if compacted == 0 {
+				break
+			}
+			total += compacted
+		}
+		cancel()
+		if total > 0 {
+			logging.Infof(logging.ComponentNode, "usage history compacted source_rows=%d cutoff=%s", total, cutoff.Format(time.DateOnly))
+		}
+
+		timer := time.NewTimer(nodeUserUsageCompactionInterval)
 		select {
 		case <-ctx.Done():
 			timer.Stop()

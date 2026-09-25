@@ -197,6 +197,7 @@ func (s *Server) StartBackground(ctx context.Context) {
 		go s.runNodeRecoveryWorker(ctx)
 		go s.runNodeUsageCollector(ctx)
 		go s.runNodeUsageFlushWorker(ctx)
+		go s.runNodeUserUsageCompactionWorker(ctx)
 		go s.runAdminLifecycleWorker(ctx)
 		s.runUserLifecycleWorkers(ctx)
 		go s.runTelegramBackupScheduler(ctx)

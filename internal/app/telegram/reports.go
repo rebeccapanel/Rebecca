@@ -362,12 +362,11 @@ func FormatOptionalBytesDelta(before *int64, after *int64) string {
 	if delta == 0 {
 		return ""
 	}
-	sign := "+"
 	if delta < 0 {
-		sign = "-"
 		delta = -delta
+		return "-" + FormatOptionalBytes(&delta)
 	}
-	return sign + FormatOptionalBytes(&delta)
+	return FormatOptionalBytes(&delta)
 }
 
 func formatOptionalInt(value *int64) string {

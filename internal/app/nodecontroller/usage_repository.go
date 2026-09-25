@@ -1828,6 +1828,77 @@ ORDER BY id LIMIT ?`, r.timeArg(cutoff), limit)
 	return total, nil
 }
 
+// CompactOldNodeUserUsageDay replaces the oldest complete day before cutoff
+// with one row per user and node while preserving the exact traffic total.
+func (r Repository) CompactOldNodeUserUsageDay(ctx context.Context, cutoff time.Time) (int, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	nonMidnight := "TIME(created_at) <> '00:00:00'"
+	if r.dialect == "sqlite" {
+		nonMidnight = "strftime('%H:%M:%S', created_at) <> '00:00:00'"
+	}
+	var oldest any
+	err = tx.QueryRowContext(ctx, `SELECT MIN(created_at)
+FROM node_user_usages
+WHERE created_at < ? AND user_id IS NOT NULL AND node_id IS NOT NULL AND `+nonMidnight, r.timeArg(cutoff)).Scan(&oldest)
+	if err != nil {
+		return 0, err
+	}
+	oldestTime := usageDBTime(oldest)
+	if oldestTime == nil {
+		return 0, nil
+	}
+	dayStart := time.Date(oldestTime.Year(), oldestTime.Month(), oldestTime.Day(), 0, 0, 0, 0, time.UTC)
+	dayEnd := dayStart.AddDate(0, 0, 1)
+
+	rows, err := tx.QueryContext(ctx, `SELECT user_id, node_id, COALESCE(SUM(used_traffic), 0), COUNT(*)
+FROM node_user_usages
+WHERE created_at >= ? AND created_at < ? AND user_id IS NOT NULL AND node_id IS NOT NULL
+GROUP BY user_id, node_id`, r.timeArg(dayStart), r.timeArg(dayEnd))
+	if err != nil {
+		return 0, err
+	}
+	usageByNode := map[int64]map[int64]int64{}
+	sourceRows := 0
+	for rows.Next() {
+		var userID, nodeID, usedTraffic int64
+		var count int
+		if err := rows.Scan(&userID, &nodeID, &usedTraffic, &count); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		if usageByNode[nodeID] == nil {
+			usageByNode[nodeID] = map[int64]int64{}
+		}
+		usageByNode[nodeID][userID] = usedTraffic
+		sourceRows += count
+	}
+	if err := rows.Close(); err != nil {
+		return 0, err
+	}
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM node_user_usages
+WHERE created_at >= ? AND created_at < ? AND user_id IS NOT NULL AND node_id IS NOT NULL`, r.timeArg(dayStart), r.timeArg(dayEnd)); err != nil {
+		return 0, err
+	}
+	for nodeID, usageByUser := range usageByNode {
+		if err := r.batchUpsertNodeUserUsage(ctx, tx, dayStart, nodeID, usageByUser); err != nil {
+			return 0, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+	return sourceRows, nil
+}
+
 func groupStagedUsersByNode(rows []stagedUserUsageRow) map[int64][]stagedUserUsageRow {
 	result := make(map[int64][]stagedUserUsageRow)
 	for _, row := range rows {

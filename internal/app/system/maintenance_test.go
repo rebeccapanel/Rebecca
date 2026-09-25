@@ -113,6 +113,30 @@ func TestGitHubUpdateCheckerFindsDevBuildThroughWorkflowEndpoint(t *testing.T) {
 	}
 }
 
+func TestGitHubUpdateCheckerUsesDownloadableNodeDevBinary(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/rebeccapanel/Rebecca-node/releases/latest":
+			_ = json.NewEncoder(w).Encode(map[string]any{"tag_name": "v1.5.0"})
+		case "/repos/rebeccapanel/Rebecca-node/releases/tags/dev-binaries":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"target_commitish": "4b5467fc25ac58441dd45a8a619e6ffb3315e98f",
+				"published_at":     "2026-09-23T10:00:00Z",
+			})
+		default:
+			t.Fatalf("unexpected request: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	checker := &GitHubUpdateChecker{APIBase: server.URL, RawBase: server.URL, HTTPClient: server.Client()}
+	current := "dev-4b5467f"
+	status := checker.Status(context.Background(), "rebeccapanel/Rebecca-node", &current, "dev")
+	if status.Error != "" || status.Target == nil || *status.Target != current || status.Available {
+		t.Fatalf("unexpected node update status: %#v", status)
+	}
+}
+
 func TestSelectManifestBuildUsesLatestTag(t *testing.T) {
 	data := map[string]any{
 		"latest": "dev-newest",

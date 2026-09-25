@@ -811,6 +811,11 @@ func (c *GitHubUpdateChecker) buildDevVersionsFromWorkflow(ctx context.Context, 
 }
 
 func (c *GitHubUpdateChecker) latestDev(ctx context.Context, repo string) (*ReleaseInfo, error) {
+	if strings.EqualFold(strings.TrimSpace(repo), "rebeccapanel/Rebecca-node") {
+		if info := c.latestNodeDevBinary(ctx, repo); info != nil {
+			return info, nil
+		}
+	}
 	if info, err := c.latestDevFromManifest(ctx, repo); err == nil && info != nil {
 		return info, nil
 	}
@@ -849,6 +854,31 @@ func (c *GitHubUpdateChecker) latestDev(ctx context.Context, repo string) (*Rele
 		return &info, nil
 	}
 	return nil, nil
+}
+
+func (c *GitHubUpdateChecker) latestNodeDevBinary(ctx context.Context, repo string) *ReleaseInfo {
+	var data map[string]any
+	url := strings.TrimRight(c.APIBase, "/") + "/repos/" + repo + "/releases/tags/dev-binaries"
+	if err := c.getJSON(ctx, url, &data); err != nil {
+		return nil
+	}
+	sha := strings.TrimSpace(stringFromAny(data["target_commitish"]))
+	if !devVersionPattern.MatchString("dev-" + sha) {
+		return nil
+	}
+	short := sha
+	if len(short) > 7 {
+		short = short[:7]
+	}
+	info := ReleaseInfo{
+		"tag":        "dev-" + strings.ToLower(short),
+		"sha":        sha,
+		"branch":     "dev",
+		"created_at": data["published_at"],
+		"updated_at": data["updated_at"],
+		"html_url":   data["html_url"],
+	}
+	return &info
 }
 
 func (c *GitHubUpdateChecker) latestDevFromManifest(ctx context.Context, repo string) (*ReleaseInfo, error) {
