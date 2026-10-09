@@ -51,7 +51,7 @@ func main() {
 		if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
 			scheme = "https"
 		}
-		logging.Infof(logging.ComponentRuntime, "server listening on %s://%s extra_ports=%v", scheme, cfg.Addr, cfg.ExtraListenPorts)
+		logging.Infof(logging.ComponentRuntime, "server listening on %s://%s extra_ports=%v proxy_protocol=%v", scheme, cfg.Addr, cfg.ExtraListenPorts, cfg.ProxyProtocol)
 		errCh <- server.Run()
 	}()
 

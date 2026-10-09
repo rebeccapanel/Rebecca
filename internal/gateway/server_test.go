@@ -1,11 +1,16 @@
 package gateway
 
 import (
+	"bufio"
+	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/pires/go-proxyproto"
 )
 
 type testHostAwareHandler struct {
@@ -234,5 +239,271 @@ func TestNewHTTPServerSetsReadAndIdleTimeouts(t *testing.T) {
 	}
 	if server.WriteTimeout != 0 {
 		t.Fatalf("WriteTimeout = %s, want 0 for WebSocket streams", server.WriteTimeout)
+	}
+}
+
+func TestGatewayProxyProtocolV1(t *testing.T) {
+	var remoteAddr string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		remoteAddr = r.RemoteAddr
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
+	server, err := NewServer(Config{
+		Addr:            "127.0.0.1:0",
+		ProxyProtocol:   true,
+		APIHandler:      handler,
+		CertificateBase: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runErrCh := make(chan error, 1)
+	go func() {
+		runErrCh <- server.Run()
+	}()
+	defer func() {
+		_ = server.Shutdown(context.Background())
+	}()
+
+	select {
+	case <-server.Ready():
+	case err := <-runErrCh:
+		t.Fatalf("server failed before ready: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for server to become ready")
+	}
+
+	addrs := server.ListenAddrs()
+	if len(addrs) == 0 {
+		t.Fatal("no active listener addresses")
+	}
+
+	conn, err := net.Dial("tcp", addrs[0])
+	if err != nil {
+		t.Fatalf("dial failed: %v", err)
+	}
+	defer conn.Close()
+
+	// Send PROXY protocol v1 header
+	header := "PROXY TCP4 198.51.100.33 127.0.0.1 54321 8000\r\n"
+	request := "GET /api/test HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+	if _, err := conn.Write([]byte(header + request)); err != nil {
+		t.Fatalf("failed to write request: %v", err)
+	}
+
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	if err != nil {
+		t.Fatalf("failed to read response: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		t.Fatalf("failed to parse RemoteAddr %q: %v", remoteAddr, err)
+	}
+	if host != "198.51.100.33" {
+		t.Fatalf("expected client IP 198.51.100.33, got %s (full RemoteAddr: %s)", host, remoteAddr)
+	}
+}
+
+func TestGatewayProxyProtocolV2(t *testing.T) {
+	var remoteAddr string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		remoteAddr = r.RemoteAddr
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
+	server, err := NewServer(Config{
+		Addr:            "127.0.0.1:0",
+		ProxyProtocol:   true,
+		APIHandler:      handler,
+		CertificateBase: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runErrCh := make(chan error, 1)
+	go func() {
+		runErrCh <- server.Run()
+	}()
+	defer func() {
+		_ = server.Shutdown(context.Background())
+	}()
+
+	select {
+	case <-server.Ready():
+	case err := <-runErrCh:
+		t.Fatalf("server failed before ready: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for server to become ready")
+	}
+
+	addrs := server.ListenAddrs()
+	if len(addrs) == 0 {
+		t.Fatal("no active listener addresses")
+	}
+
+	conn, err := net.Dial("tcp", addrs[0])
+	if err != nil {
+		t.Fatalf("dial failed: %v", err)
+	}
+	defer conn.Close()
+
+	// Build and write PROXY protocol v2 header
+	proxyHeader := &proxyproto.Header{
+		Version:           2,
+		Command:           proxyproto.PROXY,
+		TransportProtocol: proxyproto.TCPv4,
+		SourceAddr: &net.TCPAddr{
+			IP:   net.ParseIP("203.0.113.88"),
+			Port: 43210,
+		},
+		DestinationAddr: &net.TCPAddr{
+			IP:   net.ParseIP("127.0.0.1"),
+			Port: 8000,
+		},
+	}
+	if _, err := proxyHeader.WriteTo(conn); err != nil {
+		t.Fatalf("write proxy v2 header: %v", err)
+	}
+
+	request := "GET /api/test HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+	if _, err := conn.Write([]byte(request)); err != nil {
+		t.Fatalf("failed to write request: %v", err)
+	}
+
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	if err != nil {
+		t.Fatalf("failed to read response: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err != nil {
+		t.Fatalf("failed to parse RemoteAddr %q: %v", remoteAddr, err)
+	}
+	if host != "203.0.113.88" {
+		t.Fatalf("expected client IP 203.0.113.88, got %s (full RemoteAddr: %s)", host, remoteAddr)
+	}
+}
+
+func TestGatewayProxyProtocolPolicyUseAllowsDirectConnections(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+
+	server, err := NewServer(Config{
+		Addr:                "127.0.0.1:0",
+		ProxyProtocol:       true,
+		ProxyProtocolPolicy: "use",
+		APIHandler:          handler,
+		CertificateBase:     t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runErrCh := make(chan error, 1)
+	go func() {
+		runErrCh <- server.Run()
+	}()
+	defer func() {
+		_ = server.Shutdown(context.Background())
+	}()
+
+	select {
+	case <-server.Ready():
+	case err := <-runErrCh:
+		t.Fatalf("server failed before ready: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for server to become ready")
+	}
+
+	addrs := server.ListenAddrs()
+	conn, err := net.Dial("tcp", addrs[0])
+	if err != nil {
+		t.Fatalf("dial failed: %v", err)
+	}
+	defer conn.Close()
+
+	// Direct request WITHOUT PROXY protocol header
+	request := "GET /api/test HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+	if _, err := conn.Write([]byte(request)); err != nil {
+		t.Fatalf("failed to write request: %v", err)
+	}
+
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	if err != nil {
+		t.Fatalf("direct request failed with policy 'use': %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+}
+
+func TestGatewayProxyProtocolPolicyRequireRejectsDirectConnections(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	server, err := NewServer(Config{
+		Addr:                "127.0.0.1:0",
+		ProxyProtocol:       true,
+		ProxyProtocolPolicy: "require",
+		APIHandler:          handler,
+		CertificateBase:     t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runErrCh := make(chan error, 1)
+	go func() {
+		runErrCh <- server.Run()
+	}()
+	defer func() {
+		_ = server.Shutdown(context.Background())
+	}()
+
+	select {
+	case <-server.Ready():
+	case err := <-runErrCh:
+		t.Fatalf("server failed before ready: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for server to become ready")
+	}
+
+	addrs := server.ListenAddrs()
+	conn, err := net.Dial("tcp", addrs[0])
+	if err != nil {
+		t.Fatalf("dial failed: %v", err)
+	}
+	defer conn.Close()
+
+	// Direct request WITHOUT PROXY protocol header should fail under 'require'
+	request := "GET /api/test HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+	_, _ = conn.Write([]byte(request))
+
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	resp, err := http.ReadResponse(bufio.NewReader(conn), nil)
+	if err == nil {
+		resp.Body.Close()
+		t.Fatalf("expected direct request without PROXY header to fail under policy 'require', but got status %d", resp.StatusCode)
 	}
 }

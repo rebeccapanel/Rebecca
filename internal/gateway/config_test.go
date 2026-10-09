@@ -66,6 +66,83 @@ UVICORN_SSL_KEYFILE = "/var/lib/rebecca/certs/key.pem"
 	}
 }
 
+func TestLoadConfigProxyProtocolDefaultOff(t *testing.T) {
+	t.Setenv("REBECCA_PROXY_PROTOCOL", "")
+	t.Setenv("PROXY_PROTOCOL", "")
+	t.Setenv("REBECCA_PROXY_PROTOCOL_POLICY", "")
+
+	cfg := LoadConfig()
+	if cfg.ProxyProtocol {
+		t.Fatalf("ProxyProtocol=%v want false", cfg.ProxyProtocol)
+	}
+	if cfg.ProxyProtocolPolicy != "use" {
+		t.Fatalf("ProxyProtocolPolicy=%q want %q", cfg.ProxyProtocolPolicy, "use")
+	}
+}
+
+func TestLoadConfigProxyProtocolEnabled(t *testing.T) {
+	for _, val := range []string{"true", "1", "yes", "on", "use"} {
+		t.Run(val, func(t *testing.T) {
+			t.Setenv("REBECCA_PROXY_PROTOCOL", val)
+			t.Setenv("PROXY_PROTOCOL", "")
+			cfg := LoadConfig()
+			if !cfg.ProxyProtocol {
+				t.Fatalf("val=%s: ProxyProtocol=%v want true", val, cfg.ProxyProtocol)
+			}
+			if cfg.ProxyProtocolPolicy != "use" {
+				t.Fatalf("val=%s: ProxyProtocolPolicy=%q want %q", val, cfg.ProxyProtocolPolicy, "use")
+			}
+		})
+	}
+}
+
+func TestLoadConfigProxyProtocolRequire(t *testing.T) {
+	t.Setenv("REBECCA_PROXY_PROTOCOL", "require")
+	cfg := LoadConfig()
+	if !cfg.ProxyProtocol {
+		t.Fatalf("ProxyProtocol=%v want true", cfg.ProxyProtocol)
+	}
+	if cfg.ProxyProtocolPolicy != "require" {
+		t.Fatalf("ProxyProtocolPolicy=%q want require", cfg.ProxyProtocolPolicy)
+	}
+
+	t.Setenv("REBECCA_PROXY_PROTOCOL", "true")
+	t.Setenv("REBECCA_PROXY_PROTOCOL_POLICY", "require")
+	cfg = LoadConfig()
+	if !cfg.ProxyProtocol || cfg.ProxyProtocolPolicy != "require" {
+		t.Fatalf("ProxyProtocol=%v, Policy=%q want true, require", cfg.ProxyProtocol, cfg.ProxyProtocolPolicy)
+	}
+}
+
+func TestLoadConfigProxyProtocolFallbackToGenericEnv(t *testing.T) {
+	t.Setenv("REBECCA_PROXY_PROTOCOL", "")
+	t.Setenv("PROXY_PROTOCOL", "true")
+	cfg := LoadConfig()
+	if !cfg.ProxyProtocol {
+		t.Fatalf("ProxyProtocol=%v want true", cfg.ProxyProtocol)
+	}
+}
+
+func TestLoadConfigProxyProtocolFromEnvFile(t *testing.T) {
+	envPath := filepath.Join(t.TempDir(), ".env")
+	writeTestFile(t, envPath, `
+REBECCA_PROXY_PROTOCOL = "true"
+REBECCA_PROXY_PROTOCOL_POLICY = "require"
+`)
+	t.Setenv("REBECCA_ENV_FILE", envPath)
+	t.Setenv("REBECCA_PROXY_PROTOCOL", "")
+	t.Setenv("PROXY_PROTOCOL", "")
+	t.Setenv("REBECCA_PROXY_PROTOCOL_POLICY", "")
+
+	cfg := LoadConfig()
+	if !cfg.ProxyProtocol {
+		t.Fatalf("ProxyProtocol=%v want true", cfg.ProxyProtocol)
+	}
+	if cfg.ProxyProtocolPolicy != "require" {
+		t.Fatalf("ProxyProtocolPolicy=%q want %q", cfg.ProxyProtocolPolicy, "require")
+	}
+}
+
 func writeTestFile(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {

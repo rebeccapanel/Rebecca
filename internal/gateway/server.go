@@ -12,14 +12,19 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pires/go-proxyproto"
 	certificateapp "github.com/rebeccapanel/rebecca/internal/app/certificates"
 )
 
 type Server struct {
-	cfg     Config
-	server  *http.Server
-	servers []*http.Server
-	tls     *tls.Config
+	cfg        Config
+	server     *http.Server
+	servers    []*http.Server
+	tls        *tls.Config
+	listeners  []net.Listener
+	listenerMu sync.Mutex
+	readyOnce  sync.Once
+	readyCh    chan struct{}
 }
 
 type hostAwareHandler interface {
@@ -32,11 +37,11 @@ func NewServer(cfg Config) (*Server, error) {
 		return nil, fmt.Errorf("incomplete TLS configuration: set both UVICORN_SSL_CERTFILE and UVICORN_SSL_KEYFILE, or leave both empty for plain HTTP")
 	}
 	resolver, err := certificateapp.NewResolver(cfg.CertificateBase, cfg.TLSCertFile, cfg.TLSKeyFile)
-	if err != nil {
+	if err != nil && (strings.TrimSpace(cfg.CertificateBase) != "" || strings.TrimSpace(cfg.TLSCertFile) != "" || strings.TrimSpace(cfg.TLSKeyFile) != "") {
 		return nil, err
 	}
 	var tlsConfig *tls.Config
-	if resolver.Ready() {
+	if resolver != nil && resolver.Ready() {
 		tlsConfig = &tls.Config{
 			MinVersion:     tls.VersionTLS12,
 			GetCertificate: resolver.GetCertificate,
@@ -89,7 +94,29 @@ func NewServer(cfg Config) (*Server, error) {
 		servers = append(servers, newHTTPServer(addr, mux))
 	}
 
-	return &Server{cfg: cfg, server: mainServer, servers: servers, tls: tlsConfig}, nil
+	return &Server{
+		cfg:     cfg,
+		server:  mainServer,
+		servers: servers,
+		tls:     tlsConfig,
+		readyCh: make(chan struct{}),
+	}, nil
+}
+
+func (s *Server) Ready() <-chan struct{} {
+	return s.readyCh
+}
+
+func (s *Server) ListenAddrs() []string {
+	s.listenerMu.Lock()
+	defer s.listenerMu.Unlock()
+	addrs := make([]string, 0, len(s.listeners))
+	for _, l := range s.listeners {
+		if l != nil {
+			addrs = append(addrs, l.Addr().String())
+		}
+	}
+	return addrs
 }
 
 func newHTTPServer(addr string, handler http.Handler) *http.Server {
@@ -144,16 +171,62 @@ func (s *Server) Run() error {
 	if len(s.servers) == 0 && s.server != nil {
 		s.servers = []*http.Server{s.server}
 	}
+	listeners := make([]net.Listener, len(s.servers))
+	for i, server := range s.servers {
+		addr := server.Addr
+		if addr == "" {
+			if s.tls != nil {
+				addr = ":https"
+			} else {
+				addr = ":http"
+			}
+		}
+		ln, err := net.Listen("tcp", addr)
+		if err != nil {
+			for j := 0; j < i; j++ {
+				_ = listeners[j].Close()
+			}
+			return err
+		}
+		listeners[i] = ln
+	}
+
+	s.listenerMu.Lock()
+	s.listeners = listeners
+	s.listenerMu.Unlock()
+	s.readyOnce.Do(func() {
+		close(s.readyCh)
+	})
+
 	errCh := make(chan error, len(s.servers))
-	for _, server := range s.servers {
+	for i, server := range s.servers {
 		server := server
+		ln := listeners[i]
+		var listener net.Listener = ln
+		if s.cfg.ProxyProtocol {
+			ppListener := &proxyproto.Listener{
+				Listener:          ln,
+				ReadHeaderTimeout: 10 * time.Second,
+			}
+			if strings.EqualFold(strings.TrimSpace(s.cfg.ProxyProtocolPolicy), "require") {
+				ppListener.ConnPolicy = func(_ proxyproto.ConnPolicyOptions) (proxyproto.Policy, error) {
+					return proxyproto.REQUIRE, nil
+				}
+			} else {
+				ppListener.ConnPolicy = func(_ proxyproto.ConnPolicyOptions) (proxyproto.Policy, error) {
+					return proxyproto.USE, nil
+				}
+			}
+			listener = ppListener
+		}
+
 		go func() {
 			var err error
 			if s.tls != nil {
 				server.TLSConfig = s.tls
-				err = server.ListenAndServeTLS("", "")
+				err = server.ServeTLS(listener, "", "")
 			} else {
-				err = server.ListenAndServe()
+				err = server.Serve(listener)
 			}
 			errCh <- err
 		}()
@@ -169,6 +242,9 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	if s == nil {
 		return nil
 	}
+	s.readyOnce.Do(func() {
+		close(s.readyCh)
+	})
 	if len(s.servers) == 0 && s.server != nil {
 		s.servers = []*http.Server{s.server}
 	}
