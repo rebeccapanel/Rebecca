@@ -39,6 +39,7 @@ import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import {
 	ALPN_OPTION,
+	Address_Port_Strategy,
 	GrpcStreamSettings,
 	HttpUpgradeStreamSettings,
 	KcpStreamSettings,
@@ -48,6 +49,7 @@ import {
 	Protocols,
 	RealityStreamSettings,
 	SSMethods,
+	SockoptStreamSettings,
 	StreamSettings,
 	TcpStreamSettings,
 	TlsStreamSettings,
@@ -150,6 +152,13 @@ interface OutboundFormValues {
 	muxConcurrency: number;
 	muxXudpConcurrency: number;
 	muxXudpProxyUdp443: "reject" | "allow" | "skip";
+	sockoptEnabled: boolean;
+	sockoptTcpFastOpen: boolean;
+	sockoptTcpMptcp: boolean;
+	sockoptPenetrate: boolean;
+	sockoptDialerProxy: string;
+	sockoptTcpKeepAliveInterval: number;
+	sockoptAddressPortStrategy: string;
 	vnextEncryption: string;
 	dnsNetwork: string;
 	dnsAddress: string;
@@ -242,6 +251,13 @@ const defaultValues: OutboundFormValues = {
 	muxConcurrency: 8,
 	muxXudpConcurrency: 16,
 	muxXudpProxyUdp443: "reject",
+	sockoptEnabled: false,
+	sockoptTcpFastOpen: false,
+	sockoptTcpMptcp: false,
+	sockoptPenetrate: false,
+	sockoptDialerProxy: "",
+	sockoptTcpKeepAliveInterval: 0,
+	sockoptAddressPortStrategy: Address_Port_Strategy.NONE,
 	vnextEncryption: "auto",
 	dnsNetwork: "udp",
 	dnsAddress: "",
@@ -526,6 +542,17 @@ const buildOutboundJson = (values: OutboundFormValues) => {
 		);
 	}
 
+	if (values.sockoptEnabled) {
+		streamSettings.sockopt = new SockoptStreamSettings(
+			values.sockoptDialerProxy,
+			values.sockoptTcpFastOpen,
+			Number(values.sockoptTcpKeepAliveInterval) || 0,
+			values.sockoptTcpMptcp,
+			values.sockoptPenetrate,
+			values.sockoptAddressPortStrategy || Address_Port_Strategy.NONE,
+		);
+	}
+
 	const mux = values.muxEnabled
 		? new Mux(
 				true,
@@ -591,6 +618,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 	const tcpType = watch("tcpType");
 
 	const muxEnabled = watch("muxEnabled");
+	const sockoptEnabled = watch("sockoptEnabled");
 	const requiredMessage = t("validation.required");
 	const invalidPortMessage = t("validation.invalidPort");
 	const typedProtocol = (protocol as ProtocolValue) || Protocols.VLESS;
@@ -667,6 +695,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 
 	const mapJsonToFormValues = useCallback((json: any): OutboundFormValues => {
 		const outbound = Outbound.fromJson(json);
+		const sockopt = json?.streamSettings?.sockopt;
 		const mapped: OutboundFormValues = {
 			...defaultValues,
 			tag: json?.tag ?? "",
@@ -686,6 +715,14 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 				json?.mux?.xudpProxyUDP443 === "reject"
 					? json.mux.xudpProxyUDP443
 					: defaultValues.muxXudpProxyUdp443,
+			sockoptEnabled: Boolean(sockopt),
+			sockoptTcpFastOpen: Boolean(sockopt?.tcpFastOpen),
+			sockoptTcpMptcp: Boolean(sockopt?.tcpMptcp),
+			sockoptPenetrate: Boolean(sockopt?.penetrate),
+			sockoptDialerProxy: sockopt?.dialerProxy ?? "",
+			sockoptTcpKeepAliveInterval: Number(sockopt?.tcpKeepAliveInterval) || 0,
+			sockoptAddressPortStrategy:
+				sockopt?.addressPortStrategy ?? Address_Port_Strategy.NONE,
 		};
 
 		const stream =
@@ -2436,6 +2473,80 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 											)}
 										</Box>
 									)}
+
+									<Box>
+										<Text fontWeight="semibold" mb={3}>
+											Sockopt
+										</Text>
+										<FormControl display="flex" alignItems="center">
+											<FormLabel mb="0">
+												{t("inbounds.sockopt.enable")}
+											</FormLabel>
+											<Switch size="sm" {...register("sockoptEnabled")} />
+										</FormControl>
+										{sockoptEnabled && (
+											<VStack align="stretch" spacing={3} mt={3}>
+												<FormControl display="flex" alignItems="center">
+													<FormLabel mb="0">
+														{t("inbounds.sockopt.tcpFastOpen")}
+													</FormLabel>
+													<Switch
+														size="sm"
+														{...register("sockoptTcpFastOpen")}
+													/>
+												</FormControl>
+												<FormControl display="flex" alignItems="center">
+													<FormLabel mb="0">
+														{t("inbounds.sockopt.tcpMptcp")}
+													</FormLabel>
+													<Switch size="sm" {...register("sockoptTcpMptcp")} />
+												</FormControl>
+												<FormControl display="flex" alignItems="center">
+													<FormLabel mb="0">
+														{t("inbounds.sockopt.penetrate")}
+													</FormLabel>
+													<Switch size="sm" {...register("sockoptPenetrate")} />
+												</FormControl>
+												<FormControl>
+													<FormLabel>
+														{t("inbounds.sockopt.dialerProxy")}
+													</FormLabel>
+													<Input size="sm" {...register("sockoptDialerProxy")} />
+												</FormControl>
+												<FormControl>
+													<FormLabel>
+														{t("inbounds.sockopt.tcpKeepAliveInterval")}
+													</FormLabel>
+													<Input
+														size="sm"
+														type="number"
+														{...register("sockoptTcpKeepAliveInterval", {
+															valueAsNumber: true,
+														})}
+													/>
+												</FormControl>
+												<FormControl>
+													<FormLabel>Address Port Strategy</FormLabel>
+													<Controller
+														control={control}
+														name="sockoptAddressPortStrategy"
+														render={({ field }) => (
+															<SearchableTagSelect
+																mode="single"
+																options={Object.values(Address_Port_Strategy)}
+																value={field.value ?? ""}
+																onChange={(value) =>
+																	field.onChange(value as string)
+																}
+																placeholder={Address_Port_Strategy.NONE}
+																searchPlaceholder={t("search")}
+															/>
+														)}
+													/>
+												</FormControl>
+											</VStack>
+										)}
+									</Box>
 								</VStack>
 							</TabPanel>
 							<TabPanel>
