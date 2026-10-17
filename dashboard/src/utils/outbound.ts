@@ -565,7 +565,7 @@ export class SockoptStreamSettings extends CommonClass {
 		tcpKeepAliveInterval = 0,
 		tcpMptcp = false,
 		penetrate = false,
-		addressPortStrategy = Address_Port_Strategy.NONE,
+		addressPortStrategy: string = Address_Port_Strategy.NONE,
 	) {
 		super();
 		this.dialerProxy = dialerProxy ?? "";

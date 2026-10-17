@@ -258,9 +258,22 @@ func (s *Server) handleRouteTest(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"success": true, "obj": routeTestObject(result)})
 }
 
+// effectiveOutboundTestType keeps latency tests away from WireGuard outbounds. A latency test
+// starts a second Xray with the outbound, which is a second session with the same WireGuard key:
+// the remote peer moves to it and the running tunnel stalls for a few seconds. Those outbounds are
+// measured with ICMP to their endpoint instead.
+func effectiveOutboundTestType(outbound map[string]any, testType string) string {
+	protocol := strings.ToLower(strings.TrimSpace(stringFromAny(outbound["protocol"])))
+	if protocol == "wireguard" && testType == "latency" && outboundHasAddress(outbound) {
+		return "icmp"
+	}
+	return testType
+}
+
 func (s *Server) runOutboundTest(ctx context.Context, nodeID int64, outbound map[string]any, allOutbounds []map[string]any, testType string, testURL string) nodecontroller.OutboundTestResult {
 	outboundTag := strings.TrimSpace(stringFromAny(outbound["tag"]))
 	outboundProtocol := strings.ToLower(strings.TrimSpace(stringFromAny(outbound["protocol"])))
+	testType = effectiveOutboundTestType(outbound, testType)
 	if outboundTag == "" {
 		return nodecontroller.OutboundTestResult{
 			Success:  false,

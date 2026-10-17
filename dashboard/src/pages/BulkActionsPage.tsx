@@ -13,28 +13,34 @@ import {
 	Grid,
 	GridItem,
 	HStack,
+	IconButton,
 	Input,
 	SimpleGrid,
 	Stack,
 	Text,
 	Textarea,
+	Tooltip,
 	useToast,
 	VStack,
 } from "@chakra-ui/react";
 import {
 	CheckCircleIcon,
+	ClipboardIcon,
 	ExclamationCircleIcon,
+	LinkIcon,
 	PlusIcon,
+	QrCodeIcon,
 	TrashIcon,
 } from "@heroicons/react/24/outline";
 import AdvancedUserActions from "components/AdvancedUserActions";
 import { PanelSelect as Select } from "components/common/PanelSelect";
+import { ConfirmDialog } from "components/dialogs/ConfirmDialog";
 import { PageHeader, PageTabs } from "components/ui";
 import { useAdminsStore } from "contexts/AdminsContext";
 import { useDashboard } from "contexts/DashboardContext";
 import { useServicesStore } from "contexts/ServicesContext";
 import useGetUser from "hooks/useGetUser";
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import { fetch } from "service/http";
@@ -50,6 +56,11 @@ import type {
 	UserCreateWithService,
 } from "types/User";
 import { isUserManagementLocked } from "utils/adminTraffic";
+import { copyTextToClipboard } from "utils/clipboard";
+
+const QRCodeDialog = lazy(async () => ({
+	default: (await import("components/QRCodeDialog")).QRCodeDialog,
+}));
 
 type BulkTab = "create" | "edit" | "delete" | "permissions";
 type UsernameMode = "sequence" | "list";
@@ -59,6 +70,15 @@ type BatchResult = {
 	username: string;
 	ok: boolean;
 	detail: string;
+	subscription?: string;
+	links?: string[];
+	// deleted again from the results card after the run
+	deleted?: boolean;
+};
+
+const absoluteLink = (link?: string | null) => {
+	if (!link) return "";
+	return link.startsWith("/") ? window.location.origin + link : link;
 };
 
 const MAX_BATCH_SIZE = 500;
@@ -104,7 +124,8 @@ const errorDetail = (error: unknown) => {
 
 const runLimited = async (
 	usernames: string[],
-	worker: (username: string) => Promise<void>,
+	worker: (username: string) => Promise<Partial<BatchResult> | undefined>,
+	concurrency = 4,
 ) => {
 	const results = new Array<BatchResult>(usernames.length);
 	let cursor = 0;
@@ -113,15 +134,17 @@ const runLimited = async (
 			const index = cursor++;
 			const username = usernames[index];
 			try {
-				await worker(username);
-				results[index] = { username, ok: true, detail: "Completed" };
+				const extra = await worker(username);
+				results[index] = { username, ok: true, detail: "Completed", ...extra };
 			} catch (error) {
 				results[index] = { username, ok: false, detail: errorDetail(error) };
 			}
 		}
 	};
 	await Promise.all(
-		Array.from({ length: Math.min(4, usernames.length) }, () => runner()),
+		Array.from({ length: Math.min(concurrency, usernames.length) }, () =>
+			runner(),
+		),
 	);
 	return results;
 };
@@ -139,13 +162,106 @@ const Surface = ({ children }: { children: React.ReactNode }) => (
 	</Box>
 );
 
-const Results = ({ results }: { results: BatchResult[] }) => {
+const ResultAction = ({
+	label,
+	icon,
+	isDisabled,
+	onClick,
+}: {
+	label: string;
+	icon: React.ReactElement;
+	isDisabled?: boolean;
+	onClick: () => void;
+}) => (
+	<Tooltip label={label}>
+		<span>
+			<IconButton
+				aria-label={label}
+				icon={icon}
+				variant="ghost"
+				size="sm"
+				minW="30px"
+				h="30px"
+				isDisabled={isDisabled}
+				onClick={onClick}
+			/>
+		</span>
+	</Tooltip>
+);
+
+const Results = ({
+	results,
+	canDelete = false,
+	onDeleted,
+}: {
+	results: BatchResult[];
+	canDelete?: boolean;
+	onDeleted?: (usernames: string[]) => void;
+}) => {
 	const { t } = useTranslation();
+	const toast = useToast();
+	const setQRCode = useDashboard((state) => state.setQRCode);
+	const setSubLink = useDashboard((state) => state.setSubLink);
+	const performBulkUserAction = useDashboard(
+		(state) => state.performBulkUserAction,
+	);
+	const refetchUsers = useDashboard((state) => state.refetchUsers);
+	const [confirmDelete, setConfirmDelete] = useState(false);
+	const [deleting, setDeleting] = useState(false);
 	if (!results.length) return null;
+	// users this run created that are still there
+	const createdNames = results
+		.filter((result) => result.ok && !result.deleted)
+		.map((result) => result.username);
+	const deleteCreated = async () => {
+		setDeleting(true);
+		try {
+			const result = await performBulkUserAction({
+				action: "delete_users",
+				usernames: createdNames,
+			});
+			toast({
+				title: t("bulkActions.delete.completed"),
+				description: t("bulkActions.delete.completedDescription", {
+					count: result.count,
+				}),
+				status: "success",
+				isClosable: true,
+			});
+			onDeleted?.(createdNames);
+			void refetchUsers(true);
+		} catch (error) {
+			toast({
+				title: t("bulkActions.delete.failed"),
+				description: errorDetail(error),
+				status: "error",
+				isClosable: true,
+			});
+		} finally {
+			setDeleting(false);
+			setConfirmDelete(false);
+		}
+	};
 	const succeeded = results.filter((result) => result.ok).length;
+	const copy = async (text: string) => {
+		if (!text) return;
+		try {
+			await copyTextToClipboard(text);
+			toast({ title: t("copied"), status: "success", duration: 1200 });
+		} catch {
+			toast({ title: t("usersTable.copyFailed"), status: "error" });
+		}
+	};
+	// in the order the users were created
+	const live = results.filter((result) => !result.deleted);
+	const allLinks = live
+		.map((result) => result.subscription)
+		.filter(Boolean)
+		.join("\n");
+	const allConfigs = live.flatMap((result) => result.links ?? []).join("\n");
 	return (
 		<Surface>
-			<HStack justify="space-between" align="flex-start" mb={3}>
+			<HStack justify="space-between" align="flex-start" mb={3} gap={3} flexWrap="wrap">
 				<Box>
 					<Text fontWeight="semibold">{t("bulkActions.results.title")}</Text>
 					<Text color="panel.textSecondary" fontSize="sm">
@@ -155,51 +271,144 @@ const Results = ({ results }: { results: BatchResult[] }) => {
 						})}
 					</Text>
 				</Box>
-				<Badge colorScheme={succeeded === results.length ? "green" : "orange"}>
-					{succeeded}/{results.length}
-				</Badge>
+				<HStack spacing={2} flexWrap="wrap">
+					{allLinks && (
+						<Button
+							size="xs"
+							variant="outline"
+							leftIcon={<LinkIcon width={14} />}
+							onClick={() => void copy(allLinks)}
+						>
+							{t("bulkActions.results.copyAllLinks")}
+						</Button>
+					)}
+					{allConfigs && (
+						<Button
+							size="xs"
+							variant="outline"
+							leftIcon={<ClipboardIcon width={14} />}
+							onClick={() => void copy(allConfigs)}
+						>
+							{t("bulkActions.results.copyAllConfigs")}
+						</Button>
+					)}
+					{canDelete && createdNames.length > 0 && (
+						<Button
+							size="xs"
+							variant="outline"
+							colorScheme="red"
+							leftIcon={<TrashIcon width={14} />}
+							isLoading={deleting}
+							onClick={() => setConfirmDelete(true)}
+						>
+							{t("bulkActions.results.deleteCreated")}
+						</Button>
+					)}
+					<Badge colorScheme={succeeded === results.length ? "green" : "orange"}>
+						{succeeded}/{results.length}
+					</Badge>
+				</HStack>
 			</HStack>
 			<Stack spacing={0} borderTopWidth="1px" borderColor="panel.border">
-				{results.map((result) => (
-					<HStack
-						key={result.username}
-						justify="space-between"
-						align="flex-start"
-						gap={4}
-						py={2.5}
-						borderBottomWidth="1px"
-						borderColor="panel.border"
-					>
-						<HStack minW={0}>
-							<Box color={result.ok ? "green.400" : "red.400"} flexShrink={0}>
-								{result.ok ? (
-									<CheckCircleIcon width={18} />
-								) : (
-									<ExclamationCircleIcon width={18} />
-								)}
-							</Box>
-							<Code bg="transparent" color="inherit" noOfLines={1}>
-								{result.username}
-							</Code>
-						</HStack>
-						<Text
-							fontSize="sm"
-							color={result.ok ? "panel.textSecondary" : "red.400"}
-							textAlign="end"
+				{results.map((result) => {
+					const hasLinks =
+						!result.deleted &&
+						Boolean(result.subscription || result.links?.length);
+					return (
+						<HStack
+							key={result.username}
+							justify="space-between"
+							align="center"
+							gap={4}
+							py={hasLinks ? 1.5 : 2.5}
+							borderBottomWidth="1px"
+							borderColor="panel.border"
 						>
-							{result.detail}
-						</Text>
-					</HStack>
-				))}
+							<HStack minW={0}>
+								<Box
+									color={
+										result.deleted
+											? "panel.textSecondary"
+											: result.ok
+												? "green.400"
+												: "red.400"
+									}
+									flexShrink={0}
+								>
+									{result.deleted ? (
+										<TrashIcon width={18} />
+									) : result.ok ? (
+										<CheckCircleIcon width={18} />
+									) : (
+										<ExclamationCircleIcon width={18} />
+									)}
+								</Box>
+								<Code bg="transparent" color="inherit" noOfLines={1}>
+									{result.username}
+								</Code>
+							</HStack>
+							{result.ok && hasLinks ? (
+								<HStack spacing={1}>
+									<ResultAction
+										label={t("usersTable.copyLink")}
+										icon={<LinkIcon width={18} />}
+										isDisabled={!result.subscription}
+										onClick={() => void copy(result.subscription ?? "")}
+									/>
+									<ResultAction
+										label={t("usersTable.copyConfigs")}
+										icon={<ClipboardIcon width={18} />}
+										isDisabled={!result.links?.length}
+										onClick={() => void copy((result.links ?? []).join("\n"))}
+									/>
+									<ResultAction
+										label={t("usersTable.qrCode")}
+										icon={<QrCodeIcon width={18} />}
+										onClick={() => {
+											setQRCode(result.links ?? [], result.username);
+											setSubLink(result.subscription || null);
+										}}
+									/>
+								</HStack>
+							) : (
+								<Text
+									fontSize="sm"
+									color={result.ok ? "panel.textSecondary" : "red.400"}
+									textAlign="end"
+								>
+									{result.deleted ? t("bulkActions.results.deleted") : result.detail}
+								</Text>
+							)}
+						</HStack>
+					);
+				})}
 			</Stack>
+			<ConfirmDialog
+				isOpen={confirmDelete}
+				onClose={() => setConfirmDelete(false)}
+				onConfirm={deleteCreated}
+				isLoading={deleting}
+				colorScheme="red"
+				confirmLabel={t("bulkActions.results.deleteCreated")}
+				title={t("bulkActions.results.deleteCreatedTitle", {
+					count: createdNames.length,
+				})}
+				description={t("bulkActions.results.deleteCreatedDescription", {
+					names:
+						createdNames.slice(0, 10).join(", ") +
+						(createdNames.length > 10 ? `, +${createdNames.length - 10}` : ""),
+				})}
+			/>
 		</Surface>
 	);
 };
 
 const BulkCreatePanel = ({
 	canConfigurePeriodicUsageReset,
+	canDelete,
 }: {
 	canConfigurePeriodicUsageReset: boolean;
+	canDelete: boolean;
 }) => {
 	const { t } = useTranslation();
 	const toast = useToast();
@@ -252,6 +461,43 @@ const BulkCreatePanel = ({
 	const invalidNames = usernames.filter(
 		(username) => !USERNAME_PATTERN.test(username),
 	);
+
+	// usernames of the preview that are already taken, so they can be marked before the run
+	const [existingNames, setExistingNames] = useState<Set<string>>(new Set());
+	useEffect(() => {
+		const names = usernames.filter((username) => USERNAME_PATTERN.test(username));
+		if (!names.length) {
+			setExistingNames(new Set());
+			return;
+		}
+		let cancelled = false;
+		const timer = setTimeout(async () => {
+			const found = new Set<string>();
+			for (let index = 0; index < names.length; index += 100) {
+				const batch = names.slice(index, index + 100);
+				try {
+					const response = await fetch<{ users?: Array<{ username: string }> }>(
+						"/users",
+						{ query: { username: batch, limit: batch.length } },
+					);
+					for (const user of response?.users ?? []) {
+						found.add(user.username.toLowerCase());
+					}
+				} catch {
+					// the preview just stays unmarked
+				}
+			}
+			if (!cancelled) setExistingNames(found);
+		}, 400);
+		return () => {
+			cancelled = true;
+			clearTimeout(timer);
+		};
+	}, [usernames]);
+	const existingCount = usernames.filter((username) =>
+		existingNames.has(username.toLowerCase()),
+	).length;
+
 	const canSubmit =
 		usernames.length > 0 &&
 		invalidNames.length === 0 &&
@@ -270,6 +516,7 @@ const BulkCreatePanel = ({
 			0,
 			Math.floor(Number(autoDeleteDays) || 0),
 		);
+		// one at a time, so the users are created (and listed) in the order of their names
 		const batchResults = await runLimited(usernames, async (username) => {
 			const body: UserCreateWithService = {
 				username,
@@ -291,8 +538,15 @@ const BulkCreatePanel = ({
 				auto_delete_in_days:
 					normalizedAutoDelete > 0 ? normalizedAutoDelete : null,
 			};
-			await fetch("/v2/users", { method: "POST", body });
-		});
+			const created = await fetch<{
+				subscription_url?: string | null;
+				links?: string[] | null;
+			}>("/v2/users", { method: "POST", body });
+			return {
+				subscription: absoluteLink(created?.subscription_url),
+				links: created?.links ?? [],
+			};
+		}, 1);
 		setResults(batchResults);
 		setIsRunning(false);
 		void refetchUsers(true);
@@ -558,7 +812,17 @@ const BulkCreatePanel = ({
 							{usernames.slice(0, 12).map((username) => (
 								<Code
 									key={username}
-									colorScheme={USERNAME_PATTERN.test(username) ? "gray" : "red"}
+									colorScheme={
+										USERNAME_PATTERN.test(username) &&
+										!existingNames.has(username.toLowerCase())
+											? "gray"
+											: "red"
+									}
+									title={
+										existingNames.has(username.toLowerCase())
+											? t("bulkActions.create.exists")
+											: undefined
+									}
 								>
 									{username}
 								</Code>
@@ -576,6 +840,11 @@ const BulkCreatePanel = ({
 								})}
 							</Text>
 						)}
+						{existingCount > 0 && (
+							<Text color="red.400" fontSize="sm" mt={2}>
+								{t("bulkActions.create.existing", { count: existingCount })}
+							</Text>
+						)}
 					</Box>
 					<Button
 						colorScheme="primary"
@@ -588,7 +857,19 @@ const BulkCreatePanel = ({
 					</Button>
 				</HStack>
 			</Surface>
-			<Results results={results} />
+			<Results
+				results={results}
+				canDelete={canDelete}
+				onDeleted={(names) =>
+					setResults((prev) =>
+						prev.map((result) =>
+							names.includes(result.username)
+								? { ...result, deleted: true }
+								: result,
+						),
+					)
+				}
+			/>
 		</VStack>
 	);
 };
@@ -1134,6 +1415,9 @@ export const BulkActionsPage = () => {
 	}, [activeTab, location.hash, navigate]);
 
 	const setTab = (tab: BulkTab) => navigate({ hash: tab });
+	const isQRCodeDialogOpen = useDashboard(
+		(state) => state.QRcodeLinks !== null,
+	);
 
 	return (
 		<VStack spacing={5} align="stretch" dir={i18n.dir(i18n.language)} w="full">
@@ -1162,6 +1446,9 @@ export const BulkActionsPage = () => {
 				</Alert>
 			) : activeTab === "create" ? (
 				<BulkCreatePanel
+					canDelete={
+						privileged || Boolean(permissions?.[UserPermissionToggle.Delete])
+					}
 					canConfigurePeriodicUsageReset={
 						privileged ||
 						Boolean(permissions?.[UserPermissionToggle.PeriodicUsageReset])
@@ -1180,6 +1467,11 @@ export const BulkActionsPage = () => {
 					<AlertIcon />
 					{t("bulkActions.noPermission")}
 				</Alert>
+			)}
+			{isQRCodeDialogOpen && (
+				<Suspense fallback={null}>
+					<QRCodeDialog />
+				</Suspense>
 			)}
 		</VStack>
 	);
