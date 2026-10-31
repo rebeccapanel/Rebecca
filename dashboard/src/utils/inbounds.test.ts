@@ -5,6 +5,7 @@ import {
 	createDefaultInboundForm,
 	getInboundTraffic,
 	inboundTagAllowsEmoji,
+	parseHeaderPairs,
 	rawInboundToFormValues,
 	type RawInbound,
 	validateInboundFormFields,
@@ -562,5 +563,37 @@ describe("TCP header inbound settings", () => {
 		).toMatchObject({
 			header: { type: "http", request: { path: [] } },
 		});
+	});
+});
+
+describe("xhttp custom headers", () => {
+	it("keeps a comma-separated value as one header", () => {
+		const values = createDefaultInboundForm();
+		values.streamNetwork = "xhttp";
+		values.xhttpHeaders = [
+			{ name: "Accept-Language", value: "en-US,en;q=0.9,fa;q=0.8" },
+		];
+		expect(buildInboundPayload(values).streamSettings).toMatchObject({
+			xhttpSettings: {
+				headers: { "Accept-Language": "en-US,en;q=0.9,fa;q=0.8" },
+			},
+		});
+	});
+
+	it("parses pasted name=value pairs with quoted values", () => {
+		expect(
+			parseHeaderPairs(
+				'Accept-Language="en-US,en;q=0.9,fa;q=0.8" Origin="https://offline.example.org" Sec-Fetch-Site="same-origin"',
+			),
+		).toEqual([
+			{ name: "Accept-Language", value: "en-US,en;q=0.9,fa;q=0.8" },
+			{ name: "Origin", value: "https://offline.example.org" },
+			{ name: "Sec-Fetch-Site", value: "same-origin" },
+		]);
+		expect(parseHeaderPairs("X-Token=abc")).toEqual([
+			{ name: "X-Token", value: "abc" },
+		]);
+		expect(parseHeaderPairs("Accept-Language")).toBeUndefined();
+		expect(parseHeaderPairs("   ")).toBeUndefined();
 	});
 });

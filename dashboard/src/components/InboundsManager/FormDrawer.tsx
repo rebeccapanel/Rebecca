@@ -83,6 +83,7 @@ import {
 	inboundPortNumbers,
 	inboundTagAllowsEmoji,
 	supportsMultiplePorts,
+	parseHeaderPairs,
 	validateInboundFormFields,
 	validateInboundFormValues,
 } from "utils/inbounds";
@@ -428,6 +429,7 @@ export const InboundFormModal: FC<Props> = ({
 	const {
 		fields: xhttpHeaderFields,
 		append: appendXhttpHeader,
+		insert: insertXhttpHeader,
 		remove: removeXhttpHeader,
 	} = useFieldArray({
 		control,
@@ -4520,6 +4522,13 @@ export const InboundFormModal: FC<Props> = ({
 																			`xhttpHeaders.${index}.name` as const,
 																		)}
 																		placeholder={t("inbounds.ws.headerName")}
+																		onPaste={(event) => {
+																			const headers = parseHeaderPairs(event.clipboardData.getData("text"));
+																			if (!headers) return;
+																			event.preventDefault();
+																			removeXhttpHeader(index);
+																			insertXhttpHeader(index, headers);
+																		}}
 																	/>
 																</FormControl>
 																<FormControl>

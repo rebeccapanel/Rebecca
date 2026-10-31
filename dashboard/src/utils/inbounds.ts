@@ -3463,6 +3463,18 @@ const headersFromFormSingleValue = (
 	return Object.keys(record).length ? record : undefined;
 };
 
+export const parseHeaderPairs = (text: string): HeaderForm[] | undefined => {
+	const input = text.trim();
+	const pair = /([^\s=]+)=(?:"([^"]*)"|(\S+))\s*/y;
+	const headers: HeaderForm[] = [];
+	while (pair.lastIndex < input.length) {
+		const match = pair.exec(input);
+		if (!match) return undefined;
+		headers.push({ name: match[1], value: match[2] ?? match[3] });
+	}
+	return headers.length ? headers : undefined;
+};
+
 const getHeaderValue = (
 	headers: Record<string, string | string[]> | undefined,
 	headerName: string,
@@ -3603,12 +3615,12 @@ const buildStreamSettings = (
 			acceptProxyProtocol: values.httpupgradeAcceptProxyProtocol || undefined,
 			path: values.httpupgradePath,
 			host: values.httpupgradeHost,
-			headers: headersFromForm(values.httpupgradeHeaders),
+			headers: headersFromFormSingleValue(values.httpupgradeHeaders),
 		});
 	}
 
 	if (values.streamNetwork === "splithttp") {
-		const headers = headersFromForm(values.splithttpHeaders);
+		const headers = headersFromFormSingleValue(values.splithttpHeaders);
 		const splithttpSettings = cleanObject({
 			path: shouldIncludeValue(
 				values.splithttpPath,
@@ -3725,7 +3737,7 @@ const buildStreamSettings = (
 
 	if (values.streamNetwork === "xhttp") {
 		const mode = values.xhttpMode;
-		const headers = headersFromForm(values.xhttpHeaders);
+		const headers = headersFromFormSingleValue(values.xhttpHeaders);
 		const xhttpSettings = cleanObject({
 			path: shouldIncludeValue(values.xhttpPath, defaults.xhttpPath, initial, [
 				"streamSettings",
