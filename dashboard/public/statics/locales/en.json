@@ -3929,6 +3929,8 @@
   "inbounds.xhttp.paddingBytesHelp": "Range of random padding bytes added to each request.",
   "inbounds.xhttp.maxBufferedHelp": "Maximum buffered upload size before the client waits.",
   "inbounds.xhttp.maxUploadBytesHelp": "Largest single upload request allowed, in bytes.",
+  "inbounds.xhttp.minPostsInterval": "Min interval between uploads (ms)",
+  "inbounds.xhttp.minPostsIntervalHelp": "Minimum delay between upload requests in milliseconds. A range such as 80-150 is also accepted.",
   "inbounds.xhttp.streamUpHelp": "Seconds the server keeps a stream-up upload session open.",
   "inbounds.xhttp.noSSEHelp": "Stop sending the SSE header in responses.",
   "inbounds.xhttp.paddingObfsModeHelp": "Pad requests to hide their size pattern.",

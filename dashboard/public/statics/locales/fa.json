@@ -3928,6 +3928,8 @@
   "inbounds.xhttp.paddingBytesHelp": "بازه‌ی بایت‌های پرکننده‌ی تصادفی که به هر درخواست اضافه می‌شود.",
   "inbounds.xhttp.maxBufferedHelp": "حداکثر حجم آپلود بافرشده قبل از اینکه کلاینت منتظر بماند.",
   "inbounds.xhttp.maxUploadBytesHelp": "بزرگ‌ترین درخواست آپلود منفرد مجاز، بر حسب بایت.",
+  "inbounds.xhttp.minPostsInterval": "حداقل فاصله بین آپلودها بر حسب میلی‌ثانیه (Min interval between uploads)",
+  "inbounds.xhttp.minPostsIntervalHelp": "حداقل تأخیر بین درخواست‌های آپلود بر حسب میلی‌ثانیه. بازه‌ای مثل 80-150 هم قبول است.",
   "inbounds.xhttp.streamUpHelp": "ثانیه‌هایی که سرور نشست آپلود stream-up را باز نگه می‌دارد.",
   "inbounds.xhttp.noSSEHelp": "ارسال هدر SSE را در پاسخ‌ها متوقف می‌کند.",
   "inbounds.xhttp.paddingObfsModeHelp": "درخواست‌ها را پر می‌کند تا الگوی اندازه‌ی آن‌ها پنهان شود.",

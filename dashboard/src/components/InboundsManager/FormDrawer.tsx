@@ -4662,7 +4662,7 @@ export const InboundFormModal: FC<Props> = ({
 															))}
 														</div>
 													</div>
-													{xhttpMode === "packet-up" && (
+													{(xhttpMode === "packet-up" || xhttpMode === "auto") && (
 														<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
 															<FormControl>
 																<FormLabel helpKey="inbounds.xhttp.maxBufferedHelp">{t("inbounds.xhttp.maxBuffered")}</FormLabel>
@@ -4676,6 +4676,13 @@ export const InboundFormModal: FC<Props> = ({
 																<Input
 																	{...register("xhttpScMaxEachPostBytes")}
 																	placeholder="1000000"
+																/>
+															</FormControl>
+															<FormControl>
+																<FormLabel helpKey="inbounds.xhttp.minPostsIntervalHelp">{t("inbounds.xhttp.minPostsInterval")}</FormLabel>
+																<Input
+																	{...register("xhttpScMinPostsIntervalMs")}
+																	placeholder="30"
 																/>
 															</FormControl>
 														</div>
