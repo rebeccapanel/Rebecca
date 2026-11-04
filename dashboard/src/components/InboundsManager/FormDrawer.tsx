@@ -4697,13 +4697,22 @@ export const InboundFormModal: FC<Props> = ({
 														</div>
 													)}
 													{xhttpMode === "stream-up" && (
-														<FormControl>
-															<FormLabel helpKey="inbounds.xhttp.streamUpHelp">{t("inbounds.xhttp.streamUp")}</FormLabel>
-															<Input
-																{...register("xhttpScStreamUpServerSecs")}
-																placeholder="20-80"
-															/>
-														</FormControl>
+														<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+															<FormControl>
+																<FormLabel helpKey="inbounds.xhttp.maxBufferedHelp">{t("inbounds.xhttp.maxBuffered")}</FormLabel>
+																<Input
+																	{...register("xhttpScMaxBufferedPosts")}
+																	placeholder="30"
+																/>
+															</FormControl>
+															<FormControl>
+																<FormLabel helpKey="inbounds.xhttp.streamUpHelp">{t("inbounds.xhttp.streamUp")}</FormLabel>
+																<Input
+																	{...register("xhttpScStreamUpServerSecs")}
+																	placeholder="20-80"
+																/>
+															</FormControl>
+														</div>
 													)}
 													<FormControl className="flex items-center">
 														<FormLabel className="mb-0" helpKey="inbounds.xhttp.noSSEHelp">{t("inbounds.xhttp.noSSE")}</FormLabel>

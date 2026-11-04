@@ -3502,6 +3502,15 @@ const omitHeader = (
 	return Object.keys(next).length ? next : undefined;
 };
 
+const XHTTP_FORM_KEYS = new Set([
+	"path", "host", "headers", "mode", "xmux",
+	"scMaxBufferedPosts", "scMaxEachPostBytes", "scMinPostsIntervalMs", "scStreamUpServerSecs",
+	"xPaddingBytes", "xPaddingObfsMode", "xPaddingKey", "xPaddingHeader", "xPaddingPlacement", "xPaddingMethod",
+	"noSSEHeader", "noGRPCHeader", "uplinkHTTPMethod", "uplinkChunkSize", "serverMaxHeaderBytes",
+	"sessionIDPlacement", "sessionIDKey", "sessionIDTable", "sessionIDLength", "sessionPlacement", "sessionKey",
+	"seqPlacement", "seqKey", "uplinkDataPlacement", "uplinkDataKey",
+]);
+
 const buildStreamSettings = (
 	values: InboundFormValues,
 	options?: BuildInboundOptions,
@@ -3737,6 +3746,7 @@ const buildStreamSettings = (
 
 	if (values.streamNetwork === "xhttp") {
 		const mode = values.xhttpMode;
+		const sendsPackets = mode === "packet-up" || mode === "auto";
 		const headers = headersFromFormSingleValue(values.xhttpHeaders);
 		const xhttpSettings = cleanObject({
 			path: shouldIncludeValue(values.xhttpPath, defaults.xhttpPath, initial, [
@@ -3755,7 +3765,7 @@ const buildStreamSettings = (
 				: undefined,
 			headers: headers || undefined,
 			scMaxBufferedPosts:
-				mode === "packet-up" &&
+				(sendsPackets || mode === "stream-up") &&
 				shouldIncludeValue(
 					values.xhttpScMaxBufferedPosts,
 					defaults.xhttpScMaxBufferedPosts,
@@ -3765,7 +3775,7 @@ const buildStreamSettings = (
 					? parseOptionalNumber(values.xhttpScMaxBufferedPosts)
 					: undefined,
 			scMaxEachPostBytes:
-				mode === "packet-up" &&
+				sendsPackets &&
 				shouldIncludeValue(
 					values.xhttpScMaxEachPostBytes,
 					defaults.xhttpScMaxEachPostBytes,
@@ -3775,7 +3785,7 @@ const buildStreamSettings = (
 					? values.xhttpScMaxEachPostBytes?.trim() || undefined
 					: undefined,
 			scMinPostsIntervalMs:
-				mode === "packet-up" &&
+				sendsPackets &&
 				shouldIncludeValue(
 					values.xhttpScMinPostsIntervalMs,
 					defaults.xhttpScMinPostsIntervalMs,
@@ -3962,6 +3972,14 @@ const buildStreamSettings = (
 				hKeepAlivePeriod: parseOptionalNumber(values.xhttpXmuxHKeepAlivePeriod),
 			}),
 		});
+		const initialXhttp = initial?.streamSettings?.xhttpSettings;
+		if (initialXhttp && typeof initialXhttp === "object") {
+			for (const [key, value] of Object.entries(initialXhttp)) {
+				if (!XHTTP_FORM_KEYS.has(key) && value !== undefined) {
+					xhttpSettings[key] = value;
+				}
+			}
+		}
 		if (Object.keys(xhttpSettings).length) {
 			stream.xhttpSettings = xhttpSettings;
 		}

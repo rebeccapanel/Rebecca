@@ -314,6 +314,39 @@ describe("XHTTP inbound settings", () => {
 		expect(settings).not.toHaveProperty("sessionKey");
 	});
 
+	it.each(["auto", "packet-up", "stream-up"])(
+		"keeps the server buffer limit and unmanaged keys in %s mode",
+		(mode) => {
+			const h2Params = { MaxConcurrentStreams: 512 };
+			const raw: RawInbound = {
+				tag: "xhttp",
+				port: 80,
+				protocol: "vless",
+				settings: { decryption: "none" },
+				streamSettings: {
+					network: "xhttp",
+					security: "none",
+					xhttpSettings: {
+						path: "/",
+						mode,
+						scMaxBufferedPosts: 30,
+						h2Params,
+						futureKey: "kept",
+					},
+				},
+			};
+
+			const payload = buildInboundPayload(rawInboundToFormValues(raw), {
+				initial: raw,
+			});
+			expect(payload.streamSettings?.xhttpSettings).toMatchObject({
+				scMaxBufferedPosts: 30,
+				h2Params,
+				futureKey: "kept",
+			});
+		},
+	);
+
 	it("round-trips WebSocket heartbeat and current mKCP tuning", () => {
 		const ws = rawInboundToFormValues({
 			tag: "ws",

@@ -334,6 +334,7 @@ func TestBuildConfigLinksKeepsXHTTPPaddingJSONCompact(t *testing.T) {
 				"scMaxBufferedPosts":   int64(30),
 				"scStreamUpServerSecs": "20-80",
 				"noSSEHeader":          true,
+				"h2Params":             map[string]any{"MaxConcurrentStreams": int64(512)},
 			},
 		},
 		[]string{"VLESS XHTTP"},
@@ -387,7 +388,7 @@ func TestBuildConfigLinksKeepsXHTTPPaddingJSONCompact(t *testing.T) {
 			t.Fatalf("unexpected %s: got %#v want %#v extra=%#v", key, got, want, extra)
 		}
 	}
-	for _, serverOnly := range []string{"serverMaxHeaderBytes", "scMaxBufferedPosts", "scStreamUpServerSecs", "noSSEHeader"} {
+	for _, serverOnly := range []string{"serverMaxHeaderBytes", "scMaxBufferedPosts", "scStreamUpServerSecs", "noSSEHeader", "h2Params"} {
 		if _, ok := extra[serverOnly]; ok {
 			t.Fatalf("server-only %s leaked into client link: %#v", serverOnly, extra)
 		}
