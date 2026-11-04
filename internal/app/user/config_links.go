@@ -29,6 +29,7 @@ var proxyProtocols = map[string]struct{}{
 	"trojan":      {},
 	"shadowsocks": {},
 	"hysteria":    {},
+	"masque":      {},
 	"ssh":         {},
 }
 
@@ -157,6 +158,9 @@ func BuildConfigLinks(
 			if _, exists := bindings[tag]; !exists {
 				perInbound := cloneJSONMap(settings)
 				delete(perInbound, "flow")
+				if protocol == "masque" {
+					perInbound["email"] = RuntimeInboundEmail(item.ID, item.Username, tag)
+				}
 				if protocol == "vless" {
 					flow := item.Flow // Compatibility for unmigrated, conflicting legacy services only.
 					if value, configured := inbound["flow"]; configured {
@@ -859,7 +863,7 @@ func runtimeProxySettings(settings map[string]any, protocol string, credentialKe
 		} else {
 			return nil, fmt.Errorf("UUID is required for proxy type %s", protocol)
 		}
-	case "trojan", "shadowsocks", "hysteria", "ssh":
+	case "trojan", "shadowsocks", "hysteria", "masque", "ssh":
 		if jsonvalue.String(data["password"]) == "" {
 			if normalizedKey != "" {
 				data["password"] = keyToPassword(normalizedKey, protocol)
@@ -1067,6 +1071,8 @@ func buildShareLink(remark string, address string, inbound ResolvedInbound, sett
 		return shadowsocksShareLink(remark, formatIPForURL(address), inbound, settings), nil
 	case "hysteria":
 		return hysteriaShareLink(remark, formatIPForURL(address), inbound, settings)
+	case "masque":
+		return masqueShareLink(remark, formatIPForURL(address), inbound, settings), nil
 	case "ssh":
 		return sshShareLink(remark, formatIPForURL(address), inbound, settings), nil
 	default:
@@ -1628,6 +1634,37 @@ func hysteriaShareLink(remark string, address string, inbound ResolvedInbound, s
 	return link + "#" + percentEncode(remark, "/", false), nil
 }
 
+func masqueShareLink(remark string, address string, inbound ResolvedInbound, settings map[string]any) string {
+	userinfo := url.UserPassword(jsonvalue.String(settings["email"]), jsonvalue.String(settings["password"])).String()
+	params := []queryParam{{"security", "tls"}}
+	if path := jsonvalue.String(inbound["path"]); path != "" {
+		params = append(params, queryParam{"path", path})
+	}
+	if sni := jsonvalue.FirstNonEmpty(inbound["sni"], inbound["serverName"]); sni != "" {
+		params = append(params, queryParam{"sni", sni})
+	}
+	if alpn := jsonvalue.String(inbound["alpn"]); alpn != "" {
+		params = append(params, queryParam{"alpn", alpn})
+	}
+	if fp := jsonvalue.String(inbound["fp"]); fp != "" {
+		params = append(params, queryParam{"fp", fp})
+	}
+	if vcn := jsonvalue.FirstNonEmpty(inbound["vcn"], inbound["verifyPeerCertByName"]); vcn != "" {
+		params = append(params, queryParam{"vcn", vcn})
+	}
+	if pin := jsonvalue.FirstNonEmpty(inbound["pcs"], inbound["pinnedPeerCertSha256"]); pin != "" {
+		params = append(params, queryParam{"pcs", pin})
+	}
+	if truthy(firstNonEmptyValue(inbound["ais"], inbound["allowinsecure"])) {
+		params = append(params, queryParam{"insecure", 1})
+	}
+	link := "masque://" + userinfo + "@" + address + ":" + portString(inbound["port"])
+	if query := urlencodeOrdered(params); query != "" {
+		link += "?" + query
+	}
+	return link + "#" + percentEncode(remark, "/", false)
+}
+
 func sshShareLink(remark string, address string, inbound ResolvedInbound, settings map[string]any) string {
 	userinfo := url.UserPassword(jsonvalue.String(settings["username"]), jsonvalue.String(settings["password"])).String()
 	return "ssh://" + userinfo + "@" + address + ":" + portString(inbound["port"]) + "#" + percentEncode(remark, "/", false)
@@ -1981,6 +2018,10 @@ func resolveInbound(inbound map[string]any) (ResolvedInbound, error) {
 	network := jsonvalue.String(resolved["network"])
 	networkSettings := mapValue(stream[xrayconfig.NetworkSettingsKey(network)])
 	switch network {
+	case "masque":
+		if path := jsonvalue.String(networkSettings["path"]); path != "" {
+			resolved["path"] = path
+		}
 	case "hysteria":
 		hysteriaSettings := mapValue(stream["hysteriaSettings"])
 		if version := jsonvalue.Int(firstNonEmptyValue(settings["version"], hysteriaSettings["version"])); version > 0 {

@@ -23,11 +23,12 @@ const (
 )
 
 var proxyProtocols = map[string]struct{}{
-	"vmess":       {},
-	"vless":       {},
-	"trojan":      {},
-	"shadowsocks": {},
-	"hysteria":    {},
+	"vmess":        {},
+	"vless":        {},
+	"trojan":       {},
+	"shadowsocks":  {},
+	"hysteria":     {},
+	MasqueProtocol: {},
 }
 
 var auxiliaryInboundProtocols = map[string]struct{}{
@@ -65,6 +66,7 @@ var (
 		"xhttp":       {},
 		"hysteria":    {},
 		"xdrive":      {},
+		"masque":      {},
 	}
 	realityShortIDPattern  = regexp.MustCompile(`^[0-9a-fA-F]{2,16}$`)
 	xPaddingBytesPattern   = regexp.MustCompile(`^\d+(-\d+)?$`)
@@ -197,8 +199,13 @@ func NormalizePayloadForXrayVersion(payload map[string]any, coreVersion string) 
 	atLeast26622, _ := xrayVersionAtLeast(coreVersion, 26, 6, 22)
 	atLeast26930, _ := xrayVersionAtLeast(coreVersion, 26, 9, 30)
 	atLeast261010, _ := xrayVersionAtLeast(coreVersion, 26, 10, 10)
+	atLeast261017, _ := xrayVersionAtLeast(coreVersion, 26, 10, 17)
 	useSessionIDFields := atLeast26622
 	skippedLocalOSRules := 0
+	var droppedMasqueTags []string
+	if knownVersion && !atLeast261017 {
+		droppedMasqueTags = dropMasqueInbounds(cfg)
+	}
 	if !atLeast2698 {
 		routing := mapValue(cfg["routing"])
 		if rules, ok := routing["rules"].([]any); ok {
@@ -361,6 +368,9 @@ func NormalizePayloadForXrayVersion(payload map[string]any, coreVersion string) 
 		}
 	}
 	warnings := make([]string, 0, 12)
+	if len(droppedMasqueTags) > 0 {
+		warnings = append(warnings, fmt.Sprintf("MASQUE requires Xray 26.10.17+; these inbounds were left out of this node's runtime config: %s", strings.Join(droppedMasqueTags, ", ")))
+	}
 	if skippedLocalOSRules > 0 {
 		warnings = append(warnings, fmt.Sprintf("Routing localOS requires Xray 26.9.8+; skipped %d incompatible rule(s) on this node", skippedLocalOSRules))
 	}
@@ -1655,6 +1665,9 @@ func validateExecutableInbound(inbound map[string]any) error {
 	if protocol == "hysteria" && network != "hysteria" {
 		return fmt.Errorf("invalid inbound %q: hysteria protocol requires hysteria stream network", tag)
 	}
+	if err := validateMasqueInbound(tag, protocol, network, mapValue(inbound["settings"])); err != nil {
+		return err
+	}
 	if err := validateXDriveInbound(tag, protocol, mapValue(inbound["settings"]), stream); err != nil {
 		return err
 	}
@@ -1666,7 +1679,7 @@ func validateExecutableInbound(inbound map[string]any) error {
 	security := strings.ToLower(strings.TrimSpace(jsonvalue.String(stream["security"])))
 	switch security {
 	case "", "none":
-		if protocol == "hysteria" {
+		if protocol == "hysteria" || protocol == MasqueProtocol {
 			return fmt.Errorf("invalid inbound %q: %s protocol requires TLS security", tag, strings.ToUpper(protocol))
 		}
 		return nil

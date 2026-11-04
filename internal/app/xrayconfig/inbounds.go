@@ -687,6 +687,12 @@ func (r Repository) prepareInboundPayload(payload map[string]any, enforceTag str
 		stream["hysteriaSettings"] = hysteriaSettings
 		inbound["streamSettings"] = stream
 	}
+	if protocol == MasqueProtocol {
+		inbound["tag"] = tag
+		if err := normalizeMasqueInbound(inbound, settings); err != nil {
+			return nil, err
+		}
+	}
 	inbound["settings"] = settings
 	inbound["tag"] = tag
 	inbound["protocol"] = protocol

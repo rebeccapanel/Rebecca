@@ -2495,9 +2495,44 @@ func v2rayOutboundFromShareLinkForDialect(link string, current bool) (string, ma
 		return v2rayVMessOutbound(link, current)
 	case "hysteria", "hysteria2", "hy2":
 		return v2rayHysteriaOutbound(parsed)
+	case "masque":
+		return v2rayMasqueOutbound(parsed)
 	default:
 		return "", nil, false
 	}
+}
+
+func v2rayMasqueOutbound(parsed *url.URL) (string, map[string]any, bool) {
+	port, ok := parseURLPort(parsed)
+	if !ok || parsed.User == nil {
+		return "", nil, false
+	}
+	user := parsed.User.Username()
+	pass, _ := parsed.User.Password()
+	if user == "" || pass == "" {
+		return "", nil, false
+	}
+	query := parsed.Query()
+	query.Set("security", "tls")
+	masqueSettings := map[string]any{"user": user, "pass": pass}
+	if path := query.Get("path"); path != "" {
+		masqueSettings["path"] = path
+	}
+	outbound := map[string]any{
+		"tag":      "proxy",
+		"protocol": "masque",
+		"settings": map[string]any{
+			"address": parsed.Hostname(),
+			"port":    port,
+		},
+		"streamSettings": map[string]any{
+			"network":        "masque",
+			"security":       "tls",
+			"masqueSettings": masqueSettings,
+			"tlsSettings":    v2rayTLSSettings(query),
+		},
+	}
+	return v2rayLinkRemark(parsed), outbound, true
 }
 
 func v2rayVLESSOutbound(parsed *url.URL, current bool) (string, map[string]any, bool) {

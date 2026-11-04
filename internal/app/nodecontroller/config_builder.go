@@ -20,6 +20,7 @@ var proxyProtocols = map[string]struct{}{
 	"trojan":      {},
 	"shadowsocks": {},
 	"hysteria":    {},
+	"masque":      {},
 	"ssh":         {},
 }
 
@@ -315,6 +316,10 @@ func (c Controller) includeDBUsers(ctx context.Context, raw map[string]any, data
 			}
 			if user.Protocol == "shadowsocks" {
 				settings = userread.RuntimeShadowsocksSettings(settings, ensureMap(inbound, "settings"))
+			}
+			if user.Protocol == xrayconfig.MasqueProtocol {
+				settings["pass"] = settings["password"]
+				delete(settings, "password")
 			}
 			settings["email"] = inboundRuntimeUserEmail(user.ID, user.Username, tag)
 			clients := ensureMap(inbound, "settings")["clients"].([]any)
