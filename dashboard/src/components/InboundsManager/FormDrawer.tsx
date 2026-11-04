@@ -66,7 +66,10 @@ import {
 	createDefaultHysteriaUdpMask,
 	createDefaultInboundForm,
 	createDefaultTlsCertificate,
+	createDefaultWireguardPeer,
+	HOSTLESS_PROTOCOLS,
 	type InboundFormValues,
+	protocolLabel,
 	protocolOptions,
 	type RawInbound,
 	rawInboundToFormValues,
@@ -411,6 +414,14 @@ export const InboundFormModal: FC<Props> = ({
 		name: "socksAccounts",
 	});
 	const {
+		fields: wgxPeerFields,
+		append: appendWgxPeer,
+		remove: removeWgxPeer,
+	} = useFieldArray({
+		control,
+		name: "wgxPeers",
+	});
+	const {
 		fields: wsHeaderFields,
 		append: appendWsHeader,
 		remove: removeWsHeader,
@@ -545,8 +556,7 @@ export const InboundFormModal: FC<Props> = ({
 	const autoL2TPTunnelPortRef = useRef("");
 	const autoAnyConnectUDPPortRef = useRef("");
 	const supportsStreamSettings =
-		currentProtocol !== "http" &&
-		currentProtocol !== "socks" &&
+		!HOSTLESS_PROTOCOLS.includes(currentProtocol) &&
 		currentProtocol !== "openvpn" &&
 		currentProtocol !== "wireguard" &&
 		currentProtocol !== "amneziawg" &&
@@ -634,8 +644,6 @@ export const InboundFormModal: FC<Props> = ({
 		}
 		return protocolOptions.filter(
 			(option) =>
-				option !== "http" &&
-				option !== "socks" &&
 				!(option === "l2tp" && l2tpExists) &&
 				!(option === "ikev2" && ikev2Exists),
 		);
@@ -1477,7 +1485,7 @@ export const InboundFormModal: FC<Props> = ({
 									{mode === "create" ? t("inbounds.add") : mode === "clone" ? t("inbounds.cloneTitle") : t("inbounds.edit")}
 								</DialogTitle>
 								<DialogDescription className="truncate text-xs text-muted-foreground">
-									{String(currentProtocol).toUpperCase()}
+									{protocolLabel(String(currentProtocol))}
 								</DialogDescription>
 							</div>
 						</div>
@@ -1526,7 +1534,7 @@ export const InboundFormModal: FC<Props> = ({
 											
 										</div>
 										<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-											<FormControl required isInvalid={!!portError || !!fieldValidationErrors.port}>
+											<FormControl className={currentProtocol === "tun" ? "hidden" : undefined} required isInvalid={!!portError || !!fieldValidationErrors.port}>
 												<FormLabel helpKey="portHelp">{t("port")}</FormLabel>
 												<Input
 													{...register("port", { required: true })}
@@ -1567,7 +1575,7 @@ export const InboundFormModal: FC<Props> = ({
 													disabled={mode === "edit"}
 													options={visibleProtocolOptions.map((option) => ({
 														value: option,
-														label: option.toUpperCase(),
+														label: protocolLabel(option),
 													}))}
 													placeholder={t("protocol")}
 													onChange={(value) => {
@@ -1578,6 +1586,27 @@ export const InboundFormModal: FC<Props> = ({
 															shouldDirty: true,
 															shouldValidate: true,
 														});
+														if (HOSTLESS_PROTOCOLS.includes(nextProtocol)) {
+															const defaults = createDefaultInboundForm(nextProtocol);
+															for (const key of [
+																"httpAccounts",
+																"socksAuth",
+																"socksAccounts",
+																"socksUdpIp",
+																"tunnelAllowedNetwork",
+																"tunName",
+																"tunMtu",
+																"tunUserLevel",
+																"tunAutoOutboundsInterface",
+																"wgxSecretKey",
+																"wgxMtu",
+																"wgxPeers",
+															] as const) {
+																form.setValue(key, defaults[key] as never, {
+																	shouldDirty: true,
+																});
+															}
+														}
 														if (nextProtocol === "hysteria") {
 															form.setValue("streamNetwork", "hysteria", {
 																shouldDirty: true,
@@ -1956,7 +1985,7 @@ export const InboundFormModal: FC<Props> = ({
 												</FormControl>
 											</div>
 										)}
-										{currentProtocol === "socks" && (
+										{currentProtocol === "mixed" && (
 											<div className="flex flex-col gap-3">
 												<FormControl className="flex items-center">
 													<FormLabel className="mb-0" helpKey="inbounds.socks.udpHelp">{t("inbounds.socks.udp")}</FormLabel>
@@ -2033,6 +2062,180 @@ export const InboundFormModal: FC<Props> = ({
 															</p>
 														)}
 													</div>
+												)}
+											</div>
+										)}
+										{currentProtocol === "tunnel" && (
+											<div className="flex flex-col gap-3">
+												<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+													<FormControl isInvalid={Boolean(fieldValidationErrors.tunnelRewriteAddress)}>
+														<FormLabel helpKey="inbounds.tunnel.rewriteAddressHelp">{t("inbounds.tunnel.rewriteAddress")}</FormLabel>
+														<Input {...register("tunnelRewriteAddress")} placeholder="1.1.1.1" />
+														<FieldError>{fieldValidationErrors.tunnelRewriteAddress}</FieldError>
+													</FormControl>
+													<FormControl isInvalid={Boolean(fieldValidationErrors.tunnelRewritePort)}>
+														<FormLabel helpKey="inbounds.tunnel.rewritePortHelp">{t("inbounds.tunnel.rewritePort")}</FormLabel>
+														<Input {...register("tunnelRewritePort")} inputMode="numeric" placeholder="53" />
+														<FieldError>{fieldValidationErrors.tunnelRewritePort}</FieldError>
+													</FormControl>
+												</div>
+												<FormControl>
+													<FormLabel helpKey="inbounds.tunnel.portMapHelp">{t("inbounds.tunnel.portMap")}</FormLabel>
+													<Textarea rows={3} {...register("tunnelPortMap")} placeholder="8080=10.0.0.5:80" />
+												</FormControl>
+												<FormControl>
+													<FormLabel helpKey="inbounds.tunnel.allowedNetworkHelp">{t("inbounds.tunnel.allowedNetwork")}</FormLabel>
+													<Controller
+														control={control}
+														name="tunnelAllowedNetwork"
+														render={({ field }) => (
+															<SearchableTagSelect
+																value={field.value}
+																options={["tcp,udp", "tcp", "udp"].map((option) => ({ value: option, label: option }))}
+																placeholder={t("inbounds.tunnel.allowedNetwork")}
+																onChange={(value) => field.onChange(String(value))}
+															/>
+														)}
+													/>
+												</FormControl>
+												<FormControl className="flex items-center">
+													<FormLabel className="mb-0" helpKey="inbounds.tunnel.followRedirectHelp">{t("inbounds.tunnel.followRedirect")}</FormLabel>
+													<Controller control={control} name={"tunnelFollowRedirect"} render={({ field }) => <Switch checked={Boolean(field.value)} onCheckedChange={field.onChange} />} />
+												</FormControl>
+											</div>
+										)}
+										{currentProtocol === "tun" && (
+											<div className="flex flex-col gap-3">
+												<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+													<FormControl>
+														<FormLabel helpKey="inbounds.tun.nameHelp">{t("inbounds.tun.name")}</FormLabel>
+														<Input {...register("tunName")} placeholder="xray0" />
+													</FormControl>
+													<FormControl isInvalid={Boolean(fieldValidationErrors.tunMtu)}>
+														<FormLabel helpKey="inbounds.tun.mtuHelp">{t("inbounds.tun.mtu")}</FormLabel>
+														<Input {...register("tunMtu")} inputMode="numeric" placeholder="1500" />
+														<FieldError>{fieldValidationErrors.tunMtu}</FieldError>
+													</FormControl>
+													<FormControl>
+														<FormLabel helpKey="inbounds.tun.userLevelHelp">{t("inbounds.tun.userLevel")}</FormLabel>
+														<Input {...register("tunUserLevel")} inputMode="numeric" placeholder="0" />
+													</FormControl>
+													<FormControl>
+														<FormLabel helpKey="inbounds.tun.autoOutboundsInterfaceHelp">{t("inbounds.tun.autoOutboundsInterface")}</FormLabel>
+														<Input {...register("tunAutoOutboundsInterface")} placeholder="auto" />
+													</FormControl>
+													<FormControl>
+														<FormLabel helpKey="inbounds.tun.descHelp">{t("inbounds.tun.desc")}</FormLabel>
+														<Input {...register("tunDesc")} />
+													</FormControl>
+												</div>
+												<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+													<FormControl>
+														<FormLabel helpKey="inbounds.tun.gatewayHelp">{t("inbounds.tun.gateway")}</FormLabel>
+														<Textarea rows={2} {...register("tunGateway")} />
+													</FormControl>
+													<FormControl>
+														<FormLabel helpKey="inbounds.tun.dnsHelp">{t("inbounds.tun.dns")}</FormLabel>
+														<Textarea rows={2} {...register("tunDns")} />
+													</FormControl>
+													<FormControl>
+														<FormLabel helpKey="inbounds.tun.autoRoutingTableHelp">{t("inbounds.tun.autoRoutingTable")}</FormLabel>
+														<Textarea rows={2} {...register("tunAutoRoutingTable")} />
+													</FormControl>
+													<FormControl>
+														<FormLabel helpKey="inbounds.tun.wfpBlockLeakHelp">{t("inbounds.tun.wfpBlockLeak")}</FormLabel>
+														<Textarea rows={2} {...register("tunWfpBlockLeak")} />
+													</FormControl>
+												</div>
+												<FormControl>
+													<FormLabel helpKey="inbounds.tun.autoDnsToGatewayHelp">{t("inbounds.tun.autoDnsToGateway")}</FormLabel>
+													<Controller
+														control={control}
+														name="tunAutoSystemDnsToGateway"
+														render={({ field }) => (
+															<SearchableTagSelect
+																value={field.value}
+																options={[
+																	{ value: "", label: t("inbounds.tun.default") },
+																	{ value: "true", label: t("inbounds.tun.on") },
+																	{ value: "false", label: t("inbounds.tun.off") },
+																]}
+																placeholder={t("inbounds.tun.autoDnsToGateway")}
+																onChange={(value) => field.onChange(String(value))}
+															/>
+														)}
+													/>
+												</FormControl>
+											</div>
+										)}
+										{currentProtocol === "wireguard-xray" && (
+											<div className="flex flex-col gap-3">
+												<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+													<FormControl required isInvalid={Boolean(fieldValidationErrors.wgxSecretKey)}>
+														<FormLabel helpKey="inbounds.wireguardXray.secretKeyHelp">{t("inbounds.wireguardXray.secretKey")}</FormLabel>
+														<Input {...register("wgxSecretKey")} />
+														<FieldError>{fieldValidationErrors.wgxSecretKey}</FieldError>
+													</FormControl>
+													<FormControl>
+														<FormLabel helpKey="inbounds.wireguardXray.mtuHelp">{t("inbounds.wireguardXray.mtu")}</FormLabel>
+														<Input {...register("wgxMtu")} inputMode="numeric" placeholder="1420" />
+													</FormControl>
+													<FormControl>
+														<FormLabel helpKey="inbounds.wireguardXray.dnsHelp">{t("inbounds.wireguardXray.dns")}</FormLabel>
+														<Input {...register("wgxDns")} placeholder="1.1.1.1" />
+													</FormControl>
+												</div>
+												<FormControl className="flex items-center">
+													<FormLabel className="mb-0" helpKey="inbounds.wireguardXray.noKernelTunHelp">{t("inbounds.wireguardXray.noKernelTun")}</FormLabel>
+													<Controller control={control} name={"wgxNoKernelTun"} render={({ field }) => <Switch checked={Boolean(field.value)} onCheckedChange={field.onChange} />} />
+												</FormControl>
+												<div className="flex justify-between items-center">
+													<p className="font-medium">{t("inbounds.wireguardXray.peers")}</p>
+													<Button onClick={() => appendWgxPeer(createDefaultWireguardPeer())} size="xs">
+														{t("inbounds.wireguardXray.addPeer")}
+													</Button>
+												</div>
+												<FieldError>{fieldValidationErrors.wgxPeers}</FieldError>
+												{wgxPeerFields.map((field, index) => (
+													<div key={field.id} className={cn("border rounded-md p-3", sectionBorder)}>
+														<div className="flex justify-between items-center mb-3">
+															<p className="font-semibold">
+																{t("inbounds.wireguardXray.peer")} #{index + 1}
+															</p>
+															<Button onClick={() => removeWgxPeer(index)} variant="ghost" size="xs" className="text-destructive hover:bg-destructive/10">
+																{t("delete")}
+															</Button>
+														</div>
+														<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+															<FormControl>
+																<FormLabel helpKey="inbounds.wireguardXray.publicKeyHelp">{t("inbounds.wireguardXray.publicKey")}</FormLabel>
+																<Input {...register(`wgxPeers.${index}.publicKey` as const)} />
+															</FormControl>
+															<FormControl>
+																<FormLabel helpKey="inbounds.wireguardXray.privateKeyHelp">{t("inbounds.wireguardXray.privateKey")}</FormLabel>
+																<Input {...register(`wgxPeers.${index}.privateKey` as const)} />
+															</FormControl>
+															<FormControl>
+																<FormLabel helpKey="inbounds.wireguardXray.preSharedKeyHelp">{t("inbounds.wireguardXray.preSharedKey")}</FormLabel>
+																<Input {...register(`wgxPeers.${index}.preSharedKey` as const)} />
+															</FormControl>
+															<FormControl>
+																<FormLabel helpKey="inbounds.wireguardXray.keepAliveHelp">{t("inbounds.wireguardXray.keepAlive")}</FormLabel>
+																<Input {...register(`wgxPeers.${index}.keepAlive` as const)} inputMode="numeric" placeholder="25" />
+															</FormControl>
+															<FormControl>
+																<FormLabel helpKey="inbounds.wireguardXray.allowedIPsHelp">{t("inbounds.wireguardXray.allowedIPs")}</FormLabel>
+																<Textarea rows={2} {...register(`wgxPeers.${index}.allowedIPs` as const)} placeholder="10.0.0.2/32" />
+															</FormControl>
+															<FormControl>
+																<FormLabel helpKey="inbounds.wireguardXray.commentHelp">{t("inbounds.wireguardXray.comment")}</FormLabel>
+																<Input {...register(`wgxPeers.${index}.comment` as const)} />
+															</FormControl>
+														</div>
+													</div>
+												))}
+												{!wgxPeerFields.length && (
+													<p className="text-[0.875rem] text-gray-500">{t("inbounds.wireguardXray.noPeersHint")}</p>
 												)}
 											</div>
 										)}

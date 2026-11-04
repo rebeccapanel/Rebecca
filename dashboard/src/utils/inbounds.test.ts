@@ -6,6 +6,8 @@ import {
 	getInboundTraffic,
 	inboundTagAllowsEmoji,
 	parseHeaderPairs,
+	protocolLabel,
+	protocolSupportsHosts,
 	rawInboundToFormValues,
 	type RawInbound,
 	validateInboundFormFields,
@@ -695,5 +697,126 @@ describe("xhttp custom headers", () => {
 		]);
 		expect(parseHeaderPairs("Accept-Language")).toBeUndefined();
 		expect(parseHeaderPairs("   ")).toBeUndefined();
+	});
+});
+
+describe("Xray service inbounds", () => {
+	const roundTrip = (raw: RawInbound) =>
+		buildInboundPayload(rawInboundToFormValues(raw), { initial: raw });
+	const WG_SECRET = "iJ2cBkrSGqRwIfYIDIxk7hr5RXfdR93MfJUL7yqkkH8=";
+	const WG_PEER = "DGSYIcEKAUkA7HhzGSjxLZuV67BR3LeyU0BMLJzNVHQ=";
+
+	it("emits the 3x-ui settings for http, mixed and tunnel", () => {
+		const http = roundTrip({
+			tag: "h",
+			port: 8080,
+			protocol: "http",
+			settings: { accounts: [{ user: "proxyuser", pass: "proxypass" }], allowTransparent: false },
+		});
+		expect(http.settings.accounts).toEqual([{ user: "proxyuser", pass: "proxypass" }]);
+		expect(http.streamSettings).toBeUndefined();
+
+		const mixed = roundTrip({
+			tag: "m",
+			port: 1080,
+			protocol: "mixed",
+			settings: { auth: "password", accounts: [{ user: "socksuser", pass: "sockspass" }], udp: true, ip: "127.0.0.1" },
+		});
+		expect(mixed.settings).toEqual({
+			auth: "password",
+			accounts: [{ user: "socksuser", pass: "sockspass" }],
+			udp: true,
+			ip: "127.0.0.1",
+		});
+
+		const tunnel = roundTrip({
+			tag: "t",
+			port: 8443,
+			protocol: "tunnel",
+			settings: {
+				rewriteAddress: "1.1.1.1",
+				rewritePort: 53,
+				portMap: { "8080": "10.0.0.5:80", "8443": "10.0.0.5:443" },
+				allowedNetwork: "tcp,udp",
+				followRedirect: false,
+			},
+		});
+		expect(tunnel.settings).toMatchObject({
+			rewriteAddress: "1.1.1.1",
+			rewritePort: 53,
+			portMap: { "8080": "10.0.0.5:80", "8443": "10.0.0.5:443" },
+			allowedNetwork: "tcp,udp",
+			followRedirect: false,
+		});
+	});
+
+	it("round-trips a WireGuard (Xray) inbound with its peers and keeps tunnel sockopt", () => {
+		const out = roundTrip({
+			tag: "w",
+			port: 51820,
+			protocol: "wireguard-xray",
+			settings: {
+				mtu: 1420,
+				secretKey: WG_SECRET,
+				peers: [{ privateKey: WG_SECRET, publicKey: WG_PEER, allowedIPs: ["10.0.0.2/32"], keepAlive: 25 }],
+				noKernelTun: false,
+			},
+			streamSettings: { sockopt: { tcpFastOpen: true } },
+		});
+		expect(out.settings).toMatchObject({
+			mtu: 1420,
+			secretKey: WG_SECRET,
+			peers: [{ publicKey: WG_PEER, privateKey: WG_SECRET, allowedIPs: ["10.0.0.2/32"], keepAlive: 25 }],
+			noKernelTun: false,
+		});
+		expect(out.streamSettings).toEqual({ sockopt: { tcpFastOpen: true } });
+	});
+
+	it("gives TUN no listener and the 3x-ui defaults", () => {
+		const out = buildInboundPayload(createDefaultInboundForm("tun"));
+		expect(out.port).toBe(0);
+		expect(out.streamSettings).toBeUndefined();
+		expect(out.settings).toMatchObject({ name: "xray0", mtu: 1500, userLevel: 0, autoOutboundsInterface: "auto" });
+		expect(validateInboundFormFields({ ...createDefaultInboundForm("tun"), tag: "tun-1", port: "" }).port).toBeUndefined();
+	});
+
+	it("seeds new inbounds with random accounts and a fresh WireGuard key", () => {
+		const http = createDefaultInboundForm("http");
+		expect(http.httpAccounts[0].user).toHaveLength(8);
+		expect(http.httpAccounts[0].pass).toHaveLength(12);
+		const mixed = createDefaultInboundForm("mixed");
+		expect(mixed.socksAuth).toBe("password");
+		expect(mixed.socksUdpIp).toBe("127.0.0.1");
+		const wg = createDefaultInboundForm("wireguard-xray");
+		expect(atob(wg.wgxSecretKey)).toHaveLength(32);
+		expect(createDefaultInboundForm("wireguard-xray").wgxSecretKey).not.toBe(wg.wgxSecretKey);
+	});
+
+	it("rejects incomplete service inbounds before they reach the server", () => {
+		const base = { tag: "x", port: "8443" };
+		expect(
+			validateInboundFormFields({ ...createDefaultInboundForm("tunnel"), ...base }).tunnelRewriteAddress,
+		).toBeDefined();
+		expect(
+			validateInboundFormFields({
+				...createDefaultInboundForm("mixed"),
+				...base,
+				socksAuth: "password",
+				socksAccounts: [{ user: "", pass: "" }],
+			}).socksAccounts,
+		).toBeDefined();
+		expect(
+			validateInboundFormFields({ ...createDefaultInboundForm("wireguard-xray"), ...base, wgxSecretKey: "short" }).wgxSecretKey,
+		).toBeDefined();
+	});
+
+	it("labels the Xray WireGuard apart from Rebecca's and blocks hosts for service inbounds", () => {
+		expect(protocolLabel("wireguard-xray")).toBe("WIREGUARD(XRAY)");
+		expect(protocolLabel("wireguard")).toBe("WIREGUARD");
+		for (const protocol of ["http", "mixed", "tunnel", "tun", "wireguard-xray"]) {
+			expect(protocolSupportsHosts(protocol)).toBe(false);
+		}
+		expect(protocolSupportsHosts("wireguard")).toBe(true);
+		expect(protocolSupportsHosts("vless")).toBe(true);
 	});
 });

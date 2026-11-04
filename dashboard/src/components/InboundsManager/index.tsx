@@ -21,6 +21,7 @@ import {
 	getInboundTraffic,
 	inboundPortNumbers,
 	type InboundFormValues,
+	protocolLabel,
 	protocolOptions,
 	type RawInbound,
 } from "utils/inbounds";
@@ -455,7 +456,7 @@ export const InboundsManager: FC = () => {
 		];
 		const segments = ranked.slice(0, 4).map(([protocol, value], index) => ({
 			key: protocol,
-			label: protocol.toUpperCase(),
+			label: protocolLabel(protocol),
 			value,
 			tone: tones[index],
 		}));
@@ -788,7 +789,7 @@ export const InboundsManager: FC = () => {
 							},
 							...protocolOptions.map((option) => ({
 								value: option,
-								label: option.toUpperCase(),
+								label: protocolLabel(option),
 							})),
 						]} placeholder={t("inbounds.filterProtocol")} onChange={(value) =>
 							setFilter((prev) => ({ ...prev, protocol: String(value) }))

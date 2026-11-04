@@ -1,4 +1,5 @@
 import { ALPN_OPTION, UTLS_FINGERPRINT } from "utils/outbound";
+import { generateWireguardKeypair } from "./wireguard";
 
 export type Protocol =
 	| "vmess"
@@ -19,7 +20,10 @@ export type Protocol =
 	| "ikev2"
 	| "anyconnect"
 	| "http"
-	| "socks";
+	| "mixed"
+	| "tunnel"
+	| "tun"
+	| "wireguard-xray";
 export type StreamNetwork =
 	| "tcp"
 	| "ws"
@@ -81,6 +85,15 @@ export type TlsCertificateForm = {
 	oneTimeLoading: boolean;
 	usage: string;
 	buildChain: boolean;
+};
+
+export type WireguardPeerForm = {
+	publicKey: string;
+	privateKey: string;
+	preSharedKey: string;
+	allowedIPs: string;
+	keepAlive: string;
+	comment: string;
 };
 
 export type ProxyAccountForm = {
@@ -364,11 +377,37 @@ export type InboundFormValues = {
 	httpAccounts: ProxyAccountForm[];
 	httpAllowTransparent: boolean;
 
-	// SOCKS inbound
+	// Mixed (SOCKS/HTTP) inbound
 	socksAuth: "password" | "noauth";
 	socksAccounts: ProxyAccountForm[];
 	socksUdpEnabled: boolean;
 	socksUdpIp: string;
+
+	// Tunnel inbound
+	tunnelRewriteAddress: string;
+	tunnelRewritePort: string;
+	tunnelPortMap: string;
+	tunnelAllowedNetwork: "tcp" | "udp" | "tcp,udp";
+	tunnelFollowRedirect: boolean;
+
+	// TUN inbound
+	tunName: string;
+	tunDesc: string;
+	tunMtu: string;
+	tunGateway: string;
+	tunDns: string;
+	tunUserLevel: string;
+	tunAutoRoutingTable: string;
+	tunAutoOutboundsInterface: string;
+	tunAutoSystemDnsToGateway: "" | "true" | "false";
+	tunWfpBlockLeak: string;
+
+	// WireGuard (Xray) inbound
+	wgxSecretKey: string;
+	wgxMtu: string;
+	wgxNoKernelTun: boolean;
+	wgxDns: string;
+	wgxPeers: WireguardPeerForm[];
 
 	// OpenVPN virtual inbound
 	ovTransport: "udp" | "tcp";
@@ -558,8 +597,27 @@ export const protocolOptions: Protocol[] = [
 	"ikev2",
 	"anyconnect",
 	"http",
-	"socks",
+	"mixed",
+	"tunnel",
+	"tun",
+	"wireguard-xray",
 ];
+
+export const protocolLabel = (protocol: string): string =>
+	protocol === "wireguard-xray" ? "WIREGUARD(XRAY)" : protocol.toUpperCase();
+
+export const HOSTLESS_PROTOCOLS: Protocol[] = [
+	"http",
+	"mixed",
+	"tunnel",
+	"tun",
+	"wireguard-xray",
+];
+
+export const protocolSupportsHosts = (protocol: string): boolean =>
+	!HOSTLESS_PROTOCOLS.includes(protocol as Protocol) &&
+	protocol !== "mtproto" &&
+	protocol !== "web";
 export const shadowsocksNetworkOptions: InboundFormValues["shadowsocksNetwork"][] =
 	["tcp,udp", "tcp", "udp"];
 export const streamNetworks: StreamNetwork[] = [
@@ -924,7 +982,9 @@ export const validateInboundFormFields = (
 		errors.tag = "Inbound tag is required.";
 	}
 	const portText = values.port ?? "";
-	if (supportsMultiplePorts(values.protocol)) {
+	if (values.protocol === "tun") {
+		// TUN has no listener, so there is no port to validate.
+	} else if (supportsMultiplePorts(values.protocol)) {
 		if (!isValidPortList(portText)) {
 			errors.port =
 				"Enter one port, or several separated by commas such as 443,8443. Each must be between 1 and 65535, without repeats.";
@@ -939,6 +999,55 @@ export const validateInboundFormFields = (
 		usageCoefficient > 100
 	) {
 		errors.usageCoefficient = "Usage coefficient must be between 0.01 and 100.";
+	}
+	if (values.protocol === "http" || values.protocol === "mixed") {
+		const accounts =
+			values.protocol === "http" ? values.httpAccounts : values.socksAccounts;
+		const needsAccounts =
+			values.protocol === "mixed" && values.socksAuth === "password";
+		const incomplete = accounts.some(
+			(account) => !!account.user.trim() !== !!account.pass.trim(),
+		);
+		const filled = accounts.filter(
+			(account) => account.user.trim() && account.pass.trim(),
+		);
+		if (incomplete) {
+			errors[values.protocol === "http" ? "httpAccounts" : "socksAccounts"] =
+				"Every account needs a user and a password.";
+		} else if (needsAccounts && !filled.length) {
+			errors.socksAccounts = "Password authentication needs at least one account.";
+		}
+	}
+	if (values.protocol === "tunnel") {
+		const hasPortMap = Object.keys(textToPortMap(values.tunnelPortMap)).length > 0;
+		if (
+			!values.tunnelRewriteAddress.trim() &&
+			!hasPortMap &&
+			!values.tunnelFollowRedirect
+		) {
+			errors.tunnelRewriteAddress =
+				"Set a target address, a port map entry or follow redirect.";
+		}
+		if (
+			values.tunnelRewritePort.trim() &&
+			!isValidPortText(values.tunnelRewritePort)
+		) {
+			errors.tunnelRewritePort = "Port must be a number between 1 and 65535.";
+		}
+	}
+	if (values.protocol === "tun") {
+		const mtu = Number(values.tunMtu);
+		if (!Number.isInteger(mtu) || mtu < 0) {
+			errors.tunMtu = "MTU must be a non-negative integer.";
+		}
+	}
+	if (values.protocol === "wireguard-xray") {
+		if (!isWireguardKeyText(values.wgxSecretKey)) {
+			errors.wgxSecretKey = "Secret key must be a 32-byte WireGuard key.";
+		}
+		if (values.wgxPeers.some((peer) => !isWireguardKeyText(peer.publicKey))) {
+			errors.wgxPeers = "Every peer needs a 32-byte public key.";
+		}
 	}
 	if (values.protocol === "pptp" && values.port.trim() !== "1723") {
 		errors.port = "PPTP port must be 1723.";
@@ -1802,6 +1911,53 @@ const createDefaultHeader = (): HeaderForm => ({
 	value: "",
 });
 
+export const createDefaultWireguardPeer = (): WireguardPeerForm => {
+	const keys = generateWireguardKeypair();
+	return {
+		publicKey: keys.publicKey,
+		privateKey: keys.privateKey,
+		preSharedKey: "",
+		allowedIPs: "",
+		keepAlive: "",
+		comment: "",
+	};
+};
+
+const createRandomProxyAccount = (): ProxyAccountForm => ({
+	user: randomLowerAndNum(8),
+	pass: randomLowerAndNum(12),
+});
+
+const portMapToText = (value: unknown): string =>
+	value && typeof value === "object" && !Array.isArray(value)
+		? Object.entries(value as Record<string, unknown>)
+				.map(([port, target]) => `${port}=${target}`)
+				.join("\n")
+		: "";
+
+const textToPortMap = (value: string): Record<string, string> => {
+	const map: Record<string, string> = {};
+	for (const line of value.split("\n")) {
+		const index = line.indexOf("=");
+		if (index < 1) continue;
+		const port = line.slice(0, index).trim();
+		const target = line.slice(index + 1).trim();
+		if (port && target) map[port] = target;
+	}
+	return map;
+};
+
+const isWireguardKeyText = (value: string): boolean => {
+	const text = value.trim();
+	if (/^[0-9a-fA-F]{64}$/.test(text)) return true;
+	try {
+		const normalized = text.replace(/-/g, "+").replace(/_/g, "/");
+		return atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=")).length === 32;
+	} catch {
+		return false;
+	}
+};
+
 const accountToForm = (
 	account: Record<string, any> | undefined,
 ): ProxyAccountForm => ({
@@ -2097,12 +2253,33 @@ export const createDefaultInboundForm = (
 	sockoptEnabled: false,
 	sockopt: createDefaultSockopt(),
 	sockoptRawSettings: {},
-	httpAccounts: [createDefaultProxyAccount()],
+	httpAccounts: [createRandomProxyAccount()],
 	httpAllowTransparent: false,
-	socksAuth: "noauth",
-	socksAccounts: [createDefaultProxyAccount()],
+	socksAuth: protocol === "mixed" ? "password" : "noauth",
+	socksAccounts: [createRandomProxyAccount()],
 	socksUdpEnabled: false,
-	socksUdpIp: "",
+	socksUdpIp: "127.0.0.1",
+	tunnelRewriteAddress: "",
+	tunnelRewritePort: "",
+	tunnelPortMap: "",
+	tunnelAllowedNetwork: "tcp,udp",
+	tunnelFollowRedirect: false,
+	tunName: "xray0",
+	tunDesc: "",
+	tunMtu: "1500",
+	tunGateway: "",
+	tunDns: "",
+	tunUserLevel: "0",
+	tunAutoRoutingTable: "",
+	tunAutoOutboundsInterface: "auto",
+	tunAutoSystemDnsToGateway: "",
+	tunWfpBlockLeak: "",
+	wgxSecretKey:
+		protocol === "wireguard-xray" ? generateWireguardKeypair().privateKey : "",
+	wgxMtu: "1420",
+	wgxNoKernelTun: false,
+	wgxDns: "",
+	wgxPeers: [],
 	ovTransport: "udp",
 	ovTunnelPort: "",
 	ovIPv4Pool: "10.66.0.0/16",
@@ -2866,23 +3043,74 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 				? settings.allowTransparent
 				: base.httpAllowTransparent,
 		socksAuth:
-			protocol === "socks" && settings.auth === "password"
+			protocol === "mixed" && settings.auth === "password"
 				? "password"
-				: base.socksAuth,
+				: protocol === "mixed" && settings.auth === "noauth"
+					? "noauth"
+					: base.socksAuth,
 		socksAccounts:
-			protocol === "socks" && Array.isArray(settings.accounts)
+			protocol === "mixed" && Array.isArray(settings.accounts)
 				? settings.accounts.map((item: Record<string, any>) =>
 						accountToForm(item),
 					)
 				: base.socksAccounts,
 		socksUdpEnabled:
-			protocol === "socks" && typeof settings.udp === "boolean"
+			protocol === "mixed" && typeof settings.udp === "boolean"
 				? settings.udp
 				: base.socksUdpEnabled,
 		socksUdpIp:
-			protocol === "socks" && settings.ip !== undefined && settings.ip !== null
+			protocol === "mixed" && settings.ip !== undefined && settings.ip !== null
 				? String(settings.ip)
 				: base.socksUdpIp,
+		tunnelRewriteAddress:
+			protocol === "tunnel" ? String(settings.rewriteAddress ?? "") : base.tunnelRewriteAddress,
+		tunnelRewritePort:
+			protocol === "tunnel" ? toInputValue(settings.rewritePort) : base.tunnelRewritePort,
+		tunnelPortMap:
+			protocol === "tunnel" ? portMapToText(settings.portMap) : base.tunnelPortMap,
+		tunnelAllowedNetwork:
+			protocol === "tunnel" && ["tcp", "udp", "tcp,udp"].includes(settings.allowedNetwork)
+				? settings.allowedNetwork
+				: base.tunnelAllowedNetwork,
+		tunnelFollowRedirect:
+			protocol === "tunnel" ? Boolean(settings.followRedirect) : base.tunnelFollowRedirect,
+		tunName: protocol === "tun" ? String(settings.name ?? base.tunName) : base.tunName,
+		tunDesc: protocol === "tun" ? String(settings.desc ?? "") : base.tunDesc,
+		tunMtu: protocol === "tun" ? toInputValue(settings.mtu) || base.tunMtu : base.tunMtu,
+		tunGateway: protocol === "tun" ? joinLines(parseStringList(settings.gateway)) : base.tunGateway,
+		tunDns: protocol === "tun" ? joinLines(parseStringList(settings.dns)) : base.tunDns,
+		tunUserLevel: protocol === "tun" ? toInputValue(settings.userLevel) || base.tunUserLevel : base.tunUserLevel,
+		tunAutoRoutingTable:
+			protocol === "tun" ? joinLines(parseStringList(settings.autoSystemRoutingTable)) : base.tunAutoRoutingTable,
+		tunAutoOutboundsInterface:
+			protocol === "tun"
+				? String(settings.autoOutboundsInterface ?? base.tunAutoOutboundsInterface)
+				: base.tunAutoOutboundsInterface,
+		tunAutoSystemDnsToGateway:
+			protocol === "tun" && typeof settings.autoSystemDnsToGateway === "boolean"
+				? settings.autoSystemDnsToGateway
+					? "true"
+					: "false"
+				: base.tunAutoSystemDnsToGateway,
+		tunWfpBlockLeak:
+			protocol === "tun" ? joinLines(parseStringList(settings.autoSystemWfpBlockLeak)) : base.tunWfpBlockLeak,
+		wgxSecretKey:
+			protocol === "wireguard-xray" ? String(settings.secretKey ?? "") : base.wgxSecretKey,
+		wgxMtu: protocol === "wireguard-xray" ? toInputValue(settings.mtu) || base.wgxMtu : base.wgxMtu,
+		wgxNoKernelTun:
+			protocol === "wireguard-xray" ? Boolean(settings.noKernelTun) : base.wgxNoKernelTun,
+		wgxDns: protocol === "wireguard-xray" ? String(settings.dns ?? "") : base.wgxDns,
+		wgxPeers:
+			protocol === "wireguard-xray" && Array.isArray(settings.peers)
+				? settings.peers.map((peer: Record<string, any>) => ({
+						publicKey: String(peer.publicKey ?? ""),
+						privateKey: String(peer.privateKey ?? ""),
+						preSharedKey: String(peer.preSharedKey ?? ""),
+						allowedIPs: joinLines(parseStringList(peer.allowedIPs)),
+						keepAlive: toInputValue(peer.keepAlive),
+						comment: String(peer.comment ?? ""),
+					}))
+				: base.wgxPeers,
 		ovTransport:
 			protocol === "openvpn" && settings.transport === "tcp"
 				? "tcp"
@@ -4329,7 +4557,7 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 			}
 			break;
 		}
-		case "socks": {
+		case "mixed": {
 			base.auth = values.socksAuth;
 			if (values.socksAuth === "password") {
 				const accounts = values.socksAccounts
@@ -4340,9 +4568,49 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 				}
 			}
 			base.udp = values.socksUdpEnabled;
-			if (values.socksUdpEnabled && values.socksUdpIp.trim()) {
-				base.ip = values.socksUdpIp.trim();
-			}
+			base.ip = values.socksUdpIp.trim() || "127.0.0.1";
+			break;
+		}
+		case "tunnel": {
+			base.rewriteAddress = values.tunnelRewriteAddress.trim() || undefined;
+			base.rewritePort = parseOptionalNumber(values.tunnelRewritePort);
+			base.portMap = textToPortMap(values.tunnelPortMap);
+			base.allowedNetwork = values.tunnelAllowedNetwork;
+			base.followRedirect = values.tunnelFollowRedirect;
+			break;
+		}
+		case "tun": {
+			base.name = values.tunName.trim() || "xray0";
+			base.desc = values.tunDesc.trim() || undefined;
+			base.mtu = parseOptionalNumber(values.tunMtu) ?? 1500;
+			base.gateway = splitLines(values.tunGateway);
+			base.dns = splitLines(values.tunDns);
+			base.userLevel = parseOptionalNumber(values.tunUserLevel) ?? 0;
+			base.autoSystemRoutingTable = splitLines(values.tunAutoRoutingTable);
+			base.autoOutboundsInterface =
+				values.tunAutoOutboundsInterface.trim() || "auto";
+			base.autoSystemDnsToGateway =
+				values.tunAutoSystemDnsToGateway === ""
+					? undefined
+					: values.tunAutoSystemDnsToGateway === "true";
+			base.autoSystemWfpBlockLeak = splitLines(values.tunWfpBlockLeak);
+			break;
+		}
+		case "wireguard-xray": {
+			base.mtu = parseOptionalNumber(values.wgxMtu);
+			base.secretKey = values.wgxSecretKey.trim();
+			base.peers = values.wgxPeers.map((peer) =>
+				cleanObject({
+					privateKey: peer.privateKey.trim(),
+					publicKey: peer.publicKey.trim(),
+					preSharedKey: peer.preSharedKey.trim(),
+					allowedIPs: splitLines(peer.allowedIPs),
+					keepAlive: parseOptionalNumber(peer.keepAlive),
+					comment: peer.comment.trim(),
+				}),
+			);
+			base.noKernelTun = values.wgxNoKernelTun;
+			base.dns = values.wgxDns.trim() || undefined;
 			break;
 		}
 		case "openvpn":
@@ -4555,8 +4823,7 @@ export const buildInboundPayload = (
 	options?: BuildInboundOptions,
 ): RawInbound => {
 	const supportsStream =
-		values.protocol !== "http" &&
-		values.protocol !== "socks" &&
+		!HOSTLESS_PROTOCOLS.includes(values.protocol) &&
 		values.protocol !== "openvpn" &&
 		values.protocol !== "wireguard" &&
 		values.protocol !== "amneziawg" &&
@@ -4589,6 +4856,16 @@ export const buildInboundPayload = (
 
 	if (streamSettings) {
 		payload.streamSettings = streamSettings;
+	}
+	if (values.protocol === "tun") {
+		payload.port = 0;
+		payload.listen = undefined;
+	}
+	if (values.protocol === "tunnel" || values.protocol === "wireguard-xray") {
+		const sockopt = options?.initial?.streamSettings?.sockopt;
+		if (sockopt && typeof sockopt === "object") {
+			payload.streamSettings = { sockopt };
+		}
 	}
 
 	if (
