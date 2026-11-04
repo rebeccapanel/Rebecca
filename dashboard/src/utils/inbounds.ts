@@ -54,6 +54,7 @@ export type RawInbound = {
 	downlink?: number;
 	usage_coefficient?: number;
 	validation_error?: string;
+	compatibility_warning?: string;
 };
 
 export const getInboundTraffic = (inbound: RawInbound) => {

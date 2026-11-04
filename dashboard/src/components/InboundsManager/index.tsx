@@ -543,6 +543,14 @@ export const InboundsManager: FC = () => {
 <TooltipContent>{inbound.validation_error}</TooltipContent>
 </Tooltip>
 						)}
+						{!inbound.validation_error && inbound.compatibility_warning && (
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<p className="text-[0.75rem] text-amber-500 line-clamp-2">{inbound.compatibility_warning}</p>
+								</TooltipTrigger>
+								<TooltipContent>{inbound.compatibility_warning}</TooltipContent>
+							</Tooltip>
+						)}
 						{inbound.listen && (
 							<p className="text-[0.75rem] text-panel-text-muted truncate">
 								{inbound.listen}

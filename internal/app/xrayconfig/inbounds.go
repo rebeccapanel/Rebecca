@@ -59,6 +59,11 @@ func (r Repository) GroupedInbounds(ctx context.Context) (map[string][]map[strin
 			} else if message := routingErrors[jsonvalue.String(inbound["tag"])]; message != "" {
 				resolved["validation_error"] = message
 			}
+			if resolved["validation_error"] == nil {
+				if warning := InboundCompatibilityWarning(inbound); warning != "" {
+					resolved["compatibility_warning"] = warning
+				}
+			}
 			protocol := normalizeProxyProtocol(jsonvalue.String(inbound["protocol"]))
 			byProtocol[protocol] = append(byProtocol[protocol], resolved)
 		}
