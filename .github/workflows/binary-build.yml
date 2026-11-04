@@ -341,7 +341,7 @@ jobs:
             | .ids[]
           ' dev-assets.json > dev-assets-to-prune.txt
           echo "Pruning $(wc -l < dev-assets-to-prune.txt | tr -d ' ') old dev build asset(s), keeping the newest ${keep_builds} builds"
-          xargs -r -P 6 -I{} gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/{}" < dev-assets-to-prune.txt
+          xargs -r -P 6 -I{} bash -c 'gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/$1" >/dev/null || echo "::warning::could not delete old dev asset $1"' _ {} < dev-assets-to-prune.txt
 
       - name: Publish dev build assets
         shell: bash
