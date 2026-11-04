@@ -3511,6 +3511,49 @@ const XHTTP_FORM_KEYS = new Set([
 	"seqPlacement", "seqKey", "uplinkDataPlacement", "uplinkDataKey",
 ]);
 
+const HYSTERIA_QUIC_KEYS = new Set([
+	"congestion", "bbrProfile", "debug", "brutalUp", "brutalDown", "udpHop",
+	"maxIdleTimeout", "keepAlivePeriod", "disablePathMTUDiscovery", "maxIncomingStreams",
+	"initStreamReceiveWindow", "maxStreamReceiveWindow", "initConnectionReceiveWindow", "maxConnectionReceiveWindow",
+]);
+
+const PASSTHROUGH_NETWORKS = ["xdrive", "masque"];
+
+const mergeFinalmask = (
+	built: Record<string, any> | undefined,
+	original: any,
+	managed: boolean,
+	quicEnabled: boolean,
+): Record<string, any> | undefined => {
+	if (!original || typeof original !== "object") return built;
+	if (!managed) return original;
+	const merged: Record<string, any> = { ...(built ?? {}) };
+	for (const [key, value] of Object.entries(original)) {
+		if (key !== "udp" && key !== "quicParams" && !(key in merged)) merged[key] = value;
+	}
+	const originalUdp: any[] = Array.isArray(original.udp) ? original.udp : [];
+	if (originalUdp.some((mask) => mask?.type !== "salamander")) {
+		const formMasks: any[] = [...(built?.udp ?? [])];
+		const udp: any[] = [];
+		for (const mask of originalUdp) {
+			if (mask?.type !== "salamander") udp.push(mask);
+			else if (formMasks.length) udp.push(formMasks.shift());
+		}
+		udp.push(...formMasks);
+		merged.udp = udp;
+	}
+	const quic = original.quicParams;
+	if (quicEnabled && quic && typeof quic === "object") {
+		const extras = Object.fromEntries(
+			Object.entries(quic).filter(([key]) => !HYSTERIA_QUIC_KEYS.has(key)),
+		);
+		if (Object.keys(extras).length) {
+			merged.quicParams = { ...(built?.quicParams ?? {}), ...extras };
+		}
+	}
+	return merged;
+};
+
 const buildStreamSettings = (
 	values: InboundFormValues,
 	options?: BuildInboundOptions,
@@ -4186,6 +4229,23 @@ const buildStreamSettings = (
 	const sockoptPayload = buildSockoptSettings(values);
 	if (sockoptPayload) {
 		stream.sockopt = sockoptPayload;
+	}
+
+	const finalmask = mergeFinalmask(
+		stream.finalmask,
+		initial?.streamSettings?.finalmask,
+		values.streamNetwork === "hysteria",
+		Boolean(values.hysteriaQuicParams?.enabled),
+	);
+	if (finalmask && Object.keys(finalmask).length) {
+		stream.finalmask = finalmask;
+	}
+
+	if (PASSTHROUGH_NETWORKS.includes(values.streamNetwork)) {
+		for (const key of [`${values.streamNetwork}Settings`, "address", "port"]) {
+			const original = initial?.streamSettings?.[key];
+			if (original !== undefined && original !== null) stream[key] = original;
+		}
 	}
 
 	return cleanObject(stream);

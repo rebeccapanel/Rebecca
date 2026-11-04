@@ -533,6 +533,73 @@ describe("XHTTP inbound settings", () => {
 	});
 });
 
+describe("unmodeled stream settings", () => {
+	const roundTrip = (raw: RawInbound) =>
+		buildInboundPayload(rawInboundToFormValues(raw), { initial: raw });
+
+	it("keeps finalmask masks on networks whose form cannot edit them", () => {
+		const finalmask = {
+			tcp: [{ type: "fragment", settings: { packets: "tlshello", length: "100-200", delay: "10-20" } }],
+			udp: [{ type: "header-custom", settings: { client: [{ type: "str", packet: "x" }] } }],
+		};
+		const raw: RawInbound = {
+			tag: "vless-ws",
+			port: 443,
+			protocol: "vless",
+			settings: { decryption: "none", clients: [] },
+			streamSettings: { network: "ws", security: "none", wsSettings: { path: "/" }, finalmask },
+		};
+		expect(roundTrip(raw).streamSettings?.finalmask).toEqual(finalmask);
+	});
+
+	it("keeps Hysteria masks and QUIC flags the form does not model, in place", () => {
+		const finalmask = {
+			tcp: [{ type: "fragment", settings: { packets: "tlshello" } }],
+			udp: [
+				{ type: "realm", settings: { url: "https://realm.example.test" } },
+				{ type: "salamander", settings: { password: "secret" } },
+			],
+			quicParams: { congestion: "bbr", disableGSO: true, disableChromeParrot: true },
+		};
+		const raw: RawInbound = {
+			tag: "hy",
+			port: 443,
+			protocol: "hysteria",
+			settings: { version: 2, clients: [] },
+			streamSettings: {
+				network: "hysteria",
+				security: "tls",
+				hysteriaSettings: { version: 2 },
+				tlsSettings: { serverName: "x.test", certificates: [{ certificateFile: "/a", keyFile: "/b" }] },
+				finalmask,
+			},
+		};
+		const out = roundTrip(raw).streamSettings?.finalmask;
+		expect(out?.tcp).toEqual(finalmask.tcp);
+		expect(out?.udp).toEqual(finalmask.udp);
+		expect(out?.quicParams).toMatchObject({ congestion: "bbr", disableGSO: true, disableChromeParrot: true });
+	});
+
+	it("keeps XDRIVE settings and its stream address", () => {
+		const raw: RawInbound = {
+			tag: "xd",
+			port: 8443,
+			protocol: "vless",
+			settings: { decryption: "mlkem768x25519plus.native.600s.test", clients: [] },
+			streamSettings: {
+				network: "xdrive",
+				security: "none",
+				address: "www.googleapis.com",
+				port: 443,
+				xdriveSettings: { service: "google-drive", remoteFolder: "rb", secrets: ["a", "b", "c"], segmentBytes: 524288 },
+			},
+		};
+		const stream = roundTrip(raw).streamSettings;
+		expect(stream?.xdriveSettings).toEqual(raw.streamSettings?.xdriveSettings);
+		expect(stream).toMatchObject({ address: "www.googleapis.com", port: 443 });
+	});
+});
+
 describe("inbound port lists", () => {
 	it("accepts several ports for Xray proxy inbounds and writes them as one value", () => {
 		const vless = createDefaultInboundForm("vless");

@@ -685,6 +685,7 @@ func (r Repository) prepareInboundPayload(payload map[string]any, enforceTag str
 	if err := normalizeRealitySettings(inbound); err != nil {
 		return nil, err
 	}
+	canonicalizeXDriveService(inbound)
 	if err := validateExecutableInbound(inbound); err != nil {
 		return nil, err
 	}

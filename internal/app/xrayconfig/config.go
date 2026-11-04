@@ -64,6 +64,7 @@ var (
 		"splithttp":   {},
 		"xhttp":       {},
 		"hysteria":    {},
+		"xdrive":      {},
 	}
 	realityShortIDPattern  = regexp.MustCompile(`^[0-9a-fA-F]{2,16}$`)
 	xPaddingBytesPattern   = regexp.MustCompile(`^\d+(-\d+)?$`)
@@ -1653,6 +1654,9 @@ func validateExecutableInbound(inbound map[string]any) error {
 	}
 	if protocol == "hysteria" && network != "hysteria" {
 		return fmt.Errorf("invalid inbound %q: hysteria protocol requires hysteria stream network", tag)
+	}
+	if err := validateXDriveInbound(tag, protocol, mapValue(inbound["settings"]), stream); err != nil {
+		return err
 	}
 	networkSettings := mapValue(stream[NetworkSettingsKey(network)])
 	if err := validateNetworkSettings(tag, network, networkSettings); err != nil {
