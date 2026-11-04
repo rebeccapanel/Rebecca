@@ -4117,5 +4117,12 @@
 	"inbounds.wireguardXray.keepAliveHelp": "فاصله keepalive دائمی به ثانیه. برای غیرفعال کردن خالی بگذارید.",
 	"inbounds.wireguardXray.comment": "توضیح",
 	"inbounds.wireguardXray.commentHelp": "یادداشت درباره دستگاهی که این پیر متعلق به آن است. به Xray فرستاده نمی‌شود.",
-	"inbounds.wireguardXray.noPeersHint": "هنوز پیری وجود ندارد. برای هر دستگاهی که وصل می‌شود یکی اضافه کنید."
+	"inbounds.wireguardXray.noPeersHint": "هنوز پیری وجود ندارد. برای هر دستگاهی که وصل می‌شود یکی اضافه کنید.",
+	"inbounds.masque.path": "مسیر URL",
+	"inbounds.masque.pathHelp": "مسیری که کلاینت‌ها برای تانل MASQUE درخواست می‌کنند. مگر اینکه پروکسی جلویی آن را بازنویسی کند، پیش‌فرض را نگه دارید.",
+	"inbounds.masque.mtu": "MTU",
+	"inbounds.masque.mtuHelp": "MTU تانل بین ۱۲۸۰ تا ۶۵۵۳۵. برای مقدار پیش‌فرض هسته خالی بگذارید.",
+	"inbounds.masque.address": "محدوده آدرس تانل",
+	"inbounds.masque.addressHelp": "پیشوندهایی که آدرس تانل از آن‌ها اجاره داده می‌شود، هر خط یکی: حداکثر یک IPv4 و یک IPv6.",
+	"inbounds.masque.fixedTransport": "MASQUE همیشه از انتقال مخصوص خودش با امنیت TLS استفاده می‌کند."
 }

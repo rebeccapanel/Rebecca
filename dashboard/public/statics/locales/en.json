@@ -4118,5 +4118,12 @@
 	"inbounds.wireguardXray.keepAliveHelp": "Persistent keepalive interval in seconds. Leave empty to disable.",
 	"inbounds.wireguardXray.comment": "Comment",
 	"inbounds.wireguardXray.commentHelp": "Note about the device this peer belongs to. Not sent to Xray.",
-	"inbounds.wireguardXray.noPeersHint": "No peers yet. Add one for each device that connects."
+	"inbounds.wireguardXray.noPeersHint": "No peers yet. Add one for each device that connects.",
+	"inbounds.masque.path": "URL path",
+	"inbounds.masque.pathHelp": "Path clients request for the MASQUE tunnel. Leave the default unless a proxy in front rewrites it.",
+	"inbounds.masque.mtu": "MTU",
+	"inbounds.masque.mtuHelp": "Tunnel MTU between 1280 and 65535. Leave empty for the core default.",
+	"inbounds.masque.address": "Tunnel address pool",
+	"inbounds.masque.addressHelp": "Prefixes tunnel addresses are leased from, one per line: at most one IPv4 and one IPv6.",
+	"inbounds.masque.fixedTransport": "MASQUE always uses its own transport secured by TLS."
 }

@@ -810,6 +810,44 @@ describe("Xray service inbounds", () => {
 		).toBeDefined();
 	});
 
+	it("round-trips the 3x-ui MASQUE inbound with its pool, path and TLS", () => {
+		const raw: RawInbound = {
+			tag: "mq",
+			port: 8443,
+			protocol: "masque",
+			settings: { clients: [], address: ["10.14.0.1/24", "fd14::1/64"], mtu: 1400 },
+			streamSettings: {
+				network: "masque",
+				masqueSettings: { path: "/.well-known/masque/ip/*/*/" },
+				security: "tls",
+				tlsSettings: {
+					serverName: "masque.example.test",
+					certificates: [{ certificateFile: "/etc/ssl/certs/masque.crt", keyFile: "/etc/ssl/private/masque.key" }],
+					alpn: ["h3", "h2"],
+				},
+			},
+		};
+		const out = roundTrip(raw);
+		expect(out.settings).toMatchObject({ address: ["10.14.0.1/24", "fd14::1/64"], mtu: 1400 });
+		expect(out.streamSettings).toMatchObject({
+			network: "masque",
+			security: "tls",
+			masqueSettings: { path: "/.well-known/masque/ip/*/*/" },
+			tlsSettings: { serverName: "masque.example.test", alpn: ["h3", "h2"] },
+		});
+		expect(out.streamSettings?.tlsSettings).not.toHaveProperty("cipherSuites");
+	});
+
+	it("seeds MASQUE with the 3x-ui address pool and rejects an unusable one", () => {
+		const form = createDefaultInboundForm("masque");
+		expect(form.masqueAddress).toBe("10.14.0.1/24\nfd14::1/64");
+		const base = { ...form, tag: "mq", port: "8443" };
+		expect(validateInboundFormFields(base).masqueAddress).toBeUndefined();
+		expect(validateInboundFormFields({ ...base, masqueAddress: "10.0.0.1/24\n10.1.0.1/24" }).masqueAddress).toBeDefined();
+		expect(validateInboundFormFields({ ...base, masqueAddress: "10.0.0.1" }).masqueAddress).toBeDefined();
+		expect(validateInboundFormFields({ ...base, masqueMtu: "1000" }).masqueMtu).toBeDefined();
+	});
+
 	it("labels the Xray WireGuard apart from Rebecca's and blocks hosts for service inbounds", () => {
 		expect(protocolLabel("wireguard-xray")).toBe("WIREGUARD(XRAY)");
 		expect(protocolLabel("wireguard")).toBe("WIREGUARD");

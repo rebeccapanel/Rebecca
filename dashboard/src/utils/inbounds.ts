@@ -7,6 +7,7 @@ export type Protocol =
 	| "trojan"
 	| "shadowsocks"
 	| "hysteria"
+	| "masque"
 	| "ssh"
 	| "mtproto"
 	| "web"
@@ -34,7 +35,9 @@ export type StreamNetwork =
 	| "httpupgrade"
 	| "splithttp"
 	| "xhttp"
-	| "hysteria";
+	| "hysteria"
+	| "masque"
+	| "xdrive";
 export type StreamSecurity = "none" | "tls" | "reality";
 
 export type RawInbound = {
@@ -383,6 +386,11 @@ export type InboundFormValues = {
 	socksUdpEnabled: boolean;
 	socksUdpIp: string;
 
+	// MASQUE inbound
+	masqueAddress: string;
+	masqueMtu: string;
+	masquePath: string;
+
 	// Tunnel inbound
 	tunnelRewriteAddress: string;
 	tunnelRewritePort: string;
@@ -584,6 +592,7 @@ export const protocolOptions: Protocol[] = [
 	"trojan",
 	"shadowsocks",
 	"hysteria",
+	"masque",
 	"ssh",
 	"mtproto",
 	"web",
@@ -1033,6 +1042,19 @@ export const validateInboundFormFields = (
 			!isValidPortText(values.tunnelRewritePort)
 		) {
 			errors.tunnelRewritePort = "Port must be a number between 1 and 65535.";
+		}
+	}
+	if (values.protocol === "masque") {
+		const mtu = values.masqueMtu.trim();
+		if (mtu && (!/^\d+$/.test(mtu) || Number(mtu) < 1280 || Number(mtu) > 65535)) {
+			errors.masqueMtu = "MTU must be between 1280 and 65535.";
+		}
+		const prefixes = splitLines(values.masqueAddress);
+		const isPrefix = (entry: string) => /^[0-9a-fA-F:.]+\/\d{1,3}$/.test(entry);
+		const v6 = prefixes.filter((entry) => entry.includes(":")).length;
+		if (!prefixes.every(isPrefix) || prefixes.length - v6 > 1 || v6 > 1) {
+			errors.masqueAddress =
+				"Use at most one IPv4 and one IPv6 prefix, such as 10.14.0.1/24.";
 		}
 	}
 	if (values.protocol === "tun") {
@@ -2259,6 +2281,9 @@ export const createDefaultInboundForm = (
 	socksAccounts: [createRandomProxyAccount()],
 	socksUdpEnabled: false,
 	socksUdpIp: "127.0.0.1",
+	masqueAddress: "10.14.0.1/24\nfd14::1/64",
+	masqueMtu: "",
+	masquePath: "/.well-known/masque/ip/*/*/",
 	tunnelRewriteAddress: "",
 	tunnelRewritePort: "",
 	tunnelPortMap: "",
@@ -3062,6 +3087,15 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			protocol === "mixed" && settings.ip !== undefined && settings.ip !== null
 				? String(settings.ip)
 				: base.socksUdpIp,
+		masqueAddress:
+			protocol === "masque" && parseStringList(settings.address).length
+				? joinLines(parseStringList(settings.address))
+				: base.masqueAddress,
+		masqueMtu: protocol === "masque" ? toInputValue(settings.mtu) : base.masqueMtu,
+		masquePath:
+			protocol === "masque" && stream.masqueSettings?.path
+				? String(stream.masqueSettings.path)
+				: base.masquePath,
 		tunnelRewriteAddress:
 			protocol === "tunnel" ? String(settings.rewriteAddress ?? "") : base.tunnelRewriteAddress,
 		tunnelRewritePort:
@@ -3745,7 +3779,7 @@ const HYSTERIA_QUIC_KEYS = new Set([
 	"initStreamReceiveWindow", "maxStreamReceiveWindow", "initConnectionReceiveWindow", "maxConnectionReceiveWindow",
 ]);
 
-const PASSTHROUGH_NETWORKS = ["xdrive", "masque"];
+const PASSTHROUGH_NETWORKS = ["xdrive"];
 
 const mergeFinalmask = (
 	built: Record<string, any> | undefined,
@@ -4013,6 +4047,13 @@ const buildStreamSettings = (
 		if (Object.keys(splithttpSettings).length) {
 			stream.splithttpSettings = splithttpSettings;
 		}
+	}
+
+	if (values.streamNetwork === "masque") {
+		stream.masqueSettings = {
+			...(initial?.streamSettings?.masqueSettings ?? {}),
+			path: values.masquePath.trim() || "/.well-known/masque/ip/*/*/",
+		};
 	}
 
 	if (values.streamNetwork === "xhttp") {
@@ -4368,7 +4409,7 @@ const buildStreamSettings = (
 		tlsPayload.minVersion = values.tlsMinVersion || undefined;
 		tlsPayload.maxVersion = values.tlsMaxVersion || undefined;
 		tlsPayload.cipherSuites =
-			values.protocol === "hysteria"
+			values.protocol === "hysteria" || values.protocol === "masque"
 				? undefined
 				: values.tlsCipherSuites || undefined;
 		tlsPayload.rejectUnknownSni = values.tlsRejectUnknownSni;
@@ -4483,7 +4524,7 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 	const base: Record<string, any> = {};
 
 	if (
-		["vmess", "vless", "trojan", "shadowsocks", "hysteria"].includes(
+		["vmess", "vless", "trojan", "shadowsocks", "hysteria", "masque"].includes(
 			values.protocol,
 		)
 	) {
@@ -4571,6 +4612,10 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 			base.ip = values.socksUdpIp.trim() || "127.0.0.1";
 			break;
 		}
+		case "masque":
+			base.address = splitLines(values.masqueAddress);
+			base.mtu = parseOptionalNumber(values.masqueMtu);
+			break;
 		case "tunnel": {
 			base.rewriteAddress = values.tunnelRewriteAddress.trim() || undefined;
 			base.rewritePort = parseOptionalNumber(values.tunnelRewritePort);

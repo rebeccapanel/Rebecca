@@ -187,6 +187,7 @@ const TLS_COMPATIBLE_PROTOCOLS: Array<InboundFormValues["protocol"]> = [
 	"trojan",
 	"shadowsocks",
 	"hysteria",
+	"masque",
 ];
 const TLS_COMPATIBLE_NETWORKS: Array<InboundFormValues["streamNetwork"]> = [
 	"tcp",
@@ -196,6 +197,7 @@ const TLS_COMPATIBLE_NETWORKS: Array<InboundFormValues["streamNetwork"]> = [
 	"httpupgrade",
 	"xhttp",
 	"hysteria",
+	"masque",
 ];
 const REALITY_COMPATIBLE_PROTOCOLS: Array<InboundFormValues["protocol"]> = [
 	"vless",
@@ -574,7 +576,11 @@ export const InboundFormModal: FC<Props> = ({
 		[],
 	);
 	const ALL_NETWORK_OPTIONS =
-		currentProtocol === "hysteria" ? ["hysteria"] : streamNetworks;
+		currentProtocol === "hysteria"
+			? ["hysteria"]
+			: currentProtocol === "masque"
+				? ["masque"]
+				: streamNetworks;
 	const canEnableTls = useMemo(
 		() =>
 			TLS_COMPATIBLE_PROTOCOLS.includes(currentProtocol) &&
@@ -683,11 +689,17 @@ export const InboundFormModal: FC<Props> = ({
 	}, [initialValue, isOpen, reset]);
 
 	useEffect(() => {
-		if (currentProtocol !== "hysteria") {
+		const fixedNetwork =
+			currentProtocol === "hysteria"
+				? "hysteria"
+				: currentProtocol === "masque"
+					? "masque"
+					: null;
+		if (!fixedNetwork) {
 			return;
 		}
-		if (streamNetwork !== "hysteria") {
-			form.setValue("streamNetwork", "hysteria", {
+		if (streamNetwork !== fixedNetwork) {
+			form.setValue("streamNetwork", fixedNetwork, {
 				shouldDirty: true,
 				shouldValidate: true,
 			});
@@ -1607,6 +1619,19 @@ export const InboundFormModal: FC<Props> = ({
 																});
 															}
 														}
+														if (nextProtocol === "masque") {
+															form.setValue("streamNetwork", "masque", {
+																shouldDirty: true,
+																shouldValidate: true,
+															});
+															form.setValue("streamSecurity", "tls", {
+																shouldDirty: true,
+																shouldValidate: true,
+															});
+															form.setValue("tlsAlpn", ["h3", "h2"], {
+																shouldDirty: true,
+															});
+														}
 														if (nextProtocol === "hysteria") {
 															form.setValue("streamNetwork", "hysteria", {
 																shouldDirty: true,
@@ -2063,6 +2088,26 @@ export const InboundFormModal: FC<Props> = ({
 														)}
 													</div>
 												)}
+											</div>
+										)}
+										{currentProtocol === "masque" && (
+											<div className="flex flex-col gap-3">
+												<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+													<FormControl isInvalid={Boolean(fieldValidationErrors.masquePath)}>
+														<FormLabel helpKey="inbounds.masque.pathHelp">{t("inbounds.masque.path")}</FormLabel>
+														<Input {...register("masquePath")} placeholder="/.well-known/masque/ip/*/*/" />
+													</FormControl>
+													<FormControl isInvalid={Boolean(fieldValidationErrors.masqueMtu)}>
+														<FormLabel helpKey="inbounds.masque.mtuHelp">{t("inbounds.masque.mtu")}</FormLabel>
+														<Input {...register("masqueMtu")} inputMode="numeric" placeholder="1400" />
+														<FieldError>{fieldValidationErrors.masqueMtu}</FieldError>
+													</FormControl>
+												</div>
+												<FormControl isInvalid={Boolean(fieldValidationErrors.masqueAddress)}>
+													<FormLabel helpKey="inbounds.masque.addressHelp">{t("inbounds.masque.address")}</FormLabel>
+													<Textarea rows={2} {...register("masqueAddress")} placeholder="10.14.0.1/24" />
+													<FieldError>{fieldValidationErrors.masqueAddress}</FieldError>
+												</FormControl>
 											</div>
 										)}
 										{currentProtocol === "tunnel" && (
@@ -4267,11 +4312,11 @@ export const InboundFormModal: FC<Props> = ({
 											<p className="text-[0.875rem] font-semibold">
 												{t("inbounds.streamSettings")}
 											</p>
-											{currentProtocol === "hysteria" ? (
+											{currentProtocol === "hysteria" || currentProtocol === "masque" ? (
 												<Alert className="rounded-md">
 													<Info className="size-4" aria-hidden="true" />
 													<AlertDescription className="text-[0.875rem]">
-														{t("inbounds.hysteria.fixedTransport")}
+														{currentProtocol === "masque" ? t("inbounds.masque.fixedTransport") : t("inbounds.hysteria.fixedTransport")}
 													</AlertDescription>
 												</Alert>
 											) : (
@@ -5924,7 +5969,7 @@ export const InboundFormModal: FC<Props> = ({
 														placeholder="example.com"
 													/>
 												</FormControl>
-												{currentProtocol !== "hysteria" && (
+												{currentProtocol !== "hysteria" && currentProtocol !== "masque" && (
 													<FormControl>
 														<FormLabel helpKey="inbounds.tls.cipherSuitesHelp">{t("inbounds.tls.cipherSuites")}</FormLabel>
 														<SearchableTagSelect
