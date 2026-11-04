@@ -346,3 +346,58 @@ func assertRepoCount(t *testing.T, db *sql.DB, query string, want int64) {
 		t.Fatalf("%s: got %d want %d", query, got, want)
 	}
 }
+
+func TestXrayServiceInboundsRoundTripWithoutHosts(t *testing.T) {
+	repo, db := testRepository(t)
+	ctx := context.Background()
+	const wgKey = "iJ2cBkrSGqRwIfYIDIxk7hr5RXfdR93MfJUL7yqkkH8="
+	for _, payload := range []map[string]any{
+		{"tag": "svc-tunnel", "protocol": "tunnel", "port": 8443, "settings": map[string]any{"rewriteAddress": "1.1.1.1", "rewritePort": 53}, "targets": []any{NodeTargetID(8)}},
+		{"tag": "svc-wg", "protocol": "wireguard-xray", "port": 51820, "settings": map[string]any{"secretKey": wgKey}, "targets": []any{NodeTargetID(8)}},
+		{"tag": "svc-mixed", "protocol": "mixed", "port": 1080, "settings": map[string]any{"auth": "noauth"}, "targets": []any{NodeTargetID(8)}},
+		{"tag": "svc-tun", "protocol": "tun", "settings": map[string]any{}, "targets": []any{NodeTargetID(8)}},
+	} {
+		if _, err := repo.CreateInbound(ctx, payload); err != nil {
+			t.Fatalf("create %v: %v", payload["tag"], err)
+		}
+	}
+	assertRepoCount(t, db, `SELECT COUNT(*) FROM hosts WHERE inbound_tag IN ('svc-tunnel','svc-wg','svc-mixed','svc-tun')`, 0)
+
+	grouped, err := repo.GroupedInbounds(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for protocol, tag := range map[string]string{"tunnel": "svc-tunnel", "wireguard-xray": "svc-wg", "mixed": "svc-mixed", "tun": "svc-tun"} {
+		if len(grouped[protocol]) != 1 || jsonvalue.String(grouped[protocol][0]["tag"]) != tag {
+			t.Fatalf("%s group = %#v", protocol, grouped[protocol])
+		}
+	}
+	if len(grouped["http"]) != 0 {
+		t.Fatalf("http group should exist and be empty: %#v", grouped["http"])
+	}
+
+	if _, err := repo.UpdateInbound(ctx, "svc-tunnel", map[string]any{
+		"tag": "svc-tunnel", "protocol": "tunnel", "port": 8444,
+		"settings": map[string]any{"portMap": map[string]any{"80": "10.0.0.5:80"}}, "targets": []any{NodeTargetID(8)},
+	}); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	got, err := repo.GetInbound(ctx, "svc-tunnel")
+	if err != nil || jsonvalue.String(got["port"]) != "8444" {
+		t.Fatalf("updated inbound = %#v %v", got, err)
+	}
+
+	raw, err := repo.GetTargetRawConfig(ctx, NodeTargetID(8))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !configHasInbound(raw, "svc-wg") {
+		t.Fatalf("node config lacks the wireguard inbound: %#v", raw)
+	}
+	if _, err := repo.DeleteInbound(ctx, "svc-wg"); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if _, err := repo.GetInbound(ctx, "svc-wg"); err == nil {
+		t.Fatal("deleted inbound is still readable")
+	}
+}

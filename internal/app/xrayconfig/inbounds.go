@@ -94,6 +94,11 @@ func (r Repository) GroupedInbounds(ctx context.Context) (map[string][]map[strin
 			grouped[protocol] = []map[string]any{}
 		}
 	}
+	for protocol := range xrayServiceInboundProtocols {
+		if _, ok := grouped[protocol]; !ok {
+			grouped[protocol] = []map[string]any{}
+		}
+	}
 	return grouped, nil
 }
 
@@ -635,6 +640,9 @@ func (r Repository) prepareInboundPayload(payload map[string]any, enforceTag str
 			return nil, err
 		}
 		return inbound, nil
+	}
+	if IsXrayServiceInboundProtocol(protocol) {
+		return normalizeXrayServiceInbound(tag, protocol, inbound)
 	}
 	if IsAuxiliaryInboundProtocol(protocol) {
 		inbound["tag"] = tag

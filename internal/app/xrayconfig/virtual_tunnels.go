@@ -41,6 +41,9 @@ func isManageableInboundProtocol(protocol string) bool {
 	if _, ok := auxiliaryInboundProtocols[protocol]; ok {
 		return true
 	}
+	if _, ok := xrayServiceInboundProtocols[protocol]; ok {
+		return true
+	}
 	return isVirtualTunnelProtocol(protocol)
 }
 
@@ -54,7 +57,7 @@ func InboundSupportsHosts(protocol string) bool {
 	case "mtproto", "web":
 		return false
 	default:
-		return true
+		return !IsXrayServiceInboundProtocol(protocol)
 	}
 }
 
@@ -1021,7 +1024,7 @@ func TranslateVirtualTunnelInboundsForRuntime(raw map[string]any) map[string]any
 			continue
 		}
 		if !isVirtualTunnelProtocol(protocol) {
-			next = append(next, inbound)
+			next = append(next, runtimeXrayServiceInbound(inbound))
 			continue
 		}
 		originalTag := jsonvalue.String(inbound["tag"])
