@@ -64,6 +64,7 @@ type Server struct {
 	backgroundOnce       sync.Once
 	nodeOperationsKick   chan struct{}
 	userOpsKickMu        sync.Mutex
+	nodesBulkMu          sync.Mutex
 	userOpsKicking       bool
 	userOpsKickUserIDs   map[int64]struct{}
 	liveUserSpeedsMu     sync.RWMutex
@@ -317,33 +318,21 @@ func (s *Server) handleNodesServiceUpdate(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) updateNodeServices(targets []nodeServiceUpdateTarget) {
-	workers := 4
-	if len(targets) < workers {
-		workers = len(targets)
+	s.nodesBulkMu.Lock()
+	defer s.nodesBulkMu.Unlock()
+	for index, target := range targets {
+		if index > 0 {
+			time.Sleep(nodesBulkDefaultGap)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		_, err := s.nodeController.UpdateService(ctx, nodecontroller.Request{
+			NodeID: target.ID, Channel: target.Channel, Version: target.Version,
+		})
+		cancel()
+		if err != nil {
+			logging.Warnf(logging.ComponentNode, "update service on node %d: %v", target.ID, err)
+		}
 	}
-	jobs := make(chan nodeServiceUpdateTarget)
-	var group sync.WaitGroup
-	for range workers {
-		group.Add(1)
-		go func() {
-			defer group.Done()
-			for target := range jobs {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-				_, err := s.nodeController.UpdateService(ctx, nodecontroller.Request{
-					NodeID: target.ID, Channel: target.Channel, Version: target.Version,
-				})
-				cancel()
-				if err != nil {
-					logging.Warnf(logging.ComponentNode, "update service on node %d: %v", target.ID, err)
-				}
-			}
-		}()
-	}
-	for _, target := range targets {
-		jobs <- target
-	}
-	close(jobs)
-	group.Wait()
 }
 
 func (s *Server) handleNodesUsage(w http.ResponseWriter, r *http.Request) {

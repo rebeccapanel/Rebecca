@@ -245,6 +245,7 @@ func (s *Server) registerNodeRoutes(r chi.Router) {
 	r.HandleFunc("/haproxy/*", s.requireSudo(s.handleHAProxyPath))
 	r.HandleFunc("/haproxy", s.requireSudo(s.handleHAProxyRoot))
 	r.HandleFunc("/nodes/service/update", s.requireSudo(s.handleNodesServiceUpdate))
+	r.HandleFunc("/nodes/bulk", s.requireSudo(s.handleNodesBulk))
 	r.HandleFunc("/nodes/usage", s.requireSudo(s.handleNodesUsage))
 	r.HandleFunc("/nodes/metrics", s.requireSudo(s.handleNodesMetricsWebSocket))
 	r.HandleFunc("/nodes", s.requireSudo(s.handleNodes))

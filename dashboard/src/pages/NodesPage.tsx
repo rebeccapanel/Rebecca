@@ -74,7 +74,14 @@ import {
 	type NodeServiceUpdateChannel,
 } from "../components/NodeServiceUpdateDialog";
 
-const BULK_CORE_UPDATE_GAP_MS = 15000;
+const BULK_NODE_ACTIONS: Record<string, string> = {
+	"bulk-enable": "enable",
+	"bulk-disable": "disable",
+	"bulk-delete": "delete",
+	"bulk-reset": "usage-reset",
+	"bulk-restart": "service-restart",
+	"bulk-reboot": "host-reboot",
+};
 
 const normalizeVersion = (value?: string | null) => {
 	if (!value) return "";
@@ -1113,61 +1120,26 @@ export const NodesPage: FC = () => {
 					failedCount = targetNodes.length;
 					generateErrorMessage(err, toast);
 				}
-			} else
-				for (const node of targetNodes) {
-					if (node.id == null) {
-						continue;
-					}
-					try {
-						switch (actionType) {
-							case "bulk-enable":
-								await apiFetch(`/node/${node.id}`, {
-									method: "PUT",
-									headers: recentActionHeaders,
-									body: { status: "connecting" },
-								});
-								break;
-							case "bulk-disable":
-								await apiFetch(`/node/${node.id}`, {
-									method: "PUT",
-									headers: recentActionHeaders,
-									body: { status: "disabled" },
-								});
-								break;
-							case "bulk-delete":
-								await apiFetch(`/node/${node.id}`, {
-									method: "DELETE",
-									headers: recentActionHeaders,
-								});
-								break;
-							case "bulk-reset":
-								await apiFetch(`/node/${node.id}/usage/reset`, {
-									method: "POST",
-									headers: recentActionHeaders,
-								});
-								break;
-							case "bulk-restart":
-								await apiFetch(`/node/${node.id}/service/restart`, {
-									method: "POST",
-									headers: recentActionHeaders,
-								});
-								break;
-							case "bulk-reboot":
-								await apiFetch(`/node/${node.id}/host/reboot`, {
-									method: "POST",
-									headers: recentActionHeaders,
-								});
-								break;
-							default:
-								break;
-						}
-						successCount += 1;
-						completedIDs.push(node.id);
-					} catch (err) {
-						failedCount += 1;
-						generateErrorMessage(err, toast);
-					}
+			} else {
+				const nodeIds = targetNodes.flatMap((node) =>
+					node.id == null ? [] : [node.id],
+				);
+				try {
+					await apiFetch("/nodes/bulk", {
+						method: "POST",
+						headers: recentActionHeaders,
+						body: {
+							action: BULK_NODE_ACTIONS[actionType],
+							node_ids: nodeIds,
+						},
+					});
+					successCount = nodeIds.length;
+					completedIDs.push(...nodeIds);
+				} catch (err) {
+					failedCount = nodeIds.length;
+					generateErrorMessage(err, toast);
 				}
+			}
 			setBulkNodeActionLoading(null);
 			queryClient.invalidateQueries({ queryKey: [FetchNodesQueryKey] });
 			refetchNodes();
@@ -1258,50 +1230,28 @@ export const NodesPage: FC = () => {
 			setUpdatingBulkCore(true);
 			try {
 				const recentActionHeaders = createNodeActionBatchHeaders();
-				const results: Array<{
-					status: "fulfilled" | "rejected";
-					node: NodeType;
-				}> = [];
-				for (const [index, node] of targetNodes.entries()) {
-					if (index > 0) {
-						await new Promise((resolve) =>
-							setTimeout(resolve, BULK_CORE_UPDATE_GAP_MS),
-						);
-					}
-					try {
-						await apiFetch(`/node/${node.id}/xray/update`, {
-							method: "POST",
-							headers: recentActionHeaders,
-							body: { version, wait: true },
-						});
-						results.push({ status: "fulfilled", node });
-					} catch (err) {
-						results.push({ status: "rejected", node });
-						generateErrorMessage(err, toast);
-					}
-				}
-
-				const success = results.filter(
-					(result) => result.status === "fulfilled",
-				).length;
-				const failed = results.length - success;
-				const total = results.length;
-
-				if (success > 0) {
-					generateSuccessMessage(
-						t("nodes.coreVersionDialog.bulkSuccess", { success, total }),
-						toast,
-					);
-				}
-				if (failed > 0) {
-					toast.error(t("nodes.coreVersionDialog.bulkPartialError", {
-							failed,
-							total,
-						}), { duration: 4000 });
-				}
-
+				await apiFetch("/nodes/bulk", {
+					method: "POST",
+					headers: recentActionHeaders,
+					body: {
+						action: "core-update",
+						node_ids: targetNodes.flatMap((node) =>
+							node.id == null ? [] : [node.id],
+						),
+						options: { version },
+					},
+				});
+				generateSuccessMessage(
+					t("nodes.coreVersionDialog.bulkSuccess", {
+						success: targetNodes.length,
+						total: targetNodes.length,
+					}),
+					toast,
+				);
 				queryClient.invalidateQueries({ queryKey: [FetchNodesQueryKey] });
 				closeVersionDialog();
+			} catch (err) {
+				generateErrorMessage(err, toast);
 			} finally {
 				setUpdatingBulkCore(false);
 			}
@@ -1392,35 +1342,26 @@ export const NodesPage: FC = () => {
 				return;
 			}
 			setBulkNodeActionLoading("bulk-geo");
-			let success = 0;
-			let failed = 0;
 			try {
-				const recentActionHeaders = createNodeActionBatchHeaders();
-				for (const node of targetNodes) {
-					if (!node.id) continue;
-					try {
-						await apiFetch(`/node/${node.id}/geo/update`, {
-							method: "POST",
-							headers: recentActionHeaders,
-							body,
-						});
-						success += 1;
-					} catch (err) {
-						failed += 1;
-						generateErrorMessage(err, toast);
-					}
-				}
-				if (success > 0) {
-					generateSuccessMessage(
-						t("nodes.geoDialog.bulkSuccess", { count: success }),
-						toast,
-					);
-				}
-				if (failed > 0) {
-					toast.error(t("nodes.geoDialog.bulkPartialError", { count: failed }));
-				}
+				await apiFetch("/nodes/bulk", {
+					method: "POST",
+					headers: createNodeActionBatchHeaders(),
+					body: {
+						action: "geo-update",
+						node_ids: targetNodes.flatMap((node) =>
+							node.id == null ? [] : [node.id],
+						),
+						options: body,
+					},
+				});
+				generateSuccessMessage(
+					t("nodes.geoDialog.bulkSuccess", { count: targetNodes.length }),
+					toast,
+				);
 				queryClient.invalidateQueries({ queryKey: [FetchNodesQueryKey] });
 				closeGeoDialog();
+			} catch (err) {
+				generateErrorMessage(err, toast);
 			} finally {
 				setBulkNodeActionLoading(null);
 			}
