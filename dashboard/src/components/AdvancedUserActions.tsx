@@ -23,9 +23,18 @@ import { SettingsCard } from "components/ui/settings-card";
 import { useAdminsStore } from "contexts/AdminsContext";
 import { useDashboard } from "contexts/DashboardContext";
 import { useServicesStore } from "contexts/ServicesContext";
+import { GroupSelect } from "components/labels/GroupSelect";
+import {
+	EMPTY_LABEL_FILTER,
+	LabelFilter,
+	type LabelFilterValue,
+} from "components/labels/LabelFilter";
+import { TagsSelect } from "components/labels/TagsSelect";
 import useGetUser from "hooks/useGetUser";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useLocation } from "react-router-dom";
+import { NO_GROUP_FILTER, useGroups, useInvalidateLabels, useTags } from "service/labels";
 import { AdminRole, AdminTrafficLimitMode } from "types/Admin";
 import type { AdvancedUserActionPayload, AdvancedUserActionScopeStatus, AdvancedUserActionStatus } from "types/User";
 import { isUserManagementLocked } from "utils/adminTraffic";
@@ -105,6 +114,16 @@ const AdvancedUserActions = ({ compact = false, embedded = false }: AdvancedUser
 	const [lastOnlineDays, setLastOnlineDays] = useState("");
 	const [statusAgeDays, setStatusAgeDays] = useState("");
 	const [createdBeforeDays, setCreatedBeforeDays] = useState("");
+	const location = useLocation();
+	const [labelTarget, setLabelTarget] = useState<LabelFilterValue>(() => {
+		const group = new URLSearchParams(location.search).get("group");
+		return group ? { ...EMPTY_LABEL_FILTER, groups: [group] } : EMPTY_LABEL_FILTER;
+	});
+	const [newGroupId, setNewGroupId] = useState<number | null>(null);
+	const [labelTags, setLabelTags] = useState<string[]>([]);
+	const { data: userGroups = [] } = useGroups("user");
+	const { data: userTags = [] } = useTags("user");
+	const invalidateLabels = useInvalidateLabels();
 	const adminList = useAdminsStore((store) => store.adminOptions);
 	const adminOptionsLoading = useAdminsStore((store) => store.adminOptionsLoading);
 	const fetchAdminOptions = useAdminsStore((store) => store.fetchAdminOptions);
@@ -176,6 +195,15 @@ const AdvancedUserActions = ({ compact = false, embedded = false }: AdvancedUser
 			return null;
 		}
 		if (usernames.length) payload.usernames = usernames;
+		if (labelTarget.groups.length) {
+			payload.group_ids = labelTarget.groups.map((group) =>
+				group === NO_GROUP_FILTER ? -1 : Number(group),
+			);
+		}
+		if (labelTarget.tags.length) {
+			payload.tags = labelTarget.tags;
+			if (labelTarget.tagMatchAll) payload.tag_match = "all";
+		}
 		for (const item of [
 			{ value: lastOnlineDays, key: "last_online_days" as const },
 			{ value: createdBeforeDays, key: "created_before_days" as const },
@@ -210,7 +238,19 @@ const AdvancedUserActions = ({ compact = false, embedded = false }: AdvancedUser
 		statusAgeDays.trim() ? `${t("filters.advancedActions.conditions.statusAge")}: ${statusAgeDays}` : null,
 		createdBeforeDays.trim() ? `${t("filters.advancedActions.conditions.createdBefore")}: ${createdBeforeDays}` : null,
 	].filter(Boolean) as string[];
-	const scopeText = [ownerLabel, serviceLabel, statusLabel, ...conditionParts].join(" · ");
+	const groupLabel = labelTarget.groups
+		.map((group) =>
+			group === NO_GROUP_FILTER
+				? t("groups.noGroup")
+				: (userGroups.find((item) => String(item.id) === group)?.name ?? group),
+		)
+		.join(", ");
+	const tagsLabel = labelTarget.tags.join(", ");
+	const labelParts = [
+		groupLabel ? `${t("groups.group")}: ${groupLabel}` : null,
+		tagsLabel ? `${t("tags.title")}: ${tagsLabel}` : null,
+	].filter(Boolean) as string[];
+	const scopeText = [ownerLabel, serviceLabel, statusLabel, ...labelParts, ...conditionParts].join(" · ");
 
 	const execute = async (
 		key: string,
@@ -396,6 +436,66 @@ const AdvancedUserActions = ({ compact = false, embedded = false }: AdvancedUser
 		});
 	};
 
+	const askStatus = (action: "disable_users" | "activate_users") => {
+		const targeting = buildTargetingPayload(false);
+		if (!targeting) return;
+		const label = t(action === "disable_users" ? "bulkActions.status.disable" : "bulkActions.status.activate");
+		askToRun({
+			key: action,
+			label,
+			detail: label,
+			danger: action === "disable_users",
+			payload: {
+				action,
+				admin_username: resolveTargetAdminUsername(),
+				...buildServiceScopePayload(),
+				...targeting,
+			},
+			success: (count) => t("bulkActions.status.success", { count }),
+		});
+	};
+
+	const askLabels = (action: "set_group" | "clear_group" | "add_tags" | "remove_tags") => {
+		const targeting = buildTargetingPayload(false);
+		if (!targeting) return;
+		const base: AdvancedUserActionPayload = {
+			action,
+			admin_username: resolveTargetAdminUsername(),
+			...buildServiceScopePayload(),
+			...targeting,
+		};
+		let detail = "";
+		if (action === "set_group") {
+			if (newGroupId === null) {
+				showToast(t("bulkActions.labels.groupRequired"), "warning");
+				return;
+			}
+			base.target_group_id = newGroupId;
+			detail = userGroups.find((item) => item.id === newGroupId)?.name ?? String(newGroupId);
+		}
+		if (action === "add_tags" || action === "remove_tags") {
+			if (!labelTags.length) {
+				showToast(t("bulkActions.labels.tagsRequired"), "warning");
+				return;
+			}
+			base.target_tags = labelTags;
+			detail = labelTags.join(", ");
+		}
+		const label = t(`bulkActions.labels.${action}`);
+		askToRun({
+			key: action,
+			label,
+			detail: detail ? `${label}: ${detail}` : label,
+			danger: false,
+			payload: base,
+			success: (count) => t("bulkActions.labels.success", { count }),
+			onSuccess: () => {
+				void invalidateLabels();
+				if (action === "add_tags" || action === "remove_tags") setLabelTags([]);
+			},
+		});
+	};
+
 	const askChangeService = () => {
 		const targetId = Number(targetServiceValue);
 		if (!targetServiceValue || !Number.isFinite(targetId) || targetId <= 0) {
@@ -469,6 +569,8 @@ const AdvancedUserActions = ({ compact = false, embedded = false }: AdvancedUser
 					) : null}
 				</div>
 			) : null}
+
+			<LabelFilter type="user" value={labelTarget} onChange={setLabelTarget} />
 
 			<FormField label={t("filters.advancedActions.conditions.usernames")} description={t("filters.advancedActions.conditions.usernamesHelp")}>
 				<Textarea value={targetUsernames} onChange={(event) => setTargetUsernames(event.target.value)} rows={2} className="font-mono" />
@@ -572,6 +674,42 @@ const AdvancedUserActions = ({ compact = false, embedded = false }: AdvancedUser
 				</SettingsCard>
 			) : null}
 
+			<SettingsCard title={t("bulkActions.status.title")} description={t("bulkActions.status.description")}>
+				<div className="flex flex-row flex-wrap gap-2">
+					<Button disabled={busy !== null} onClick={() => askStatus("activate_users")} size="sm" loading={busy === "activate_users"}>
+						{t("bulkActions.status.activate")}
+					</Button>
+					<Button disabled={busy !== null} onClick={() => askStatus("disable_users")} variant="outline" size="sm" loading={busy === "disable_users"}>
+						{t("bulkActions.status.disable")}
+					</Button>
+				</div>
+			</SettingsCard>
+
+			<SettingsCard title={t("bulkActions.labels.title")} description={t("bulkActions.labels.description")}>
+				<FormField label={t("bulkActions.labels.targetGroup")}>
+					<GroupSelect type="user" value={newGroupId} onChange={setNewGroupId} />
+				</FormField>
+				<div className="flex flex-row flex-wrap gap-2">
+					<Button disabled={busy !== null} onClick={() => askLabels("set_group")} size="sm" loading={busy === "set_group"}>
+						{t("bulkActions.labels.set_group")}
+					</Button>
+					<Button disabled={busy !== null} onClick={() => askLabels("clear_group")} variant="outline" size="sm" loading={busy === "clear_group"}>
+						{t("bulkActions.labels.clear_group")}
+					</Button>
+				</div>
+				<FormField label={t("bulkActions.labels.targetTags")}>
+					<TagsSelect value={labelTags} onChange={setLabelTags} options={userTags.map((item) => item.tag)} />
+				</FormField>
+				<div className="flex flex-row flex-wrap gap-2">
+					<Button disabled={busy !== null} onClick={() => askLabels("add_tags")} size="sm" loading={busy === "add_tags"}>
+						{t("bulkActions.labels.add_tags")}
+					</Button>
+					<Button disabled={busy !== null} onClick={() => askLabels("remove_tags")} variant="outline" size="sm" loading={busy === "remove_tags"}>
+						{t("bulkActions.labels.remove_tags")}
+					</Button>
+				</div>
+			</SettingsCard>
+
 			<SettingsCard title={t("filters.advancedActions.cleanupSection.title")} description={t("filters.advancedActions.cleanupSection.description")}>
 				<FormField label={t("filters.advancedActions.cleanupSection.daysLabel")}>
 					<NumberField inputMode="numeric" min={1} value={cleanupDays} doneLabel={t("common.done")} onChange={setCleanupDays} />
@@ -600,6 +738,8 @@ const AdvancedUserActions = ({ compact = false, embedded = false }: AdvancedUser
 		[t("filters.advancedActions.scope.label"), ownerLabel],
 		[t("filters.advancedActions.service.label"), serviceLabel],
 		[t("filters.advancedActions.scopeStatuses.title"), statusLabel],
+		[t("groups.group"), groupLabel || t("bulkActions.edit.noFilter")],
+		[t("tags.title"), tagsLabel || t("bulkActions.edit.noFilter")],
 		[
 			t("filters.advancedActions.conditions.usernames"),
 			usernameCount ? String(usernameCount) : t("bulkActions.edit.noFilter"),

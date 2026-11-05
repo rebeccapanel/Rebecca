@@ -1,4 +1,4 @@
-import { ArrowLeftRight, BellRing, Zap, BookOpen, Briefcase, ChevronDown, ChartColumn, Database, Clock, SquareCode, Settings, Settings2, Terminal, Copy, Bell, FileText, Eye, House, Link, Server, LayoutGrid, CircleUser, Users, Wrench } from "lucide-react";
+import { FolderTree, ArrowLeftRight, BellRing, Zap, BookOpen, Briefcase, ChevronDown, ChartColumn, Database, Clock, SquareCode, Settings, Settings2, Terminal, Copy, Bell, FileText, Eye, House, Link, Server, LayoutGrid, CircleUser, Users, Wrench } from "lucide-react";
 import logoUrl from "assets/logo.svg";
 import useGetUser from "hooks/useGetUser";
 import {
@@ -26,6 +26,7 @@ const iconClass = "size-5 shrink-0";
 const HomeIconStyled = () => <House className={iconClass} />;
 const UsersIconStyled = () => <Users className={iconClass} />;
 const BulkActionsIconStyled = () => <Zap className={iconClass} />;
+const GroupsIconStyled = () => <FolderTree className={iconClass} />;
 const RecentActionsIconStyled = () => <Clock className={iconClass} />;
 const SettingsIconStyled = () => <Settings className={iconClass} />;
 const MasterSettingsIconStyled = () => <Settings2 className={iconClass} />;
@@ -284,6 +285,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 	const items: SidebarItem[] = [
 		{ title: t("dashboard"), url: "/", icon: HomeIconStyled },
 		{ title: t("users"), url: "/users", icon: UsersIconStyled },
+		{ title: t("groups.title"), url: "/groups", icon: GroupsIconStyled },
 	];
 
 	items.push({
@@ -344,7 +346,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 		},
 		{
 			title: t("users"),
-			items: [pickDirect("/users"), pickDirect("/bulk-actions")],
+			items: [pickDirect("/users"), pickDirect("/groups"), pickDirect("/bulk-actions")],
 		},
 		{
 			title: t("sidebar.groups.infrastructure"),

@@ -128,6 +128,8 @@ export type AdminServiceTrafficLimitPayload = {
 
 export type Admin = {
 	id: number;
+	group?: { id: number; name: string } | null;
+	tags?: string[];
 	username: string;
 	role: AdminRole;
 	permissions: AdminPermissions;

@@ -1,3 +1,4 @@
+import { TagChips } from "components/labels/TagChips";
 import { Button } from "components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "components/ui/tooltip";
 import { Spinner } from "components/ui/spinner";
@@ -799,6 +800,39 @@ export const UsersTable: FC<UsersTableProps> = ({
 						{user.service_name ?? t("usersTable.defaultService")}
 					</p>
 				),
+			},
+			{
+				id: "group",
+				menuLabel: t("groups.group"),
+				header: t("groups.group"),
+				accessor: (user) => user.group?.name ?? "",
+				priority: "medium",
+				width: "110px",
+				minWidth: "88px",
+				maxWidth: "140px",
+				truncate: true,
+				tooltip: true,
+				mobilePriority: 4,
+				mobileVisible: true,
+				mobileMetaLabel: t("groups.group"),
+				cell: (user) => (
+					<p className={cn("text-[0.875rem] truncate max-w-full", user.group ? "text-panel-text" : "text-panel-text-muted")}>
+						{user.group?.name ?? "–"}
+					</p>
+				),
+			},
+			{
+				id: "tags",
+				menuLabel: t("tags.title"),
+				header: t("tags.title"),
+				priority: "low",
+				width: "170px",
+				minWidth: "120px",
+				maxWidth: "220px",
+				mobilePriority: 5,
+				mobileVisible: true,
+				mobileMetaLabel: t("tags.title"),
+				cell: (user) => <TagChips tags={user.tags} limit={2} />,
 			},
 		];
 

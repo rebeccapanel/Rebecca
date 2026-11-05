@@ -1,3 +1,8 @@
+import {
+	LabelFilter,
+	type LabelFilterValue,
+	labelFilterCount,
+} from "components/labels/LabelFilter";
 import type { SortingState } from "@tanstack/react-table";
 import debounce from "lodash.debounce";
 import { ListFilter, Plus } from "lucide-react";
@@ -49,7 +54,13 @@ export const AdminsFilterBar: FC = () => {
 		onFilterChange({ sort: item ? `${item.desc ? "-" : ""}${item.id}` : "username", offset: 0 });
 	};
 
-	const activeFilterCount = (filters.roleFilter ? 1 : 0) + (filters.statusFilter ? 1 : 0);
+	const labelFilter: LabelFilterValue = {
+		groups: filters.groups ?? [],
+		tags: filters.tags ?? [],
+		tagMatchAll: Boolean(filters.tagMatchAll),
+	};
+	const activeFilterCount =
+		(filters.roleFilter ? 1 : 0) + (filters.statusFilter ? 1 : 0) + labelFilterCount(labelFilter);
 	const roleOptions = [
 		{ value: "full_access", label: t("admins.filters.roleFullAccess") },
 		{ value: "sudo", label: t("admins.filters.roleSudo") },
@@ -129,7 +140,7 @@ export const AdminsFilterBar: FC = () => {
 						) : null}
 					</button>
 				</PopoverTrigger>
-				<PopoverContent align="start" className="w-64">
+				<PopoverContent align="start" collisionPadding={12} className="w-64 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto">
 					<div className="flex flex-col gap-3">
 						<span className="text-sm font-semibold">{t("admins.filters.title")}</span>
 						{renderFilterSelect(t("admins.filters.role"), filters.roleFilter ?? "", roleOptions, (next) =>
@@ -138,10 +149,31 @@ export const AdminsFilterBar: FC = () => {
 						{renderFilterSelect(t("admins.filters.status"), filters.statusFilter ?? "", statusOptions, (next) =>
 							onFilterChange({ statusFilter: next, offset: 0 }),
 						)}
+						<LabelFilter
+							type="admin"
+							value={labelFilter}
+							onChange={(next) =>
+								onFilterChange({
+									groups: next.groups,
+									tags: next.tags,
+									tagMatchAll: next.tagMatchAll,
+									offset: 0,
+								})
+							}
+						/>
 						<button
 							type="button"
 							disabled={activeFilterCount === 0}
-							onClick={() => onFilterChange({ roleFilter: "", statusFilter: "", offset: 0 })}
+							onClick={() =>
+								onFilterChange({
+									roleFilter: "",
+									statusFilter: "",
+									groups: [],
+									tags: [],
+									tagMatchAll: false,
+									offset: 0,
+								})
+							}
 							className={buttonVariants({ variant: "ghost", size: "sm" })}
 						>
 							{t("admins.filters.clear")}

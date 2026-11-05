@@ -12,6 +12,11 @@ import { Plus, Filter, CircleHelp } from "lucide-react";
 import { cn } from "lib/cn";
 
 import { PanelSelect as Select } from "components/common/PanelSelect";
+import {
+	LabelFilter,
+	type LabelFilterValue,
+	labelFilterCount,
+} from "components/labels/LabelFilter";
 import { SearchInput } from "components/common/SearchInput";
 import { DataTableSortMenu, type SortOption } from "components/ui/DataTableSortMenu";
 import { ADVANCED_FILTER_OPTIONS } from "constants/advancedFilters";
@@ -80,6 +85,11 @@ export const UsersFilterBar: FC = () => {
 	const activeFilters = filters.advancedFilters ?? [];
 	const serviceId = filters.serviceId;
 	const ownerFilter = filters.owner;
+	const labelFilter: LabelFilterValue = {
+		groups: filters.groups ?? [],
+		tags: filters.tags ?? [],
+		tagMatchAll: Boolean(filters.tagMatchAll),
+	};
 	const matchOptions = {
 		matchCase: Boolean(filters.matchCase),
 		matchWholeWord: Boolean(filters.matchWholeWord),
@@ -144,13 +154,21 @@ export const UsersFilterBar: FC = () => {
 	};
 
 	const clearAdvancedFilters = () => {
-		if (activeFilters.length === 0 && !serviceId && !ownerFilter) {
+		if (
+			activeFilters.length === 0 &&
+			!serviceId &&
+			!ownerFilter &&
+			labelFilterCount(labelFilter) === 0
+		) {
 			return;
 		}
 		onFilterChange({
 			advancedFilters: [],
 			serviceId: undefined,
 			owner: undefined,
+			groups: [],
+			tags: [],
+			tagMatchAll: false,
 			offset: 0,
 		});
 	};
@@ -185,7 +203,10 @@ export const UsersFilterBar: FC = () => {
 	};
 
 	const activeFilterTotal =
-		activeFilters.length + (serviceId ? 1 : 0) + (ownerFilter ? 1 : 0);
+		activeFilters.length +
+		(serviceId ? 1 : 0) +
+		(ownerFilter ? 1 : 0) +
+		labelFilterCount(labelFilter);
 	const hasClearableFilters = activeFilterTotal > 0;
 
 	return (
@@ -225,7 +246,7 @@ export const UsersFilterBar: FC = () => {
 						)}
 					</div>
 				</PopoverTrigger>
-				<PopoverContent className="border-light-border! min-w-[260px]!">
+				<PopoverContent collisionPadding={12} className="border-light-border! min-w-[260px]! max-h-[var(--radix-popover-content-available-height)] overflow-y-auto">
 					
 					
 					<div className={cn("p-3 font-semibold", "font-semibold")}>
@@ -281,6 +302,18 @@ export const UsersFilterBar: FC = () => {
 									</Select>
 								</div>
 							)}
+							<LabelFilter
+								type="user"
+								value={labelFilter}
+								onChange={(next) =>
+									onFilterChange({
+										groups: next.groups,
+										tags: next.tags,
+										tagMatchAll: next.tagMatchAll,
+										offset: 0,
+									})
+								}
+							/>
 						</div>
 						<Button onClick={clearAdvancedFilters} disabled={!hasClearableFilters} variant="ghost" size="sm" className="mt-3 w-full">
 							{t("filters.advancedClear")}

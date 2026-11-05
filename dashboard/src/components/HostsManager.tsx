@@ -1,3 +1,12 @@
+import { LabelsDialog } from "components/labels/LabelsDialog";
+import { TagChips } from "components/labels/TagChips";
+import { TagFilterButton } from "components/labels/TagFilterButton";
+import {
+	EMPTY_LABEL_FILTER,
+	type LabelFilterValue,
+	matchesTagFilter,
+} from "components/labels/LabelFilter";
+import { useLabelItems } from "service/labels";
 import { Field, FieldLabel } from "components/ui/field";
 import { Popover, PopoverContent, PopoverTrigger } from "components/ui/popover";
 import { Badge } from "components/ui/badge";
@@ -26,7 +35,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { hostEntityPage } from "components/entityPage/EntityOverviews";
 import type { EntityPageInfo } from "components/entityPage/EntityPageParts";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "components/ui/tabs";
-import { ChevronDown, Network, RefreshCw, CircleCheck, Info, Pencil, Plus, Trash2, CircleX } from "lucide-react";
+import { ChevronDown, Network, RefreshCw, CircleCheck, Info, Pencil, Plus, Tags, Trash2, CircleX } from "lucide-react";
 
 import { cn } from "lib/cn";
 import {
@@ -1872,11 +1881,22 @@ export const HostsManager: FC = () => {
 		[activeHosts, allHosts, includeDisabled],
 	);
 
+	const { data: hostLabels } = useLabelItems("host");
+	const [tagFilter, setTagFilter] = useState<LabelFilterValue>(EMPTY_LABEL_FILTER);
+	const [labelsTarget, setLabelsTarget] = useState<HostState | null>(null);
 	const filteredHosts = useMemo(() => {
+		const tagged = tagFilter.tags.length
+			? baseFilteredHosts.filter((host) =>
+					matchesTagFilter(
+						host.data.id != null ? hostLabels?.items[String(host.data.id)]?.tags : undefined,
+						tagFilter,
+					),
+				)
+			: baseFilteredHosts;
 		if (!searchQuery.trim()) {
-			return baseFilteredHosts;
+			return tagged;
 		}
-		return baseFilteredHosts.filter((host) => {
+		return tagged.filter((host) => {
 			const values = [
 				host.data.remark,
 				host.data.address,
@@ -1888,7 +1908,7 @@ export const HostsManager: FC = () => {
 			];
 			return matchesAnySearch(values, searchQuery, searchMatch);
 		});
-	}, [baseFilteredHosts, searchMatch, searchQuery]);
+	}, [baseFilteredHosts, hostLabels, searchMatch, searchQuery, tagFilter]);
 
 	const displayedHosts = filteredHosts;
 
@@ -2486,6 +2506,22 @@ export const HostsManager: FC = () => {
 				},
 			},
 			{
+				id: "tags",
+				header: t("tags.title"),
+				priority: "low",
+				hideBelow: "lg",
+				width: "170px",
+				maxWidth: "220px",
+				mobilePriority: 7,
+				mobileMetaLabel: t("tags.title"),
+				cell: (host) => (
+					<TagChips
+						tags={host.data.id != null ? hostLabels?.items[String(host.data.id)]?.tags : undefined}
+						limit={2}
+					/>
+				),
+			},
+			{
 				id: "sni",
 				sortValue: (host) => host.data.sni ?? "",
 				header: t("hostsDialog.sni"),
@@ -2528,7 +2564,7 @@ export const HostsManager: FC = () => {
 				),
 			},
 		],
-		[inboundOptions, renderRotationValues, t],
+		[hostLabels, inboundOptions, renderRotationValues, t],
 	);
 
 	const hostRowActions = (host: HostState): DataTableRowAction<HostState>[] => {
@@ -2539,6 +2575,13 @@ export const HostsManager: FC = () => {
 				label: t("edit"),
 				icon: <EditIcon />,
 				onClick: () => setSelectedHostUid(host.uid),
+			},
+			{
+				id: "labels",
+				label: t("labels.menu"),
+				icon: <Tags className="w-[16px]" />,
+				disabled: host.data.id == null,
+				onClick: () => setLabelsTarget(host),
 			},
 			{
 				id: "toggle",
@@ -2563,6 +2606,18 @@ export const HostsManager: FC = () => {
 
 	return (
 		<div className="flex flex-col items-stretch gap-4">
+			<LabelsDialog
+				open={labelsTarget !== null}
+				onClose={() => setLabelsTarget(null)}
+				type="host"
+				entityKey={labelsTarget?.data.id ?? 0}
+				entityName={labelsTarget?.data.remark || t("hostsPage.untitledHost")}
+				current={
+					labelsTarget?.data.id != null
+						? (hostLabels?.items[String(labelsTarget.data.id)] ?? null)
+						: null
+				}
+			/>
 			<ConfirmDialog
 				open={Boolean(hostPendingDelete)}
 				onClose={() => {
@@ -2599,6 +2654,7 @@ export const HostsManager: FC = () => {
 						onSortingChange={setHostSorting}
 					/>
 					</div>
+					<TagFilterButton type="host" value={tagFilter} onChange={setTagFilter} />
 					<label className="flex cursor-pointer items-center gap-2 text-sm"><Checkbox checked={includeDisabled} onCheckedChange={(checked: boolean) => setIncludeDisabled(checked)} /><span>{t("hostsPage.showDisabled")}</span></label>
 				</div></div>
 						<div className="flex shrink-0 items-center justify-end gap-1">

@@ -47,6 +47,9 @@ import { addQuickExpiry } from "utils/expiry";
 import { formatBytes } from "utils/formatByte";
 import { generateUserLinks } from "utils/userLinks";
 import { DeleteConfirmDialog } from "./dialogs/ConfirmDialog";
+import { GroupSelect } from "components/labels/GroupSelect";
+import { TagsSelect } from "components/labels/TagsSelect";
+import { useInvalidateLabels, useTags } from "service/labels";
 import { createUsageConfig, UsageFilter } from "./UsageFilter";
 
 export type UserDialogProps = {};
@@ -74,6 +77,8 @@ export type FormType = Pick<
 	next_plan_add_remaining_traffic: boolean;
 	next_plan_fire_on_either: boolean;
 	speed_limit: number | null;
+	group_id: number | null;
+	tags: string[];
 };
 
 type TabValue = "details" | "usage" | "links";
@@ -129,6 +134,8 @@ const formatUser = (user: User): FormType => {
 		next_plan_fire_on_either: nextPlan?.fire_on_either ?? true,
 		telegram_id: user.telegram_id ?? "",
 		contact_number: user.contact_number ?? "",
+		group_id: user.group?.id ?? null,
+		tags: user.tags ?? [],
 	};
 };
 
@@ -153,6 +160,8 @@ const getDefaultValues = (): FormType => ({
 	next_plan_fire_on_either: true,
 	telegram_id: "",
 	contact_number: "",
+	group_id: null,
+	tags: [],
 });
 
 const normalizeDecimalText = (value: string) =>
@@ -210,6 +219,8 @@ const buildSchema = (isEditing: boolean) => {
 		expire: z.number().nullable(),
 		data_limit_reset_strategy: z.string(),
 		note: z.union([z.string(), z.null(), z.undefined()]).transform((value) => (typeof value === "string" ? value : "")),
+		group_id: z.number().nullable().optional().transform((value) => value ?? null),
+		tags: z.array(z.string()).optional().transform((value) => value ?? []),
 		telegram_id: z.union([z.string(), z.null(), z.undefined()]).transform((value) => (typeof value === "string" ? value : "")),
 		contact_number: z.union([z.string(), z.null(), z.undefined()]).transform((value) => (typeof value === "string" ? value : "")),
 		next_plan_enabled: z.boolean().default(false),
@@ -380,6 +391,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		window.requestAnimationFrame(() => bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: "smooth" }));
 
 	const formSchema = useMemo(() => buildSchema(isEditing), [isEditing]);
+	const { data: knownUserTags = [] } = useTags("user");
+	const invalidateLabels = useInvalidateLabels();
 	const form = useForm<FormType>({
 		defaultValues: initialValues,
 		resolver: zodResolver(formSchema as unknown as Parameters<typeof zodResolver>[0]) as unknown as Resolver<FormType>,
@@ -924,6 +937,8 @@ export const UserDialog: FC<UserDialogProps> = () => {
 				note: values.note,
 				telegram_id: values.telegram_id,
 				contact_number: values.contact_number,
+				group_id: values.group_id,
+				tags: values.tags,
 				status: normalizedStatus,
 				expire: values.expire,
 				data_limit: values.data_limit,
@@ -937,6 +952,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 			createUserWithService(serviceBody)
 				.then(() => {
+					void invalidateLabels();
 					setSubmitStatus("success");
 					const qrUserPromise = fetchUserForQr(values.username);
 					toast.success(t("userDialog.userCreated", { username: values.username }), { duration: 3000 });
@@ -980,6 +996,7 @@ export const UserDialog: FC<UserDialogProps> = () => {
 
 		editUser(editingUser?.username, body as UserCreate)
 			.then(() => {
+				void invalidateLabels();
 				setSubmitStatus("success");
 				toast.success(t("userDialog.userEdited", { username: values.username }), { duration: 3000 });
 				successCloseTimerRef.current = window.setTimeout(() => {
@@ -1542,6 +1559,28 @@ export const UserDialog: FC<UserDialogProps> = () => {
 					<ChevronDown className={cn("size-4 transition-transform", otherInfoOpen && "rotate-180")} />
 				</CollapsibleTrigger>
 				<CollapsibleContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+					<FormField label={t("groups.group")}>
+						<Controller
+							control={form.control}
+							name="group_id"
+							render={({ field }) => (
+								<GroupSelect type="user" value={field.value ?? null} onChange={field.onChange} />
+							)}
+						/>
+					</FormField>
+					<FormField label={t("tags.title")}>
+						<Controller
+							control={form.control}
+							name="tags"
+							render={({ field }) => (
+								<TagsSelect
+									value={field.value ?? []}
+									onChange={field.onChange}
+									options={knownUserTags.map((item) => item.tag)}
+								/>
+							)}
+						/>
+					</FormField>
 					<FormField label={t("fields.note")} className="sm:col-span-2" error={errors.note?.message}>
 						<Textarea {...form.register("note")} />
 					</FormField>

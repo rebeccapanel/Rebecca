@@ -29,6 +29,9 @@ export type FilterType = {
 	advancedFilters?: string[];
 	owner?: string;
 	serviceId?: number;
+	groups?: string[];
+	tags?: string[];
+	tagMatchAll?: boolean;
 };
 export type ProtocolType =
 	| "vmess"
@@ -60,6 +63,9 @@ const createDefaultFilters = (): FilterType => ({
 	advancedFilters: [],
 	owner: undefined,
 	serviceId: undefined,
+	groups: [],
+	tags: [],
+	tagMatchAll: false,
 });
 
 const sanitizeFilterQuery = (query: FilterType): FilterType => {
@@ -295,12 +301,24 @@ const fetchUsers = (
 	if (sanitizedQuery.serviceId !== undefined) {
 		requestQuery.service_id = sanitizedQuery.serviceId;
 	}
+	if (sanitizedQuery.groups?.length) {
+		requestQuery.group_id = sanitizedQuery.groups;
+	}
+	if (sanitizedQuery.tags?.length) {
+		requestQuery.tag = sanitizedQuery.tags;
+		if (sanitizedQuery.tagMatchAll) {
+			requestQuery.tag_match = "all";
+		}
+	}
 	requestQuery.match_case = Boolean(sanitizedQuery.matchCase);
 	requestQuery.match_whole_word = Boolean(sanitizedQuery.matchWholeWord);
 	requestQuery.links = true;
 	delete requestQuery.advancedFilters;
 	delete requestQuery.owner;
 	delete requestQuery.serviceId;
+	delete requestQuery.groups;
+	delete requestQuery.tags;
+	delete requestQuery.tagMatchAll;
 	delete requestQuery.matchCase;
 	delete requestQuery.matchWholeWord;
 

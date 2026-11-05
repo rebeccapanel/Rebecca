@@ -19,6 +19,9 @@ export type AdminFilters = {
 	sort: string;
 	roleFilter: string;
 	statusFilter: string;
+	groups?: string[];
+	tags?: string[];
+	tagMatchAll?: boolean;
 };
 
 export type AdminDialogTab = "details" | "permissions" | "history";
@@ -65,7 +68,16 @@ type AdminsStore = {
 };
 
 const buildAdminQuery = (filters: AdminFilters) => {
-	const query: Record<string, string | number> = {};
+	const query: Record<string, string | number | string[]> = {};
+	if (filters.groups?.length) {
+		query.group_id = filters.groups;
+	}
+	if (filters.tags?.length) {
+		query.tag = filters.tags;
+		if (filters.tagMatchAll) {
+			query.tag_match = "all";
+		}
+	}
 	if (filters.search) {
 		query.username = filters.search;
 		query.match_case = String(filters.matchCase);
@@ -98,6 +110,9 @@ const createDefaultFilters = (): AdminFilters => ({
 	sort: "username",
 	roleFilter: "",
 	statusFilter: "",
+	groups: [],
+	tags: [],
+	tagMatchAll: false,
 });
 
 const isAbortError = (error: unknown): boolean => {
