@@ -72,7 +72,6 @@ func (s *Server) handleAdminsList(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	labelFilter.Tags = nil
 
 	admins := []map[string]any{}
 	total := 0
@@ -150,6 +149,7 @@ func (s *Server) handleAdminsList(w http.ResponseWriter, r *http.Request) {
 	for _, item := range admins {
 		id, _ := item["id"].(int64)
 		item["group"] = adminLabels[id].Group
+		item["tags"] = append([]string{}, adminLabels[id].Tags...)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"admins": admins, "total": total})
 }

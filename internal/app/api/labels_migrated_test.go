@@ -55,14 +55,14 @@ func TestHostTagsTravelWithTheHostPayload(t *testing.T) {
 	}
 }
 
-func TestAdminGroupInCreateAndUpdatePayloadAndNoAdminTags(t *testing.T) {
+func TestAdminGroupAndTagsInCreateAndUpdatePayload(t *testing.T) {
 	server, token := newLabelsMigratedServer(t)
 	rec := sqliteJSONRequest(server, http.MethodPost, "/api/groups", token, `{"type":"admin","name":"Support"}`)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("group status=%d body=%s", rec.Code, rec.Body.String())
 	}
 
-	rec = sqliteJSONRequest(server, http.MethodPost, "/api/admin", token, `{"username":"agent","password":"secret1","role":"standard","group_id":1}`)
+	rec = sqliteJSONRequest(server, http.MethodPost, "/api/admin", token, `{"username":"agent","password":"secret1","role":"standard","group_id":1,"tags":["Night","L1"]}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create admin status=%d body=%s", rec.Code, rec.Body.String())
 	}
@@ -77,8 +77,16 @@ func TestAdminGroupInCreateAndUpdatePayloadAndNoAdminTags(t *testing.T) {
 	}
 	sqliteAssertCount(t, server.db, `SELECT COUNT(*) FROM entity_group_members`, 0)
 
-	if rec := sqliteJSONRequest(server, http.MethodPut, "/api/labels/admin/agent", token, `{"tags":["x"]}`); rec.Code != http.StatusBadRequest {
-		t.Fatalf("admin tags status=%d want 400", rec.Code)
+	rec = sqliteJSONRequest(server, http.MethodGet, "/api/admins?tag=night&tag=l1&tag_match=all", token, "")
+	if !strings.Contains(rec.Body.String(), `"username":"agent"`) || !strings.Contains(rec.Body.String(), `"tags":["l1","night"]`) || strings.Contains(rec.Body.String(), `"username":"root"`) {
+		t.Fatalf("tag filter body=%s", rec.Body.String())
+	}
+	if rec := sqliteJSONRequest(server, http.MethodPut, "/api/admin/agent", token, `{"tags":["day"]}`); rec.Code != http.StatusOK {
+		t.Fatalf("tag update status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	rec = sqliteJSONRequest(server, http.MethodGet, "/api/admins?tag=night", token, "")
+	if strings.Contains(rec.Body.String(), `"username":"agent"`) {
+		t.Fatalf("old tag still matches: %s", rec.Body.String())
 	}
 	if rec := sqliteJSONRequest(server, http.MethodPost, "/api/admin", token, `{"username":"agent2","password":"secret1","role":"standard","group_id":99}`); rec.Code != http.StatusNotFound {
 		t.Fatalf("unknown group status=%d want 404", rec.Code)

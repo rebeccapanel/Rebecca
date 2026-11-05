@@ -141,7 +141,7 @@ func (s *Server) handleCreateAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	groupAssignment, err := adminGroupAssignment(payload.fields)
+	labelAssignment, err := adminLabelAssignment(payload.fields)
 	if err != nil {
 		writeLabelError(w, err)
 		return
@@ -229,10 +229,10 @@ func (s *Server) handleCreateAdmin(w http.ResponseWriter, r *http.Request) {
 				return err
 			}
 		}
-		if !groupAssignment.Empty() && !canManageGroups(principal.Context.Admin, labels.TypeAdmin) {
+		if !labelAssignment.Empty() && !canManageGroups(principal.Context.Admin, labels.TypeAdmin) {
 			return statusError{status: http.StatusForbidden, detail: "You're not allowed"}
 		}
-		if err := labels.SetManyTx(r.Context(), tx, []labels.Ref{labels.AdminRef(adminID)}, groupAssignment); err != nil {
+		if err := labels.SetManyTx(r.Context(), tx, []labels.Ref{labels.AdminRef(adminID)}, labelAssignment); err != nil {
 			return labelStatusError(err)
 		}
 		created, err = adminByUsernameTx(r.Context(), tx, payload.Username)
@@ -330,7 +330,7 @@ func (s *Server) handleUpdateAdmin(w http.ResponseWriter, r *http.Request, usern
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	groupAssignment, err := adminGroupAssignment(payload.fields)
+	labelAssignment, err := adminLabelAssignment(payload.fields)
 	if err != nil {
 		writeLabelError(w, err)
 		return
@@ -350,11 +350,11 @@ func (s *Server) handleUpdateAdmin(w http.ResponseWriter, r *http.Request, usern
 				return err
 			}
 		}
-		if !groupAssignment.Empty() {
+		if !labelAssignment.Empty() {
 			if !canManageGroups(principal.Context.Admin, labels.TypeAdmin) {
 				return statusError{status: http.StatusForbidden, detail: "You're not allowed"}
 			}
-			if err := labels.SetManyTx(r.Context(), tx, []labels.Ref{labels.AdminRef(target.ID)}, groupAssignment); err != nil {
+			if err := labels.SetManyTx(r.Context(), tx, []labels.Ref{labels.AdminRef(target.ID)}, labelAssignment); err != nil {
 				return labelStatusError(err)
 			}
 		}

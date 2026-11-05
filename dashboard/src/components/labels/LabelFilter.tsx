@@ -38,7 +38,7 @@ export const LabelFilter: FC<LabelFilterProps> = ({
 	value,
 	onChange,
 	showGroups = type === "user" || type === "admin",
-	showTags = type !== "admin",
+	showTags = true,
 }) => {
 	const { t } = useTranslation();
 	const groupType = (type === "admin" ? "admin" : "user") as GroupEntityType;

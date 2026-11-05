@@ -84,7 +84,7 @@ func GroupType(entityType string) bool {
 }
 
 func TagType(entityType string) bool {
-	return entityType != TypeAdmin && ValidType(entityType)
+	return ValidType(entityType)
 }
 
 func NormalizeTags(values []string) ([]string, error) {

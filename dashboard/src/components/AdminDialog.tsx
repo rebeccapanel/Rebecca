@@ -38,6 +38,8 @@ import { formatBytes } from "utils/formatByte";
 import { matchesSearch } from "utils/searchMatch";
 import { generateErrorMessage, generateSuccessMessage } from "utils/toastHandler";
 import { GroupSelect } from "components/labels/GroupSelect";
+import { TagsSelect } from "components/labels/TagsSelect";
+import { useInvalidateLabels, useTags } from "service/labels";
 import AdminPermissionsEditor from "./AdminPermissionsEditor";
 
 const GB_IN_BYTES = 1024 * 1024 * 1024;
@@ -124,6 +126,7 @@ type AdminFormValues = {
 	username: string;
 	password?: string;
 	group_id?: number | null;
+	tags?: string[];
 	telegram_id?: string;
 	role: AdminRole;
 	require_2fa: boolean;
@@ -189,6 +192,7 @@ export const AdminDialog: FC = () => {
 					.transform((value) => (value === "" ? undefined : value))
 					.refine((value) => !value || value.length >= 6, t("admins.validation.passwordMin")),
 				group_id: z.number().nullable().optional(),
+				tags: z.array(z.string()).optional(),
 				telegram_id: z
 					.string()
 					.trim()
@@ -263,6 +267,7 @@ export const AdminDialog: FC = () => {
 			username: "",
 			password: "",
 			group_id: null,
+			tags: [],
 			telegram_id: "",
 			role: AdminRole.Standard,
 			require_2fa: false,
@@ -284,6 +289,8 @@ export const AdminDialog: FC = () => {
 	});
 
 	const { register, handleSubmit, reset, formState, setValue, getValues, watch, setError } = form;
+	const { data: knownAdminTags = [] } = useTags("admin");
+	const invalidateLabels = useInvalidateLabels();
 	const [activeTab, setActiveTab] = useState<AdminDialogTab>("details");
 	const [showPassword, setShowPassword] = useState(false);
 	const [serviceOptions, setServiceOptions] = useState<ServiceSummary[]>([]);
@@ -494,6 +501,7 @@ export const AdminDialog: FC = () => {
 			username: adminFromStore?.username ?? "",
 			password: "",
 			group_id: adminFromStore?.group?.id ?? null,
+			tags: adminFromStore?.tags ?? [],
 			telegram_id: adminFromStore?.telegram_id !== undefined && adminFromStore?.telegram_id !== null ? String(adminFromStore.telegram_id) : "",
 			role: nextRole,
 			require_2fa: adminFromStore?.require_2fa ?? false,
@@ -724,14 +732,13 @@ export const AdminDialog: FC = () => {
 
 				const initialGroupId = admin?.group?.id ?? null;
 				const nextGroupId = values.group_id ?? null;
-				const groupPayload =
-					mode === "create"
-						? nextGroupId !== null
-							? { group_id: nextGroupId }
-							: {}
-						: nextGroupId !== initialGroupId
-							? { group_id: nextGroupId }
-							: {};
+				const initialTags = admin?.tags ?? [];
+				const nextTags = values.tags ?? [];
+				const tagsChanged = mode === "create" ? nextTags.length > 0 : nextTags.join("\n") !== initialTags.join("\n");
+				const groupPayload = {
+					...(mode === "create" ? (nextGroupId !== null ? { group_id: nextGroupId } : {}) : nextGroupId !== initialGroupId ? { group_id: nextGroupId } : {}),
+					...(tagsChanged ? { tags: nextTags } : {}),
+				};
 
 				if (mode === "create") {
 					const payload: AdminCreatePayload = {
@@ -744,6 +751,7 @@ export const AdminDialog: FC = () => {
 						...sharedPayload,
 					};
 					const createdAdmin = await createAdmin(payload);
+					void invalidateLabels();
 					let shouldFetch = true;
 					let serviceSyncError: unknown = null;
 					if (!isFullAccess && values.use_service_traffic_limits) {
@@ -790,6 +798,7 @@ export const AdminDialog: FC = () => {
 						payload.password = values.password;
 					}
 					await updateAdmin(admin.username, payload);
+					void invalidateLabels();
 					generateSuccessMessage(t("admins.updateSuccess"), toast);
 				}
 				setSubmitStatus("success");
@@ -975,6 +984,14 @@ export const AdminDialog: FC = () => {
 					type="admin"
 					value={watch("group_id") ?? null}
 					onChange={(next) => setValue("group_id", next, { shouldDirty: true })}
+				/>
+			</FormField>
+
+			<FormField label={t("tags.title")}>
+				<TagsSelect
+					value={watch("tags") ?? []}
+					onChange={(next) => setValue("tags", next, { shouldDirty: true })}
+					options={knownAdminTags.map((item) => item.tag)}
 				/>
 			</FormField>
 

@@ -1,3 +1,4 @@
+import { TagChips } from "components/labels/TagChips";
 import { Button } from "components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "components/ui/tooltip";
 import { Dialog, DialogContent, DialogFooter, DialogHeader } from "components/ui/dialog";
@@ -694,6 +695,18 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 						{admin.group?.name ?? "–"}
 					</p>
 				),
+			},
+			{
+				id: "tags",
+				width: "170px",
+				minWidth: "120px",
+				maxWidth: "220px",
+				header: t("tags.title"),
+				menuLabel: t("tags.title"),
+				priority: "low",
+				mobilePriority: 4,
+				mobileMetaLabel: t("tags.title"),
+				cell: (admin) => <TagChips tags={admin.tags} limit={2} />,
 			},
 			{
 				id: "role",

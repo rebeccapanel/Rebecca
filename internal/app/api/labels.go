@@ -469,12 +469,17 @@ func (s *Server) attachUserDetailLabels(ctx context.Context, detail *userapp.Use
 	}
 }
 
-func adminGroupAssignment(fields map[string]json.RawMessage) (labels.Assignment, error) {
-	value, ok := fields["group_id"]
-	if !ok {
+func adminLabelAssignment(fields map[string]json.RawMessage) (labels.Assignment, error) {
+	subset := map[string]json.RawMessage{}
+	for _, key := range []string{"group_id", "tags", "add_tags", "remove_tags"} {
+		if value, ok := fields[key]; ok {
+			subset[key] = value
+		}
+	}
+	if len(subset) == 0 {
 		return labels.Assignment{}, nil
 	}
-	raw, err := json.Marshal(map[string]json.RawMessage{"group_id": value})
+	raw, err := json.Marshal(subset)
 	if err != nil {
 		return labels.Assignment{}, err
 	}
