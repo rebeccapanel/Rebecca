@@ -17,6 +17,7 @@ import (
 	"time"
 
 	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
+	"github.com/rebeccapanel/rebecca/internal/app/labels"
 	telegramapp "github.com/rebeccapanel/rebecca/internal/app/telegram"
 	webhookapp "github.com/rebeccapanel/rebecca/internal/app/webhook"
 	"github.com/rebeccapanel/rebecca/internal/app/xrayconfig"
@@ -537,6 +538,12 @@ func (s *Server) handleDeleteAdmin(w http.ResponseWriter, r *http.Request, usern
 			return err
 		}
 		if _, err := tx.ExecContext(r.Context(), `DELETE FROM service_admins WHERE admin_id = ?`, target.ID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(r.Context(), `DELETE FROM entity_group_members WHERE entity_type = ? AND entity_id = ?`, labels.TypeAdmin, target.ID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(r.Context(), `DELETE FROM entity_tags WHERE entity_type = ? AND entity_id = ?`, labels.TypeAdmin, target.ID); err != nil {
 			return err
 		}
 		now := dbTimestamp(time.Now().UTC())

@@ -1,6 +1,9 @@
 package user
 
-import adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
+import (
+	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
+	"github.com/rebeccapanel/rebecca/internal/app/labels"
+)
 
 type UserStatus string
 
@@ -54,6 +57,10 @@ const (
 	AdvancedUserActionDivideExpire    AdvancedUserAction = "divide_expire"
 	AdvancedUserActionMultiplyTraffic AdvancedUserAction = "multiply_traffic"
 	AdvancedUserActionDivideTraffic   AdvancedUserAction = "divide_traffic"
+	AdvancedUserActionSetGroup        AdvancedUserAction = "set_group"
+	AdvancedUserActionClearGroup      AdvancedUserAction = "clear_group"
+	AdvancedUserActionAddTags         AdvancedUserAction = "add_tags"
+	AdvancedUserActionRemoveTags      AdvancedUserAction = "remove_tags"
 )
 
 type ProxyPayload map[string]map[string]any
@@ -133,7 +140,24 @@ type BulkUsersActionRequest struct {
 	LastOnlineDays    *int64             `json:"last_online_days,omitempty"`
 	StatusAgeDays     *int64             `json:"status_age_days,omitempty"`
 	CreatedBeforeDays *int64             `json:"created_before_days,omitempty"`
+	GroupIDs          []int64            `json:"group_ids,omitempty"`
+	Tags              []string           `json:"tags,omitempty"`
+	TagMatch          string             `json:"tag_match,omitempty"`
+	TargetGroupID     *int64             `json:"target_group_id,omitempty"`
+	TargetTags        []string           `json:"target_tags,omitempty"`
 	DryRun            bool               `json:"dry_run,omitempty"`
+}
+
+func (p BulkUsersActionRequest) labelFilter() labels.Filter {
+	return labels.Filter{GroupIDs: p.GroupIDs, Tags: p.Tags, MatchAll: p.TagMatch == "all"}
+}
+
+func (a AdvancedUserAction) isLabelAction() bool {
+	switch a {
+	case AdvancedUserActionSetGroup, AdvancedUserActionClearGroup, AdvancedUserActionAddTags, AdvancedUserActionRemoveTags:
+		return true
+	}
+	return false
 }
 
 type BulkUsersActionResult struct {

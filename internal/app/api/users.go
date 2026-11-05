@@ -14,6 +14,7 @@ import (
 	"time"
 
 	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
+	"github.com/rebeccapanel/rebecca/internal/app/labels"
 	"github.com/rebeccapanel/rebecca/internal/app/logging"
 	telegramapp "github.com/rebeccapanel/rebecca/internal/app/telegram"
 	"github.com/rebeccapanel/rebecca/internal/app/usage"
@@ -219,6 +220,7 @@ func (s *Server) handleUserGet(w http.ResponseWriter, r *http.Request, username 
 		result.UsedTraffic = 0
 		result.LifetimeUsedTraffic = 0
 	}
+	s.attachUserDetailLabels(ctx, &result)
 	writeJSON(w, http.StatusOK, result)
 }
 
@@ -344,11 +346,17 @@ func (s *Server) handleUserCreate(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	assignment, err := s.validateLabelPayload(r.Context(), labels.TypeUser, raw)
+	if err != nil {
+		writeLabelError(w, err)
+		return
+	}
 	result, err := s.userService.CreateUser(r.Context(), principal.Context.Admin, raw)
 	if err != nil {
 		writeUserMutationError(w, err)
 		return
 	}
+	s.applyUserLabels(r.Context(), result.UserID, assignment)
 	s.kickUserNodeOperationsSoon(result.UserID)
 	if result.SpeedLimitChanged {
 		s.queueUserSpeedLimitSync(r.Context())
@@ -378,11 +386,17 @@ func (s *Server) handleUserUpdate(w http.ResponseWriter, r *http.Request, userna
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	assignment, err := s.validateLabelPayload(r.Context(), labels.TypeUser, raw)
+	if err != nil {
+		writeLabelError(w, err)
+		return
+	}
 	result, err := s.userService.UpdateUser(r.Context(), principal.Context.Admin, username, raw)
 	if err != nil {
 		writeUserMutationError(w, err)
 		return
 	}
+	s.applyUserLabels(r.Context(), result.UserID, assignment)
 	s.kickUserNodeOperationsSoon(result.UserID)
 	if result.SpeedLimitChanged {
 		s.queueUserSpeedLimitSync(r.Context())
@@ -583,6 +597,7 @@ func (s *Server) writeUserMutationDetail(w http.ResponseWriter, r *http.Request,
 		result.UsedTraffic = 0
 		result.LifetimeUsedTraffic = 0
 	}
+	s.attachUserDetailLabels(ctx, &result)
 	writeJSON(w, statusCode, result)
 }
 
@@ -617,6 +632,10 @@ func (s *Server) usersListRequest(r *http.Request, principal adminPrincipal) (us
 		return userapp.UsersListRequest{}, fmt.Errorf("invalid match_whole_word")
 	}
 
+	labelFilter, err := labelFilterFromQuery(q)
+	if err != nil {
+		return userapp.UsersListRequest{}, err
+	}
 	adminCtx := s.userAdminContext(principal, serviceID)
 	owners := cleanValues(q["admin"])
 	if !principal.Context.Admin.Role.IsGlobal() {
@@ -631,6 +650,9 @@ func (s *Server) usersListRequest(r *http.Request, principal adminPrincipal) (us
 		MatchCase:       matchCase,
 		MatchWholeWord:  matchWholeWord,
 		Owners:          owners,
+		GroupIDs:        labelFilter.GroupIDs,
+		Tags:            labelFilter.Tags,
+		TagMatchAll:     labelFilter.MatchAll,
 		Status:          strings.TrimSpace(q.Get("status")),
 		AdvancedFilters: advancedFilterValues(q),
 		ServiceID:       serviceID,

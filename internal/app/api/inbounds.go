@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rebeccapanel/rebecca/internal/app/labels"
 	"github.com/rebeccapanel/rebecca/internal/app/xrayconfig"
 )
 
@@ -110,6 +111,7 @@ func (s *Server) handleInboundPath(w http.ResponseWriter, r *http.Request) {
 			writeInboundError(w, err)
 			return
 		}
+		s.purgeLabels(r.Context(), labels.InboundRef(tag))
 		writeJSON(w, http.StatusOK, map[string]any{"detail": result.Detail})
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")

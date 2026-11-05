@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
+	"github.com/rebeccapanel/rebecca/internal/app/labels"
 	"github.com/rebeccapanel/rebecca/internal/app/migrations"
 )
 
@@ -51,7 +52,7 @@ func TestAdminsListSortAndFilterRunOnSQLite(t *testing.T) {
 	}
 
 	actor := adminapp.Admin{ID: 1, Username: "root", Role: adminapp.RoleFullAccess}
-	server := &Server{db: db, dialect: "sqlite", adminRepo: adminapp.NewRepository(db, "sqlite")}
+	server := &Server{db: db, dialect: "sqlite", labels: labels.NewStore(db, "sqlite"), adminRepo: adminapp.NewRepository(db, "sqlite")}
 	list := func(t *testing.T, query string) (int, []string, int) {
 		t.Helper()
 		req := httptest.NewRequest(http.MethodGet, "/api/admins?"+query, nil)

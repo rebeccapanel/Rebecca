@@ -17,6 +17,7 @@ import (
 	backupapp "github.com/rebeccapanel/rebecca/internal/app/backup"
 	certificateapp "github.com/rebeccapanel/rebecca/internal/app/certificates"
 	externalapps "github.com/rebeccapanel/rebecca/internal/app/externalapps"
+	"github.com/rebeccapanel/rebecca/internal/app/labels"
 	"github.com/rebeccapanel/rebecca/internal/app/logging"
 	"github.com/rebeccapanel/rebecca/internal/app/migrations"
 	nodeapp "github.com/rebeccapanel/rebecca/internal/app/node"
@@ -46,6 +47,7 @@ type Server struct {
 	maintenance          *systemapp.MaintenanceService
 	usageService         usage.Service
 	userService          userapp.Service
+	labels               labels.Store
 	warpService          warpapp.Service
 	nordService          nordvpnapp.Service
 	outboundSubs         outboundsubapp.Service
@@ -133,6 +135,7 @@ func New(cfg Config) (*Server, error) {
 		maintenance:    systemapp.NewMaintenanceService(),
 		usageService:   usage.NewService(usageRepo),
 		userService:    userapp.NewServiceWithTemplates(userRepo, settingsRepo),
+		labels:         labels.NewStore(pool.DB, pool.Dialect),
 		warpService:    warpapp.NewService(warpRepo, warpapp.NewClient("")),
 		nordService:    nordvpnapp.NewService(nordRepo, nordvpnapp.NewClient("")),
 		outboundSubs:   outboundSubs,

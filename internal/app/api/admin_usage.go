@@ -11,6 +11,7 @@ import (
 	"time"
 
 	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
+	"github.com/rebeccapanel/rebecca/internal/app/labels"
 	"github.com/rebeccapanel/rebecca/internal/app/online"
 	"github.com/rebeccapanel/rebecca/internal/app/searchmatch"
 )
@@ -66,6 +67,11 @@ func (s *Server) handleAdminsList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sortField, sortArgs := adminSortClause(r.URL.Query().Get("sort"), now)
+	labelFilter, err := labelFilterFromQuery(r.URL.Query())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	admins := []map[string]any{}
 	total := 0
@@ -82,6 +88,10 @@ func (s *Server) handleAdminsList(w http.ResponseWriter, r *http.Request) {
 		if filterPredicate != "" {
 			where += ` AND ` + filterPredicate
 			args = append(args, filterArgs...)
+		}
+		if clause, labelArgs := labelFilter.SQL(labels.TypeAdmin, "id"); clause != "" {
+			where += ` AND ` + clause
+			args = append(args, labelArgs...)
 		}
 		if err := tx.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM admins `+where, args...).Scan(&total); err != nil {
 			return err
@@ -124,6 +134,22 @@ func (s *Server) handleAdminsList(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeStatusError(w, err)
 		return
+	}
+	adminIDs := make([]int64, 0, len(admins))
+	for _, item := range admins {
+		if id, ok := item["id"].(int64); ok {
+			adminIDs = append(adminIDs, id)
+		}
+	}
+	adminLabels, err := s.labels.ForIDs(r.Context(), labels.TypeAdmin, adminIDs)
+	if err != nil {
+		writeStatusError(w, err)
+		return
+	}
+	for _, item := range admins {
+		id, _ := item["id"].(int64)
+		item["group"] = adminLabels[id].Group
+		item["tags"] = append([]string{}, adminLabels[id].Tags...)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"admins": admins, "total": total})
 }

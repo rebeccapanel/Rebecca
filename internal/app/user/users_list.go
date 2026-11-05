@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/rebeccapanel/rebecca/internal/app/jsonvalue"
+	"github.com/rebeccapanel/rebecca/internal/app/labels"
 	"github.com/rebeccapanel/rebecca/internal/app/online"
 	"github.com/rebeccapanel/rebecca/internal/app/outboundsub"
 	"github.com/rebeccapanel/rebecca/internal/app/searchmatch"
@@ -121,10 +122,20 @@ func (r Repository) UsersList(ctx context.Context, req UsersListRequest) (UsersR
 		serverIP = r.configServerIP(ctx)
 	}
 
+	userLabels, err := labels.NewStore(r.db, r.dialect).ForIDs(ctx, labels.TypeUser, userIDs)
+	if err != nil {
+		return UsersResponse{}, err
+	}
+
 	items := make([]UserListItem, 0, len(rows))
 	for _, row := range rows {
 		item := row.item
 		item.Links = []string{}
+		item.Group = userLabels[row.id].Group
+		item.Tags = userLabels[row.id].Tags
+		if item.Tags == nil {
+			item.Tags = []string{}
+		}
 		admin := AdminLinkSettings{}
 		if item.AdminID != nil {
 			admin = admins[*item.AdminID]
@@ -213,6 +224,9 @@ func (r Repository) usersFilter(req UsersListRequest) (usersFilter, error) {
 		filter.add("u.admin_id = ?", *req.Admin.ID)
 	} else if len(req.Owners) > 0 {
 		filter.add("u.admin_id IN (SELECT id FROM admins WHERE username IN ("+placeholders(len(req.Owners))+"))", stringArgs(req.Owners)...)
+	}
+	if clause, args := (labels.Filter{GroupIDs: req.GroupIDs, Tags: req.Tags, MatchAll: req.TagMatchAll}).SQL(labels.TypeUser, "u.id"); clause != "" {
+		filter.add(clause, args...)
 	}
 	if strings.TrimSpace(req.Search) != "" {
 		if err := r.addUsersSearchFilter(&filter, req.Search, searchmatch.Options{

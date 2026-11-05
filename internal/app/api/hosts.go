@@ -22,6 +22,7 @@ import (
 	"time"
 
 	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
+	"github.com/rebeccapanel/rebecca/internal/app/labels"
 	userapp "github.com/rebeccapanel/rebecca/internal/app/user"
 	"github.com/rebeccapanel/rebecca/internal/app/xrayconfig"
 )
@@ -516,6 +517,9 @@ func (s *Server) replaceHostsForInboundTx(r *http.Request, tx *sql.Tx, inboundTa
 			return err
 		}
 		if _, err := tx.ExecContext(r.Context(), `DELETE FROM hosts WHERE id = ?`, id); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(r.Context(), `DELETE FROM entity_tags WHERE entity_type = ? AND entity_id = ?`, labels.TypeHost, id); err != nil {
 			return err
 		}
 	}

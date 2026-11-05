@@ -39,6 +39,8 @@ func testUserReadServer(t *testing.T) (*Server, *sql.DB) {
 		`ALTER TABLE users ADD COLUMN sub_last_user_agent TEXT NULL`,
 		`ALTER TABLE users ADD COLUMN ip_limit BIGINT DEFAULT 0`,
 		`ALTER TABLE users ADD COLUMN auto_delete_in_days BIGINT NULL`,
+		`ALTER TABLE users ADD COLUMN speed_limit_kbps BIGINT NOT NULL DEFAULT 0`,
+		`CREATE TABLE user_subscription_access (user_id INTEGER PRIMARY KEY, updated_at DATETIME NULL, user_agent TEXT NULL)`,
 		`CREATE TABLE panel_settings (id INTEGER PRIMARY KEY, default_subscription_type TEXT)`,
 		`CREATE TABLE subscription_settings (id INTEGER PRIMARY KEY, subscription_url_prefix TEXT, subscription_path TEXT, subscription_ports TEXT)`,
 		`CREATE TABLE user_usage_logs (id INTEGER PRIMARY KEY, user_id INTEGER, used_traffic_at_reset BIGINT DEFAULT 0)`,

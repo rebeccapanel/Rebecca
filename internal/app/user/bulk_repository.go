@@ -3,12 +3,14 @@ package user
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"math"
 	"strings"
 	"time"
 
 	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
+	"github.com/rebeccapanel/rebecca/internal/app/labels"
 )
 
 const NodeOperationSyncConfig = "sync_config"
@@ -178,6 +180,13 @@ func (r Repository) bulkUsersActionMutation(ctx context.Context, requester admin
 			return BulkUsersActionResult{}, err
 		}
 		result = BulkUsersActionResult{Detail: detail, Count: count}
+	case AdvancedUserActionSetGroup, AdvancedUserActionClearGroup, AdvancedUserActionAddTags, AdvancedUserActionRemoveTags:
+		detail, err := r.applyBulkLabelsTx(ctx, tx, payload, affectedUserIDs)
+		if err != nil {
+			return BulkUsersActionResult{}, err
+		}
+		result = BulkUsersActionResult{Detail: detail, Count: int64(len(affectedUserIDs))}
+		affectedUserIDs = nil
 	case AdvancedUserActionDeleteUsers:
 	default:
 		return BulkUsersActionResult{}, clientError(400, "Unsupported action")
@@ -227,6 +236,7 @@ func (r Repository) bulkAffectedUserIDsTx(ctx context.Context, tx *sql.Tx, targe
 		filter.args = append(filter.args, *payload.TargetServiceID)
 	case AdvancedUserActionDeleteUsers:
 		filter.addStatuses("status", payload.Scope)
+	case AdvancedUserActionSetGroup, AdvancedUserActionClearGroup, AdvancedUserActionAddTags, AdvancedUserActionRemoveTags:
 	default:
 		return nil, nil
 	}
@@ -327,12 +337,12 @@ func (r Repository) ensureBulkActionAllowedTx(ctx context.Context, tx *sql.Tx, r
 			return permissionHTTPError(err)
 		}
 	}
-	if payload.Action != AdvancedUserActionActivateUsers && payload.Action != AdvancedUserActionDisableUsers {
+	if payload.Action != AdvancedUserActionActivateUsers && payload.Action != AdvancedUserActionDisableUsers && !payload.Action.isLabelAction() {
 		if err := EnsureUserManagementAvailable(requester, "run this bulk action"); err != nil {
 			return permissionHTTPError(err)
 		}
 	}
-	if payload.Action != AdvancedUserActionDeleteUsers && requester.UseServiceTrafficLimits && requester.Role != adminapp.RoleFullAccess {
+	if payload.Action != AdvancedUserActionDeleteUsers && !payload.Action.isLabelAction() && requester.UseServiceTrafficLimits && requester.Role != adminapp.RoleFullAccess {
 		filter := r.bulkFilter(targetAdmin, payload)
 		whereSQL, args := filter.sql()
 		rows, err := tx.QueryContext(ctx, `SELECT DISTINCT service_id FROM users WHERE `+whereSQL+` AND service_id IS NOT NULL`, args...)
@@ -667,6 +677,10 @@ func (r Repository) bulkFilter(targetAdmin *adminapp.Admin, payload BulkUsersAct
 	} else if payload.ServiceIDIsNull != nil && *payload.ServiceIDIsNull {
 		filter.where = append(filter.where, "service_id IS NULL")
 	}
+	if clause, args := payload.labelFilter().SQL(labels.TypeUser, "users.id"); clause != "" {
+		filter.where = append(filter.where, clause)
+		filter.args = append(filter.args, args...)
+	}
 	if len(payload.Usernames) > 0 {
 		placeholders := make([]string, 0, len(payload.Usernames))
 		for _, username := range payload.Usernames {
@@ -983,4 +997,49 @@ func (r Repository) multiplyBulkLimitTx(ctx context.Context, tx *sql.Tx, targetA
 		return 0, err
 	}
 	return rowsAffected(res), nil
+}
+
+func (r Repository) applyBulkLabelsTx(ctx context.Context, tx *sql.Tx, payload BulkUsersActionRequest, userIDs []int64) (string, error) {
+	var assignment labels.Assignment
+	detail := ""
+	switch payload.Action {
+	case AdvancedUserActionSetGroup:
+		if payload.TargetGroupID == nil || *payload.TargetGroupID <= 0 {
+			return "", clientError(400, "target_group_id is required")
+		}
+		assignment = labels.Assignment{GroupSet: true, GroupID: payload.TargetGroupID}
+		detail = "Users moved to the group"
+	case AdvancedUserActionClearGroup:
+		assignment = labels.Assignment{GroupSet: true}
+		detail = "Users removed from their group"
+	case AdvancedUserActionAddTags, AdvancedUserActionRemoveTags:
+		tags, err := labels.NormalizeTags(payload.TargetTags)
+		if err != nil {
+			return "", clientError(400, err.Error())
+		}
+		if len(tags) == 0 {
+			return "", clientError(400, "target_tags is required")
+		}
+		if payload.Action == AdvancedUserActionAddTags {
+			assignment = labels.Assignment{AddTags: tags}
+			detail = "Tags added to users"
+		} else {
+			assignment = labels.Assignment{RemoveTags: tags}
+			detail = "Tags removed from users"
+		}
+	}
+	refs := make([]labels.Ref, 0, len(userIDs))
+	for _, id := range userIDs {
+		refs = append(refs, labels.UserRef(id))
+	}
+	if err := labels.SetManyTx(ctx, tx, refs, assignment); err != nil {
+		if errors.Is(err, labels.ErrNotFound) {
+			return "", clientError(404, "Group not found")
+		}
+		if errors.Is(err, labels.ErrInvalid) {
+			return "", clientError(400, err.Error())
+		}
+		return "", err
+	}
+	return detail, nil
 }
