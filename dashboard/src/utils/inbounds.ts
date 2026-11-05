@@ -1,4 +1,5 @@
 import { ALPN_OPTION, UTLS_FINGERPRINT } from "utils/outbound";
+import { sniffingDestinationsFor, supportsSniffing } from "./inboundCapabilities";
 import { generateWireguardKeypair } from "./wireguard";
 
 export type Protocol =
@@ -2132,16 +2133,7 @@ export const createDefaultInboundForm = (
 	webACMEEmail: "",
 	webSecret: randomHex(),
 	webSiteUpstream: "",
-	sniffingEnabled:
-		protocol !== "openvpn" &&
-		protocol !== "wireguard" &&
-		protocol !== "l2tp" &&
-		protocol !== "pptp" &&
-		protocol !== "ikev2" &&
-		protocol !== "anyconnect" &&
-		protocol !== "ssh" &&
-		protocol !== "mtproto" &&
-		protocol !== "web",
+	sniffingEnabled: supportsSniffing(protocol),
 	sniffingDestinations: ["http", "tls"],
 	sniffingRouteOnly: false,
 	sniffingMetadataOnly: false,
@@ -4914,26 +4906,15 @@ export const buildInboundPayload = (
 		}
 	}
 
-	if (
-		values.protocol === "openvpn" ||
-		values.protocol === "wireguard" ||
-		values.protocol === "amneziawg" ||
-		values.protocol === "sstp" ||
-		values.protocol === "gre" ||
-		values.protocol === "l2tp" ||
-		values.protocol === "pptp" ||
-		values.protocol === "ikev2" ||
-		values.protocol === "anyconnect" ||
-		values.protocol === "ssh" ||
-		values.protocol === "mtproto" ||
-		values.protocol === "web"
-	) {
+	if (!supportsSniffing(values.protocol)) {
 		delete payload.sniffing;
 	} else if (values.sniffingEnabled) {
 		const initial = options?.initial ?? null;
 		const sniffing = cleanObject({
 			enabled: true,
-			destOverride: values.sniffingDestinations,
+			destOverride: values.sniffingDestinations.filter((destination) =>
+				sniffingDestinationsFor(values).includes(destination),
+			),
 			ipsExcluded: splitLines(values.sniffingIpsExcluded),
 			domainsExcluded: splitLines(values.sniffingDomainsExcluded),
 			routeOnly:

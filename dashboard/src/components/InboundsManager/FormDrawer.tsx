@@ -91,6 +91,13 @@ import {
 	validateInboundFormValues,
 } from "utils/inbounds";
 import {
+	networksForProtocol,
+	protocolSupportsReality,
+	protocolSupportsTls,
+	sniffingDestinationsFor,
+	supportsSniffing,
+} from "utils/inboundCapabilities";
+import {
 	getCustomNodeTargetIds,
 	sortInboundTargets,
 } from "utils/inboundTargets";
@@ -180,34 +187,6 @@ const TPROXY_OPTIONS: Array<"" | "off" | "redirect" | "tproxy"> = [
 	"off",
 	"redirect",
 	"tproxy",
-];
-const TLS_COMPATIBLE_PROTOCOLS: Array<InboundFormValues["protocol"]> = [
-	"vmess",
-	"vless",
-	"trojan",
-	"shadowsocks",
-	"hysteria",
-	"masque",
-];
-const TLS_COMPATIBLE_NETWORKS: Array<InboundFormValues["streamNetwork"]> = [
-	"tcp",
-	"ws",
-	"http",
-	"grpc",
-	"httpupgrade",
-	"xhttp",
-	"hysteria",
-	"masque",
-];
-const REALITY_COMPATIBLE_PROTOCOLS: Array<InboundFormValues["protocol"]> = [
-	"vless",
-	"trojan",
-];
-const REALITY_COMPATIBLE_NETWORKS: Array<InboundFormValues["streamNetwork"]> = [
-	"tcp",
-	"http",
-	"grpc",
-	"xhttp",
 ];
 const XHTTP_MODE_OPTIONS: Array<InboundFormValues["xhttpMode"]> = [
 	"auto",
@@ -575,23 +554,20 @@ export const InboundFormModal: FC<Props> = ({
 		() => ["X25519, not Post-Quantum", "ML-KEM-768, Post-Quantum"],
 		[],
 	);
-	const ALL_NETWORK_OPTIONS =
-		currentProtocol === "hysteria"
-			? ["hysteria"]
-			: currentProtocol === "masque"
-				? ["masque"]
-				: streamNetworks;
-	const canEnableTls = useMemo(
-		() =>
-			TLS_COMPATIBLE_PROTOCOLS.includes(currentProtocol) &&
-			TLS_COMPATIBLE_NETWORKS.includes(streamNetwork),
-		[currentProtocol, streamNetwork],
+	const ALL_NETWORK_OPTIONS = useMemo(() => {
+		const networks = networksForProtocol(currentProtocol);
+		return networks.includes(streamNetwork)
+			? networks
+			: [...networks, streamNetwork];
+	}, [currentProtocol, streamNetwork]);
+	const canEnableTls = protocolSupportsTls(currentProtocol, streamNetwork);
+	const canEnableReality = protocolSupportsReality(
+		currentProtocol,
+		streamNetwork,
 	);
-	const canEnableReality = useMemo(
-		() =>
-			REALITY_COMPATIBLE_PROTOCOLS.includes(currentProtocol) &&
-			REALITY_COMPATIBLE_NETWORKS.includes(streamNetwork),
-		[currentProtocol, streamNetwork],
+	const sniffingDestinations = useMemo(
+		() => sniffingDestinationsFor(formValues),
+		[formValues],
 	);
 	const streamCompatibilityError = useMemo(() => {
 		if (!supportsStreamSettings) {
@@ -4353,7 +4329,7 @@ export const InboundFormModal: FC<Props> = ({
 	options={streamSecurityOptions.map((security) => ({
 		value: security,
 		label: security === "none" ? t("userDialog.flow.none") : security === "tls" ? "TLS" : security === "reality" ? "Reality" : security,
-		disabled: security === "tls" ? !TLS_COMPATIBLE_PROTOCOLS.includes(currentProtocol) : security === "reality" ? !REALITY_COMPATIBLE_PROTOCOLS.includes(currentProtocol) : false,
+		disabled: security === "tls" ? !canEnableTls : security === "reality" ? !canEnableReality : false,
 	}))}
 	onChange={(value) => field.onChange(value)}
 />
@@ -6641,7 +6617,7 @@ export const InboundFormModal: FC<Props> = ({
 										</div>
 									)}
 
-									{supportsStreamSettings && (
+									{supportsSniffing(currentProtocol) && (
 											<div className="flex flex-col gap-3 xray-dialog-section" data-form-section="sniffing" data-form-section-title={t("inbounds.sniffing")}>
 												<div className="flex items-center justify-between">
 													<div className="flex flex-row items-center gap-2">
@@ -6662,7 +6638,7 @@ export const InboundFormModal: FC<Props> = ({
 																render={({ field }) => (
 																	<div className="flex flex-col gap-2">
 																		<div className="flex flex-row items-center gap-4">
-																			{sniffingOptions.map((option) => (
+																			{sniffingOptions.filter((option) => sniffingDestinations.includes(option.value)).map((option) => (
 																				<label key={option.value} className="flex cursor-pointer items-center gap-2 text-sm"><Checkbox checked={(field.value ?? []).includes(option.value)} onCheckedChange={(checked) => field.onChange(checked === true ? [...(field.value ?? []), option.value] : (field.value ?? []).filter((item: string) => item !== option.value))} /><span>{option.label}</span></label>
 																			))}
 																		</div>

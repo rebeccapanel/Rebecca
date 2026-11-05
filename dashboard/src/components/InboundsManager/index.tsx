@@ -25,6 +25,7 @@ import {
 	protocolOptions,
 	type RawInbound,
 } from "utils/inbounds";
+import { supportsSniffing } from "utils/inboundCapabilities";
 import { getInboundTargetIds } from "utils/inboundTargets";
 import { SizeFormatter } from "utils/outbound";
 import {
@@ -475,7 +476,8 @@ export const InboundsManager: FC = () => {
 			(inbound) => getInboundTargetIds(inbound).length > 1,
 		).length;
 		const sniffingCount = inbounds.filter(
-			(inbound) => inbound.sniffing?.enabled,
+			(inbound) =>
+				supportsSniffing(inbound.protocol) && inbound.sniffing?.enabled,
 		).length;
 		const totals = summarizeInbounds(filtered, speeds);
 		const isFiltered = filtered.length !== inbounds.length;
@@ -671,7 +673,10 @@ export const InboundsManager: FC = () => {
 			},
 			{
 				id: "sniffing",
-				sortValue: (inbound) => (inbound.sniffing?.enabled ? 1 : 0),
+				sortValue: (inbound) =>
+					supportsSniffing(inbound.protocol) && inbound.sniffing?.enabled
+						? 1
+						: 0,
 				header: t("inbounds.sniffing"),
 				priority: "low",
 				hideBelow: "xl",
@@ -680,7 +685,9 @@ export const InboundsManager: FC = () => {
 				mobilePriority: 6,
 				mobileMetaLabel: t("inbounds.sniffing"),
 				cell: (inbound) =>
-					inbound.sniffing?.enabled ? (
+					!supportsSniffing(inbound.protocol) ? (
+						<span className="text-muted-foreground">–</span>
+					) : inbound.sniffing?.enabled ? (
 						<Badge className="bg-green-600 text-white">
 							{t("inbounds.sniffingEnabled")}
 						</Badge>
