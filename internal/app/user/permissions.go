@@ -65,12 +65,7 @@ func ValidateUserCreatePermissions(admin adminapp.Admin, payload UserCreate, ctx
 	if err := EnsureCustomKeyPermission(admin, payload.CredentialKey != nil && *payload.CredentialKey != ""); err != nil {
 		return err
 	}
-	if err := EnsureUserConstraints(admin, UserConstraintInput{
-		Status:    string(payload.Status),
-		Data:      payload.DataLimit,
-		Expire:    payload.Expire,
-		NextPlans: payload.NextPlans,
-	}); err != nil {
+	if err := EnsureUserConstraints(admin, createConstraintInput(string(payload.Status), payload.DataLimit, payload.Expire, payload.NextPlans)); err != nil {
 		return err
 	}
 	if payload.DataLimit != nil {
@@ -119,12 +114,7 @@ func ValidateUserServiceCreatePermissions(admin adminapp.Admin, payload UserServ
 	if err := EnsureCustomKeyPermission(admin, payload.CredentialKey != nil && *payload.CredentialKey != ""); err != nil {
 		return err
 	}
-	if err := EnsureUserConstraints(admin, UserConstraintInput{
-		Status:    string(payload.Status),
-		Data:      payload.DataLimit,
-		Expire:    payload.Expire,
-		NextPlans: payload.NextPlans,
-	}); err != nil {
+	if err := EnsureUserConstraints(admin, createConstraintInput(string(payload.Status), payload.DataLimit, payload.Expire, payload.NextPlans)); err != nil {
 		return err
 	}
 	if payload.DataLimit != nil {
@@ -203,12 +193,26 @@ type UserConstraintInput struct {
 	NextPlans []NextPlanPayload
 }
 
+func isOnHoldStatus(status string) bool {
+	return status == string(UserStatusOnHold) || status == string(UserStatusCreateOnHold) || status == string(UserStatusModifyOnHold)
+}
+
+func createConstraintInput(status string, data, expire *int64, nextPlans []NextPlanPayload) UserConstraintInput {
+	if data == nil {
+		data = new(int64)
+	}
+	if expire == nil && !isOnHoldStatus(status) {
+		expire = new(int64)
+	}
+	return UserConstraintInput{Status: status, Data: data, Expire: expire, NextPlans: nextPlans}
+}
+
 func EnsureUserConstraints(admin adminapp.Admin, input UserConstraintInput) error {
 	if admin.Role == adminapp.RoleFullAccess {
 		return nil
 	}
 	perms := admin.Permissions.Users
-	if input.Status == string(UserStatusOnHold) || input.Status == string(UserStatusCreateOnHold) || input.Status == string(UserStatusModifyOnHold) {
+	if isOnHoldStatus(input.Status) {
 		if !perms.CreateOnHold {
 			return PermissionError{Detail: "You're not allowed to create or move users to on-hold."}
 		}
