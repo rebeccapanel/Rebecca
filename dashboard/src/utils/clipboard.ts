@@ -1,20 +1,33 @@
-export const copyTextToClipboard = async (text: string): Promise<void> => {
-	if (!text) return;
-	if (navigator.clipboard?.writeText) {
-		await navigator.clipboard.writeText(text);
-		return;
-	}
+const legacyCopy = (text: string): boolean => {
+	const active = document.activeElement;
+	const host =
+		active instanceof HTMLElement
+			? (active.closest<HTMLElement>('[role="dialog"]') ?? document.body)
+			: document.body;
 	const textArea = document.createElement("textarea");
 	textArea.value = text;
 	textArea.setAttribute("readonly", "");
 	textArea.style.position = "fixed";
 	textArea.style.opacity = "0";
 	textArea.style.pointerEvents = "none";
-	document.body.appendChild(textArea);
+	host.appendChild(textArea);
+	textArea.focus();
 	textArea.select();
 	try {
-		document.execCommand("copy");
+		return document.execCommand("copy");
 	} finally {
-		document.body.removeChild(textArea);
+		host.removeChild(textArea);
+		if (active instanceof HTMLElement) active.focus();
 	}
+};
+
+export const copyTextToClipboard = async (text: string): Promise<void> => {
+	if (!text) return;
+	if (navigator.clipboard?.writeText) {
+		try {
+			await navigator.clipboard.writeText(text);
+			return;
+		} catch {}
+	}
+	if (!legacyCopy(text)) throw new Error("copy failed");
 };

@@ -419,7 +419,10 @@ const DynamicTokensPopover: FC = () => {
 				</div>
 			</PopoverTrigger>
 			
-				<PopoverContent className="max-w-[20rem] text-[0.75rem]">
+				<PopoverContent
+					collisionPadding={12}
+					className="max-h-[var(--radix-popover-content-available-height)] max-w-[20rem] overflow-y-auto text-[0.75rem]"
+				>
 					
 					
 					<div className="p-3">
