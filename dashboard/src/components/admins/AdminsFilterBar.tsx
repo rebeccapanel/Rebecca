@@ -56,8 +56,8 @@ export const AdminsFilterBar: FC = () => {
 
 	const labelFilter: LabelFilterValue = {
 		groups: filters.groups ?? [],
-		tags: filters.tags ?? [],
-		tagMatchAll: Boolean(filters.tagMatchAll),
+		tags: [],
+		tagMatchAll: false,
 	};
 	const activeFilterCount =
 		(filters.roleFilter ? 1 : 0) + (filters.statusFilter ? 1 : 0) + labelFilterCount(labelFilter);
@@ -155,8 +155,6 @@ export const AdminsFilterBar: FC = () => {
 							onChange={(next) =>
 								onFilterChange({
 									groups: next.groups,
-									tags: next.tags,
-									tagMatchAll: next.tagMatchAll,
 									offset: 0,
 								})
 							}
@@ -169,8 +167,6 @@ export const AdminsFilterBar: FC = () => {
 									roleFilter: "",
 									statusFilter: "",
 									groups: [],
-									tags: [],
-									tagMatchAll: false,
 									offset: 0,
 								})
 							}

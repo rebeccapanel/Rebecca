@@ -5,7 +5,7 @@ import { Alert } from "components/ui/alert";
 import { toast } from "components/ui/sonner";
 import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
 import { cn } from "lib/cn";
-import { RefreshCw, Pencil, Plus, Tags, Trash2 } from "lucide-react";
+import { RefreshCw, Pencil, Plus, Trash2 } from "lucide-react";
 import type { SortingState } from "@tanstack/react-table";
 import { buildSortOptions, DataTableSortMenu } from "components/ui/DataTableSortMenu";
 
@@ -36,7 +36,6 @@ import { type InboundSpeedMap, summarizeInbounds } from "utils/resourceSummary";
 import { SearchableTagSelect } from "../common/SearchableTagSelect";
 import { SearchInput } from "../common/SearchInput";
 import { OverviewBand } from "components/ui/overview-band";
-import { LabelsDialog } from "components/labels/LabelsDialog";
 import { TagChips } from "components/labels/TagChips";
 import { TagFilterButton } from "components/labels/TagFilterButton";
 import {
@@ -44,7 +43,7 @@ import {
 	type LabelFilterValue,
 	matchesTagFilter,
 } from "components/labels/LabelFilter";
-import { useLabelItems } from "service/labels";
+import { saveLabels, useInvalidateLabels, useLabelItems } from "service/labels";
 import { ConfirmDialog, DeleteConfirmDialog } from "../dialogs/ConfirmDialog";
 import {
 	DataTable,
@@ -145,8 +144,8 @@ export const InboundsManager: FC = () => {
 	}, []);
 
 	const { data: inboundLabels } = useLabelItems("inbound");
+	const invalidateLabels = useInvalidateLabels();
 	const [tagFilter, setTagFilter] = useState<LabelFilterValue>(EMPTY_LABEL_FILTER);
-	const [labelsTarget, setLabelsTarget] = useState<RawInbound | null>(null);
 	const filtered = useMemo(() => {
 		const matches = inbounds.filter((inbound) => {
 			if (filter.protocol !== "all" && inbound.protocol !== filter.protocol) {
@@ -195,7 +194,7 @@ export const InboundsManager: FC = () => {
 		},
 	) => {
 		const { mode, initial, onSuccess } = options;
-		const { note: nextNote, ...inboundValues } = values;
+		const { note: nextNote, tags: nextTags, ...inboundValues } = values;
 		setIsMutating(true);
 		try {
 			const normalizedTag = (values.tag || "").trim().toLowerCase();
@@ -254,6 +253,14 @@ export const InboundsManager: FC = () => {
 					});
 				} catch {
 					toast.error(t("entityNote.saveFailed"));
+				}
+			}
+			if (nextTags !== undefined) {
+				try {
+					await saveLabels("inbound", payload.tag, { tags: nextTags });
+					await invalidateLabels();
+				} catch {
+					toast.error(t("labels.saveFailed"));
 				}
 			}
 			onSuccess();
@@ -781,12 +788,6 @@ export const InboundsManager: FC = () => {
 			onClick: () => openEdit(inbound),
 		},
 		{
-			id: "labels",
-			label: t("labels.menu"),
-			icon: <Tags className="w-[16px]" />,
-			onClick: () => setLabelsTarget(inbound),
-		},
-		{
 			id: "reset-usage",
 			label: t("inbounds.resetUsage"),
 			icon: <RefreshCw className="w-[16px]" />,
@@ -910,15 +911,6 @@ export const InboundsManager: FC = () => {
 				)}
 				mobileBreakpoint="md"
 				tableProps={{ className: "w-full [table-layout:fixed] [&_th]:px-2 [&_td]:px-2 [&_th]:py-2.5 [&_td]:py-2.5 [&_th]:align-middle [&_td]:align-middle xl:[&_th]:px-2.5 xl:[&_td]:px-2.5" }}
-			/>
-
-			<LabelsDialog
-				open={labelsTarget !== null}
-				onClose={() => setLabelsTarget(null)}
-				type="inbound"
-				entityKey={labelsTarget?.tag ?? ""}
-				entityName={labelsTarget?.tag ?? ""}
-				current={labelsTarget ? (inboundLabels?.items[labelsTarget.tag] ?? null) : null}
 			/>
 
 			{isOpen && (

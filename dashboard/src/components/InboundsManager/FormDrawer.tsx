@@ -1,3 +1,5 @@
+import { TagsSelect } from "components/labels/TagsSelect";
+import { useLabelItems, useTags } from "service/labels";
 import { Field, FieldDescription, FieldError, FieldLabel } from "components/ui/field";
 import { Input } from "components/ui/input";
 import { Textarea } from "components/ui/textarea";
@@ -1074,6 +1076,16 @@ export const InboundFormModal: FC<Props> = ({
 		queryFn: () => apiFetch<EntityNote>(`/notes/inbound/${encodeURIComponent(noteTag)}`),
 		enabled: isOpen && isEditMode && canViewNote && Boolean(noteTag),
 	});
+	const { data: inboundLabels } = useLabelItems("inbound", isOpen);
+	const { data: knownInboundTags = [] } = useTags("inbound", isOpen);
+	const originalTags = useMemo(
+		() => (isEditMode ? (inboundLabels?.items[noteTag]?.tags ?? []) : []),
+		[inboundLabels, isEditMode, noteTag],
+	);
+	const [tagsDraft, setTagsDraft] = useState<string[]>([]);
+	useEffect(() => {
+		setTagsDraft(originalTags);
+	}, [originalTags, isOpen]);
 	const [noteDraft, setNoteDraft] = useState("");
 	useEffect(() => {
 		setNoteDraft(noteQuery.data?.note ?? "");
@@ -1091,7 +1103,12 @@ export const InboundFormModal: FC<Props> = ({
 		}
 		const nextNote = noteDraft.trim();
 		const originalNote = isEditMode ? (noteQuery.data?.note ?? "") : "";
-		await onSubmit({ ...values, note: canViewNote && nextNote !== originalNote ? nextNote : undefined });
+		const tagsChanged = tagsDraft.join("\n") !== originalTags.join("\n");
+		await onSubmit({
+			...values,
+			note: canViewNote && nextNote !== originalNote ? nextNote : undefined,
+			tags: tagsChanged ? tagsDraft : undefined,
+		});
 	};
 
 	const handleGenerateRealityKeypair = useCallback(async () => {
@@ -1521,6 +1538,10 @@ export const InboundFormModal: FC<Props> = ({
 											</FormControl>
 											
 										</div>
+										<FormControl>
+											<FormLabel>{t("tags.title")}</FormLabel>
+											<TagsSelect value={tagsDraft} onChange={setTagsDraft} options={knownInboundTags.map((item) => item.tag)} />
+										</FormControl>
 										<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 											<FormControl className={currentProtocol === "tun" ? "hidden" : undefined} required isInvalid={!!portError || !!fieldValidationErrors.port}>
 												<FormLabel helpKey="portHelp">{t("port")}</FormLabel>

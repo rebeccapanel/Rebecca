@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import { LabelFilter, type LabelFilterValue } from "./LabelFilter";
 
 type TagFilterButtonProps = {
-	type: "host" | "inbound";
+	type: "host" | "inbound" | "node";
 	value: LabelFilterValue;
 	onChange: (value: LabelFilterValue) => void;
 };
@@ -36,7 +36,11 @@ export const TagFilterButton: FC<TagFilterButtonProps> = ({
 					)}
 				</div>
 			</PopoverTrigger>
-			<PopoverContent align="end" collisionPadding={12} className="w-72 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto p-3">
+			<PopoverContent
+				align="end"
+				collisionPadding={12}
+				className="w-72 max-h-[var(--radix-popover-content-available-height)] overflow-y-auto p-3"
+			>
 				<LabelFilter
 					type={type}
 					value={value}

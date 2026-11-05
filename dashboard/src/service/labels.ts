@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 import { fetch } from "service/http";
 
-export type LabelEntityType = "user" | "admin" | "host" | "inbound";
+export type LabelEntityType = "user" | "admin" | "host" | "inbound" | "node";
 export type GroupEntityType = "user" | "admin";
 
 export type LabelGroup = {

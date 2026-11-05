@@ -112,7 +112,6 @@ const GroupsPage: FC = () => {
 		}
 		useAdminsStore.getState().onFilterChange({
 			groups: [String(group.id)],
-			tags: [],
 			offset: 0,
 		});
 		navigate("/admins");

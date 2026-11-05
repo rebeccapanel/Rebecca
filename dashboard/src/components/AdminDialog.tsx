@@ -37,6 +37,7 @@ import { addQuickExpiry } from "utils/expiry";
 import { formatBytes } from "utils/formatByte";
 import { matchesSearch } from "utils/searchMatch";
 import { generateErrorMessage, generateSuccessMessage } from "utils/toastHandler";
+import { GroupSelect } from "components/labels/GroupSelect";
 import AdminPermissionsEditor from "./AdminPermissionsEditor";
 
 const GB_IN_BYTES = 1024 * 1024 * 1024;
@@ -122,6 +123,7 @@ type ServiceLimit = {
 type AdminFormValues = {
 	username: string;
 	password?: string;
+	group_id?: number | null;
 	telegram_id?: string;
 	role: AdminRole;
 	require_2fa: boolean;
@@ -186,6 +188,7 @@ export const AdminDialog: FC = () => {
 					.optional()
 					.transform((value) => (value === "" ? undefined : value))
 					.refine((value) => !value || value.length >= 6, t("admins.validation.passwordMin")),
+				group_id: z.number().nullable().optional(),
 				telegram_id: z
 					.string()
 					.trim()
@@ -259,6 +262,7 @@ export const AdminDialog: FC = () => {
 		defaultValues: {
 			username: "",
 			password: "",
+			group_id: null,
 			telegram_id: "",
 			role: AdminRole.Standard,
 			require_2fa: false,
@@ -489,6 +493,7 @@ export const AdminDialog: FC = () => {
 		reset({
 			username: adminFromStore?.username ?? "",
 			password: "",
+			group_id: adminFromStore?.group?.id ?? null,
 			telegram_id: adminFromStore?.telegram_id !== undefined && adminFromStore?.telegram_id !== null ? String(adminFromStore.telegram_id) : "",
 			role: nextRole,
 			require_2fa: adminFromStore?.require_2fa ?? false,
@@ -717,8 +722,20 @@ export const AdminDialog: FC = () => {
 					users_limit: values.use_service_traffic_limits ? undefined : globalUsersLimit,
 				};
 
+				const initialGroupId = admin?.group?.id ?? null;
+				const nextGroupId = values.group_id ?? null;
+				const groupPayload =
+					mode === "create"
+						? nextGroupId !== null
+							? { group_id: nextGroupId }
+							: {}
+						: nextGroupId !== initialGroupId
+							? { group_id: nextGroupId }
+							: {};
+
 				if (mode === "create") {
 					const payload: AdminCreatePayload = {
+						...groupPayload,
 						username: values.username.trim(),
 						password: values.password ?? "",
 						role: selectedRole,
@@ -762,6 +779,7 @@ export const AdminDialog: FC = () => {
 					}
 				} else if (admin) {
 					const payload: AdminUpdatePayload = {
+						...groupPayload,
 						role: selectedRole,
 						require_2fa: canManage2FA ? values.require_2fa : undefined,
 						permissions: isFullAccess ? undefined : permissionPayload,
@@ -950,6 +968,14 @@ export const AdminDialog: FC = () => {
 						<Sparkles />
 					</button>
 				</div>
+			</FormField>
+
+			<FormField label={t("groups.group")}>
+				<GroupSelect
+					type="admin"
+					value={watch("group_id") ?? null}
+					onChange={(next) => setValue("group_id", next, { shouldDirty: true })}
+				/>
 			</FormField>
 
 			<FormField label={t("admins.telegramId")} htmlFor="admin-telegram" error={errors.telegram_id?.message as string | undefined}>

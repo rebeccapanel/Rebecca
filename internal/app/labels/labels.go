@@ -18,6 +18,7 @@ const (
 	TypeAdmin   = "admin"
 	TypeHost    = "host"
 	TypeInbound = "inbound"
+	TypeNode    = "node"
 
 	MaxTagRunes    = 32
 	MaxTagsPerItem = 20
@@ -65,13 +66,14 @@ type Ref struct {
 func UserRef(id int64) Ref  { return Ref{Type: TypeUser, ID: id} }
 func AdminRef(id int64) Ref { return Ref{Type: TypeAdmin, ID: id} }
 func HostRef(id int64) Ref  { return Ref{Type: TypeHost, ID: id} }
+func NodeRef(id int64) Ref  { return Ref{Type: TypeNode, ID: id} }
 func InboundRef(tag string) Ref {
 	return Ref{Type: TypeInbound, Name: strings.TrimSpace(tag)}
 }
 
 func ValidType(entityType string) bool {
 	switch entityType {
-	case TypeUser, TypeAdmin, TypeHost, TypeInbound:
+	case TypeUser, TypeAdmin, TypeHost, TypeInbound, TypeNode:
 		return true
 	}
 	return false
@@ -79,6 +81,10 @@ func ValidType(entityType string) bool {
 
 func GroupType(entityType string) bool {
 	return entityType == TypeUser || entityType == TypeAdmin
+}
+
+func TagType(entityType string) bool {
+	return entityType != TypeAdmin && ValidType(entityType)
 }
 
 func NormalizeTags(values []string) ([]string, error) {
@@ -113,13 +119,25 @@ func normalizeGroupName(name string) (string, error) {
 	return name, nil
 }
 
+const memberCountSQL = `(SELECT COUNT(*) FROM entity_group_members m WHERE m.group_id = g.id AND (
+	(g.entity_type = 'user' AND m.entity_id IN (SELECT id FROM users WHERE status != 'deleted')) OR
+	(g.entity_type = 'admin' AND m.entity_id IN (SELECT id FROM admins WHERE status != 'deleted'))))`
+
+func liveEntitySQL(entityType string, column string) string {
+	switch entityType {
+	case TypeUser:
+		return " AND " + column + " IN (SELECT id FROM users WHERE status != 'deleted')"
+	case TypeNode:
+		return " AND " + column + " IN (SELECT id FROM nodes WHERE status != 'deleted')"
+	}
+	return ""
+}
+
 func (s Store) Groups(ctx context.Context, entityType string) ([]Group, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT g.id, g.entity_type, g.name, COUNT(m.entity_id)
+SELECT g.id, g.entity_type, g.name, `+memberCountSQL+`
 FROM entity_groups g
-LEFT JOIN entity_group_members m ON m.group_id = g.id
 WHERE g.entity_type = ?
-GROUP BY g.id, g.entity_type, g.name
 ORDER BY g.name`, entityType)
 	if err != nil {
 		return nil, err
@@ -139,7 +157,7 @@ ORDER BY g.name`, entityType)
 func (s Store) GroupByID(ctx context.Context, id int64) (Group, error) {
 	var group Group
 	err := s.db.QueryRowContext(ctx, `
-SELECT g.id, g.entity_type, g.name, (SELECT COUNT(*) FROM entity_group_members m WHERE m.group_id = g.id)
+SELECT g.id, g.entity_type, g.name, `+memberCountSQL+`
 FROM entity_groups g WHERE g.id = ?`, id).Scan(&group.ID, &group.Type, &group.Name, &group.MemberCount)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Group{}, ErrNotFound
@@ -223,7 +241,7 @@ func (s Store) DeleteGroup(ctx context.Context, id int64) error {
 }
 
 func (s Store) Tags(ctx context.Context, entityType string) ([]TagCount, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT tag, COUNT(*) FROM entity_tags WHERE entity_type = ? GROUP BY tag ORDER BY tag`, entityType)
+	rows, err := s.db.QueryContext(ctx, `SELECT tag, COUNT(*) FROM entity_tags WHERE entity_type = ?`+liveEntitySQL(entityType, "entity_id")+` GROUP BY tag ORDER BY tag`, entityType)
 	if err != nil {
 		return nil, err
 	}
@@ -391,6 +409,9 @@ func SetManyTx(ctx context.Context, tx *sql.Tx, refs []Ref, assignment Assignmen
 	entityType := refs[0].Type
 	if !ValidType(entityType) {
 		return fmt.Errorf("%w: unknown entity type", ErrInvalid)
+	}
+	if (assignment.TagsSet || len(assignment.AddTags) > 0 || len(assignment.RemoveTags) > 0) && !TagType(entityType) {
+		return fmt.Errorf("%w: tags are not available for this type", ErrInvalid)
 	}
 	if assignment.GroupSet && !GroupType(entityType) {
 		return fmt.Errorf("%w: groups are only available for users and admins", ErrInvalid)

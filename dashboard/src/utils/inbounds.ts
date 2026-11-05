@@ -161,6 +161,7 @@ export type SockoptFormValues = {
 export type InboundFormValues = {
 	tag: string;
 	note?: string;
+	tags?: string[];
 	listen: string;
 	port: string;
 	protocol: Protocol;

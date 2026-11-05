@@ -141,6 +141,11 @@ func (s *Server) handleCreateAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	groupAssignment, err := adminGroupAssignment(payload.fields)
+	if err != nil {
+		writeLabelError(w, err)
+		return
+	}
 	var created adminapp.Admin
 	err = s.withTx(r.Context(), func(tx *sql.Tx) error {
 		exists, err := adminExistsTx(r.Context(), tx, payload.Username)
@@ -223,6 +228,12 @@ func (s *Server) handleCreateAdmin(w http.ResponseWriter, r *http.Request) {
 			if err := syncAdminServiceLimitsTx(r.Context(), tx, adminID, *payload.ServiceLimits, perms.Users.Delete); err != nil {
 				return err
 			}
+		}
+		if !groupAssignment.Empty() && !canManageGroups(principal.Context.Admin, labels.TypeAdmin) {
+			return statusError{status: http.StatusForbidden, detail: "You're not allowed"}
+		}
+		if err := labels.SetManyTx(r.Context(), tx, []labels.Ref{labels.AdminRef(adminID)}, groupAssignment); err != nil {
+			return labelStatusError(err)
 		}
 		created, err = adminByUsernameTx(r.Context(), tx, payload.Username)
 		if err != nil {
@@ -319,6 +330,11 @@ func (s *Server) handleUpdateAdmin(w http.ResponseWriter, r *http.Request, usern
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	groupAssignment, err := adminGroupAssignment(payload.fields)
+	if err != nil {
+		writeLabelError(w, err)
+		return
+	}
 	var previous adminapp.Admin
 	var updated adminapp.Admin
 	var limitTransition adminLimitTransition
@@ -332,6 +348,14 @@ func (s *Server) handleUpdateAdmin(w http.ResponseWriter, r *http.Request, usern
 		if !isSelf {
 			if err := ensureCanManageAdmin(principal.Context.Admin, target); err != nil {
 				return err
+			}
+		}
+		if !groupAssignment.Empty() {
+			if !canManageGroups(principal.Context.Admin, labels.TypeAdmin) {
+				return statusError{status: http.StatusForbidden, detail: "You're not allowed"}
+			}
+			if err := labels.SetManyTx(r.Context(), tx, []labels.Ref{labels.AdminRef(target.ID)}, groupAssignment); err != nil {
+				return labelStatusError(err)
 			}
 		}
 		role := target.Role

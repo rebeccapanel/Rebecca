@@ -26,10 +26,11 @@ export const labelFilterCount = (value: LabelFilterValue) =>
 	value.groups.length + value.tags.length;
 
 type LabelFilterProps = {
-	type: "user" | "admin" | "host" | "inbound";
+	type: "user" | "admin" | "host" | "inbound" | "node";
 	value: LabelFilterValue;
 	onChange: (value: LabelFilterValue) => void;
 	showGroups?: boolean;
+	showTags?: boolean;
 };
 
 export const LabelFilter: FC<LabelFilterProps> = ({
@@ -37,11 +38,12 @@ export const LabelFilter: FC<LabelFilterProps> = ({
 	value,
 	onChange,
 	showGroups = type === "user" || type === "admin",
+	showTags = type !== "admin",
 }) => {
 	const { t } = useTranslation();
 	const groupType = (type === "admin" ? "admin" : "user") as GroupEntityType;
 	const { data: groups = [] } = useGroups(groupType, showGroups);
-	const { data: tags = [] } = useTags(type);
+	const { data: tags = [] } = useTags(type, showTags);
 	const groupOptions = [
 		{ value: NO_GROUP_FILTER, label: t("groups.noGroup") },
 		...groups.map((group) => ({ value: String(group.id), label: group.name })),
@@ -68,29 +70,31 @@ export const LabelFilter: FC<LabelFilterProps> = ({
 					/>
 				</div>
 			)}
-			<div>
-				<p className="mb-1 text-[0.875rem] font-semibold">
-					{t("tags.filterLabel")}
-				</p>
-				<TagsSelect
-					allowCustom={false}
-					value={value.tags}
-					options={tags.map((item) => item.tag)}
-					placeholder={t("tags.filterAll")}
-					onChange={(next) => onChange({ ...value, tags: next })}
-				/>
-				{value.tags.length > 1 && (
-					<label className="mt-2 flex cursor-pointer items-center gap-2 text-sm">
-						<Checkbox
-							checked={value.tagMatchAll}
-							onCheckedChange={(checked) =>
-								onChange({ ...value, tagMatchAll: checked === true })
-							}
-						/>
-						<span>{t("tags.matchAll")}</span>
-					</label>
-				)}
-			</div>
+			{showTags && (
+				<div>
+					<p className="mb-1 text-[0.875rem] font-semibold">
+						{t("tags.filterLabel")}
+					</p>
+					<TagsSelect
+						allowCustom={false}
+						value={value.tags}
+						options={tags.map((item) => item.tag)}
+						placeholder={t("tags.filterAll")}
+						onChange={(next) => onChange({ ...value, tags: next })}
+					/>
+					{value.tags.length > 1 && (
+						<label className="mt-2 flex cursor-pointer items-center gap-2 text-sm">
+							<Checkbox
+								checked={value.tagMatchAll}
+								onCheckedChange={(checked) =>
+									onChange({ ...value, tagMatchAll: checked === true })
+								}
+							/>
+							<span>{t("tags.matchAll")}</span>
+						</label>
+					)}
+				</div>
+			)}
 		</div>
 	);
 };

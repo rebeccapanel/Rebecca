@@ -5,6 +5,7 @@ export type HostsSchema = Record<
 	string,
 	{
 		id?: number | null;
+		tags?: string[];
 		remark: string;
 		address: string;
 		dns_primary: string;

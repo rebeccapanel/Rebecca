@@ -37,7 +37,7 @@ func canViewLabels(admin adminapp.Admin, entityType string) bool {
 		return true
 	case labels.TypeAdmin:
 		return admin.HasFullAccess() || admin.Permissions.AdminManagement.CanView
-	case labels.TypeHost, labels.TypeInbound:
+	case labels.TypeHost, labels.TypeInbound, labels.TypeNode:
 		return admin.Role.IsGlobal()
 	}
 	return false
@@ -246,7 +246,7 @@ func (s *Server) handleLabelPath(w http.ResponseWriter, r *http.Request) {
 		writeError(w, status, detail)
 		return
 	}
-	if assignment.GroupSet && assignment.GroupID != nil && !canAssignGroup(principal.Context.Admin, entityType) {
+	if assignment.GroupSet && assignment.GroupID != nil && labels.GroupType(entityType) && !canAssignGroup(principal.Context.Admin, entityType) {
 		writeError(w, http.StatusForbidden, "You're not allowed")
 		return
 	}
@@ -341,6 +341,23 @@ func (s *Server) resolveLabelTarget(ctx context.Context, principal adminPrincipa
 			return labels.Ref{}, http.StatusInternalServerError, "failed to resolve host"
 		}
 		return labels.HostRef(id), 0, ""
+	case labels.TypeNode:
+		if !admin.Role.IsGlobal() {
+			return labels.Ref{}, http.StatusForbidden, "You're not allowed"
+		}
+		id, err := strconv.ParseInt(key, 10, 64)
+		if err != nil || id <= 0 {
+			return labels.Ref{}, http.StatusBadRequest, "invalid target"
+		}
+		var found int64
+		err = s.db.QueryRowContext(ctx, `SELECT id FROM nodes WHERE id = ? AND LOWER(COALESCE(status, '')) <> 'deleted'`, id).Scan(&found)
+		if errors.Is(err, sql.ErrNoRows) {
+			return labels.Ref{}, http.StatusNotFound, "Node not found"
+		}
+		if err != nil {
+			return labels.Ref{}, http.StatusInternalServerError, "failed to resolve node"
+		}
+		return labels.NodeRef(id), 0, ""
 	case labels.TypeInbound:
 		if !admin.Role.IsGlobal() {
 			return labels.Ref{}, http.StatusForbidden, "You're not allowed"
@@ -450,4 +467,26 @@ func (s *Server) attachUserDetailLabels(ctx context.Context, detail *userapp.Use
 	if found[detail.ID].Tags != nil {
 		detail.Tags = found[detail.ID].Tags
 	}
+}
+
+func adminGroupAssignment(fields map[string]json.RawMessage) (labels.Assignment, error) {
+	value, ok := fields["group_id"]
+	if !ok {
+		return labels.Assignment{}, nil
+	}
+	raw, err := json.Marshal(map[string]json.RawMessage{"group_id": value})
+	if err != nil {
+		return labels.Assignment{}, err
+	}
+	return labels.ParseAssignment(raw)
+}
+
+func labelStatusError(err error) error {
+	switch {
+	case errors.Is(err, labels.ErrNotFound):
+		return statusError{status: http.StatusNotFound, detail: "Group not found"}
+	case errors.Is(err, labels.ErrInvalid):
+		return statusError{status: http.StatusBadRequest, detail: err.Error()}
+	}
+	return err
 }

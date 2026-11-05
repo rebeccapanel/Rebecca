@@ -97,11 +97,11 @@ func TestGroupsAreManagedByGlobalAdminsOnly(t *testing.T) {
 
 func TestUserGroupTagsFilterAndBulkActions(t *testing.T) {
 	server, db, owner := testUserMutationServer(t)
-	for _, name := range []string{"alpha", "beta", "gamma"} {
-		rec := adminJSONRequest(t, server, http.MethodPost, "/api/user", owner, `{"username":"`+name+`","service_id":1,"data_limit":1000}`)
-		if rec.Code != http.StatusCreated {
-			t.Fatalf("create %s status=%d body=%s", name, rec.Code, rec.Body.String())
-		}
+	if _, err := db.Exec(`INSERT INTO users (id, username, admin_id, status, service_id, credential_key, data_limit, created_at) VALUES
+		(1, 'alpha', 1, 'active', 1, 'ka', 1000, '2026-06-05 00:00:00'),
+		(2, 'beta', 1, 'active', 1, 'kb', 1000, '2026-06-05 00:00:00'),
+		(3, 'gamma', 1, 'active', 1, 'kc', 1000, '2026-06-05 00:00:00')`); err != nil {
+		t.Fatal(err)
 	}
 	rec := adminJSONRequest(t, server, http.MethodPost, "/api/groups", owner, `{"type":"user","name":"vip"}`)
 	var group struct {
@@ -215,10 +215,10 @@ func TestHostAndAdminLabelsAndPurgeOnGroupDelete(t *testing.T) {
 		t.Fatalf("host label map status=%d body=%s", rec.Code, rec.Body.String())
 	}
 	adminJSONRequest(t, server, http.MethodPost, "/api/groups", owner, `{"type":"admin","name":"staff"}`)
-	if rec := adminJSONRequest(t, server, http.MethodPut, "/api/labels/admin/seller", owner, `{"group_id":1,"tags":["l1"]}`); rec.Code != http.StatusOK {
+	if rec := adminJSONRequest(t, server, http.MethodPut, "/api/labels/admin/seller", owner, `{"group_id":1}`); rec.Code != http.StatusOK {
 		t.Fatalf("admin labels status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	rec = adminJSONRequest(t, server, http.MethodGet, "/api/admins?tag=l1", owner, "")
+	rec = adminJSONRequest(t, server, http.MethodGet, "/api/admins?group_id=1", owner, "")
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"username":"seller"`) || strings.Contains(rec.Body.String(), `"username":"owner"`) || !strings.Contains(rec.Body.String(), `"name":"staff"`) {
 		t.Fatalf("admin list filter status=%d body=%s", rec.Code, rec.Body.String())
 	}

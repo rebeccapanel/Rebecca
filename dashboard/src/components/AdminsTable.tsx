@@ -5,9 +5,7 @@ import { Input } from "components/ui/input";
 import { Textarea } from "components/ui/textarea";
 import { toast } from "components/ui/sonner";
 import { withClass } from "lib/withClass";
-import { SlidersHorizontal, RefreshCw, Key, Pencil, Play, CirclePlus, ShieldCheck, Trash2, Ban, History, Tags } from "lucide-react";
-import { LabelsDialog } from "components/labels/LabelsDialog";
-import { TagChips } from "components/labels/TagChips";
+import { SlidersHorizontal, RefreshCw, Key, Pencil, Play, CirclePlus, ShieldCheck, Trash2, Ban, History } from "lucide-react";
 
 import { useDisclosure } from "hooks/useDisclosure";
 import { useIntervalRefresh } from "hooks/useIntervalRefresh";
@@ -244,7 +242,6 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		type: "usage" | "deleted";
 	} | null>(null);
 	const [securityAdmin, setSecurityAdmin] = useState<Admin | null>(null);
-	const [labelsAdmin, setLabelsAdmin] = useState<Admin | null>(null);
 	const securityDialog = useDisclosure();
 	const [apiKeysAdmin, setAPIKeysAdmin] = useState<Admin | null>(null);
 	const apiKeysDialog = useDisclosure();
@@ -699,18 +696,6 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 				),
 			},
 			{
-				id: "tags",
-				width: "170px",
-				minWidth: "120px",
-				maxWidth: "220px",
-				header: t("tags.title"),
-				menuLabel: t("tags.title"),
-				priority: "low",
-				mobilePriority: 4,
-				mobileMetaLabel: t("tags.title"),
-				cell: (admin) => <TagChips tags={admin.tags} limit={2} />,
-			},
-			{
 				id: "role",
 				width: "104px",
 				minWidth: "92px",
@@ -875,12 +860,6 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 					label: t("edit"),
 					icon: <Pencil className="w-[16px]" />,
 					onClick: () => openAdminDialog(admin),
-				},
-				{
-					id: "labels",
-					label: t("labels.menu"),
-					icon: <Tags className="w-[16px]" />,
-					onClick: () => setLabelsAdmin(admin),
 				},
 				{
 					id: "history",
@@ -1251,15 +1230,6 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 				open={isPermissionsModalOpen}
 				onClose={handleClosePermissionsModal}
 				admin={adminForPermissions}
-			/>
-			<LabelsDialog
-				open={labelsAdmin !== null}
-				onClose={() => setLabelsAdmin(null)}
-				type="admin"
-				entityKey={labelsAdmin?.id ?? 0}
-				entityName={labelsAdmin?.username ?? ""}
-				current={labelsAdmin ? { group: labelsAdmin.group ?? null, tags: labelsAdmin.tags ?? [] } : null}
-				onSaved={() => fetchAdmins(undefined, { force: true })}
 			/>
 			<AdminSecurityDialog
 				admin={securityAdmin}

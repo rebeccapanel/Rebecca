@@ -1,3 +1,11 @@
+import { TagChips } from "components/labels/TagChips";
+import { TagFilterButton } from "components/labels/TagFilterButton";
+import {
+	EMPTY_LABEL_FILTER,
+	type LabelFilterValue,
+	matchesTagFilter,
+} from "components/labels/LabelFilter";
+import { useLabelItems } from "service/labels";
 import { barClass } from "lib/tone";
 import { toneClass } from "lib/tone";
 import { Badge } from "components/ui/badge";
@@ -1368,9 +1376,14 @@ export const NodesPage: FC = () => {
 		}
 	};
 
+	const { data: nodeLabels } = useLabelItems("node");
+	const [tagFilter, setTagFilter] = useState<LabelFilterValue>(EMPTY_LABEL_FILTER);
 	const filteredNodes = useMemo(() => {
 		if (!nodes) return [];
 		return nodes.filter((node) => {
+			if (!matchesTagFilter(nodeLabels?.items[String(node.id)]?.tags, tagFilter)) {
+				return false;
+			}
 			const runtime = node.node_binary_tag || node.node_service_version || "";
 			const matchesSearch = matchesAnySearch(
 				[node.name, node.address, node.xray_version, runtime, node.note],
@@ -1384,7 +1397,7 @@ export const NodesPage: FC = () => {
 				(node.node_install_mode || "unknown") === installModeFilter;
 			return matchesSearch && matchesStatus && matchesInstallMode;
 		});
-	}, [nodes, searchMatch, searchTerm, statusFilter, installModeFilter]);
+	}, [nodes, nodeLabels, tagFilter, searchMatch, searchTerm, statusFilter, installModeFilter]);
 
 	const sortedNodes = useMemo(() => {
 		const sorted = [...filteredNodes];
@@ -2129,6 +2142,15 @@ export const NodesPage: FC = () => {
 				),
 			},
 			{
+				id: "tags",
+				header: t("tags.title"),
+				priority: "low",
+				mobileVisible: true,
+				mobilePriority: 9,
+				mobileMetaLabel: t("tags.title"),
+				cell: (node) => <TagChips tags={nodeLabels?.items[String(node.id)]?.tags} limit={2} />,
+			},
+			{
 				id: "protocols",
 				header: t("nodes.protocols"),
 				desktopVisible: false,
@@ -2453,6 +2475,7 @@ export const NodesPage: FC = () => {
 								onSortingChange={handleNodeTableSorting}
 							/>
 						</div>
+						<TagFilterButton type="node" value={tagFilter} onChange={setTagFilter} />
 						<Select size="sm" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="w-full xl:w-[150px]">
 							<option value="all">{t("nodes.filters.allStatuses")}</option>
 							<option value="connected">{t("status.connected")}</option>

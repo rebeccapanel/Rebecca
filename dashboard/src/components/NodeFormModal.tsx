@@ -1,3 +1,5 @@
+import { TagsSelect } from "components/labels/TagsSelect";
+import { saveLabels, useInvalidateLabels, useLabelItems, useTags } from "service/labels";
 import { AppleEmojiText } from "components/common/AppleEmojiText";
 import { Button } from "components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "components/ui/tooltip";
@@ -27,7 +29,7 @@ import {
 	NodeSchema,
 	type NodeType,
 } from "contexts/NodesContext";
-import { FC, useCallback, useEffect, useState } from "react";
+import { FC, useCallback, useEffect, useMemo, useState } from "react";
 import { type Resolver, Controller, useForm } from "react-hook-form";
 import { EmojiShortcodeInput } from "components/common/EmojiShortcodeInput";
 import { useTranslation } from "react-i18next";
@@ -218,6 +220,18 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 		},
 	});
 
+	const { data: nodeLabels } = useLabelItems("node", isOpen);
+	const { data: knownNodeTags = [] } = useTags("node", isOpen);
+	const invalidateLabels = useInvalidateLabels();
+	const originalTags = useMemo(
+		() => (!isAddMode && node?.id != null ? (nodeLabels?.items[String(node.id)]?.tags ?? []) : []),
+		[isAddMode, node?.id, nodeLabels],
+	);
+	const [tags, setTags] = useState<string[]>([]);
+	useEffect(() => {
+		setTags(originalTags);
+	}, [originalTags, isOpen]);
+
 	const nodeCertificateValue = !isAddMode
 		? buildNodeInstallBundle(node?.node_certificate, node?.node_certificate_key)
 		: "";
@@ -270,7 +284,15 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 				onError: () => {
 					showSubmitError();
 				},
-				onSuccess: (createdOrUpdatedNode) => {
+				onSuccess: async (createdOrUpdatedNode) => {
+					if (tags.join("\n") !== originalTags.join("\n") && createdOrUpdatedNode?.id != null) {
+						try {
+							await saveLabels("node", createdOrUpdatedNode.id, { tags });
+							await invalidateLabels();
+						} catch {
+							toast.error(t("labels.saveFailed"), { duration: 3500 });
+						}
+					}
 					setSubmitStatus("success");
 					successCloseTimerRef.current = window.setTimeout(() => {
 						successCloseTimerRef.current = null;
@@ -458,6 +480,9 @@ export const NodeFormModal: FC<NodeFormModalProps> = ({
 										/>
 									</FormField>
 								</div>
+								<FormField label={t("tags.title")}>
+									<TagsSelect value={tags} onChange={setTags} options={knownNodeTags.map((item) => item.tag)} />
+								</FormField>
 								<FormField label={t("fields.note")} error={getInputError(errors?.note)}>
 									<Textarea rows={3} maxLength={500} {...form.register("note")} />
 								</FormField>

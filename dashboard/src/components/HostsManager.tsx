@@ -1,4 +1,3 @@
-import { LabelsDialog } from "components/labels/LabelsDialog";
 import { TagChips } from "components/labels/TagChips";
 import { TagFilterButton } from "components/labels/TagFilterButton";
 import {
@@ -6,7 +5,8 @@ import {
 	type LabelFilterValue,
 	matchesTagFilter,
 } from "components/labels/LabelFilter";
-import { useLabelItems } from "service/labels";
+import { useInvalidateLabels, useTags } from "service/labels";
+import { TagsSelect } from "components/labels/TagsSelect";
 import { Field, FieldLabel } from "components/ui/field";
 import { Popover, PopoverContent, PopoverTrigger } from "components/ui/popover";
 import { Badge } from "components/ui/badge";
@@ -35,7 +35,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { hostEntityPage } from "components/entityPage/EntityOverviews";
 import type { EntityPageInfo } from "components/entityPage/EntityPageParts";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "components/ui/tabs";
-import { ChevronDown, Network, RefreshCw, CircleCheck, Info, Pencil, Plus, Tags, Trash2, CircleX } from "lucide-react";
+import { ChevronDown, Network, RefreshCw, CircleCheck, Info, Pencil, Plus, Trash2, CircleX } from "lucide-react";
 
 import { cn } from "lib/cn";
 import {
@@ -104,6 +104,7 @@ const JsonEditor = lazy(async () => ({
 
 type HostData = {
 	id: number | null;
+	tags: string[];
 	remark: string;
 	address: string;
 	dns_primary: string;
@@ -210,6 +211,7 @@ const coerceHostValue = <Key extends keyof HostData>(
 
 const EMPTY_HOST_DATA: HostData = {
 	id: null,
+	tags: [],
 	remark: "",
 	address: "",
 	dns_primary: "1.1.1.1",
@@ -542,6 +544,7 @@ const CertificateFingerprintField: FC<{
 
 const normalizeHostData = (host: HostsSchema[string][number]): HostData => ({
 	id: host.id ?? null,
+	tags: host.tags ?? [],
 	remark: host.remark ?? "",
 	address: mergeRotationValue(host.address, host.address_options),
 	dns_primary: normalizeString(host.dns_primary) || "1.1.1.1",
@@ -581,6 +584,7 @@ const normalizeHostData = (host: HostsSchema[string][number]): HostData => ({
 
 const cloneHostData = (data: HostData): HostData => ({
 	id: data.id ?? null,
+	tags: [...(data.tags ?? [])],
 	remark: data.remark,
 	address: data.address,
 	dns_primary: data.dns_primary,
@@ -721,6 +725,7 @@ const formatHostForApi = (
 	const data = fitToInbound ? fitHostToInbound(rawData, inbound) : rawData;
 	return {
 		id: data.id ?? null,
+		tags: data.tags ?? [],
 		remark: data.remark.trim(),
 		address: rotationTextToOptions(data.address).join(", "),
 		dns_primary: data.dns_primary.trim(),
@@ -1025,6 +1030,7 @@ const HostForm: FC<HostFormProps> = ({
 		inheritedHostValue(data.security, selectedInbound?.tls)
 			?.trim()
 			.toLowerCase() ?? "";
+	const { data: knownHostTags = [] } = useTags("host");
 	const {
 		showsRequestHost,
 		showsRequestPath,
@@ -1101,6 +1107,13 @@ const HostForm: FC<HostFormProps> = ({
 								</div>
 							) : null}
 						</div>
+					</FormField>
+					<FormField label={t("tags.title")} className="md:col-span-2">
+						<TagsSelect
+							value={data.tags ?? []}
+							onChange={(next) => onChange("tags", next)}
+							options={knownHostTags.map((item) => item.tag)}
+						/>
 					</FormField>
 					<FormField
 						label={t("hostsDialog.address")}
@@ -1752,7 +1765,12 @@ export const HostsManager: FC = () => {
 	const { t } = useTranslation();
 	
 	const hosts = useHosts((state) => state.hosts);
-	const fetchHosts = useHosts((state) => state.fetchHosts);
+	const fetchHostsStore = useHosts((state) => state.fetchHosts);
+	const invalidateLabels = useInvalidateLabels();
+	const fetchHosts = useCallback(async () => {
+		await fetchHostsStore();
+		void invalidateLabels();
+	}, [fetchHostsStore, invalidateLabels]);
 	const isLoading = useHosts((state) => state.loading);
 	const isPostLoading = useHosts((state) => state.isPostLoading);
 	const setHosts = useHosts((state) => state.setHosts);
@@ -1881,16 +1899,11 @@ export const HostsManager: FC = () => {
 		[activeHosts, allHosts, includeDisabled],
 	);
 
-	const { data: hostLabels } = useLabelItems("host");
 	const [tagFilter, setTagFilter] = useState<LabelFilterValue>(EMPTY_LABEL_FILTER);
-	const [labelsTarget, setLabelsTarget] = useState<HostState | null>(null);
 	const filteredHosts = useMemo(() => {
 		const tagged = tagFilter.tags.length
 			? baseFilteredHosts.filter((host) =>
-					matchesTagFilter(
-						host.data.id != null ? hostLabels?.items[String(host.data.id)]?.tags : undefined,
-						tagFilter,
-					),
+					matchesTagFilter(host.data.tags, tagFilter),
 				)
 			: baseFilteredHosts;
 		if (!searchQuery.trim()) {
@@ -1908,7 +1921,7 @@ export const HostsManager: FC = () => {
 			];
 			return matchesAnySearch(values, searchQuery, searchMatch);
 		});
-	}, [baseFilteredHosts, hostLabels, searchMatch, searchQuery, tagFilter]);
+	}, [baseFilteredHosts, searchMatch, searchQuery, tagFilter]);
 
 	const displayedHosts = filteredHosts;
 
@@ -2515,10 +2528,7 @@ export const HostsManager: FC = () => {
 				mobilePriority: 7,
 				mobileMetaLabel: t("tags.title"),
 				cell: (host) => (
-					<TagChips
-						tags={host.data.id != null ? hostLabels?.items[String(host.data.id)]?.tags : undefined}
-						limit={2}
-					/>
+					<TagChips tags={host.data.tags} limit={2} />
 				),
 			},
 			{
@@ -2564,7 +2574,7 @@ export const HostsManager: FC = () => {
 				),
 			},
 		],
-		[hostLabels, inboundOptions, renderRotationValues, t],
+		[inboundOptions, renderRotationValues, t],
 	);
 
 	const hostRowActions = (host: HostState): DataTableRowAction<HostState>[] => {
@@ -2575,13 +2585,6 @@ export const HostsManager: FC = () => {
 				label: t("edit"),
 				icon: <EditIcon />,
 				onClick: () => setSelectedHostUid(host.uid),
-			},
-			{
-				id: "labels",
-				label: t("labels.menu"),
-				icon: <Tags className="w-[16px]" />,
-				disabled: host.data.id == null,
-				onClick: () => setLabelsTarget(host),
 			},
 			{
 				id: "toggle",
@@ -2606,18 +2609,6 @@ export const HostsManager: FC = () => {
 
 	return (
 		<div className="flex flex-col items-stretch gap-4">
-			<LabelsDialog
-				open={labelsTarget !== null}
-				onClose={() => setLabelsTarget(null)}
-				type="host"
-				entityKey={labelsTarget?.data.id ?? 0}
-				entityName={labelsTarget?.data.remark || t("hostsPage.untitledHost")}
-				current={
-					labelsTarget?.data.id != null
-						? (hostLabels?.items[String(labelsTarget.data.id)] ?? null)
-						: null
-				}
-			/>
 			<ConfirmDialog
 				open={Boolean(hostPendingDelete)}
 				onClose={() => {
