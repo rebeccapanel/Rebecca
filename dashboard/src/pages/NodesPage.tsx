@@ -74,6 +74,8 @@ import {
 	type NodeServiceUpdateChannel,
 } from "../components/NodeServiceUpdateDialog";
 
+const BULK_CORE_UPDATE_GAP_MS = 15000;
+
 const normalizeVersion = (value?: string | null) => {
 	if (!value) return "";
 	const trimmed = value.trim();
@@ -1260,12 +1262,17 @@ export const NodesPage: FC = () => {
 					status: "fulfilled" | "rejected";
 					node: NodeType;
 				}> = [];
-				for (const node of targetNodes) {
+				for (const [index, node] of targetNodes.entries()) {
+					if (index > 0) {
+						await new Promise((resolve) =>
+							setTimeout(resolve, BULK_CORE_UPDATE_GAP_MS),
+						);
+					}
 					try {
 						await apiFetch(`/node/${node.id}/xray/update`, {
 							method: "POST",
 							headers: recentActionHeaders,
-							body: { version },
+							body: { version, wait: true },
 						});
 						results.push({ status: "fulfilled", node });
 					} catch (err) {

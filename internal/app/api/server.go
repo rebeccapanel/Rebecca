@@ -606,6 +606,7 @@ func (s *Server) handleNodeUsageDaily(w http.ResponseWriter, r *http.Request, no
 func (s *Server) handleNodeRuntimeUpdate(w http.ResponseWriter, r *http.Request, nodeID int64) {
 	var payload struct {
 		Version string `json:"version"`
+		Wait    bool   `json:"wait"`
 	}
 	if err := decodeOptionalJSON(r, &payload); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -616,6 +617,21 @@ func (s *Server) handleNodeRuntimeUpdate(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	version := strings.TrimSpace(payload.Version)
+	if payload.Wait {
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+		defer cancel()
+		result, err := s.nodeController.UpdateRuntime(ctx, nodecontroller.Request{
+			NodeID:  nodeID,
+			Version: version,
+		})
+		if err != nil {
+			writeControllerError(w, err)
+			return
+		}
+		s.recordNodeRuntimeAction(r.Context(), nodeID, "node.runtime_update", "Updated node core")
+		writeJSON(w, http.StatusOK, flattenRuntimeResult(result))
+		return
+	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
