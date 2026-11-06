@@ -520,8 +520,11 @@ func haproxyInboundMatchers(stream map[string]any, network, security string) []H
 }
 
 func haproxyTransportSettings(stream map[string]any, network string) map[string]any {
-	if network == "splithttp" {
-		return mapValue(stream["xhttpSettings"])
+	if network == "xhttp" || network == "splithttp" {
+		if settings := mapValue(stream["xhttpSettings"]); len(settings) > 0 {
+			return settings
+		}
+		return mapValue(stream["splithttpSettings"])
 	}
 	return mapValue(stream[network+"Settings"])
 }
