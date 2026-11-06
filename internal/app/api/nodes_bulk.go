@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/rebeccapanel/rebecca/internal/app/logging"
@@ -23,6 +24,8 @@ type nodesBulkAction struct {
 	suffix  string
 	body    func(options map[string]any) map[string]any
 	spacing bool
+	// parallel actions hit every node at once instead of one after another.
+	parallel bool
 }
 
 var nodesBulkActions = map[string]nodesBulkAction{
@@ -35,7 +38,7 @@ var nodesBulkActions = map[string]nodesBulkAction{
 	},
 	"geo-update":      {method: http.MethodPost, suffix: "/geo/update"},
 	"service-restart": {method: http.MethodPost, suffix: "/service/restart", spacing: true},
-	"host-reboot":     {method: http.MethodPost, suffix: "/host/reboot", spacing: true},
+	"host-reboot":     {method: http.MethodPost, suffix: "/host/reboot", parallel: true},
 	"usage-reset":     {method: http.MethodPost, suffix: "/usage/reset"},
 	"enable": {
 		method: http.MethodPut,
@@ -134,14 +137,32 @@ func (s *Server) handleNodesBulk(w http.ResponseWriter, r *http.Request) {
 func (s *Server) runNodesBulk(ctx context.Context, origin *http.Request, name string, action nodesBulkAction, ids []int64, options map[string]any, gap time.Duration) {
 	s.nodesBulkMu.Lock()
 	defer s.nodesBulkMu.Unlock()
+	var failedMu sync.Mutex
 	failed := 0
-	for index, id := range ids {
-		if index > 0 && gap > 0 {
-			time.Sleep(gap)
-		}
+	run := func(id int64) {
 		if detail := s.runNodeAction(ctx, origin, action, id, options); detail != "" {
+			failedMu.Lock()
 			failed++
+			failedMu.Unlock()
 			logging.Warnf(logging.ComponentNode, "bulk %s on node %d: %s", name, id, detail)
+		}
+	}
+	if action.parallel {
+		var wg sync.WaitGroup
+		for _, id := range ids {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				run(id)
+			}()
+		}
+		wg.Wait()
+	} else {
+		for index, id := range ids {
+			if index > 0 && gap > 0 {
+				time.Sleep(gap)
+			}
+			run(id)
 		}
 	}
 	logging.Infof(logging.ComponentNode, "bulk %s finished: %d of %d nodes succeeded", name, len(ids)-failed, len(ids))

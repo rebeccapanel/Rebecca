@@ -38,4 +38,8 @@ func TestNodesBulkActionsCoreUpdateWaitsForCompletion(t *testing.T) {
 	if !nodesBulkActions["core-update"].spacing || nodesBulkActions["geo-update"].spacing {
 		t.Fatal("only disruptive actions should be spaced")
 	}
+	reboot := nodesBulkActions["host-reboot"]
+	if !reboot.parallel || reboot.spacing {
+		t.Fatal("host reboot should hit every node at once")
+	}
 }
