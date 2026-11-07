@@ -431,7 +431,11 @@ func effectiveInboundForHost(wildcardSalt string, variables map[string]string, i
 	}
 
 	sniRaw := selectHostRotationValue(host.ID, "sni", hostOverrideList(host.SNI, joinStringList(inbound["sni"])), host.SNIOptions, host.SNIMode, host.SNITTL)
-	hostRaw := selectHostRotationValue(host.ID, "host", hostOverrideList(host.Host, joinStringList(inbound["host"])), host.HostOptions, host.HostMode, host.HostTTL)
+	hostValue := hostOverrideList(host.Host, joinStringList(inbound["host"]))
+	hostRaw := pairedHostRotationValue(sniRaw, hostValue, host.HostOptions)
+	if hostRaw == "" {
+		hostRaw = selectHostRotationValue(host.ID, "host", hostValue, host.HostOptions, host.HostMode, host.HostTTL)
+	}
 	sni := applyWildcard(applyFormat(sniRaw, variables), wildcardSalt)
 	requestHost := applyWildcard(applyFormat(hostRaw, variables), wildcardSalt)
 	if host.UseSNIAsHost && sni != "" {
@@ -2390,6 +2394,19 @@ func selectHostRotationValue(hostID int64, field string, value string, options [
 		return choices[int((bucket+offset)%int64(len(choices)))]
 	}
 	return choices[randomHostOptionIndex(len(choices))]
+}
+
+func pairedHostRotationValue(sni, value string, options []string) string {
+	sni = strings.TrimSpace(sni)
+	if sni == "" {
+		return ""
+	}
+	for _, choice := range normalizeHostOptionList(append([]string{value}, options...)) {
+		if strings.EqualFold(choice, sni) {
+			return choice
+		}
+	}
+	return ""
 }
 
 func randomHostOptionIndex(length int) int {

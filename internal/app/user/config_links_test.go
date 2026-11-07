@@ -1752,3 +1752,20 @@ func TestSSHShareLink(t *testing.T) {
 		t.Fatalf("unexpected SSH link %q: %v", ssh, err)
 	}
 }
+
+func TestPairedHostRotationValueFollowsTheSelectedSNI(t *testing.T) {
+	options := []string{"b.example.com", "c.example.com"}
+	for range 20 {
+		sni := selectHostRotationValue(1, "sni", "a.example.com", options, "random", nil)
+		host := pairedHostRotationValue(sni, "A.example.com", options)
+		if !strings.EqualFold(host, sni) {
+			t.Fatalf("host %q does not follow sni %q", host, sni)
+		}
+	}
+	if got := pairedHostRotationValue("other.example.com", "a.example.com", options); got != "" {
+		t.Fatalf("unrelated sni must not pair, got %q", got)
+	}
+	if got := pairedHostRotationValue("", "a.example.com", options); got != "" {
+		t.Fatalf("empty sni must not pair, got %q", got)
+	}
+}
