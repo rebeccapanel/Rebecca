@@ -20,10 +20,10 @@ const (
 )
 
 type nodesBulkAction struct {
-	method  string
-	suffix  string
-	body    func(options map[string]any) map[string]any
-	spacing bool
+	method   string
+	suffix   string
+	body     func(options map[string]any) map[string]any
+	spacing  bool
 	parallel bool
 }
 
