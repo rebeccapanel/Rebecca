@@ -384,3 +384,12 @@ func TestHAProxyInboundMatchersReadXHTTPPathFromEitherSettingsKey(t *testing.T) 
 		}
 	}
 }
+
+func TestHAProxyTLSInboundWithoutSNIAcceptsUserSuppliedSNI(t *testing.T) {
+	stream := map[string]any{"network": "xhttp", "security": "tls", "xhttpSettings": map[string]any{"path": "/x"}}
+	matchers := haproxyInboundMatchers(stream, "xhttp", "tls")
+	candidate := HAProxyCandidate{Tag: "cf", Matchers: matchers}
+	if !candidateHasMatcher(candidate, "sni", "www.example.com") || candidateHasMatcher(candidate, "http_host", "www.example.com") {
+		t.Fatalf("unexpected matchers %v", matchers)
+	}
+}

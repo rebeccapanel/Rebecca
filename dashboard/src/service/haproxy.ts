@@ -110,7 +110,7 @@ export const haproxyMatcherPriority: HAProxyMatchType[] = [
 
 export const preferredHAProxyMatcher = (matchers: HAProxyMatcher[]) =>
 	haproxyMatcherPriority
-		.map((type) => matchers.find((matcher) => matcher.type === type))
+		.map((type) => matchers.find((matcher) => matcher.type === type && (matcher.value !== "" || type === "default")))
 		.find(Boolean) ?? matchers[0];
 
 export const cloneHAProxyTargetForNode = (

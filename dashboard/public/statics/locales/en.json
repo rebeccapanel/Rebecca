@@ -3698,6 +3698,7 @@
 	"haproxy.backendPort": "Backend port",
 	"haproxy.matchType": "Detection method",
 	"haproxy.matchValue": "Detection value",
+	"haproxy.matchValueRequired": "Enter the SNI clients use for this inbound",
 	"haproxy.saved": "HAProxy configuration saved and queued for node sync",
 	"haproxy.saveFailed": "Could not save HAProxy configuration",
 	"haproxy.configurations": "Configurations",

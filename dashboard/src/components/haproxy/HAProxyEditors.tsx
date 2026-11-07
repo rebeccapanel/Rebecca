@@ -621,8 +621,10 @@ function RouteEditor({
 					<FormField label={t("haproxy.matchValue")}>
 						{values.length > 1 ? (
 							<PanelSelect value={route.match_value || ""} onValueChange={(value) => onChange({ ...route, match_value: String(value) })} options={values} />
+						) : values[0] ? (
+							<UiInput value={values[0]} readOnly />
 						) : (
-							<UiInput value={values[0] || ""} readOnly />
+							<UiInput value={route.match_value || ""} placeholder={t("haproxy.matchValueRequired")} onChange={(event) => onChange({ ...route, match_value: event.target.value })} />
 						)}
 					</FormField>
 				</div>

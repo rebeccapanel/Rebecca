@@ -486,6 +486,8 @@ func (r Repository) haproxyCandidatesForNode(ctx context.Context, node NodeRow) 
 		matchers := haproxyInboundMatchers(stream, network, security)
 		if len(matchers) == 0 {
 			matchers = []HAProxyMatcher{{Type: "default"}}
+		} else if security != "none" && security != "" && len(matchers) == 1 && matchers[0].Type == "sni" && matchers[0].Value == "" {
+			matchers = append(matchers, HAProxyMatcher{Type: "default"})
 		}
 		result = append(result, HAProxyCandidate{Tag: tag, Protocol: protocol, Network: network, Port: port, Matchers: matchers})
 	}
@@ -522,6 +524,9 @@ func haproxyInboundMatchers(stream map[string]any, network, security string) []H
 	}
 	for _, value := range stringList(mapValue(stream["realitySettings"])["serverNames"]) {
 		result = appendUniqueMatcher(result, HAProxyMatcher{Type: "sni", Value: value})
+	}
+	if len(result) == 0 {
+		result = append(result, HAProxyMatcher{Type: "sni"})
 	}
 	return result
 }
@@ -1043,7 +1048,10 @@ func haproxyDefaultTLSSiteSocket(configID int64, listenerIndex, siteIndex int) s
 
 func candidateHasMatcher(candidate HAProxyCandidate, matchType, matchValue string) bool {
 	for _, matcher := range candidate.Matchers {
-		if matcher.Type == matchType && strings.EqualFold(matcher.Value, matchValue) {
+		if matcher.Type != matchType {
+			continue
+		}
+		if strings.EqualFold(matcher.Value, matchValue) || (matcher.Type == "sni" && matcher.Value == "") {
 			return true
 		}
 	}

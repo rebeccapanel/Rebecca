@@ -3697,6 +3697,7 @@
 	"haproxy.backendPort": "پورت مقصد",
 	"haproxy.matchType": "روش تشخیص",
 	"haproxy.matchValue": "مقدار تشخیص",
+	"haproxy.matchValueRequired": "SNI که کلاینت‌ها برای این اینباند استفاده می‌کنند را وارد کنید",
 	"haproxy.saved": "تنظیمات HAProxy ذخیره و برای همگام‌سازی نود در صف قرار گرفت",
 	"haproxy.saveFailed": "ذخیره تنظیمات HAProxy ناموفق بود",
 	"haproxy.configurations": "پیکربندی‌ها",
