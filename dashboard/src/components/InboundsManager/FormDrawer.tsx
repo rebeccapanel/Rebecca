@@ -9,7 +9,7 @@ import { Alert, AlertDescription, AlertTitle } from "components/ui/alert";
 import { Checkbox } from "components/ui/checkbox";
 import { Collapsible, CollapsibleContent } from "components/ui/collapsible";
 import { RadioGroup, RadioGroupItem } from "components/ui/radio-group";
-import { NativeSelect } from "components/ui/native-select";
+import { PanelSelect } from "components/common/PanelSelect";
 import { Tooltip, TooltipContent, TooltipTrigger } from "components/ui/tooltip";
 import { Badge } from "components/ui/badge";
 import { toast } from "components/ui/sonner";
@@ -6175,25 +6175,14 @@ export const InboundFormModal: FC<Props> = ({
 															{certConfig.useFile ? (
 																<FormControl>
 																	<FormLabel helpKey="inbounds.tls.existingCertificateHelp">{t("inbounds.tls.existingCertificate")}</FormLabel>
-																	<NativeSelect onChange={(event) => {
-																			const certificate = subscriptionBundle?.certificates.find(
-																				(item) => item.path === event.target.value,
-																			);
-																			if (!certificate) {
-																				return;
-																			}
-																			form.setValue(
-																				`tlsCertificates.${index}.certFile` as const,
-																				`${certificate.path}fullchain.pem`,
-																				{ shouldDirty: true },
-																			);
-																			form.setValue(
-																				`tlsCertificates.${index}.keyFile` as const,
-																				`${certificate.path}privkey.pem`,
-																				{ shouldDirty: true },
-																			);
-																		}}>
-																		{(subscriptionBundle?.certificates ?? [])
+																	<PanelSelect
+																		value={
+																			(subscriptionBundle?.certificates ?? []).find(
+																				(item) => item.path && certConfig.certFile === `${item.path}fullchain.pem`,
+																			)?.path ?? ""
+																		}
+																		placeholder={t("inbounds.tls.existingCertificate")}
+																		options={(subscriptionBundle?.certificates ?? [])
 																			.filter(
 																				(item) =>
 																					Boolean(item.path) &&
@@ -6201,12 +6190,16 @@ export const InboundFormModal: FC<Props> = ({
 																					item.status !== "invalid" &&
 																					item.status !== "revoked",
 																			)
-																			.map((item) => (
-																				<option key={item.domain} value={item.path}>
-																					{item.domain}
-																				</option>
-																			))}
-																	</NativeSelect>
+																			.map((item) => ({ value: item.path, label: item.domain }))}
+																		onValueChange={(value) => {
+																			const certificate = subscriptionBundle?.certificates.find((item) => item.path === String(value));
+																			if (!certificate) {
+																				return;
+																			}
+																			form.setValue(`tlsCertificates.${index}.certFile` as const, `${certificate.path}fullchain.pem`, { shouldDirty: true });
+																			form.setValue(`tlsCertificates.${index}.keyFile` as const, `${certificate.path}privkey.pem`, { shouldDirty: true });
+																		}}
+																	/>
 																</FormControl>
 															) : null}
 															{certConfig.useFile ? (
