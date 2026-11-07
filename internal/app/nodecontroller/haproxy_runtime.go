@@ -405,6 +405,13 @@ func (r Repository) HAProxyRuntimeForNode(ctx context.Context, nodeID int64) (HA
 					} else if template, ok := HAProxyTemplateByID(configured.TemplateID); ok {
 						site.TemplateURL = template.DownloadURL
 					}
+					if site.TemplateURL != "" && base != "" && callback.Token != "" {
+						if id, err := r.MasterTemplateMoArchive(ctx, site.TemplateURL); err == nil {
+							site.Source = "upload"
+							site.TemplateURL = fmt.Sprintf("%s/internal/node/haproxy-template/%s?node_id=%d", base, id, nodeID)
+							site.Token, site.SHA256 = callback.Token, id
+						}
+					}
 				case "upload":
 					if base != "" && callback.Token != "" {
 						site.TemplateURL = fmt.Sprintf("%s/internal/node/haproxy-template/%s?node_id=%d", base, configured.TemplateID, nodeID)

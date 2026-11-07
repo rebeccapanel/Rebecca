@@ -24,7 +24,6 @@ type nodesBulkAction struct {
 	suffix  string
 	body    func(options map[string]any) map[string]any
 	spacing bool
-	// parallel actions hit every node at once instead of one after another.
 	parallel bool
 }
 
