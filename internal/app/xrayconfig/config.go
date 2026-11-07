@@ -251,6 +251,7 @@ func NormalizePayloadForXrayVersion(payload map[string]any, coreVersion string) 
 		if knownVersion && !atLeast25829 && strings.EqualFold(jsonvalue.String(inbound["protocol"]), "vless") {
 			delete(mapValue(inbound["settings"]), "flow")
 		}
+		normalizeFallbackALPN(inbound)
 		stream := mapValue(inbound["streamSettings"])
 		normalizeStreamForXrayVersion(stream, atLeast26711, useSessionIDFields, knownVersion)
 		invalidPin, versionSensitive := normalizeTLSFieldsForXrayVersion(stream, atLeast26131, knownVersion)
@@ -1210,6 +1211,37 @@ func isXrayPrivateDestination(value string) bool {
 		}
 	}
 	return false
+}
+
+func normalizeFallbackALPN(inbound map[string]any) {
+	settings := mapValue(inbound["settings"])
+	fallbacks, _ := settings["fallbacks"].([]any)
+	if len(fallbacks) == 0 {
+		return
+	}
+	result := make([]any, 0, len(fallbacks))
+	for _, item := range fallbacks {
+		fallback, _ := item.(map[string]any)
+		values, isList := fallback["alpn"].([]any)
+		if !isList {
+			result = append(result, item)
+			continue
+		}
+		if len(values) == 0 {
+			delete(fallback, "alpn")
+			result = append(result, fallback)
+			continue
+		}
+		for _, value := range values {
+			expanded := make(map[string]any, len(fallback))
+			for key, field := range fallback {
+				expanded[key] = field
+			}
+			expanded["alpn"] = jsonvalue.String(value)
+			result = append(result, expanded)
+		}
+	}
+	settings["fallbacks"] = result
 }
 
 func normalizeStreamForXrayVersion(stream map[string]any, useMethod, useSessionIDFields, knownVersion bool) {

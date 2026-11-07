@@ -2091,3 +2091,26 @@ func TestNormalizePayloadForXrayVersionDropsNonIPWireGuardRemoteDNS(t *testing.T
 		t.Fatalf("legacy WireGuard remoteDNS changed: %#v", got)
 	}
 }
+
+func TestNormalizeFallbackALPNExpandsListsIntoOneFallbackPerProtocol(t *testing.T) {
+	inbound := map[string]any{"settings": map[string]any{"fallbacks": []any{
+		map[string]any{"dest": "127.0.0.1:2087", "path": "/", "alpn": []any{"h2", "http/1.1"}},
+		map[string]any{"dest": "127.0.0.1:80", "alpn": "h2"},
+		map[string]any{"dest": "127.0.0.1:81", "alpn": []any{}},
+	}}}
+	normalizeFallbackALPN(inbound)
+	fallbacks := inbound["settings"].(map[string]any)["fallbacks"].([]any)
+	if len(fallbacks) != 4 {
+		t.Fatalf("expected 4 fallbacks, got %v", fallbacks)
+	}
+	first, second := fallbacks[0].(map[string]any), fallbacks[1].(map[string]any)
+	if first["alpn"] != "h2" || second["alpn"] != "http/1.1" || second["dest"] != "127.0.0.1:2087" || second["path"] != "/" {
+		t.Fatalf("unexpected expansion: %v %v", first, second)
+	}
+	if fallbacks[2].(map[string]any)["alpn"] != "h2" {
+		t.Fatalf("string alpn must be kept: %v", fallbacks[2])
+	}
+	if _, ok := fallbacks[3].(map[string]any)["alpn"]; ok {
+		t.Fatalf("empty alpn list must be dropped: %v", fallbacks[3])
+	}
+}
