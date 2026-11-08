@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -e
 
+if [ -f "/etc/environment" ]; then
+    # shellcheck disable=SC1091
+    . /etc/environment
+fi
+
 APP_NAME_FROM_ARG=0
 INSTALL_DIR="/opt"
 NODE_DISCOVERY_BASE="/opt"
