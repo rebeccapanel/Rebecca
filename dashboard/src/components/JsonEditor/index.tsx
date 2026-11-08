@@ -361,26 +361,28 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 					</div>
 				)}
 				<div className="flex-1 min-h-[260px] md:min-h-0 relative">
-					<AceEditor
-						ref={aceRef}
-						name={`json-editor-${editorId}`}
-						mode="json"
-						theme={colorMode === "dark" ? "one_dark" : "github"}
-						value={text}
-						onChange={applyText}
-						readOnly={readOnly}
-						width="100%"
-						height="100%"
-						fontSize={isTouch ? 12 : 13}
-						tabSize={2}
-						wrapEnabled={isTouch}
-						showPrintMargin={false}
-						highlightActiveLine
-						enableBasicAutocompletion={!isTouch}
-						enableLiveAutocompletion={false}
-						enableSnippets={false}
-						setOptions={{ highlightSelectedWord: true, useSoftTabs: true }}
-					/>
+					<div className="absolute inset-0">
+						<AceEditor
+							ref={aceRef}
+							name={`json-editor-${editorId}`}
+							mode="json"
+							theme={colorMode === "dark" ? "one_dark" : "github"}
+							value={text}
+							onChange={applyText}
+							readOnly={readOnly}
+							width="100%"
+							height="100%"
+							fontSize={isTouch ? 12 : 13}
+							tabSize={2}
+							wrapEnabled={isTouch}
+							showPrintMargin={false}
+							highlightActiveLine
+							enableBasicAutocompletion={!isTouch}
+							enableLiveAutocompletion={false}
+							enableSnippets={false}
+							setOptions={{ highlightSelectedWord: true, useSoftTabs: true }}
+						/>
+					</div>
 				</div>
 			</div>
 		);
