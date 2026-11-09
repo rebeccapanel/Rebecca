@@ -41,7 +41,7 @@ export default function ErrorsPage() {
 	return (
 		<Stack spacing={5}>
 			<PageHeader
-				title="errors"
+				title={t("errors.title", "errors")}
 				description={t("diagnostics.pageDescription")}
 			/>
 			<ResourceListCard
@@ -59,6 +59,10 @@ export default function ErrorsPage() {
 							size="sm"
 							onClick={() => query.refetch()}
 							isLoading={query.isFetching}
+							borderRadius="10px"
+							transition="all 0.16s cubic-bezier(0.16, 1, 0.3, 1)"
+							_hover={{ md: { transform: "translateY(-1px)" } }}
+							_active={{ transform: "scale(0.98)" }}
 						>
 							{t("diagnostics.refresh")}
 						</Button>
@@ -91,8 +95,17 @@ export default function ErrorsPage() {
 					/>
 					{showRequests && <RequestErrors />}
 					{empty && !(canSeeGlobal && query.error) && (
-						<Box p={6} bg="panel.surface" borderRadius="2xl">
-							<Text color="panel.textSecondary">{t("diagnostics.empty")}</Text>
+						<Box
+							p={8}
+							bg="panel.surface"
+							borderRadius="20px"
+							borderWidth="1px"
+							borderColor="panel.border"
+							textAlign="center"
+						>
+							<Text color="panel.textSecondary" fontSize="14px" fontWeight="500">
+								{t("diagnostics.empty")}
+							</Text>
 						</Box>
 					)}
 				</>

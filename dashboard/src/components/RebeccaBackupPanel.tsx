@@ -3,6 +3,7 @@ import {
 	AlertIcon,
 	Box,
 	Button,
+	Flex,
 	FormControl,
 	FormLabel,
 	HStack,
@@ -21,12 +22,13 @@ import {
 	Progress,
 	Stack,
 	Text,
+	useColorModeValue,
 	useToast,
 } from "@chakra-ui/react";
 import {
 	ArchiveBoxIcon,
-	ArrowDownTrayIcon,
-	ArrowUpTrayIcon,
+	ArrowPathRoundedSquareIcon,
+	DocumentArrowDownIcon,
 } from "@heroicons/react/24/outline";
 import { PanelSelect as Select } from "components/common/PanelSelect";
 import { useState } from "react";
@@ -53,11 +55,13 @@ const buildBackupFilename = (scope: RebeccaBackupScope) => {
 type BackupDialog = "import" | "export" | null;
 
 export const DashboardBackupControls = ({
-	isBinaryRuntime,
-	runtimeLoading,
+	isBinaryRuntime: _isBinaryRuntime = true,
+	runtimeLoading = false,
+	width,
 }: {
-	isBinaryRuntime: boolean;
-	runtimeLoading: boolean;
+	isBinaryRuntime?: boolean;
+	runtimeLoading?: boolean;
+	width?: string;
 }) => {
 	const { t } = useTranslation();
 	const toast = useToast();
@@ -67,7 +71,11 @@ export const DashboardBackupControls = ({
 		useState<RebeccaBackupScope>("database");
 	const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
 	const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-	const backupActionsAvailable = isBinaryRuntime && !runtimeLoading;
+	const backupActionsAvailable = !runtimeLoading;
+	const cardHighlight = useColorModeValue(
+		"0 1px 2px rgba(0, 0, 0, 0.03), inset 0 1px 0 0 rgba(255, 255, 255, 0.8)",
+		"inset 0 1px 0 0 rgba(255, 255, 255, 0.08)",
+	);
 
 	const exportMutation = useMutation(exportRebeccaBackup, {
 		onSuccess: (blob, scope) => {
@@ -184,22 +192,41 @@ export const DashboardBackupControls = ({
 					<Button
 						size="xs"
 						h="32px"
-						w={{ base: "full", sm: "auto" }}
-						px={3.5}
+						minW={{ base: "full", sm: width ? width : "auto" }}
+						w={width ?? { base: "full", sm: "auto" }}
+						px={{ base: 3.5, md: 2.5, lg: 3 }}
 						variant="outline"
-						borderRadius="full"
-						isDisabled={!backupActionsAvailable || runtimeLoading}
+						borderRadius="12px"
+						isDisabled={runtimeLoading}
 						borderColor="panel.border"
 						color="panel.text"
-						_hover={{ bg: "panel.elevated", borderColor: "panel.borderStrong" }}
-						transition="border-color 0.25s ease, background-color 0.25s ease"
+						_hover={{
+							md: { bg: "panel.elevated", borderColor: "panel.borderStrong" },
+						}}
+						_active={{
+							bg: "panel.elevated",
+							borderColor: "panel.borderStrong",
+							transform: "scale(0.96)",
+						}}
+						transition="all 0.16s cubic-bezier(0.2, 0, 0, 1)"
 						whiteSpace="nowrap"
 					>
 						<HStack spacing={1.5} align="center" justify="center" w="full">
-							<Box as="span" display="inline-flex" alignItems="center" justifyContent="center" flexShrink={0}>
+							<Box
+								as="span"
+								display="inline-flex"
+								alignItems="center"
+								justifyContent="center"
+								flexShrink={0}
+							>
 								<ArchiveBoxIcon width={15} height={15} />
 							</Box>
-							<Text as="span" fontSize="12px" fontWeight="600" lineHeight="none">
+							<Text
+								as="span"
+								fontSize="12px"
+								fontWeight="600"
+								lineHeight="none"
+							>
 								{t("dashboard.backup.tabTitle")}
 							</Text>
 						</HStack>
@@ -207,13 +234,19 @@ export const DashboardBackupControls = ({
 				</PopoverTrigger>
 				<PopoverContent
 					w="min(280px, calc(100vw - 24px))"
-					borderRadius="2xl"
-					boxShadow="0 24px 60px rgba(0,0,0,0.5)"
+					borderRadius="20px"
+					boxShadow={cardHighlight}
 					bg="panel.surface"
 					borderColor="panel.border"
 					borderWidth="1px"
 				>
-					<PopoverHeader fontWeight="700" fontSize="13px" py={3} px={4} borderColor="panel.border">
+					<PopoverHeader
+						fontWeight="700"
+						fontSize="13px"
+						py={3}
+						px={4}
+						borderColor="panel.border"
+					>
 						{t("dashboard.backup.title")}
 					</PopoverHeader>
 					<PopoverBody p={2}>
@@ -222,12 +255,27 @@ export const DashboardBackupControls = ({
 								variant="ghost"
 								justifyContent="flex-start"
 								fontSize="13px"
-								borderRadius="xl"
-								h="36px"
-								leftIcon={<ArrowUpTrayIcon width={16} height={16} />}
+								fontWeight="600"
+								color="panel.text"
+								borderRadius="12px"
+								h="42px"
+								px={2.5}
+								leftIcon={
+									<Flex
+										data-rb-icon="true"
+										alignItems="center"
+										justifyContent="center"
+										color="panel.textSecondary"
+										flexShrink={0}
+										transition="color 0.2s cubic-bezier(0.16, 1, 0.3, 1)"
+									>
+										<ArrowPathRoundedSquareIcon width={16} height={16} />
+									</Flex>
+								}
 								onClick={() => openDialog("import")}
-								_hover={{ bg: "panel.elevated" }}
-								transition="background-color 0.2s ease"
+								_hover={{ md: { bg: "panel.elevated", color: "panel.text" } }}
+								_active={{ transform: "scale(0.98)" }}
+								transition="all 0.16s cubic-bezier(0.2, 0, 0, 1)"
 							>
 								{t("dashboard.backup.import")}
 							</Button>
@@ -235,12 +283,27 @@ export const DashboardBackupControls = ({
 								variant="ghost"
 								justifyContent="flex-start"
 								fontSize="13px"
-								borderRadius="xl"
-								h="36px"
-								leftIcon={<ArrowDownTrayIcon width={16} height={16} />}
+								fontWeight="600"
+								color="panel.text"
+								borderRadius="12px"
+								h="42px"
+								px={2.5}
+								leftIcon={
+									<Flex
+										data-rb-icon="true"
+										alignItems="center"
+										justifyContent="center"
+										color="panel.textSecondary"
+										flexShrink={0}
+										transition="color 0.2s cubic-bezier(0.16, 1, 0.3, 1)"
+									>
+										<DocumentArrowDownIcon width={16} height={16} />
+									</Flex>
+								}
 								onClick={() => openDialog("export")}
-								_hover={{ bg: "panel.elevated" }}
-								transition="background-color 0.2s ease"
+								_hover={{ md: { bg: "panel.elevated", color: "panel.text" } }}
+								_active={{ transform: "scale(0.98)" }}
+								transition="all 0.16s cubic-bezier(0.2, 0, 0, 1)"
 							>
 								{t("dashboard.backup.exportTitle")}
 							</Button>
@@ -256,37 +319,82 @@ export const DashboardBackupControls = ({
 				size="xl"
 				closeOnOverlayClick={!importMutation.isLoading}
 			>
-				<ModalOverlay bg="blackAlpha.700" backdropFilter="blur(8px)" />
+				<ModalOverlay bg="blackAlpha.700" />
 				<ModalContent
+					data-modal-centered="true"
 					borderWidth="1px"
 					borderColor="panel.border"
-					borderRadius="2xl"
-					boxShadow="0 32px 80px rgba(0,0,0,0.5)"
+					borderRadius="20px"
+					boxShadow={cardHighlight}
 					bg="panel.surface"
 					mx={{ base: 4, sm: 0 }}
+					overflow="hidden"
 				>
-					<ModalHeader fontSize="md" fontWeight="700" color="panel.text">{t("dashboard.backup.import")}</ModalHeader>
-					<ModalCloseButton isDisabled={importMutation.isLoading} />
-					<ModalBody py={4}>
+					<ModalHeader
+						px={6}
+						pt={5}
+						pb={4}
+						borderBottomWidth="1px"
+						borderColor="panel.border"
+					>
+						<Flex align="center" justify="space-between">
+							<HStack spacing={3}>
+								<Flex
+									w="40px"
+									h="40px"
+									align="center"
+									justify="center"
+									borderRadius="12px"
+									bg="panel.elevated"
+									color="panel.text"
+									border="1px solid"
+									borderColor="panel.border"
+									flexShrink={0}
+								>
+									<ArchiveBoxIcon width={20} height={20} />
+								</Flex>
+								<Box minW={0}>
+									<Text fontSize="15px" fontWeight="700" color="panel.text">
+										{t("dashboard.backup.import")}
+									</Text>
+									<Text
+										fontSize="11px"
+										fontWeight="500"
+										color="panel.textMuted"
+									>
+										{t("dashboard.backup.importHint")}
+									</Text>
+								</Box>
+							</HStack>
+							<ModalCloseButton
+								position="static"
+								isDisabled={importMutation.isLoading}
+							/>
+						</Flex>
+					</ModalHeader>
+					<ModalBody px={6} py={5}>
 						<Stack spacing={4}>
-							<Text fontSize="13px" color="panel.textMuted">
-								{t("dashboard.backup.importHint")}
-							</Text>
-							<Alert status="warning" borderRadius="xl" fontSize="13px">
+							<Alert status="warning" borderRadius="14px" fontSize="13px">
 								<AlertIcon />
 								<Text fontSize="12px">
 									{t("dashboard.backup.autoDetectImportWarning")}
 								</Text>
 							</Alert>
 							<FormControl isRequired>
-								<FormLabel fontSize="13px" fontWeight="600" color="panel.textSecondary">{t("dashboard.backup.file")}</FormLabel>
+								<FormLabel
+									fontSize="13px"
+									fontWeight="600"
+									color="panel.textSecondary"
+								>
+									{t("dashboard.backup.file")}
+								</FormLabel>
 								<FileDropzone
 									accept=".rbbackup,.tar.gz,.tgz,.zip,application/vnd.rebecca.backup,application/gzip,application/x-gzip,application/zip,application/x-tar,application/octet-stream"
 									isDisabled={
 										!backupActionsAvailable || importMutation.isLoading
 									}
 									multiple
-								selectedFiles={selectedFiles}
+									selectedFiles={selectedFiles}
 									title={t("dashboard.backup.dropTitle")}
 									description={t("dashboard.backup.dropHint")}
 									emptyText={t("dashboard.backup.selectFile")}
@@ -304,7 +412,7 @@ export const DashboardBackupControls = ({
 											justify="space-between"
 											spacing={3}
 										>
-											<Text fontSize="12px" noOfLines={1}>
+											<Text fontSize="12px" noOfLines={1} color="panel.text">
 												{file.name}
 											</Text>
 											<Text
@@ -328,6 +436,7 @@ export const DashboardBackupControls = ({
 										size="xs"
 										variant="ghost"
 										alignSelf="start"
+										borderRadius="8px"
 										onClick={() => setSelectedFiles([])}
 									>
 										{t("dashboard.backup.clearFiles")}
@@ -336,7 +445,7 @@ export const DashboardBackupControls = ({
 							)}
 							{importMutation.isLoading && uploadProgress !== null && (
 								<Stack spacing={2} aria-live="polite">
-									<Text fontSize="12px" fontWeight="600">
+									<Text fontSize="12px" fontWeight="600" color="panel.text">
 										{uploadProgress < 100
 											? t("dashboard.backup.uploadProgress", {
 													percent: uploadProgress,
@@ -349,28 +458,42 @@ export const DashboardBackupControls = ({
 										colorScheme="primary"
 										borderRadius="full"
 										size="xs"
-										h="4px"
+										h="5px"
 									/>
 								</Stack>
 							)}
 						</Stack>
 					</ModalBody>
-					<ModalFooter gap={2} borderTopWidth="1px" borderColor="panel.border">
+					<ModalFooter
+						gap={2.5}
+						px={6}
+						py={4}
+						borderTopWidth="1px"
+						borderColor="panel.border"
+						bg="panel.elevated"
+					>
 						<Button
 							variant="ghost"
 							size="sm"
-							borderRadius="full"
+							borderRadius="10px"
+							color="panel.textSecondary"
+							fontWeight="600"
+							fontSize="12.5px"
 							onClick={() => setDialog(null)}
 							isDisabled={importMutation.isLoading}
+							_hover={{ md: { bg: "panel.surface", color: "panel.text" } }}
 						>
 							{t("cancel")}
 						</Button>
 						<Button
 							colorScheme="red"
 							size="sm"
-							borderRadius="full"
+							borderRadius="10px"
 							px={5}
-							leftIcon={<ArrowUpTrayIcon width={15} height={15} />}
+							h="34px"
+							fontWeight="600"
+							fontSize="12.5px"
+							leftIcon={<ArrowPathRoundedSquareIcon width={15} height={15} />}
 							onClick={handleImport}
 							isDisabled={!canImport}
 							isLoading={importMutation.isLoading}
@@ -388,26 +511,72 @@ export const DashboardBackupControls = ({
 				size="md"
 				closeOnOverlayClick={!exportMutation.isLoading}
 			>
-				<ModalOverlay bg="blackAlpha.700" backdropFilter="blur(8px)" />
+				<ModalOverlay bg="blackAlpha.700" />
 				<ModalContent
+					data-modal-centered="true"
 					borderWidth="1px"
 					borderColor="panel.border"
-					borderRadius="2xl"
-					boxShadow="0 32px 80px rgba(0,0,0,0.5)"
+					borderRadius="20px"
+					boxShadow={cardHighlight}
 					bg="panel.surface"
 					mx={{ base: 4, sm: 0 }}
+					overflow="hidden"
 				>
-					<ModalHeader fontSize="md" fontWeight="700" color="panel.text">{t("dashboard.backup.exportTitle")}</ModalHeader>
-					<ModalCloseButton isDisabled={exportMutation.isLoading} />
-					<ModalBody py={4}>
+					<ModalHeader
+						px={6}
+						pt={5}
+						pb={4}
+						borderBottomWidth="1px"
+						borderColor="panel.border"
+					>
+						<Flex align="center" justify="space-between">
+							<HStack spacing={3}>
+								<Flex
+									w="40px"
+									h="40px"
+									align="center"
+									justify="center"
+									borderRadius="12px"
+									bg="panel.elevated"
+									color="panel.text"
+									border="1px solid"
+									borderColor="panel.border"
+									flexShrink={0}
+								>
+									<ArchiveBoxIcon width={20} height={20} />
+								</Flex>
+								<Box minW={0}>
+									<Text fontSize="15px" fontWeight="700" color="panel.text">
+										{t("dashboard.backup.exportTitle")}
+									</Text>
+									<Text
+										fontSize="11px"
+										fontWeight="500"
+										color="panel.textMuted"
+									>
+										{t("dashboard.backup.exportHint")}
+									</Text>
+								</Box>
+							</HStack>
+							<ModalCloseButton
+								position="static"
+								isDisabled={exportMutation.isLoading}
+							/>
+						</Flex>
+					</ModalHeader>
+					<ModalBody px={6} py={5}>
 						<Stack spacing={4}>
-							<Text fontSize="13px" color="panel.textMuted">
-								{t("dashboard.backup.exportHint")}
-							</Text>
 							<FormControl>
-								<FormLabel fontSize="13px" fontWeight="600" color="panel.textSecondary">{t("dashboard.backup.scope")}</FormLabel>
+								<FormLabel
+									fontSize="13px"
+									fontWeight="600"
+									color="panel.textSecondary"
+								>
+									{t("dashboard.backup.scope")}
+								</FormLabel>
 								<Select
 									value={exportScope}
+									borderRadius="10px"
 									showSearch={false}
 									onChange={(event) =>
 										setExportScope(event.target.value as RebeccaBackupScope)
@@ -421,22 +590,36 @@ export const DashboardBackupControls = ({
 							</FormControl>
 						</Stack>
 					</ModalBody>
-					<ModalFooter gap={2} borderTopWidth="1px" borderColor="panel.border">
+					<ModalFooter
+						gap={2.5}
+						px={6}
+						py={4}
+						borderTopWidth="1px"
+						borderColor="panel.border"
+						bg="panel.elevated"
+					>
 						<Button
 							variant="ghost"
 							size="sm"
-							borderRadius="full"
+							borderRadius="10px"
+							color="panel.textSecondary"
+							fontWeight="600"
+							fontSize="12.5px"
 							onClick={() => setDialog(null)}
 							isDisabled={exportMutation.isLoading}
+							_hover={{ md: { bg: "panel.surface", color: "panel.text" } }}
 						>
 							{t("cancel")}
 						</Button>
 						<Button
 							colorScheme="primary"
 							size="sm"
-							borderRadius="full"
+							borderRadius="10px"
 							px={5}
-							leftIcon={<ArrowDownTrayIcon width={15} height={15} />}
+							h="34px"
+							fontWeight="600"
+							fontSize="12.5px"
+							leftIcon={<DocumentArrowDownIcon width={15} height={15} />}
 							onClick={() => exportMutation.mutate(exportScope)}
 							isLoading={exportMutation.isLoading}
 						>

@@ -158,7 +158,6 @@ const PlaceholderSettingsPage = () => {
 							borderColor={borderColor}
 							borderRadius="2xl"
 							boxShadow="0 18px 50px rgba(0,0,0,.12)"
-							backdropFilter="blur(18px)"
 						>
 							<CardBody p={{ base: 4, md: 7 }}>
 								{!draft ? (
