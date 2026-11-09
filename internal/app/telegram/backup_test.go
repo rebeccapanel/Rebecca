@@ -263,3 +263,28 @@ func assertSQLNullOrEmptyBackup(t *testing.T, db *sql.DB, column string) {
 		t.Fatalf("expected %s to be empty, got %q", column, value.String)
 	}
 }
+
+func TestBackupDeliveryRejectsOversizedBackup(t *testing.T) {
+	ctx := context.Background()
+	db, repo := testTelegramRepo(t)
+	seedTelegramSettings(t, db, "")
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/sendDocument") {
+			t.Fatal("oversized backup must not be uploaded")
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer api.Close()
+	big := make([]byte, maxBackupSendBytes+1)
+	delivery := NewBackupDelivery(repo, NewSender(repo, api.URL))
+	if _, err := delivery.Send(ctx, fakeBackupExporter{content: big}, "full"); err == nil {
+		t.Fatal("expected an error for an oversized backup")
+	}
+	settings, err := repo.Settings(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if settings.BackupLastError == nil || !strings.Contains(*settings.BackupLastError, "limit") {
+		t.Fatalf("backup error not recorded: %v", settings.BackupLastError)
+	}
+}
