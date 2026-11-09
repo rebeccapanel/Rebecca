@@ -14,8 +14,21 @@ import {
 } from "react";
 
 export { BulkActionBar } from "./BulkActionBar";
+export {
+	Breadcrumb,
+	BreadcrumbEllipsis,
+	BreadcrumbEllipsisDropdown,
+	BreadcrumbItem,
+	BreadcrumbLink,
+	BreadcrumbList,
+	BreadcrumbPage,
+	BreadcrumbSeparator,
+} from "./breadcrumb";
 export { DataTable } from "./DataTable";
-export { PageLoadingSkeleton } from "./PageLoadingSkeleton";
+export {
+	PageLoadingSkeleton,
+	PanelLoadingSkeleton,
+} from "./PageLoadingSkeleton";
 export {
 	ResourceListCard,
 	ResourceRefreshButton,

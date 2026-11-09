@@ -251,6 +251,7 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 		const isRTL = direction === "rtl";
 		const removeLabel = t("remove");
 		const inputId = useId();
+		const customBorderRadius = (boxProps as any)?.borderRadius ?? "10px";
 		const [search, setSearch] = useState("");
 		const [searchMatch, setSearchMatch] = useState(
 			DEFAULT_SEARCH_MATCH_OPTIONS,
@@ -626,7 +627,7 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 					/>
 					<Box
 						borderWidth="1px"
-						borderRadius="md"
+						borderRadius={customBorderRadius}
 						borderColor={resolvedBorderColor}
 						bg={controlBg}
 						minH={controlHeight}
@@ -744,7 +745,7 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 								zIndex={16060}
 								borderWidth="1px"
 								borderColor={borderColor}
-								borderRadius="md"
+								borderRadius="14px"
 								bg={menuBg}
 								boxShadow="xl"
 								maxH="240px"
@@ -775,7 +776,7 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 				p={1}
 				bg={menuBg}
 				borderColor={borderColor}
-				borderRadius="md"
+				borderRadius="14px"
 				boxShadow="xl"
 				zIndex={16050}
 				sx={{
@@ -872,7 +873,7 @@ export const PanelSelect = forwardRef<HTMLInputElement, PanelSelectProps>(
 						minH={controlHeight}
 						bg={controlBg}
 						borderColor={resolvedBorderColor}
-						borderRadius="md"
+						borderRadius={customBorderRadius}
 						justifyContent="space-between"
 						textAlign="start"
 						fontWeight={selectedValues.length ? "medium" : "normal"}

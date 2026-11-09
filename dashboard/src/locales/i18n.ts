@@ -60,11 +60,16 @@ const applyDocumentLanguage = (language = "en") => {
 i18n.on("languageChanged", (lng) => {
 	dayjs.locale(lng);
 	applyDocumentLanguage(lng);
+	if (typeof window !== "undefined") {
+		window.dispatchEvent(new Event("resize"));
+		requestAnimationFrame(() => {
+			window.dispatchEvent(new Event("resize"));
+		});
+	}
 });
 
 applyDocumentLanguage(i18n.language || "en");
 
-// DataPicker
 registerLocale("zh-cn", zh);
 registerLocale("ru", ru);
 registerLocale("fa", fa);

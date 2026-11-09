@@ -1,9 +1,10 @@
 import {
 	Box,
+	Button,
+	Flex,
 	HStack,
 	Icon,
 	Text,
-	useColorModeValue,
 	VStack,
 } from "@chakra-ui/react";
 import { ArrowUpTrayIcon, DocumentTextIcon } from "@heroicons/react/24/outline";
@@ -58,12 +59,6 @@ export const FileDropzone = ({
 }: FileDropzoneProps) => {
 	const inputRef = useRef<HTMLInputElement | null>(null);
 	const [isDragging, setIsDragging] = useState(false);
-	const borderColor = useColorModeValue("blackAlpha.300", "whiteAlpha.300");
-	const activeBorderColor = useColorModeValue("primary.500", "primary.300");
-	const bg = useColorModeValue("blackAlpha.50", "whiteAlpha.50");
-	const activeBg = useColorModeValue("primary.50", "whiteAlpha.100");
-	const iconBg = useColorModeValue("white", "whiteAlpha.100");
-	const mutedColor = useColorModeValue("gray.500", "gray.400");
 
 	const hasSelection = selectedFiles
 		? selectedFiles.length > 0
@@ -134,25 +129,32 @@ export const FileDropzone = ({
 			aria-disabled={isDisabled}
 			borderWidth="1px"
 			borderStyle="dashed"
-			borderColor={isDragging ? activeBorderColor : borderColor}
-			borderRadius="md"
-			bg={isDragging ? activeBg : bg}
+			borderColor={isDragging ? "var(--rb-panel-accent)" : "panel.border"}
+			borderRadius="20px"
+			bg={isDragging ? "panel.elevated" : "panel.surface"}
 			cursor={isDisabled ? "not-allowed" : "pointer"}
 			opacity={isDisabled ? 0.55 : 1}
-			px={4}
-			py={4}
-			transition="background-color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease"
+			px={{ base: 4, sm: 5 }}
+			py={5}
+			transition="background-color 0.18s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.18s cubic-bezier(0.16, 1, 0.3, 1)"
+			_active={isDisabled ? undefined : { transform: "scale(0.995)" }}
 			onClick={openFileDialog}
 			onDragLeave={handleDragLeave}
 			onDragOver={handleDragOver}
 			onDrop={handleDrop}
 			onKeyDown={handleKeyDown}
+			_focusVisible={{
+				outline: "2px solid var(--rb-panel-accent)",
+				outlineOffset: "2px",
+			}}
 			_hover={
 				isDisabled
 					? undefined
 					: {
-							borderColor: activeBorderColor,
-							bg: activeBg,
+							md: {
+								borderColor: "panel.borderStrong",
+								bg: "panel.elevated",
+							},
 						}
 			}
 		>
@@ -166,37 +168,69 @@ export const FileDropzone = ({
 				style={{ display: "none" }}
 			/>
 			<HStack spacing={4} align="center">
-				<Box
+				<Flex
+					w="44px"
+					h="44px"
+					align="center"
+					justify="center"
+					flexShrink={0}
+					borderRadius="12px"
+					bg={isDragging ? "panel.surface" : "panel.elevated"}
+					color="panel.text"
 					borderWidth="1px"
-					borderColor={isDragging ? activeBorderColor : borderColor}
-					borderRadius="md"
-					bg={iconBg}
-					p={2.5}
+					borderColor="panel.border"
+					transition="background-color 0.18s cubic-bezier(0.16, 1, 0.3, 1)"
 				>
 					<Icon
 						as={hasSelection ? DocumentTextIcon : ArrowUpTrayIcon}
-						boxSize={5}
-						color={hasSelection ? "primary.400" : mutedColor}
+						boxSize="20px"
+						color={
+							hasSelection ? "var(--rb-panel-accent)" : "panel.textSecondary"
+						}
 					/>
-				</Box>
-				<VStack align="stretch" spacing={1} minW={0} flex="1">
-					<Text fontSize="sm" fontWeight="semibold" noOfLines={1}>
-						{selectedFile?.name || title}
+				</Flex>
+				<VStack align="stretch" spacing={0.5} minW={0} flex="1">
+					<Text
+						fontSize="13px"
+						fontWeight="700"
+						color="panel.text"
+						noOfLines={1}
+					>
+						{selectedFiles?.length
+							? `${selectedFiles.length} files selected`
+							: selectedFile?.name || title}
 					</Text>
-					<Text fontSize="xs" color={mutedColor} noOfLines={2}>
+					<Text fontSize="12px" color="panel.textMuted" noOfLines={2}>
 						{selectedFile
 							? formatFileSize(selectedFile.size)
 							: description || emptyText}
 					</Text>
 				</VStack>
-				<Text
-					fontSize="xs"
-					fontWeight="semibold"
-					color={isDisabled ? mutedColor : "primary.300"}
-					whiteSpace="nowrap"
+				<Button
+					size="xs"
+					h="30px"
+					px={3}
+					flexShrink={0}
+					borderRadius="10px"
+					borderWidth="1px"
+					borderColor="panel.border"
+					bg="panel.elevated"
+					color="panel.text"
+					fontSize="12px"
+					fontWeight="600"
+					transition="all 0.16s cubic-bezier(0.2, 0, 0, 1)"
+					_hover={{
+						md: {
+							bg: "panel.surface",
+							borderColor: "panel.borderStrong",
+						},
+					}}
+					_active={{ transform: "scale(0.96)" }}
+					tabIndex={-1}
+					as="span"
 				>
 					{emptyText}
-				</Text>
+				</Button>
 			</HStack>
 		</Box>
 	);

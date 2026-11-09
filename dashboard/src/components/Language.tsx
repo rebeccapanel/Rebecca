@@ -41,6 +41,7 @@ export const Language: FC<HeaderProps> = ({
 	triggerVariant = "outline",
 }) => {
 	const { i18n } = useTranslation();
+	const isRTL = i18n.dir(i18n.language) === "rtl";
 	const menuBg = useColorModeValue("surface.light", "surface.dark");
 	const hoverBg = useColorModeValue("blackAlpha.50", "whiteAlpha.100");
 	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
@@ -122,7 +123,7 @@ export const Language: FC<HeaderProps> = ({
 
 	return (
 		<Menu
-			placement="bottom-end"
+			placement={isRTL ? "bottom-start" : "bottom-end"}
 			strategy="fixed"
 			isLazy
 			autoSelect={false}

@@ -16,8 +16,6 @@ import {
 } from "@chakra-ui/react";
 import type { FC, ReactNode } from "react";
 
-// UX credit: Xray edit dialogs follow the compact Ant Design/3x-ui form rhythm:
-// tight headers, section panels, small controls, and explicit footer actions.
 export const XrayModalContent: FC<ModalContentProps> = ({
 	children,
 	sx,
@@ -52,12 +50,12 @@ export const XrayModalContent: FC<ModalContentProps> = ({
 			boxShadow="xl"
 			sx={{
 				"@media (max-width: 48em)": {
-					width: "100vw !important",
-					maxWidth: "100vw !important",
+					width: "calc(100vw - 32px) !important",
+					maxWidth: "min(540px, calc(100vw - 32px)) !important",
 					height: "auto !important",
-					maxHeight: "92dvh !important",
-					margin: "0 !important",
-					borderRadius: "16px 16px 0 0 !important",
+					maxHeight: "calc(100dvh - 32px) !important",
+					margin: "auto !important",
+					borderRadius: "20px !important",
 				},
 				".chakra-modal__body": {
 					bg: bodyBg,

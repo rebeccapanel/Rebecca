@@ -1,6 +1,6 @@
 import { Box, Button, Heading, Text, VStack } from "@chakra-ui/react";
-import { PageLoadingSkeleton } from "../components/ui";
-import { type ComponentType, lazy, Suspense, useEffect } from "react";
+import { PageLoadingSkeleton, PanelLoadingSkeleton } from "../components/ui";
+import { type ComponentType, lazy, type ReactNode, Suspense, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
 	createBrowserRouter,
@@ -12,6 +12,7 @@ import {
 } from "react-router-dom";
 import { fetch } from "../service/http";
 import { recoverFromStaleChunk } from "../utils/chunkRecovery";
+import { queryClient } from "../utils/react-query";
 import { Login } from "./Login";
 
 const AppLayout = lazy(async () => ({
@@ -59,9 +60,16 @@ const ErrorsPage = lazy(() => import("./ErrorsPage"));
 const NotificationsPage = lazy(() => import("./NotificationsPage"));
 
 const PageLoading = () => <PageLoadingSkeleton />;
+const PanelLoading = () => <PanelLoadingSkeleton />;
 
-const LazyPage = ({ Page }: { Page: ComponentType }) => (
-	<Suspense fallback={<PageLoading />}>
+const LazyPage = ({
+	Page,
+	fallback = <PageLoading />,
+}: {
+	Page: ComponentType;
+	fallback?: ReactNode;
+}) => (
+	<Suspense fallback={fallback}>
 		<Page />
 	</Suspense>
 );
@@ -180,7 +188,11 @@ const SESSION_CHECK_MAX_ATTEMPTS = 40;
 const fetchSessionWithRetry = async () => {
 	for (let attempt = 1; ; attempt += 1) {
 		try {
-			return await fetch<{ state?: string }>("/auth/session");
+			return await fetch<{
+				state?: string;
+				admin?: unknown;
+				error?: string;
+			}>("/auth/session");
 		} catch (error) {
 			const status =
 				(error as { response?: { status?: number }; status?: number })?.response
@@ -211,6 +223,23 @@ const fetchAdminLoader = async ({ request }: { request: Request }) => {
 		if (response && typeof response === "object" && "error" in response) {
 			throw new Error(`API error: ${response.error || "Unknown error"}`);
 		}
+		if (response?.admin) {
+			queryClient.setQueryData(["current-admin"], response.admin);
+		}
+		const url = new URL(request.url);
+		const pathname = url.pathname.replace(/\/+$/, "");
+		const isDashboardRoute =
+			pathname === "" ||
+			pathname === "/" ||
+			pathname.endsWith("/dashboard") ||
+			pathname === dashboardBasename.replace(/\/+$/, "");
+		if (isDashboardRoute) {
+			try {
+				await queryClient.prefetchQuery("statistics-query-key", () =>
+					fetch("/system"),
+				);
+			} catch {}
+		}
 		return response;
 	} catch (error) {
 		const status =
@@ -228,8 +257,8 @@ export const router = createBrowserRouter(
 	[
 		{
 			path: "/",
-			element: <LazyPage Page={AppLayout} />,
-			hydrateFallbackElement: <PageLoading />,
+			element: <LazyPage Page={AppLayout} fallback={<PanelLoading />} />,
+			hydrateFallbackElement: <PanelLoading />,
 			errorElement: <RouteErrorPage />,
 			loader: fetchAdminLoader,
 			children: [
