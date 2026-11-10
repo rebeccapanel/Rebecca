@@ -264,15 +264,6 @@ const formatNodeUptime = (value?: number | null) => {
 	return parts.join(" ");
 };
 
-const nodeNameSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
-
-const formatNodeNamePreview = (value?: string | null) => {
-	const text = value?.trim();
-	if (!text) return "";
-	const graphemes = Array.from(nodeNameSegmenter.segment(text), ({ segment }) => segment);
-	return graphemes.length > 10 ? `${graphemes.slice(0, 10).join("")}...` : text;
-};
-
 const boundedPercent = (value?: number | null) =>
 	value !== null && value !== undefined && Number.isFinite(value)
 		? Math.max(0, Math.min(100, value))
@@ -1828,9 +1819,9 @@ export const NodesPage: FC = () => {
 				sortValue: (node) => node.name || "",
 				isPrimary: true,
 				priority: "primary",
-				width: { lg: "82px", xl: "92px" },
-				minWidth: "70px",
-				maxWidth: "112px",
+				// No fixed width: the name column takes whatever space is left on
+				// wide screens, so long names show in full instead of being cut.
+				minWidth: { lg: "82px", xl: "92px" },
 				truncate: true,
 				tooltip: true,
 				mobilePriority: 0,
@@ -1838,7 +1829,7 @@ export const NodesPage: FC = () => {
 				cell: (node) => (
 					<p dir="auto" className="font-semibold text-panel-text truncate max-w-full">
 						<AppleEmojiText>
-							{formatNodeNamePreview(node.name || t("nodes.unnamedNode"))}
+							{node.name?.trim() || t("nodes.unnamedNode")}
 						</AppleEmojiText>
 					</p>
 				),
@@ -2145,6 +2136,9 @@ export const NodesPage: FC = () => {
 				id: "tags",
 				header: t("tags.title"),
 				priority: "low",
+				width: { lg: "104px", xl: "128px" },
+				minWidth: "64px",
+				maxWidth: "160px",
 				mobileVisible: true,
 				mobilePriority: 9,
 				mobileMetaLabel: t("tags.title"),

@@ -178,6 +178,7 @@ func (r Repository) UsersList(ctx context.Context, req UsersListRequest) (UsersR
 				configUser.ServiceHostOrders = serviceOrders[*item.ServiceID]
 			}
 			configUser.Hosts = hosts
+			configUser.HostPreferences = admin.HostPreferences
 			if err := r.populateWGAddresses(ctx, &configUser, inbounds); err != nil {
 				return UsersResponse{}, err
 			}

@@ -123,6 +123,7 @@ func (r Repository) UserGet(ctx context.Context, req UserGetRequest) (UserDetail
 		configUser.Flow = *row.Flow
 	}
 	configUser.Hosts = hosts
+	configUser.HostPreferences = admin.HostPreferences
 	if err := r.populateWGAddresses(ctx, &configUser, inboundsByTag); err != nil {
 		return UserDetail{}, err
 	}

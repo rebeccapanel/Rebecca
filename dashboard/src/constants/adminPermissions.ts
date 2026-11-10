@@ -53,6 +53,7 @@ const FULL_SELF_PERMISSIONS = {
 	self_sessions: true,
 	self_2fa: true,
 	self_placeholders: true,
+	self_my_hosts: true,
 };
 
 const FULL_SUDO_SCOPES = {
@@ -94,7 +95,7 @@ const SUDO_TEMPLATE: PermissionTemplate = {
 		[AdminManagementPermission.Manage2FA]: false,
 	},
 	sections: FULL_SECTIONS,
-	self_permissions: FULL_SELF_PERMISSIONS,
+	self_permissions: { ...FULL_SELF_PERMISSIONS, self_my_hosts: false },
 	sudo: FULL_SUDO_SCOPES,
 };
 
@@ -108,7 +109,7 @@ const FULL_ACCESS_TEMPLATE: PermissionTemplate = {
 		[AdminManagementPermission.Manage2FA]: true,
 	},
 	sections: FULL_SECTIONS,
-	self_permissions: FULL_SELF_PERMISSIONS,
+	self_permissions: { ...FULL_SELF_PERMISSIONS, self_my_hosts: false },
 	sudo: FULL_SUDO_SCOPES,
 };
 

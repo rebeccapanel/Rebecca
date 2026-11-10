@@ -256,9 +256,13 @@ func (r Repository) ConfigLinkUser(ctx context.Context, userID int64) (ConfigLin
 	var item ConfigLinkUser
 	var dataLimit, expire, holdDuration, serviceID sql.NullInt64
 	var credentialKey, flow sql.NullString
+	var hostPreferences, adminRole, adminPermissions sql.NullString
 	err := r.db.QueryRowContext(
 		ctx,
-		`SELECT id, username, status, COALESCE(used_traffic, 0), data_limit, expire, on_hold_expire_duration, service_id, credential_key, flow FROM users WHERE id = ? AND status != 'deleted' LIMIT 1`,
+		`SELECT u.id, u.username, u.status, COALESCE(u.used_traffic, 0), u.data_limit, u.expire, u.on_hold_expire_duration, u.service_id, u.credential_key, u.flow,
+			`+adminHostPreferenceColumns("a")+`
+		FROM users u LEFT JOIN admins a ON a.id = u.admin_id
+		WHERE u.id = ? AND u.status != 'deleted' LIMIT 1`,
 		userID,
 	).Scan(
 		&item.ID,
@@ -271,6 +275,9 @@ func (r Repository) ConfigLinkUser(ctx context.Context, userID int64) (ConfigLin
 		&serviceID,
 		&credentialKey,
 		&flow,
+		&hostPreferences,
+		&adminRole,
+		&adminPermissions,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -288,6 +295,7 @@ func (r Repository) ConfigLinkUser(ctx context.Context, userID int64) (ConfigLin
 	if flow.Valid {
 		item.Flow = flow.String
 	}
+	item.HostPreferences = effectiveHostPreferences(hostPreferences, adminRole, adminPermissions)
 	if serviceFlows, err := r.serviceFlows(ctx); err != nil {
 		return ConfigLinkUser{}, err
 	} else if serviceFlows != nil && item.ServiceID != nil {
@@ -436,7 +444,8 @@ func (r Repository) adminLinkSettings(ctx context.Context, adminIDs []int64) (ma
 	}
 
 	query := fmt.Sprintf(
-		`SELECT id, subscription_domain, subscription_settings FROM admins WHERE id IN (%s)`,
+		`SELECT id, subscription_domain, subscription_settings, %s FROM admins WHERE id IN (%s)`,
+		adminHostPreferenceColumns("admins"),
 		placeholders(len(adminIDs)),
 	)
 	rows, err := r.db.QueryContext(ctx, query, int64Args(adminIDs)...)
@@ -449,10 +458,11 @@ func (r Repository) adminLinkSettings(ctx context.Context, adminIDs []int64) (ma
 		var id int64
 		var domain sql.NullString
 		var settings sql.NullString
-		if err := rows.Scan(&id, &domain, &settings); err != nil {
+		var hostPreferences, role, permissions sql.NullString
+		if err := rows.Scan(&id, &domain, &settings, &hostPreferences, &role, &permissions); err != nil {
 			return nil, err
 		}
-		item := AdminLinkSettings{AdminID: id}
+		item := AdminLinkSettings{AdminID: id, HostPreferences: effectiveHostPreferences(hostPreferences, role, permissions)}
 		if domain.Valid && domain.String != "" {
 			value := domain.String
 			item.SubscriptionDomain = &value

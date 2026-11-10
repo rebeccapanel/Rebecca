@@ -3,6 +3,7 @@ package user
 import (
 	"encoding/json"
 
+	"github.com/rebeccapanel/rebecca/internal/app/hostprefs"
 	"github.com/rebeccapanel/rebecca/internal/app/labels"
 )
 
@@ -88,6 +89,9 @@ type ConfigLinkUser struct {
 	Hosts                []Host                     `json:"hosts,omitempty"`
 	ServerIP             string                     `json:"server_ip,omitempty"`
 	WireGuardAddresses   map[string]string          `json:"wireguard_addresses,omitempty"`
+	// HostPreferences are the owning admin's MyHosts overrides; nil when the
+	// admin never customised their hosts or is not allowed to.
+	HostPreferences *hostprefs.Preferences `json:"-"`
 }
 
 type UserListItem struct {
@@ -336,9 +340,10 @@ type SubscriptionPlaceholderPolicy struct {
 }
 
 type AdminLinkSettings struct {
-	AdminID              int64           `json:"admin_id"`
-	SubscriptionDomain   *string         `json:"subscription_domain"`
-	SubscriptionSettings json.RawMessage `json:"subscription_settings,omitempty"`
+	AdminID              int64                  `json:"admin_id"`
+	SubscriptionDomain   *string                `json:"subscription_domain"`
+	SubscriptionSettings json.RawMessage        `json:"subscription_settings,omitempty"`
+	HostPreferences      *hostprefs.Preferences `json:"-"`
 }
 
 type LinkPrerequisites struct {

@@ -33,6 +33,8 @@ type AdminPermissionsEditorProps = {
 	showReset?: boolean;
 	onReset?: () => void;
 	hideExtendedSections?: boolean;
+	/** Sudo admins edit the main hosts, so MyHosts does not apply to them. */
+	hideMyHosts?: boolean;
 	readOnly?: boolean;
 	forceDesktopLayout?: boolean;
 };
@@ -144,6 +146,7 @@ const selfPermissionKeys: Array<{ key: SelfPermissionToggle; label: string }> =
 			key: SelfPermissionToggle.SelfPlaceholders,
 			label: "admins.self.placeholders",
 		},
+		{ key: SelfPermissionToggle.SelfMyHosts, label: "admins.self.myHosts" },
 	];
 
 const sudoPermissionKeys: Array<{ key: AdminSudoScope; label: string }> = [
@@ -183,6 +186,7 @@ export const AdminPermissionsEditor = ({
 	showReset = false,
 	onReset,
 	hideExtendedSections = false,
+	hideMyHosts = false,
 	readOnly: isReadOnly,
 	forceDesktopLayout = false,
 }: AdminPermissionsEditorProps) => {
@@ -373,7 +377,7 @@ export const AdminPermissionsEditor = ({
 			<div className="flex flex-col gap-3">
 				<p className="font-semibold">{t("admins.permissions.self.title")}</p>
 				<div className={cn("grid gap-3", gridColumns)}>
-					{selfPermissionKeys.map(({ key, label }) => (
+					{selfPermissionKeys.filter(({ key }) => !(hideMyHosts && key === SelfPermissionToggle.SelfMyHosts)).map(({ key, label }) => (
 						<div key={key} className="flex flex-row gap-2 justify-between items-center border rounded-md px-3 py-2 min-w-0!">
 							<p className="text-[0.875rem] flex-1 min-w-0! leading-[1.375]">
 								{t(label)}

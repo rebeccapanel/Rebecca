@@ -98,23 +98,11 @@ func BuildConfigLinks(
 	}
 	wildcardSalt := hex.EncodeToString(wildcardBytes)
 
-	inboundIndex := make(map[string]int, len(inboundOrder))
-	for i, tag := range inboundOrder {
-		inboundIndex[tag] = i
-	}
-	if len(inboundOrder) == 0 {
-		inboundOrder = make([]string, 0, len(inbounds))
-		for tag := range inbounds {
-			inboundOrder = append(inboundOrder, tag)
-		}
-		sort.Strings(inboundOrder)
-		for i, tag := range inboundOrder {
-			inboundIndex[tag] = i
-		}
-	}
+	inboundOrder, inboundIndex := configInboundIndex(inbounds, inboundOrder)
 
 	selectedHosts := selectConfigHosts(hosts, item.ServiceID)
 	sortConfigHosts(selectedHosts, item.ServiceHostOrders, inboundIndex)
+	selectedHosts = applyHostPreferences(selectedHosts, item.HostPreferences, *item.ServiceID)
 	hostsByTag := make(map[string][]configHost)
 	for _, host := range selectedHosts {
 		hostsByTag[host.host.InboundTag] = append(hostsByTag[host.host.InboundTag], host)
