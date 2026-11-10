@@ -45,6 +45,7 @@ const IntegrationSettingsPage = lazy(async () => ({
 	default: (await import("./IntegrationSettingsPage")).IntegrationSettingsPage,
 }));
 const PlaceholderSettingsPage = lazy(() => import("./PlaceholderSettingsPage"));
+const MyHostsPage = lazy(() => import("./MyHostsPage"));
 const RecentActionsPage = lazy(async () => ({
 	default: (await import("./RecentActionsPage")).RecentActionsPage,
 }));
@@ -133,6 +134,7 @@ const routeSegments = new Set([
 	"external-apps",
 	"recent-actions",
 	"placeholders",
+	"my-hosts",
 ]);
 
 const trimTrailingSlash = (value: string) => {
@@ -297,6 +299,10 @@ export const router = createBrowserRouter(
 				{
 					path: "placeholders",
 					element: <LazyPage Page={PlaceholderSettingsPage} />,
+				},
+				{
+					path: "my-hosts",
+					element: <LazyPage Page={MyHostsPage} />,
 				},
 				{
 					path: "integrations",

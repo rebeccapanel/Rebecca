@@ -191,6 +191,7 @@ export const AdminPermissionsModal = ({
 							}));
 						}}
 						hideExtendedSections={false}
+						hideMyHosts={admin?.role === AdminRole.Sudo || isFullAccess}
 						readOnly={isFullAccess}
 					/>
 					<div className="flex flex-row items-center gap-2 border rounded-md justify-between mt-5 p-3">

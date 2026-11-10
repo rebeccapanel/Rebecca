@@ -87,6 +87,7 @@ const adminPermissionsSchema: z.ZodType<AdminPermissions> = z.object({
 		self_sessions: z.boolean(),
 		self_2fa: z.boolean(),
 		self_placeholders: z.boolean(),
+		self_my_hosts: z.boolean().optional(),
 	}),
 	sections: z.object({
 		usage: z.boolean(),
@@ -1252,6 +1253,7 @@ export const AdminDialog: FC = () => {
 				onMaxIPLimitChange={handleMaxIPLimitChange}
 				maxIPLimitError={errors.maxIPLimitPerUser?.message as string | undefined}
 				hideExtendedSections={watchRole === AdminRole.Standard}
+				hideMyHosts={watchRole === AdminRole.Sudo || watchRole === AdminRole.FullAccess}
 				readOnly={watchRole === AdminRole.FullAccess}
 			/>
 			{canManage2FA ? (

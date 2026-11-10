@@ -2748,3 +2748,16 @@ input[type="number"] {
 .toaster [data-sonner-toast] [data-close-button] {
   pointer-events: auto;
 }
+
+/* Nodes table: the name column fills the space left by the fixed-width
+   columns. Its content does not push the column wider, so names are cut with
+   an ellipsis only when there is really no room, and every row stays aligned. */
+.rb-nodes-section .rb-data-table td[data-col="name"] > span {
+  display: flex;
+  width: 100%;
+}
+
+.rb-nodes-section .rb-data-table td[data-col="name"] .rb-cell-value {
+  width: 0;
+  min-width: 100%;
+}

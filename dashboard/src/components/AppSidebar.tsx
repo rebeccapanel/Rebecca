@@ -1,4 +1,4 @@
-import { FolderTree, ArrowLeftRight, BellRing, Zap, BookOpen, Briefcase, ChevronDown, ChartColumn, Database, Clock, SquareCode, Settings, Settings2, Terminal, Copy, Bell, FileText, Eye, House, Link, Server, LayoutGrid, CircleUser, Users, Wrench } from "lucide-react";
+import { FolderTree, ArrowLeftRight, BellRing, Zap, BookOpen, Briefcase, ChevronDown, ChartColumn, Database, Clock, SquareCode, Settings, Settings2, Terminal, Copy, Bell, FileText, Eye, House, Link, Server, Network, LayoutGrid, CircleUser, Users, Wrench } from "lucide-react";
 import logoUrl from "assets/logo.svg";
 import useGetUser from "hooks/useGetUser";
 import {
@@ -48,6 +48,7 @@ const ApiDocsIconStyled = () => <SquareCode className={iconClass} />;
 const PHPMyAdminIconStyled = () => <Database className={iconClass} />;
 const ExternalAppsIconStyled = () => <Terminal className={iconClass} />;
 const PlaceholderIconStyled = () => <Copy className={iconClass} />;
+const MyHostsIconStyled = () => <Network className={iconClass} />;
 const TutorialUpdateIconStyled = () => <BellRing className="size-3" />;
 
 interface AppSidebarProps {
@@ -94,6 +95,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 		self_change_password: false,
 		self_api_keys: false,
 		self_placeholders: false,
+		self_my_hosts: false,
 	};
 	const baseSelf =
 		userData.permissions?.self_permissions ?? defaultSelfPermissions;
@@ -114,6 +116,9 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 		(userData.role === AdminRole.Sudo &&
 			Boolean(userData.permissions?.sudo?.[AdminSudoScope.Subscriptions])) ||
 		Boolean(baseSelf.self_placeholders);
+	// MyHosts is for every admin except sudo admins; sudo can switch it off per admin.
+	const canUseMyHosts =
+		!isPrivilegedAdmin && Boolean(baseSelf.self_my_hosts);
 	const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 	const [hasNewTutorials, setHasNewTutorials] = useState(false);
 
@@ -242,6 +247,13 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 						: t("placeholders.settingsMenu"),
 					url: "/placeholders",
 					icon: PlaceholderIconStyled,
+				}
+			: null,
+		canUseMyHosts
+			? {
+					title: t("myHosts.menu"),
+					url: "/my-hosts",
+					icon: MyHostsIconStyled,
 				}
 			: null,
 		{
@@ -378,6 +390,7 @@ export const AppSidebar: FC<AppSidebarProps> = ({
 				pickSetting("/phpmyadmin"),
 				pickSetting("/external-apps"),
 				pickSetting("/placeholders"),
+				pickSetting("/my-hosts"),
 				pickSetting("/api-docs"),
 				pickSetting(tutorialsUrl),
 			],

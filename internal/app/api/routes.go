@@ -128,6 +128,7 @@ func (s *Server) registerMyAccountRoutes(r chi.Router) {
 	r.HandleFunc("/myaccount/api-keys", s.requireAdmin(s.handleMyAccountAPIKeys))
 	r.HandleFunc("/myaccount/nodes", s.requireAdmin(s.handleMyAccountNodes))
 	r.HandleFunc("/myaccount", s.requireAdmin(s.handleMyAccount))
+	r.HandleFunc("/myhosts", s.requireAdmin(s.handleMyHosts))
 }
 
 func (s *Server) registerCoreRoutes(r chi.Router) {

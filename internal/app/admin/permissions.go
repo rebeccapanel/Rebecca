@@ -57,6 +57,8 @@ func RoleDefaultPermissions(role AdminRole) AdminPermissions {
 	selfPermissions := defaultSelfPermissions()
 	if role.IsGlobal() {
 		selfPermissions["self_placeholders"] = true
+		// MyHosts is for every admin except sudo admins, who edit the main hosts.
+		selfPermissions["self_my_hosts"] = false
 	}
 	return AdminPermissions{
 		Users:           baseUsers,
@@ -110,6 +112,7 @@ func defaultSelfPermissions() map[string]bool {
 		"self_sessions":        true,
 		"self_2fa":             true,
 		"self_placeholders":    false,
+		"self_my_hosts":        true,
 	}
 }
 

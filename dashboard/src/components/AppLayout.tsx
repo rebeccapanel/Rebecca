@@ -3,7 +3,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Popover, PopoverContent, PopoverTrigger } from "components/ui/popover";
 import { Sheet, SheetContent, SheetTitle } from "components/ui/sheet";
 import { TriangleAlert } from "lucide-react";
-import { LogOut, ArrowLeftRight, Share, Menu, Bell, BookOpen, Briefcase, Check, Database, Clock, SquareCode, Settings, Settings2, Terminal, Copy, Eye, House as HeroHomeIcon, Languages, Link, Server, LayoutGrid, User as UserIcon, Users, Wrench, Bell as BellSolidIcon, Briefcase as BriefcaseSolidIcon, Settings as Cog6ToothSolidIcon, House as HomeSolidIcon, Users as UserGroupSolidIcon, User as UserSolidIcon } from "lucide-react";
+import { LogOut, ArrowLeftRight, Share, Menu, Bell, BookOpen, Briefcase, Check, Database, Clock, SquareCode, Settings, Settings2, Terminal, Copy, Eye, House as HeroHomeIcon, Languages, Link, Server, Network, LayoutGrid, User as UserIcon, Users, Wrench, Bell as BellSolidIcon, Briefcase as BriefcaseSolidIcon, Settings as Cog6ToothSolidIcon, House as HomeSolidIcon, Users as UserGroupSolidIcon, User as UserSolidIcon } from "lucide-react";
 import {
 	Breadcrumb,
 	BreadcrumbItem,
@@ -56,6 +56,7 @@ const DocsIcon = SquareCode;
 const PHPMyAdminIcon = Database;
 const ExternalAppsIcon = Terminal;
 const PlaceholderIcon = Copy;
+const MyHostsIcon = Network;
 const PersonIcon = UserIcon;
 const MasterSettingsIcon = Settings2;
 const XraySettingsIcon = Wrench;
@@ -246,6 +247,9 @@ export function AppLayout() {
 		(userData.role === AdminRole.Sudo &&
 			Boolean(userData.permissions?.sudo?.[AdminSudoScope.Subscriptions])) ||
 		Boolean(userData.permissions?.self_permissions?.self_placeholders);
+	const canUseMyHosts =
+		!isPrivilegedAdmin &&
+		Boolean(userData.permissions?.self_permissions?.self_my_hosts);
 
 	const settingsMenuItems = useMemo(() => {
 		const items: Array<SettingsMenuItem | null> = [
@@ -355,6 +359,14 @@ export function AppLayout() {
 						icon: PlaceholderIcon,
 					}
 				: null,
+			canUseMyHosts
+				? {
+						key: "my-hosts",
+						label: t("myHosts.menu"),
+						to: "/my-hosts",
+						icon: MyHostsIcon,
+					}
+				: null,
 			{
 				key: "tutorials",
 				label: t("tutorials.menu"),
@@ -365,6 +377,7 @@ export function AppLayout() {
 		return items.filter(Boolean) as SettingsMenuItem[];
 	}, [
 		canManagePlaceholders,
+		canUseMyHosts,
 		canViewRecentActions,
 		isPrivilegedAdmin,
 		sectionAccess,
