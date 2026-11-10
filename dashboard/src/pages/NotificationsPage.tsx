@@ -12,6 +12,7 @@ import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
 
 import { cn } from "lib/cn";
 import dayjs from "dayjs";
+import { BrowserNotificationsCard } from "components/BrowserNotificationsCard";
 import { PageHeader, TabSystem } from "components/ui";
 import useGetUser from "hooks/useGetUser";
 import { useState } from "react";
@@ -44,6 +45,7 @@ const InboxPanel = () => {
 
 	return (
 		<div className="flex flex-col gap-4">
+			<BrowserNotificationsCard />
 			<div className="flex flex-row items-center gap-2 justify-between">
 				<p className="text-gray-500 text-[0.875rem]">
 					{t("notifications.inbox.summary", {
@@ -227,19 +229,19 @@ const RuleEditor = ({ rule }: { rule: NotificationRule }) => {
 
 	const submit = () =>
 		save.mutate({
-			enabled,
+			enabled: rule.mandatory ? true : enabled,
 			threshold: rule.unit === "none" ? 0 : Number(threshold),
 			title,
 			body,
 		});
 
 	const resetToDefaults = () => {
-		setEnabled(rule.default_enabled);
+		setEnabled(rule.mandatory ? true : rule.default_enabled);
 		setThreshold(String(rule.default_threshold));
 		setTitle(rule.default_title);
 		setBody(rule.default_body);
 		save.mutate({
-			enabled: rule.default_enabled,
+			enabled: rule.mandatory ? true : rule.default_enabled,
 			threshold: rule.unit === "none" ? 0 : rule.default_threshold,
 			title: rule.default_title,
 			body: rule.default_body,
@@ -253,8 +255,10 @@ const RuleEditor = ({ rule }: { rule: NotificationRule }) => {
 					{t(`notifications.rules.name.${rule.key}`)}
 				</p>
 				<div className="flex flex-row items-center gap-2">
-					<p className="text-[0.875rem]">{t("notifications.rules.enabled")}</p>
-					<Switch checked={enabled} onCheckedChange={(checked: boolean) => setEnabled(checked)} />
+					<p className="text-[0.875rem]">
+						{rule.mandatory ? t("notifications.rules.mandatory") : t("notifications.rules.enabled")}
+					</p>
+					<Switch checked={rule.mandatory ? true : enabled} disabled={rule.mandatory} onCheckedChange={(checked: boolean) => setEnabled(checked)} />
 				</div>
 			</div>
 			<div className="flex flex-col gap-3">

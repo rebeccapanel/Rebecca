@@ -918,5 +918,16 @@
 	"diagnostics.sourceTitle": "来源",
 	"diagnostics.resourceTitle": "资源",
 	"diagnostics.detailTitle": "详情",
-	"diagnostics.sectionTitle": "分区"
+	"diagnostics.sectionTitle": "分区",
+	"notifications.push.title": "浏览器通知",
+	"notifications.push.description": "即使仪表板已关闭，也能在此设备上收到面板的所有通知。",
+	"notifications.push.enable": "开启通知",
+	"notifications.push.disable": "在此设备上关闭",
+	"notifications.push.enabled": "此设备已开启通知。即使仪表板已关闭，也会收到新的提醒和消息。",
+	"notifications.push.denied": "此浏览器已屏蔽通知。请在网站设置中允许后刷新页面。",
+	"notifications.push.unsupported": "此浏览器不支持通知。",
+	"notifications.push.iosInstall": "在 iPhone 和 iPad 上，请先把仪表板添加到主屏幕（分享，然后添加到主屏幕），从主屏幕打开后再开启通知。",
+	"notifications.push.install": "安装应用",
+	"notifications.push.failed": "无法更改通知设置，请重试。",
+	"notifications.rules.mandatory": "始终开启"
 }

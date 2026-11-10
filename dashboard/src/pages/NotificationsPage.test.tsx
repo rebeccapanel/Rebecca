@@ -42,6 +42,12 @@ describe("notifications page", () => {
 		expect(markup).not.toContain("notifications.tabs.rules");
 	});
 
+	it("offers browser notifications to every admin", () => {
+		for (const role of [AdminRole.Standard, AdminRole.Sudo, AdminRole.FullAccess]) {
+			expect(render(role)).toContain("notifications.push.title");
+		}
+	});
+
 	it("adds sending for sudo admins without automatic rules", () => {
 		const markup = render(AdminRole.Sudo);
 		expect(markup).toContain("notifications.tabs.send");

@@ -917,5 +917,16 @@
 	"diagnostics.sourceTitle": "Источник",
 	"diagnostics.resourceTitle": "Ресурс",
 	"diagnostics.detailTitle": "Детали",
-	"diagnostics.sectionTitle": "Раздел"
+	"diagnostics.sectionTitle": "Раздел",
+	"notifications.push.title": "Уведомления браузера",
+	"notifications.push.description": "Получайте все уведомления панели на этом устройстве, даже когда панель закрыта.",
+	"notifications.push.enable": "Включить уведомления",
+	"notifications.push.disable": "Выключить на этом устройстве",
+	"notifications.push.enabled": "Уведомления включены на этом устройстве. Новые оповещения и сообщения приходят, даже когда панель закрыта.",
+	"notifications.push.denied": "Уведомления заблокированы в этом браузере. Разрешите их в настройках сайта и перезагрузите страницу.",
+	"notifications.push.unsupported": "Этот браузер не поддерживает уведомления.",
+	"notifications.push.iosInstall": "На iPhone и iPad сначала добавьте панель на экран «Домой» (Поделиться, затем На экран «Домой»), откройте её оттуда и включите уведомления.",
+	"notifications.push.install": "Установить приложение",
+	"notifications.push.failed": "Не удалось изменить уведомления. Повторите попытку.",
+	"notifications.rules.mandatory": "Всегда включено"
 }

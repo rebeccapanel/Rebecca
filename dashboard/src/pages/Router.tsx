@@ -1,4 +1,5 @@
 import { Button } from "components/ui/button";
+import { setDashboardBase } from "utils/dashboardBase";
 import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
 import { cn } from "lib/cn";
 
@@ -168,6 +169,7 @@ const normalizeLegacyHashRoute = (basename: string) => {
 };
 
 const dashboardBasename = getDashboardBasename();
+setDashboardBase(dashboardBasename);
 normalizeLegacyHashRoute(dashboardBasename);
 
 const SESSION_CHECK_RETRY_DELAY_MS = 1500;
