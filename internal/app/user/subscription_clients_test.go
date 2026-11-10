@@ -759,8 +759,11 @@ func newSubscriptionClientTestService(t *testing.T) (Service, string) {
 		`CREATE TABLE admins (
 			id INTEGER PRIMARY KEY,
 			username TEXT,
+			role VARCHAR(32) NOT NULL DEFAULT 'standard',
+			permissions TEXT NULL,
 			subscription_domain TEXT NULL,
-			subscription_settings TEXT NULL
+			subscription_settings TEXT NULL,
+			host_preferences TEXT NULL
 		)`,
 		`CREATE TABLE services (
 			id INTEGER PRIMARY KEY,
