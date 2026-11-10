@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	externalapps "github.com/rebeccapanel/rebecca/internal/app/externalapps"
+	"github.com/rebeccapanel/rebecca/internal/app/notifications"
 )
 
 const (
@@ -76,6 +77,7 @@ func (s *Server) Handler() http.Handler {
 	r.HandleFunc("/hosts/*", s.requireAdmin(s.handleHostStatusPath))
 	r.HandleFunc("/hosts", s.requireAdmin(s.handleHostsRoot))
 	r.HandleFunc("/sub/*", s.handleSubscriptionPath)
+	r.Get(notifications.ServiceWorkerPath, s.handleNotificationPushServiceWorker)
 
 	r.Route("/api", func(r chi.Router) {
 		s.registerAdminRoutes(r)

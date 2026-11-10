@@ -175,14 +175,18 @@ func (s Service) applyCandidates(ctx context.Context, rule Rule, candidates []ca
 	if len(changes) == 0 {
 		return nil
 	}
-	return s.withTx(ctx, func(tx *sql.Tx) error {
+	var jobs []pushJob
+	err = s.withTx(ctx, func(tx *sql.Tx) error {
+		jobs = nil
 		for _, c := range changes {
 			if c.active && rule.Enabled && len(c.recipients) > 0 {
 				title := renderTemplate(rule.Title, c.values)
 				body := renderTemplate(rule.Body, c.values)
-				if _, err := s.createTx(ctx, tx, rule.Key, title, body, 0, SystemSender, c.recipients); err != nil {
+				id, err := s.createTx(ctx, tx, rule.Key, title, body, 0, SystemSender, c.recipients)
+				if err != nil {
 					return err
 				}
+				jobs = append(jobs, pushJob{recipients: c.recipients, title: title, body: body, id: id})
 			}
 			if err := setRuleState(ctx, tx, rule.Key, c.subject, c.active, now); err != nil {
 				return err
@@ -190,6 +194,10 @@ func (s Service) applyCandidates(ctx context.Context, rule Rule, candidates []ca
 		}
 		return nil
 	})
+	if err == nil {
+		s.deliverPush(ctx, jobs)
+	}
+	return err
 }
 
 func (s Service) ruleStates(ctx context.Context, key string) (map[int64]bool, error) {
