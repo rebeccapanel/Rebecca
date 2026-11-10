@@ -3,6 +3,7 @@ module github.com/rebeccapanel/rebecca
 go 1.25.0
 
 require (
+	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/cloudflare/circl v1.6.4
 	github.com/flosch/pongo2/v6 v6.1.0
 	github.com/go-chi/chi/v5 v5.3.1
@@ -23,7 +24,6 @@ require (
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
-	github.com/SherClockHolmes/webpush-go v1.4.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ebitengine/purego v0.10.0 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
