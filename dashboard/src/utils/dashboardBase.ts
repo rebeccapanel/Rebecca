@@ -38,14 +38,18 @@ export const subscribeInstallPrompt = (listener: () => void) => {
 
 export const clearInstallPrompt = () => {
 	installPrompt = null;
-	installListeners.forEach((listener) => listener());
+	installListeners.forEach((listener) => {
+		listener();
+	});
 };
 
 if (typeof window !== "undefined") {
 	window.addEventListener("beforeinstallprompt", (event) => {
 		event.preventDefault();
 		installPrompt = event as BeforeInstallPromptEvent;
-		installListeners.forEach((listener) => listener());
+		installListeners.forEach((listener) => {
+			listener();
+		});
 	});
 	window.addEventListener("appinstalled", clearInstallPrompt);
 }
