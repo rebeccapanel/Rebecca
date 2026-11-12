@@ -1,3 +1,4 @@
+import { PageLoadingSkeleton } from "components/ui";
 import { cn } from "lib/cn";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -44,6 +45,10 @@ export const TutorialsPage = () => {
 		};
 	}, [frameSrc]);
 
+	if (status === "checking") {
+		return <PageLoadingSkeleton variant="frame" />;
+	}
+
 	if (status === "unavailable") {
 		return (
 			<div className={cn("flex flex-col items-start gap-4 border rounded-md p-4 md:p-6", borderColor, frameBg)}>
@@ -60,13 +65,11 @@ export const TutorialsPage = () => {
 	return (
 		<div className={cn("border rounded-md overflow-hidden relative h-[calc(100dvh_-_172px)] md:h-[calc(100dvh_-_96px)] min-h-[420px] md:min-h-[560px]", borderColor, frameBg)}>
 			{!isLoaded ? (
-				<div className={cn("flex items-center justify-center absolute inset-0", frameBg)}>
-					<p className="text-panel-text-muted">{t("loading")}...</p>
+				<div className="absolute inset-0">
+					<PageLoadingSkeleton variant="frame" syncShell={false} />
 				</div>
 			) : null}
-			{status === "available" ? (
-				<iframe title={t("tutorials.menu")} src={frameSrc} onLoad={() => setIsLoaded(true)} className={cn("w-full h-full border-0", frameBg, isLoaded ? "opacity-100" : "opacity-0")} />
-			) : null}
+			<iframe title={t("tutorials.menu")} src={frameSrc} onLoad={() => setIsLoaded(true)} className={cn("w-full h-full border-0", frameBg, isLoaded ? "opacity-100" : "opacity-0")} />
 		</div>
 	);
 };

@@ -87,7 +87,7 @@ export const UsagePage: FC = () => {
 	}, [fetchServices, canViewUsage]);
 
 	if (!getUserIsSuccess) {
-		return <PageLoadingSkeleton />;
+		return <PageLoadingSkeleton variant="settings" />;
 	}
 
 	if (!canViewUsage) {

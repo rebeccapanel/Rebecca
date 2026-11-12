@@ -2,7 +2,7 @@ import { AdminDialog } from "components/AdminDialog";
 import { AdminsTable } from "components/AdminsTable";
 import { AdminsCreateButton, AdminsFilterBar } from "components/admins/AdminsFilterBar";
 import { Pagination } from "components/Pagination";
-import { PageHeader } from "components/ui";
+import { PageHeader, PageLoadingSkeleton } from "components/ui";
 import { useAdminsStore } from "contexts/AdminsContext";
 import useGetUser from "hooks/useGetUser";
 import { type FC, useEffect } from "react";
@@ -11,8 +11,10 @@ import { useTranslation } from "react-i18next";
 export const AdminsPage: FC = () => {
 	const { t } = useTranslation();
 	const fetchAdmins = useAdminsStore((s) => s.fetchAdmins);
+	const loading = useAdminsStore((s) => s.loading);
+	const lastFetchedAt = useAdminsStore((s) => s.lastFetchedAt);
 	const openAdminDialog = useAdminsStore((s) => s.openAdminDialog);
-	const { userData, getUserIsSuccess } = useGetUser();
+	const { userData, getUserIsPending, getUserIsSuccess } = useGetUser();
 	const canViewAdmins =
 		getUserIsSuccess && Boolean(userData.permissions?.sections.admins);
 	useEffect(() => {
@@ -29,6 +31,10 @@ export const AdminsPage: FC = () => {
 			openAdminDialog();
 		}
 	}, [canViewAdmins, openAdminDialog]);
+
+	if (getUserIsPending || (canViewAdmins && loading && lastFetchedAt === null)) {
+		return <PageLoadingSkeleton />;
+	}
 
 	if (!canViewAdmins) {
 		return (

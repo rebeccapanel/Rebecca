@@ -1,5 +1,6 @@
 import { Button } from "components/ui/button";
 import { toast } from "components/ui/sonner";
+import { BellRing, Download } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -77,23 +78,52 @@ export const BrowserNotificationsCard = () => {
 	}
 
 	return (
-		<div className="p-4 rounded-md border flex flex-col gap-3" data-testid="browser-notifications">
-			<div className="flex flex-row items-center gap-2 justify-between flex-wrap">
-				<p className="font-semibold">{t("notifications.push.title")}</p>
+		<div
+			className="flex flex-col gap-2.5 rounded-[16px] border border-panel-border! bg-panel-surface p-4 text-panel-text"
+			data-testid="browser-notifications"
+		>
+			<div className="flex flex-row flex-wrap items-center justify-between gap-2.5">
+				<div className="flex min-w-0 items-center gap-2.5">
+					<span className="flex size-8 shrink-0 items-center justify-center rounded-[10px] bg-panel-elevated text-panel-text-secondary">
+						<BellRing className="size-4" strokeWidth={1.75} />
+					</span>
+					<p className="truncate text-[14px] font-bold tracking-[-0.01em] text-panel-text">
+						{t("notifications.push.title")}
+					</p>
+				</div>
 				<div className="flex flex-row items-center gap-2">
 					{installable && !isStandalone() && (
-						<Button variant="outline" size="sm" onClick={install}>
-							{t("notifications.push.install")}
+						<Button
+							variant="outline"
+							size="sm"
+							onClick={install}
+							className="h-8 rounded-[10px] border-panel-border! text-xs font-semibold"
+						>
+							<Download className="size-3.5" />
+							<span>{t("notifications.push.install")}</span>
 						</Button>
 					)}
 					{supported && permission !== "denied" && (
-						<Button size="sm" variant={subscribed ? "outline" : "default"} loading={busy} onClick={toggle}>
-							{subscribed ? t("notifications.push.disable") : t("notifications.push.enable")}
+						<Button
+							size="sm"
+							variant={subscribed ? "outline" : "default"}
+							loading={busy}
+							onClick={toggle}
+							className="h-8 rounded-[10px] text-xs font-semibold"
+						>
+							<BellRing className="size-3.5" />
+							<span>
+								{subscribed
+									? t("notifications.push.disable")
+									: t("notifications.push.enable")}
+							</span>
 						</Button>
 					)}
 				</div>
 			</div>
-			<p className="text-[0.875rem] text-gray-500">{status}</p>
+			<p className="text-[12.5px] leading-relaxed text-panel-text-secondary">
+				{status}
+			</p>
 		</div>
 	);
 };

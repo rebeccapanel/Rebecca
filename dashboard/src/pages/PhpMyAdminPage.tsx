@@ -1,4 +1,4 @@
-import { Spinner } from "components/ui/spinner";
+import { PageLoadingSkeleton } from "components/ui";
 import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
 import { useColorMode } from "lib/color-mode";
 
@@ -45,21 +45,20 @@ export const PhpMyAdminPage = () => {
 			refetchOnWindowFocus: false,
 			retry: false });
 
-	// v5 removed onSuccess from useQuery.
 	useEffect(() => {
 		if (embedQuery.isSuccess) setPreparedTheme(phpMyAdminTheme || "default");
 	}, [embedQuery.isSuccess, phpMyAdminTheme]);
 	const frameReady =
 		preparedTheme === (phpMyAdminTheme || "default") && embedQuery.isSuccess;
 
+	if (statusQuery.isLoading || (status.supported && status.enabled && isFullAccess && (embedQuery.isLoading || !frameReady) && !embedQuery.isError)) {
+		return <PageLoadingSkeleton variant="frame" />;
+	}
+
 	return (
 		<div className="flex flex-col gap-4">
 			<div className={cn("border rounded-md overflow-hidden min-h-[calc(100vh_-_128px)] md:min-h-[calc(100vh_-_112px)]", panelBg, borderColor)}>
-				{statusQuery.isLoading ? (
-					<div className="flex min-h-[520px] items-center justify-center">
-						<Spinner />
-					</div>
-				) : !status.supported ? (
+				{!status.supported ? (
 					<div className="flex flex-col min-h-[360px] items-center justify-center gap-3 p-6">
 						<h2 className="font-heading font-bold text-[1rem] leading-[1.2]">
 							{t("phpmyadmin.sqliteDisabled")}
@@ -94,10 +93,6 @@ export const PhpMyAdminPage = () => {
 						<p className={cn("text-center", mutedColor)}>
 							{String((embedQuery.error as Error)?.message || "")}
 						</p>
-					</div>
-				) : embedQuery.isLoading || !frameReady ? (
-					<div className="flex min-h-[520px] items-center justify-center">
-						<Spinner />
 					</div>
 				) : (
 					<iframe title={t("phpmyadmin.title")} srcDoc={embedQuery.data} sandbox="allow-downloads allow-forms allow-modals allow-popups allow-same-origin allow-scripts" className={cn("w-full h-[calc(100vh_-_128px)] md:h-[calc(100vh_-_112px)] min-h-[520px] md:min-h-[680px] border-0", frameBg)} />

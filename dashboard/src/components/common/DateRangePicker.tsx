@@ -1,7 +1,6 @@
 import { Button } from "components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "components/ui/popover";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "components/ui/tabs";
-import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
 import { withClass } from "lib/withClass";
 import { Calendar } from "lucide-react";
 import { useBreakpointValue } from "hooks/useBreakpointValue";
@@ -9,6 +8,7 @@ import { useDisclosure } from "hooks/useDisclosure";
 import { useOutsideClick } from "hooks/useOutsideClick";
 
 import { cn } from "lib/cn";
+import { resolveAppLanguageCode } from "lib/language";
 import DatePicker from "components/common/DatePicker";
 import dayjs, { type ManipulateType } from "dayjs";
 import { type FC, type ReactNode, useEffect, useId, useRef, useState } from "react";
@@ -249,7 +249,9 @@ export const DateRangePicker: FC<DateRangePickerProps> = ({
 								<TabsContent value="1" className="px-3 pb-3 datepicker-panel">
 									<div className="flex flex-col items-center gap-2">
 										<DatePicker
-											locale={i18n.language.toLocaleLowerCase()}
+											locale={resolveAppLanguageCode(
+												i18n.language || i18n.resolvedLanguage,
+											)}
 											selected={startDate}
 											onChange={handleAbsoluteChange}
 											startDate={startDate}

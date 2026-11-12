@@ -6,6 +6,80 @@ import type {
 
 const HISTORY_MAX_ENTRIES = 600;
 const HISTORY_SAMPLE_SECONDS = 30;
+const TOTAL_NETWORK_HISTORY_KEY = "rb-total-network-history-v1";
+const TOTAL_NETWORK_SAMPLE_SECONDS = 2;
+const TOTAL_NETWORK_MAX_AGE_SECONDS = 5 * 3600;
+
+let totalNetworkMemoryCache: NetworkHistoryEntry[] | null = null;
+
+const readStoredTotalNetworkHistory = (): NetworkHistoryEntry[] => {
+	if (totalNetworkMemoryCache) return totalNetworkMemoryCache;
+	if (typeof window === "undefined") return [];
+	try {
+		const raw = sessionStorage.getItem(TOTAL_NETWORK_HISTORY_KEY);
+		if (!raw) {
+			totalNetworkMemoryCache = [];
+			return [];
+		}
+		const parsed = JSON.parse(raw);
+		if (!Array.isArray(parsed)) {
+			totalNetworkMemoryCache = [];
+			return [];
+		}
+		const cutoff = Math.floor(Date.now() / 1000) - TOTAL_NETWORK_MAX_AGE_SECONDS;
+		const valid = parsed.filter(
+			(item): item is NetworkHistoryEntry =>
+				Boolean(item) &&
+				typeof item.timestamp === "number" &&
+				Number.isFinite(item.timestamp) &&
+				item.timestamp >= cutoff &&
+				typeof item.incoming === "number" &&
+				Number.isFinite(item.incoming) &&
+				typeof item.outgoing === "number" &&
+				Number.isFinite(item.outgoing),
+		);
+		totalNetworkMemoryCache = valid.slice(-HISTORY_MAX_ENTRIES);
+		return totalNetworkMemoryCache;
+	} catch {
+		totalNetworkMemoryCache = [];
+		return [];
+	}
+};
+
+const writeStoredTotalNetworkHistory = (entries: NetworkHistoryEntry[]) => {
+	totalNetworkMemoryCache = entries;
+	if (typeof window === "undefined") return;
+	try {
+		sessionStorage.setItem(TOTAL_NETWORK_HISTORY_KEY, JSON.stringify(entries));
+	} catch {}
+};
+
+export const getTotalNetworkHistory = (): NetworkHistoryEntry[] =>
+	readStoredTotalNetworkHistory();
+
+export const recordTotalNetworkSample = (
+	incoming: number,
+	outgoing: number,
+	timestamp = Math.floor(Date.now() / 1000),
+): NetworkHistoryEntry[] => {
+	if (!Number.isFinite(incoming) || !Number.isFinite(outgoing)) {
+		return readStoredTotalNetworkHistory();
+	}
+	const current = readStoredTotalNetworkHistory();
+	const cutoff = timestamp - TOTAL_NETWORK_MAX_AGE_SECONDS;
+	const pruned = current.filter((item) => item.timestamp >= cutoff);
+	const last = pruned[pruned.length - 1];
+	let next: NetworkHistoryEntry[];
+	if (!last) {
+		next = [{ timestamp, incoming, outgoing }];
+	} else if (timestamp - last.timestamp < TOTAL_NETWORK_SAMPLE_SECONDS) {
+		next = [...pruned.slice(0, -1), { timestamp: last.timestamp, incoming, outgoing }];
+	} else {
+		next = [...pruned, { timestamp, incoming, outgoing }].slice(-HISTORY_MAX_ENTRIES);
+	}
+	writeStoredTotalNetworkHistory(next);
+	return next;
+};
 
 const appendHistory = <T extends { timestamp: number }>(
 	entries: T[] | null | undefined,

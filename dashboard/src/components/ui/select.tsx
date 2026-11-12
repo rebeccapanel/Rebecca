@@ -34,7 +34,7 @@ function SelectContent({ className, children, ...props }: React.ComponentProps<t
 				position="popper"
 				sideOffset={4}
 				className={cn(
-					"relative z-[60] origin-(--radix-select-content-transform-origin) data-[state=open]:animate-rb-pop-in data-[state=closed]:animate-rb-pop-out max-h-72 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-md border border-panel-border bg-panel-elevated text-panel-text shadow-md",
+					"relative z-[13000] origin-(--radix-select-content-transform-origin) data-[state=open]:animate-rb-pop-in data-[state=closed]:animate-rb-pop-out max-h-72 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-md border border-panel-border bg-panel-elevated text-panel-text shadow-md",
 					className,
 				)}
 				{...props}

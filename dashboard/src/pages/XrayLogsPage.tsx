@@ -7,6 +7,7 @@ import { useColorMode } from "lib/color-mode";
 import { cn } from "lib/cn";
 import { PanelSelect as Select, type PanelSelectProps as SelectProps } from "components/common/PanelSelect";
 import { SearchInput } from "components/common/SearchInput";
+import { PageLoadingSkeleton } from "components/ui";
 import { ListCard } from "components/ui/list-card";
 import { SegmentedControl } from "components/ui/segmented-control";
 import { useNodesQuery } from "contexts/NodesContext";
@@ -85,7 +86,7 @@ const CompactLogSelect = (props: SelectProps) => <Select size="sm" {...props} cl
 
 export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
 	const { t } = useTranslation();
-	const { userData, getUserIsSuccess } = useGetUser();
+	const { userData, getUserIsPending, getUserIsSuccess } = useGetUser();
 	const canViewXrayLogs = getUserIsSuccess && Boolean(userData.permissions?.sections.xray);
 	const { data: nodes } = useNodesQuery({ enabled: canViewXrayLogs });
 	const [selectedNode, setNode] = useState<string>("");
@@ -351,6 +352,10 @@ export const XrayLogsPage: FC<XrayLogsPageProps> = ({ showTitle = true }) => {
 		link.remove();
 		URL.revokeObjectURL(url);
 	};
+
+	if (getUserIsPending) {
+		return <PageLoadingSkeleton />;
+	}
 
 	if (!canViewXrayLogs) {
 		return (

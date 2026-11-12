@@ -511,7 +511,7 @@ export const MyAccountPage: FC = () => {
 	}
 
 	if (isLoading || !data) {
-		return <PageLoadingSkeleton />;
+		return <PageLoadingSkeleton variant="settings" />;
 	}
 
 	const used = data.used_traffic || 0;

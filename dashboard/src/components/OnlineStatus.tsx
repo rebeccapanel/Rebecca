@@ -23,7 +23,7 @@ export const OnlineStatus: FC<UserStatusProps> = ({
 	compact = false,
 }) => {
 	const { t, i18n } = useTranslation();
-	const isRTL = i18n.language === "fa";
+	const isRTL = i18n.dir(i18n.language) === "rtl";
 	const currentTimeInSeconds = Math.floor(Date.now() / 1000);
 	const unixTime = parseServerTimeToUnix(lastOnline);
 	const marginLeft = withMargin ? "ms-2" : undefined;

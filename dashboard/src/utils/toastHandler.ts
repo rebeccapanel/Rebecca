@@ -1,7 +1,5 @@
-import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
-
 import type { FieldValues, UseFormReturn } from "react-hook-form";
-import { toast as sonnerToast } from "sonner";
+import type { toast as sonnerToast } from "components/ui/sonner";
 import { getAPIErrorMessage } from "service/http";
 
 type ErrorRecord = Record<string, unknown>;

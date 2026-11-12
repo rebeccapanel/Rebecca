@@ -1,5 +1,4 @@
 import { Button } from "components/ui/button";
-import { Spinner } from "components/ui/spinner";
 import { toast } from "components/ui/sonner";
 import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
 import { withClass } from "lib/withClass";
@@ -106,7 +105,7 @@ const UserActionDialog: FC<{ action: "reset" | "revoke" }> = ({ action }) => {
 					<Button onClick={onClose} variant="outline" size="sm" className="flex-1">
 						{t("cancel")}
 					</Button>
-					<Button onClick={onSubmit} size="sm" className="flex-1 bg-blue-600 text-white shadow-xs hover:bg-blue-700">{loading ? <Spinner /> : undefined}
+					<Button onClick={onSubmit} size="sm" loading={loading} className="flex-1 bg-blue-600 text-white shadow-xs hover:bg-blue-700">
 						{t(isRevoke ? "revoke" : "reset")}
 					</Button>
 				</>

@@ -1,6 +1,5 @@
 import { Button } from "components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "components/ui/dropdown-menu";
-import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
 import { LogIn, Check, Eye, EyeOff, Lock, Moon, Sun, User } from "lucide-react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useColorMode } from "lib/color-mode";
@@ -198,7 +197,7 @@ export const Login = () => {
 	const [challengeLoading, setChallengeLoading] = useState(false);
 	const navigate = useNavigate();
 	const { t, i18n } = useTranslation();
-	const dir = i18n.language === "fa" ? "rtl" : "ltr";
+	const dir = i18n.dir(i18n.language) === "rtl" ? "rtl" : "ltr";
 
 	const {
 		register,
@@ -461,7 +460,7 @@ export const Login = () => {
 									</div>
 								) : null}
 
-								<Button onClick={step === "otp" ? submitOTP : confirmSetup} disabled={otp.length !== 6 || challengeLoading} className="h-11 w-full rounded-lg text-sm">
+								<Button onClick={step === "otp" ? submitOTP : confirmSetup} disabled={otp.length !== 6} loading={challengeLoading} className="h-11 w-full rounded-lg text-sm">
 									{t("continue")}
 								</Button>
 								<Button onClick={cancelChallenge} variant="ghost" className="w-full rounded-lg">

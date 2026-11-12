@@ -1,8 +1,6 @@
 import { Badge } from "components/ui/badge";
 import { Alert } from "components/ui/alert";
-import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
-import { cn } from "lib/cn";
-
+import { CircleAlert } from "lucide-react";
 
 import { useTranslation } from "react-i18next";
 import { Link, useLocation } from "react-router-dom";
@@ -11,7 +9,7 @@ import { requestErrorHref } from "utils/diagnostics";
 
 export const RequestErrors = () => {
 	const location = useLocation();
-	const { errors, clear } = useAPIRequestErrors();
+	const { errors } = useAPIRequestErrors();
 	const { t } = useTranslation();
 	if (!errors.length) return null;
 	return (
@@ -26,7 +24,7 @@ export const RequestErrors = () => {
 									? location.search
 									: "",
 							)
-} aria-label={`${t("diagnostics.requestFailed")}: ${item.message}`} className="block no-underline"><Alert variant="destructive" className="rounded-xl items-start no-underline hover:no-underline hover:shadow-md focus-visible:[outline:2px_solid] focus-visible:outline-blue-400 focus-visible:[outline-offset:2px]">
+} aria-label={`${t("diagnostics.requestFailed")}: ${item.message}`} className="block no-underline"><Alert variant="destructive" className="rounded-[14px] items-start no-underline hover:no-underline min-[769px]:hover:shadow-md focus-visible:[outline:2px_solid] focus-visible:outline-panel-accent focus-visible:[outline-offset:2px]">
 						<CircleAlert className="size-4" aria-hidden="true" />
 						<div className="flex-1 min-w-0!">
 							<div className="flex flex-row items-center gap-2 justify-between pe-8">

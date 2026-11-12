@@ -1,7 +1,6 @@
 import { toast } from "components/ui/sonner";
 import { Button } from "components/ui/button";
 import { Input } from "components/ui/input";
-import { Spinner } from "components/ui/spinner";
 import { Plus, Pencil, Trash2, Users, Zap, Briefcase } from "lucide-react";
 
 import { AppDialog } from "components/dialogs/AppDialog";
@@ -11,6 +10,7 @@ import {
 	type DataTableColumn,
 	type DataTableRowAction,
 	PageHeader,
+	PageLoadingSkeleton,
 	TabSystem,
 } from "components/ui";
 import { FormField } from "components/ui/form-field";
@@ -224,6 +224,10 @@ const GroupsPage: FC = () => {
 			: []),
 	];
 
+	if (isLoading) {
+		return <PageLoadingSkeleton />;
+	}
+
 	return (
 		<div
 			dir={i18n.dir(i18n.language)}
@@ -277,9 +281,9 @@ const GroupsPage: FC = () => {
 						<Button
 							size="sm"
 							onClick={submit}
-							disabled={saving || !name.trim()}
+							loading={saving}
+							disabled={!name.trim()}
 						>
-							{saving ? <Spinner /> : null}
 							{t("save")}
 						</Button>
 					</>

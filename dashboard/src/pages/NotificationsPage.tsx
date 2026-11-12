@@ -7,13 +7,13 @@ import { RadioGroup, RadioGroupItem } from "components/ui/radio-group";
 import { Checkbox } from "components/ui/checkbox";
 import { Switch } from "components/ui/switch";
 import { toast } from "components/ui/sonner";
-import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+import { Check, CheckCheck, MailOpen, RotateCcw, Send } from "lucide-react";
 
 
 import { cn } from "lib/cn";
 import dayjs from "dayjs";
 import { BrowserNotificationsCard } from "components/BrowserNotificationsCard";
-import { PageHeader, TabSystem } from "components/ui";
+import { PageHeader, PageLoadingSkeleton, TabSystem } from "components/ui";
 import useGetUser from "hooks/useGetUser";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -46,52 +46,94 @@ const InboxPanel = () => {
 	return (
 		<div className="flex flex-col gap-4">
 			<BrowserNotificationsCard />
-			<div className="flex flex-row items-center gap-2 justify-between">
-				<p className="text-gray-500 text-[0.875rem]">
+			<div className="flex flex-row flex-wrap items-center justify-between gap-2 rounded-[14px] border border-panel-border/80! bg-panel-surface px-4 py-2.5">
+				<p className="text-[13px] font-medium text-panel-text-secondary">
 					{t("notifications.inbox.summary", {
 						unread: inbox.data?.unread ?? 0,
 						total: inbox.data?.total ?? 0,
 					})}
 				</p>
-				<Button disabled={!inbox.data?.unread} onClick={() => markAll.mutate()} variant="outline" size="sm" loading={markAll.isPending}>
-					{t("notifications.inbox.markAllRead")}
+				<Button
+					disabled={!inbox.data?.unread}
+					onClick={() => markAll.mutate()}
+					variant="outline"
+					size="sm"
+					loading={markAll.isPending}
+					className="h-8 rounded-[10px] border-panel-border! text-xs font-semibold"
+				>
+					<CheckCheck className="size-3.5 text-panel-accent" />
+					<span>{t("notifications.inbox.markAllRead")}</span>
 				</Button>
 			</div>
 			{items.length === 0 && (
-				<p className="text-gray-500">{t("notifications.inbox.empty")}</p>
-			)}
-			{items.map((item) => (
-				<div key={item.id} className={cn("p-4 rounded-md border", item.read_at === null ? "border-blue-400!" : "")}>
-					<div className="flex flex-row gap-2 justify-between items-start mb-1">
-						<div className="flex flex-row items-center gap-2">
-							<p className="font-semibold">{item.title}</p>
-							{item.read_at === null && (
-								<Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200 dark:bg-blue-500/20 dark:text-blue-200">
-									{t("notifications.inbox.unread")}
-								</Badge>
-							)}
-						</div>
-						<p className="text-[0.75rem] text-gray-500 whitespace-nowrap">
-							{formatTime(item.created_at)}
-						</p>
-					</div>
-					<p className="whitespace-pre-wrap text-[0.875rem]">
-						{item.body}
+				<div className="flex flex-col items-center justify-center gap-2 rounded-[16px] border border-panel-border! bg-panel-surface px-6 py-10 text-center">
+					<span className="flex size-10 items-center justify-center rounded-[12px] bg-panel-elevated text-panel-text-muted">
+						<MailOpen className="size-5" strokeWidth={1.75} />
+					</span>
+					<p className="text-[13px] font-medium text-panel-text-muted">
+						{t("notifications.inbox.empty")}
 					</p>
-					<div className="flex flex-row items-center gap-2 justify-between mt-2">
-						<p className="text-[0.75rem] text-gray-500">
-							{t("notifications.inbox.from", {
-								sender: item.sender_username,
-							})}
-						</p>
-						{item.read_at === null && (
-							<Button onClick={() => markOne.mutate(item.id)} variant="ghost" size="xs">
-								{t("notifications.inbox.markRead")}
-							</Button>
-						)}
-					</div>
 				</div>
-			))}
+			)}
+			<div className="flex flex-col gap-2.5">
+				{items.map((item) => {
+					const isUnread = item.read_at === null;
+					return (
+						<div
+							key={item.id}
+							className={cn(
+								"rounded-[16px] border p-4 transition-colors",
+								isUnread
+									? "border-panel-border-strong! bg-panel-elevated/60"
+									: "border-panel-border! bg-panel-surface",
+							)}
+						>
+							<div className="mb-1.5 flex flex-row items-start justify-between gap-3">
+								<div className="flex min-w-0 flex-wrap items-center gap-2">
+									{isUnread ? (
+										<span className="size-2 shrink-0 rounded-full bg-panel-accent" />
+									) : null}
+									<p className="text-[14px] font-bold text-panel-text">
+										{item.title}
+									</p>
+									{isUnread && (
+										<Badge className="rounded-full bg-panel-accent/14 text-panel-accent hover:bg-panel-accent/14">
+											{t("notifications.inbox.unread")}
+										</Badge>
+									)}
+								</div>
+								<p
+									dir="ltr"
+									className="shrink-0 whitespace-nowrap text-[11px] font-medium text-panel-text-muted tabular-nums [unicode-bidi:isolate]"
+								>
+									{formatTime(item.created_at)}
+								</p>
+							</div>
+							<p className="whitespace-pre-wrap text-[13px] leading-relaxed text-panel-text-secondary">
+								{item.body}
+							</p>
+							<div className="mt-3 flex flex-row items-center justify-between gap-2">
+								<p className="text-[11.5px] font-medium text-panel-text-muted">
+									{t("notifications.inbox.from", {
+										sender: item.sender_username,
+									})}
+								</p>
+								{isUnread && (
+									<Button
+										onClick={() => markOne.mutate(item.id)}
+										variant="ghost"
+										size="xs"
+										className="h-7 rounded-[9px] px-2.5 text-[11.5px] font-semibold"
+									>
+										<Check className="size-3.5 text-panel-accent" />
+										<span>{t("notifications.inbox.markRead")}</span>
+									</Button>
+								)}
+							</div>
+						</div>
+					);
+				})}
+			</div>
 		</div>
 	);
 };
@@ -150,50 +192,77 @@ const SendPanel = () => {
 				{audience === "selected" && (
 					<div className="flex flex-col gap-2 max-h-[240px] overflow-y-auto">
 						{(recipients.data?.items ?? []).map((admin) => (
-							<label key={admin.id} className="flex cursor-pointer items-center gap-2 text-sm"><Checkbox checked={selected.includes(admin.id)} onCheckedChange={() => toggle(admin.id)} /><span>{admin.username}
-								<span className="text-[0.75rem] text-gray-500 ms-2">
-									{admin.role}
-								</span></span></label>
+							<label
+								key={admin.id}
+								className="flex cursor-pointer items-center gap-2 text-sm text-panel-text"
+							>
+								<Checkbox
+									checked={selected.includes(admin.id)}
+									onCheckedChange={() => toggle(admin.id)}
+								/>
+								<span>
+									{admin.username}
+									<span className="ms-2 text-[0.75rem] text-panel-text-muted">
+										{admin.role}
+									</span>
+								</span>
+							</label>
 						))}
 					</div>
 				)}
 				<div className="flex flex-row items-center gap-2">
-					<Button disabled={
+					<Button
+						disabled={
 							!title.trim() ||
 							!body.trim() ||
 							(audience === "selected" && selected.length === 0)
-						} onClick={() =>
+						}
+						onClick={() =>
 							mutation.mutate({
 								title,
 								body,
 								audience,
 								admin_ids: selected,
 							})
-						} loading={mutation.isPending} className="bg-blue-600 text-white shadow-xs hover:bg-blue-700">
-						{t("notifications.send.submit")}
+						}
+						loading={mutation.isPending}
+						className="h-9 rounded-[12px] px-4 text-xs font-semibold"
+					>
+						<Send className="size-3.5" />
+						<span>{t("notifications.send.submit")}</span>
 					</Button>
 				</div>
 			</div>
 			<hr className="w-full border-0 border-b border-panel-border! opacity-60" />
 			<div className="flex flex-col gap-3">
-				<p className="font-semibold">{t("notifications.send.history")}</p>
+				<p className="text-[14px] font-bold text-panel-text">
+					{t("notifications.send.history")}
+				</p>
 				{(sent.data?.items ?? []).length === 0 && (
-					<p className="text-gray-500 text-[0.875rem]">
+					<p className="text-[13px] text-panel-text-muted">
 						{t("notifications.send.historyEmpty")}
 					</p>
 				)}
 				{(sent.data?.items ?? []).map((item) => (
-					<div key={item.id} className="p-3 rounded-md border">
-						<div className="flex flex-row items-center gap-2 justify-between">
-							<p className="font-medium">{item.title}</p>
-							<p className="text-[0.75rem] text-gray-500">
+					<div
+						key={item.id}
+						className="rounded-[16px] border border-panel-border! bg-panel-surface p-3.5"
+					>
+						<div className="flex flex-row items-center justify-between gap-2">
+							<p className="text-[13px] font-bold text-panel-text">
+								{item.title}
+							</p>
+							<p
+								dir="ltr"
+								className="shrink-0 text-[11px] font-medium text-panel-text-muted tabular-nums [unicode-bidi:isolate]"
+							>
 								{formatTime(item.created_at)}
 							</p>
 						</div>
-						<p className="text-[0.875rem] whitespace-pre-wrap">
+						<p className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed text-panel-text-secondary">
 							{item.body}
 						</p>
-						<p className="text-[0.75rem] text-gray-500 mt-1">
+						<p className="mt-2 text-[11.5px] font-medium text-panel-text-muted">
 							{t("notifications.send.readCount", {
 								read: item.read,
 								total: item.recipients,
@@ -249,13 +318,13 @@ const RuleEditor = ({ rule }: { rule: NotificationRule }) => {
 	};
 
 	return (
-		<div className="p-4 rounded-md border">
-			<div className="flex flex-row items-center gap-2 justify-between mb-3">
-				<p className="font-semibold">
+		<div className="rounded-[16px] border border-panel-border! bg-panel-surface p-4">
+			<div className="mb-3 flex flex-row items-center justify-between gap-2">
+				<p className="text-[14px] font-bold text-panel-text">
 					{t(`notifications.rules.name.${rule.key}`)}
 				</p>
 				<div className="flex flex-row items-center gap-2">
-					<p className="text-[0.875rem]">
+					<p className="text-[13px] font-medium text-panel-text-secondary">
 						{rule.mandatory ? t("notifications.rules.mandatory") : t("notifications.rules.enabled")}
 					</p>
 					<Switch checked={rule.mandatory ? true : enabled} disabled={rule.mandatory} onCheckedChange={(checked: boolean) => setEnabled(checked)} />
@@ -282,24 +351,35 @@ const RuleEditor = ({ rule }: { rule: NotificationRule }) => {
 					<FieldLabel>{t("notifications.send.body")}</FieldLabel>
 					<Textarea rows={3} value={body} onChange={(e) => setBody(e.target.value)} />
 				</Field>
-				<p className="text-[0.75rem] text-gray-500">
+				<p className="text-[11.5px] text-panel-text-muted">
 					{t("notifications.rules.placeholders", {
 						list: rule.placeholders.map((item) => `{${item}}`).join(", "),
 					})}
 				</p>
-				<p className="text-[0.75rem] text-gray-500">
+				<p className="text-[11.5px] text-panel-text-muted">
 					{t(
 						rule.recipients === "admin"
 							? "notifications.rules.recipientsAdmin"
 							: "notifications.rules.recipientsOperators",
 					)}
 				</p>
-				<div className="flex flex-row items-center gap-2">
-					<Button onClick={submit} size="sm" loading={save.isPending} className="bg-blue-600 text-white shadow-xs hover:bg-blue-700">
+				<div className="flex flex-row items-center gap-2 pt-1">
+					<Button
+						onClick={submit}
+						size="sm"
+						loading={save.isPending}
+						className="h-8 rounded-[10px] text-xs font-semibold"
+					>
 						{t("notifications.rules.save")}
 					</Button>
-					<Button onClick={resetToDefaults} variant="outline" size="sm">
-						{t("notifications.rules.reset")}
+					<Button
+						onClick={resetToDefaults}
+						variant="outline"
+						size="sm"
+						className="h-8 rounded-[10px] border-panel-border! text-xs font-semibold"
+					>
+						<RotateCcw className="size-3.5" />
+						<span>{t("notifications.rules.reset")}</span>
 					</Button>
 				</div>
 			</div>
@@ -313,7 +393,7 @@ const RulesPanel = () => {
 		getNotificationRules() });
 	return (
 		<div className="flex flex-col gap-4">
-			<p className="text-gray-500 text-[0.875rem]">
+			<p className="text-[13px] text-panel-text-secondary">
 				{t("notifications.rules.description")}
 			</p>
 			{(rules.data?.items ?? []).map((rule) => (
@@ -325,7 +405,7 @@ const RulesPanel = () => {
 
 export default function NotificationsPage() {
 	const { t } = useTranslation();
-	const { userData } = useGetUser();
+	const { userData, getUserIsPending } = useGetUser();
 	const canSend =
 		userData.role === AdminRole.Sudo || userData.role === AdminRole.FullAccess;
 	const isFullAccess = userData.role === AdminRole.FullAccess;
@@ -336,6 +416,10 @@ export default function NotificationsPage() {
 		{ id: "rules" as const, label: t("notifications.tabs.rules"), visible: isFullAccess },
 	].filter((section) => section.visible);
 	const current = sections.some((section) => section.id === tab) ? tab : "inbox";
+
+	if (getUserIsPending) {
+		return <PageLoadingSkeleton />;
+	}
 
 	return (
 		<div className="flex flex-col gap-5">

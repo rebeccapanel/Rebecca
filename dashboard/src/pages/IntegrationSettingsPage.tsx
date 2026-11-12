@@ -767,12 +767,13 @@ export const IntegrationSettingsPage = () => {
 		() => readSettingsHash().index,
 	);
 
-	const { data, isLoading, refetch } = useQuery({ queryKey: ["telegram-settings"], queryFn: getTelegramSettings, refetchOnWindowFocus: false,
+	const { data, isLoading, isFetching: isTelegramFetching, refetch } = useQuery({ queryKey: ["telegram-settings"], queryFn: getTelegramSettings, refetchOnWindowFocus: false,
 			enabled: canManageIntegrations && activeIntegrationTab === 1, });
 
 	const {
 		data: panelData,
 		isLoading: isPanelLoading,
+		isFetching: isPanelFetching,
 		refetch: refetchPanelSettings,
 	} = useQuery<PanelSettingsResponse>({ queryKey: ["panel-settings"], queryFn: getPanelSettings, refetchOnWindowFocus: false,
 		enabled: canManageIntegrations && activeIntegrationTab === 0, });
@@ -780,6 +781,7 @@ export const IntegrationSettingsPage = () => {
 	const {
 		data: runtimeSettings,
 		isLoading: isRuntimeSettingsLoading,
+		isFetching: isRuntimeSettingsFetching,
 		refetch: refetchRuntimeSettings,
 	} = useQuery<RuntimeSettingsResponse>({ queryKey: ["runtime-settings"], queryFn: getRuntimeSettings, refetchOnWindowFocus: false,
 			enabled: canManageIntegrations && activeIntegrationTab === 0, });
@@ -794,6 +796,7 @@ export const IntegrationSettingsPage = () => {
 	const {
 		data: subscriptionBundle,
 		isLoading: isSubscriptionLoading,
+		isFetching: isSubscriptionFetching,
 		refetch: refetchSubscriptionSettings,
 	} = useQuery<SubscriptionSettingsBundle>({ queryKey: ["subscription-settings"], queryFn: getSubscriptionSettings, refetchOnWindowFocus: false,
 			enabled: canManageIntegrations && activeIntegrationTab >= 2, });
@@ -1665,7 +1668,7 @@ export const IntegrationSettingsPage = () => {
 							/>
 						</div>
 						<div className="flex flex-row flex-wrap items-center gap-2 md:ms-auto">
-							<Button onClick={() => refetchSubscriptionSettings()} disabled={isSubscriptionLoading} variant="outline" size="sm">{<RefreshIcon />}
+							<Button onClick={() => refetchSubscriptionSettings()} loading={isSubscriptionLoading || isSubscriptionFetching} variant="outline" size="sm">{<RefreshIcon />}
 								{t("refresh")}
 							</Button>
 							<Button onClick={() => setCertificateDialogOpen(true)} size="sm">{<Plus className="w-[16px] h-[16px]" />}
@@ -1702,8 +1705,8 @@ export const IntegrationSettingsPage = () => {
 	);
 
 				if (!getUserIsSuccess) {
-		return <PageLoadingSkeleton />;
-	}
+					return <PageLoadingSkeleton variant="settings" />;
+				}
 
 	if (!canManageIntegrations) {
 		return (
@@ -1763,7 +1766,7 @@ export const IntegrationSettingsPage = () => {
 								<Button onClick={() => {
 										void refetchRuntimeSettings();
 										void refetchPanelSettings();
-									}} variant="outline" size="sm" loading={isRuntimeSettingsLoading || isPanelLoading}>{<RefreshCw className="w-[16px] h-[16px]" />}
+									}} variant="outline" size="sm" loading={isRuntimeSettingsLoading || isRuntimeSettingsFetching || isPanelLoading || isPanelFetching}>{<RefreshCw className="w-[16px] h-[16px]" />}
 									{t("refresh")}
 								</Button>
 							}
@@ -2273,7 +2276,7 @@ export const IntegrationSettingsPage = () => {
 							</DisabledCard>
 
 							<div className="flex justify-end">
-								<Button onClick={() => refetch()} disabled={saveAllMutation.isPending} variant="outline">{<RefreshIcon />}
+								<Button onClick={() => refetch()} disabled={saveAllMutation.isPending} loading={isLoading || isTelegramFetching} variant="outline">{<RefreshIcon />}
 									{t("refresh")}
 								</Button>
 							</div>
@@ -2295,7 +2298,7 @@ export const IntegrationSettingsPage = () => {
 								title={t("settings.subscriptions.globalTitle")}
 								description={t("settings.subscriptions.globalDescription")}
 								actions={
-									<Button type="button" onClick={() => refetchSubscriptionSettings()} disabled={saveAllMutation.isPending} variant="outline" size="sm">{<RefreshIcon />}
+									<Button type="button" onClick={() => refetchSubscriptionSettings()} disabled={saveAllMutation.isPending} loading={isSubscriptionLoading || isSubscriptionFetching} variant="outline" size="sm">{<RefreshIcon />}
 										{t("refresh")}
 									</Button>
 								}

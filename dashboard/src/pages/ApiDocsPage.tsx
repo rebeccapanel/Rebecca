@@ -39,7 +39,7 @@ export const ApiDocsPage = () => {
 	}, []);
 
 	if (status === "checking") {
-		return <PageLoadingSkeleton />;
+		return <PageLoadingSkeleton variant="frame" />;
 	}
 
 	if (status === "disabled") {

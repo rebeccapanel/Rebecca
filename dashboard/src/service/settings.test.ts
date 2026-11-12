@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { importRebeccaBackup } from "./settings";
+import {
+	type BackupExportProgress,
+	exportRebeccaBackup,
+	importRebeccaBackup,
+} from "./settings";
 import { useAPIRequestErrors } from "./http";
 
 class UploadRequest {
@@ -83,5 +87,77 @@ describe("importRebeccaBackup", () => {
 		vi.stubGlobal("XMLHttpRequest", UploadRequest);
 		await importRebeccaBackup(new File(["backup"], "test.rbbackup"));
 		expect(useAPIRequestErrors.getState().errors).toEqual([]);
+	});
+});
+
+class ExportRequest {
+	static current: ExportRequest;
+	status = 200;
+	response: Blob = new Blob(["archive-bytes"], { type: "application/octet-stream" });
+	responseType = "";
+	withCredentials = false;
+	url = "";
+	onprogress: ((event: ProgressEvent) => void) | null = null;
+	onload: (() => void) | null = null;
+	onerror: (() => void) | null = null;
+	ontimeout: (() => void) | null = null;
+	onabort: (() => void) | null = null;
+
+	constructor() {
+		ExportRequest.current = this;
+	}
+
+	open(_method: string, url: string) {
+		this.url = url;
+	}
+
+	send() {
+		this.onprogress?.({
+			lengthComputable: true,
+			loaded: 6,
+			total: 12,
+		} as ProgressEvent);
+		void this.onload?.();
+	}
+}
+
+describe("exportRebeccaBackup", () => {
+	afterEach(() => {
+		vi.unstubAllGlobals();
+		useAPIRequestErrors.getState().clear();
+	});
+
+	it("reports preparing, downloading, and completed phases", async () => {
+		vi.stubGlobal("XMLHttpRequest", ExportRequest);
+		const events: BackupExportProgress[] = [];
+
+		const blob = await exportRebeccaBackup("full", (event) => events.push(event));
+
+		expect(ExportRequest.current.url).toBe("/api/settings/backup/export?scope=full");
+		expect(ExportRequest.current.withCredentials).toBe(true);
+		expect(ExportRequest.current.responseType).toBe("blob");
+		expect(events.map((e) => e.phase)).toEqual(["preparing", "downloading", "completed"]);
+		expect(events[1]?.percent).toBeGreaterThanOrEqual(50);
+		expect(events[2]?.percent).toBe(100);
+		expect(blob.size).toBe("archive-bytes".length);
+		expect(useAPIRequestErrors.getState().errors).toEqual([]);
+	});
+
+	it("surfaces API error detail when export fails", async () => {
+		class FailedExportRequest extends ExportRequest {
+			status = 500;
+			response = new Blob([JSON.stringify({ detail: "backup export failed" })], {
+				type: "application/json",
+			});
+		}
+		vi.stubGlobal("XMLHttpRequest", FailedExportRequest);
+
+		await expect(exportRebeccaBackup("database")).rejects.toMatchObject({
+			message: "backup export failed",
+			response: { status: 500 },
+		});
+		expect(useAPIRequestErrors.getState().errors).toEqual([
+			{ key: "GET /settings/backup/export", message: "backup export failed" },
+		]);
 	});
 });

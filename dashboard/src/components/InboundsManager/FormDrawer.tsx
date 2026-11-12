@@ -24,7 +24,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogTitle } f
 import { inboundEntityPage } from "components/entityPage/EntityOverviews";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "components/ui/tabs";
 import { buttonVariants } from "components/ui/button";
-import { Loader2, Network, Plus, RefreshCw, Sparkles } from "lucide-react";
+import { Network, Plus, RefreshCw, Sparkles } from "lucide-react";
 import type { ComponentProps, ComponentPropsWithoutRef } from "react";
 import { cn } from "lib/cn";
 
@@ -1451,15 +1451,16 @@ export const InboundFormModal: FC<Props> = ({
 							</FormControl>
 						</div>
 						<div className="flex flex-row flex-wrap items-center gap-2">
-							<button
+							<Button
 								type="button"
 								onClick={handleFetchAuthClick}
-								disabled={!vlessSelectedAuth || vlessAuthLoading}
-								className={buttonVariants({ variant: "outline", size: "sm" })}
+								disabled={!vlessSelectedAuth}
+								loading={vlessAuthLoading}
+								variant="outline"
+								size="sm"
 							>
-								{vlessAuthLoading ? <Loader2 className="size-4 animate-spin" /> : null}
 								{t("inbounds.vless.getKeys")}
-							</button>
+							</Button>
 							<button type="button" onClick={handleClearAuth} className={buttonVariants({ variant: "ghost", size: "sm" })}>
 								{t("clear")}
 							</button>

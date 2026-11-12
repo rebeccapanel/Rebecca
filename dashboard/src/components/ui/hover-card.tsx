@@ -18,7 +18,7 @@ function HoverCardContent({
 				align={align}
 				sideOffset={sideOffset}
 				className={cn(
-					"z-[60] w-72 origin-(--radix-hover-card-content-transform-origin) rounded-md border border-panel-border bg-panel-elevated p-3 text-panel-text shadow-md outline-hidden",
+					"z-[13000] w-72 origin-(--radix-hover-card-content-transform-origin) rounded-md border border-panel-border bg-panel-elevated p-3 text-panel-text shadow-md outline-hidden",
 					className,
 				)}
 				{...props}

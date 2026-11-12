@@ -1,8 +1,5 @@
-import { createElement } from "react";
-import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
-import { Upload, FileText } from "lucide-react";
-
 import { cn } from "lib/cn";
+import { FileText, Upload } from "lucide-react";
 import {
 	type ChangeEvent,
 	type DragEvent,
@@ -54,11 +51,6 @@ export const FileDropzone = ({
 }: FileDropzoneProps) => {
 	const inputRef = useRef<HTMLInputElement | null>(null);
 	const [isDragging, setIsDragging] = useState(false);
-		const tone = isDragging ? "border-primary-500! bg-primary-50 dark:border-primary-300! dark:bg-whiteAlpha-100" : "border-blackAlpha-300! bg-blackAlpha-50 dark:border-whiteAlpha-300! dark:bg-whiteAlpha-50";
-		const hoverTone = "hover:border-primary-500! hover:bg-primary-50 dark:hover:border-primary-300! dark:hover:bg-whiteAlpha-100";
-		const iconBorder = isDragging ? "border-primary-500! dark:border-primary-300!" : "border-blackAlpha-300! dark:border-whiteAlpha-300!";
-		const iconBg = "bg-white dark:bg-whiteAlpha-100";
-		const mutedColor = "text-gray-500 dark:text-gray-400";
 
 	const hasSelection = selectedFiles
 		? selectedFiles.length > 0
@@ -86,23 +78,21 @@ export const FileDropzone = ({
 		selectFile(event.target.files);
 	};
 
-	const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+	const handleDrop = (event: DragEvent<HTMLButtonElement>) => {
 		event.preventDefault();
 		setIsDragging(false);
-		if (isDisabled) {
-			return;
-		}
+		if (isDisabled) return;
 		selectFile(event.dataTransfer.files);
 	};
 
-	const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+	const handleDragOver = (event: DragEvent<HTMLButtonElement>) => {
 		event.preventDefault();
 		if (!isDisabled) {
 			setIsDragging(true);
 		}
 	};
 
-	const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
+	const handleDragLeave = (event: DragEvent<HTMLButtonElement>) => {
 		if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
 			return;
 		}
@@ -115,7 +105,7 @@ export const FileDropzone = ({
 		}
 	};
 
-	const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+	const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
 		if (event.key === "Enter" || event.key === " ") {
 			event.preventDefault();
 			openFileDialog();
@@ -123,8 +113,24 @@ export const FileDropzone = ({
 	};
 
 	return (
-		// biome-ignore lint/a11y/useSemanticElements: the drop zone holds block content; keyboard activation is handled in onKeyDown
-		<div role="button" tabIndex={isDisabled ? -1 : 0} aria-disabled={isDisabled} onClick={openFileDialog} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop} onKeyDown={handleKeyDown} className={cn("border border-dashed rounded-md px-4 py-4 [transition:background-color_0.15s_ease,_border-color_0.15s_ease,_opacity_0.15s_ease]", tone, !isDisabled && hoverTone, isDisabled ? "cursor-not-allowed" : "cursor-pointer", isDisabled ? "opacity-[0.55]" : "opacity-100")}>
+		<button
+			type="button"
+			disabled={isDisabled}
+			onClick={openFileDialog}
+			onDragLeave={handleDragLeave}
+			onDragOver={handleDragOver}
+			onDrop={handleDrop}
+			onKeyDown={handleKeyDown}
+			className={cn(
+				"w-full rounded-[14px] border border-dashed px-4 py-4 text-start transition-[background-color,border-color,opacity] duration-150 focus-visible:outline-2 focus-visible:outline-panel-accent",
+				isDragging
+					? "border-panel-accent bg-panel-accent/10"
+					: "border-panel-border bg-panel-elevated/45",
+				!isDisabled &&
+					"min-[769px]:hover:border-panel-accent/70 min-[769px]:hover:bg-panel-elevated/80 cursor-pointer",
+				isDisabled && "cursor-not-allowed opacity-55",
+			)}
+		>
 			<input
 				ref={inputRef}
 				type="file"
@@ -132,26 +138,44 @@ export const FileDropzone = ({
 				multiple={multiple}
 				disabled={isDisabled}
 				onChange={handleInputChange}
-				style={{ display: "none" }}
+				className="hidden"
 			/>
-			<div className="flex flex-row gap-4 items-center">
-				<div className={cn("border rounded-md p-2.5", iconBorder, iconBg)}>
-					{createElement(hasSelection ? FileText : Upload, { className: cn("size-5", hasSelection ? "text-primary-400" : (mutedColor)) })}
-				</div>
-				<div className="flex flex-col items-stretch gap-1 min-w-0! flex-1">
-					<p className="text-[0.875rem] font-semibold truncate">
+			<div className="flex flex-row items-center gap-3.5">
+				<span
+					className={cn(
+						"flex size-10 shrink-0 items-center justify-center rounded-[10px] border",
+						hasSelection || isDragging
+							? "border-panel-accent/40 bg-panel-accent/12 text-panel-accent"
+							: "border-panel-border bg-panel-surface text-panel-text-muted",
+					)}
+				>
+					{hasSelection ? (
+						<FileText className="size-5" aria-hidden="true" />
+					) : (
+						<Upload className="size-5" aria-hidden="true" />
+					)}
+				</span>
+				<div className="flex min-w-0 flex-1 flex-col gap-0.5">
+					<p className="truncate text-[13px] font-semibold text-panel-text">
 						{selectedFile?.name || title}
 					</p>
-					<p className={cn("text-[0.75rem] line-clamp-2", mutedColor)}>
+					<p className="line-clamp-2 text-[11px] text-panel-text-muted">
 						{selectedFile
 							? formatFileSize(selectedFile.size)
 							: description || emptyText}
 					</p>
 				</div>
-				<p className={cn("text-[0.75rem] font-semibold whitespace-nowrap", isDisabled ? (mutedColor) : "text-primary-300")}>
+				<span
+					className={cn(
+						"shrink-0 whitespace-nowrap rounded-[8px] border px-2.5 py-1 text-[11px] font-semibold",
+						isDisabled
+							? "border-panel-border text-panel-text-muted"
+							: "border-panel-border bg-panel-surface text-panel-accent",
+					)}
+				>
 					{emptyText}
-				</p>
+				</span>
 			</div>
-		</div>
+		</button>
 	);
 };
