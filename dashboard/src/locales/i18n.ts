@@ -65,6 +65,7 @@ i18n.on("languageChanged", (lng) => {
 applyDocumentLanguage(i18n.language || "en");
 
 // DataPicker
+registerLocale("zh", zh);
 registerLocale("zh-cn", zh);
 registerLocale("ru", ru);
 registerLocale("fa", fa);

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { SystemStats } from "types/System";
-import { mergeLiveSystemStats, sampleSparklineValues } from "./systemMetrics";
+import {
+	getTotalNetworkHistory,
+	mergeLiveSystemStats,
+	recordTotalNetworkSample,
+	sampleSparklineValues,
+} from "./systemMetrics";
 
 const stats = (cpu: number): SystemStats =>
 	({
@@ -33,5 +38,20 @@ describe("system metric history", () => {
 		expect(sampled).toHaveLength(80);
 		expect(sampled[0]).toBe(0);
 		expect(sampled.at(-1)).toBe(999);
+	});
+
+	it("records total network samples with 2-second cadence and reads cache", () => {
+		const baseTs = Math.floor(Date.now() / 1000) - 10;
+		const s1 = recordTotalNetworkSample(100, 200, baseTs);
+		const s2 = recordTotalNetworkSample(150, 250, baseTs + 1);
+		const s3 = recordTotalNetworkSample(300, 400, baseTs + 3);
+
+		expect(s1.at(-1)).toEqual({ timestamp: baseTs, incoming: 100, outgoing: 200 });
+		expect(s2.at(-1)).toEqual({ timestamp: baseTs, incoming: 150, outgoing: 250 });
+		expect(s3.slice(-2)).toEqual([
+			{ timestamp: baseTs, incoming: 150, outgoing: 250 },
+			{ timestamp: baseTs + 3, incoming: 300, outgoing: 400 },
+		]);
+		expect(getTotalNetworkHistory()).toEqual(s3);
 	});
 });

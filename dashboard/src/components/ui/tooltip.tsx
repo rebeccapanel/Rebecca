@@ -1,4 +1,4 @@
-import * as React from "react"
+import type * as React from "react"
 import { cn } from "lib/cn"
 import { Tooltip as TooltipPrimitive } from "radix-ui"
 
@@ -48,13 +48,13 @@ function TooltipContent({
         data-slot="tooltip-content"
         sideOffset={sideOffset}
         className={cn(
-          "z-[1950] w-fit origin-(--radix-tooltip-content-transform-origin) rounded-md bg-panel-elevated px-2.5 py-1 text-xs font-medium text-panel-text shadow-md ring-1 ring-panel-border data-[state=open]:animate-rb-pop-in data-[state=closed]:animate-rb-pop-out",
+          "z-[13000] w-fit origin-(--radix-tooltip-content-transform-origin) rounded-[10px] border border-panel-border! bg-panel-elevated px-2.5 py-1 text-xs font-medium text-panel-text shadow-md data-[state=open]:animate-rb-pop-in data-[state=closed]:animate-rb-pop-out",
           className
         )}
         {...props}
       >
         {children}
-        <TooltipPrimitive.Arrow className="z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px] bg-panel-elevated fill-panel-elevated ring-1 ring-panel-border" />
+        <TooltipPrimitive.Arrow className="z-50 size-2.5 translate-y-[calc(-50%_-_1px)] rotate-45 rounded-[2px] bg-panel-elevated fill-panel-elevated" />
       </TooltipPrimitive.Content>
     </TooltipPrimitive.Portal>
   )

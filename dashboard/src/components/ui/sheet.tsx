@@ -1,4 +1,4 @@
-import * as React from "react"
+import type * as React from "react"
 import { cn } from "lib/cn"
 import { XIcon } from "lucide-react"
 import { Dialog as SheetPrimitive } from "radix-ui"
@@ -33,7 +33,7 @@ function SheetOverlay({
     <SheetPrimitive.Overlay
       data-slot="sheet-overlay"
       className={cn(
-        "fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
+        "fixed inset-0 z-[1700] bg-black/60 data-[state=closed]:animate-rb-fade-out data-[state=open]:animate-rb-fade-in",
         className
       )}
       {...props}
@@ -57,15 +57,15 @@ function SheetContent({
       <SheetPrimitive.Content
         data-slot="sheet-content"
         className={cn(
-          "fixed z-50 flex flex-col gap-4 bg-background shadow-lg transition ease-in-out data-[state=closed]:animate-out data-[state=closed]:duration-300 data-[state=open]:animate-in data-[state=open]:duration-500",
+          "fixed z-[1700] flex flex-col gap-4 bg-panel-surface shadow-[0_24px_64px_rgba(0,0,0,0.45)] outline-none motion-reduce:data-[state=closed]:animate-rb-fade-out motion-reduce:data-[state=open]:animate-rb-fade-in",
           side === "right" &&
-            "inset-y-0 right-0 h-full w-3/4 border-l data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right sm:max-w-sm",
+            "inset-y-0 right-0 h-full w-3/4 border-l border-panel-border! data-[state=closed]:animate-rb-slide-out-right data-[state=open]:animate-rb-slide-in-right sm:max-w-sm",
           side === "left" &&
-            "inset-y-0 left-0 h-full w-3/4 border-r data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left sm:max-w-sm",
+            "inset-y-0 left-0 h-full w-3/4 border-r border-panel-border! data-[state=closed]:animate-rb-slide-out-left data-[state=open]:animate-rb-slide-in-left sm:max-w-sm",
           side === "top" &&
-            "inset-x-0 top-0 h-auto border-b data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top",
+            "inset-x-0 top-0 h-auto border-b border-panel-border! data-[state=closed]:animate-rb-slide-out-top data-[state=open]:animate-rb-slide-in-top",
           side === "bottom" &&
-            "inset-x-0 bottom-0 h-auto border-t data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom",
+            "inset-x-0 bottom-0 h-auto border-t border-panel-border! data-[state=closed]:animate-rb-slide-out-bottom data-[state=open]:animate-rb-slide-in-bottom",
           className
         )}
         {...props}
