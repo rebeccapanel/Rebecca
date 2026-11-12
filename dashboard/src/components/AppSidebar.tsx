@@ -533,17 +533,12 @@ const SidebarBannerSection: FC<SidebarBannerSectionProps> = ({
 			aria-hidden={!visible}
 			inert={!visible ? true : undefined}
 			className={cn(
-				"grid w-full shrink-0 transition-[grid-template-rows] duration-[600ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+				"grid w-full shrink-0 transition-[grid-template-rows] duration-[560ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
 				visible ? "grid-rows-[1fr]" : "pointer-events-none grid-rows-[0fr]",
 			)}
 		>
 			<div className="min-h-0 overflow-hidden">
-				<div
-					className={cn(
-						"w-full border-t border-panel-border! pt-2.5 pb-2.5 transition-transform duration-[600ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
-						visible ? "translate-y-0" : "translate-y-full",
-					)}
-				>
+				<div className="w-full border-t border-panel-border! pt-2.5 pb-2.5">
 					{carousel}
 				</div>
 			</div>

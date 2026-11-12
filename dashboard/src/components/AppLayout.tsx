@@ -267,6 +267,7 @@ function AppLayoutContent() {
 	const [shellBootSettled, setShellBootSettled] = useState(false);
 	const [shellReady, setShellReady] = useState(false);
 	const [bannersVisible, setBannersVisible] = useState(false);
+	const shellReadyAtRef = useRef<number | null>(null);
 
 	useEffect(() => {
 		const frame = window.requestAnimationFrame(() => {
@@ -280,6 +281,7 @@ function AppLayoutContent() {
 		if (!shellBootSettled) return;
 		if (!getUserIsSuccess && !getUserIsError) return;
 		if (activeLoadingCount > 0) return;
+		shellReadyAtRef.current = Date.now();
 		setShellReady(true);
 	}, [
 		shellReady,
@@ -288,14 +290,6 @@ function AppLayoutContent() {
 		getUserIsError,
 		activeLoadingCount,
 	]);
-
-	useEffect(() => {
-		if (!shellReady) return;
-		const timer = window.setTimeout(() => {
-			setBannersVisible(true);
-		}, 1000);
-		return () => window.clearTimeout(timer);
-	}, [shellReady]);
 
 	const isShellLoading = !shellReady;
 	const cachedRole = useMemo(() => {
@@ -404,6 +398,33 @@ function AppLayoutContent() {
 				: sponsorHeaderItems,
 		[sponsorHeaderMobileItems, sponsorHeaderItems],
 	);
+
+	const hasAnimatedBanners =
+		sponsorHeaderItems.length > 0 ||
+		mobileHeaderItems.length > 0 ||
+		sponsorSidebarBanners.length > 0;
+
+	useEffect(() => {
+		if (!shellReady || bannersVisible || !hasAnimatedBanners) return;
+		const elapsed = shellReadyAtRef.current
+			? Date.now() - shellReadyAtRef.current
+			: 0;
+		const remaining = Math.max(0, 1000 - elapsed);
+		let outerRaf = 0;
+		let innerRaf = 0;
+		const timer = window.setTimeout(() => {
+			outerRaf = window.requestAnimationFrame(() => {
+				innerRaf = window.requestAnimationFrame(() => {
+					setBannersVisible(true);
+				});
+			});
+		}, remaining);
+		return () => {
+			window.clearTimeout(timer);
+			window.cancelAnimationFrame(outerRaf);
+			window.cancelAnimationFrame(innerRaf);
+		};
+	}, [shellReady, bannersVisible, hasAnimatedBanners]);
 
 	const navigate = useNavigate();
 	const location = useLocation();
