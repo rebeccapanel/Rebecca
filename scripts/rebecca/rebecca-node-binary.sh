@@ -3,7 +3,7 @@ set -e
 
 if [ -f "/etc/environment" ]; then
     # shellcheck disable=SC1091
-    . /etc/environment
+    . /etc/environment || true
 fi
 
 APP_NAME_FROM_ARG=0
@@ -1074,7 +1074,7 @@ get_node_binary_release_asset_metadata() {
             ]
             | sort_by(if .name == $name then 0 else 1 end, .name)
             | if length > 0 then (.[0].browser_download_url // "") + "|" + (.[0].url // "") else empty end
-        ')
+        ') || true
         if [ -n "$node_asset_url" ] && [ "$node_asset_url" != "null" ]; then
             printf '%s|%s|%s\n' "${resolved_tag:-$node_version}" "$node_asset_url" "${node_asset_api_url:-}"
             return 0
@@ -1122,7 +1122,7 @@ get_node_binary_dev_artifact_metadata() {
                 | select(.name == $name)
             ]
             | if length > 0 then (.[0].browser_download_url // "") + "|" + (.[0].url // "") else empty end
-        ')
+        ') || true
         if [ -n "$release_asset_url" ] && [ "$release_asset_url" != "null" ]; then
             release_target=$(echo "$release_payload" | jq -r '.target_commitish // empty')
             if [[ "$release_target" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
