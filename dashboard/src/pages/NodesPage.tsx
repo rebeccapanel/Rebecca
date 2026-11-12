@@ -2592,17 +2592,17 @@ export const NodesPage: FC = () => {
 							</Button>
 							<Button onClick={() =>
 									openBulkActionConfirm("bulk-enable", selectableSelectedNodes())
-								} disabled={Boolean(bulkNodeActionLoading)} variant="outline" size="sm">{<EnableIconStyled />}
+								} disabled={Boolean(bulkNodeActionLoading)} loading={bulkNodeActionLoading === "bulk-enable"} variant="outline" size="sm">{<EnableIconStyled />}
 								{t("nodes.enableNode")}
 							</Button>
 							<Button onClick={() =>
 									openBulkActionConfirm("bulk-disable", selectableSelectedNodes())
-								} disabled={Boolean(bulkNodeActionLoading)} variant="outline" size="sm">{<DisableIconStyled />}
+								} disabled={Boolean(bulkNodeActionLoading)} loading={bulkNodeActionLoading === "bulk-disable"} variant="outline" size="sm">{<DisableIconStyled />}
 								{t("nodes.disableNode")}
 							</Button>
 							<Button onClick={() =>
 									openBulkActionConfirm("bulk-reset", selectableSelectedNodes())
-								} disabled={Boolean(bulkNodeActionLoading)} variant="outline" size="sm">{<ArrowPathIconStyled />}
+								} disabled={Boolean(bulkNodeActionLoading)} loading={bulkNodeActionLoading === "bulk-reset"} variant="outline" size="sm">{<ArrowPathIconStyled />}
 								{t("nodes.resetUsage")}
 							</Button>
 							<Button onClick={() =>
@@ -2613,7 +2613,7 @@ export const NodesPage: FC = () => {
 								} disabled={
 									Boolean(bulkNodeActionLoading) ||
 									selectedConnectedBinaryNodes().length === 0
-								} variant="outline" size="sm">{<ServiceIconStyled />}
+								} loading={bulkNodeActionLoading === "bulk-restart"} variant="outline" size="sm">{<ServiceIconStyled />}
 								{t("nodes.restartServiceAction")}
 							</Button>
 							<Button onClick={() =>
@@ -2621,7 +2621,7 @@ export const NodesPage: FC = () => {
 								} disabled={
 									Boolean(bulkNodeActionLoading) ||
 									selectedBinaryNodes().length === 0
-								} variant="outline" size="sm">{<DownloadIconStyled />}
+								} loading={bulkNodeActionLoading === "bulk-update"} variant="outline" size="sm">{<DownloadIconStyled />}
 								{t("nodes.updateServiceAction")}
 							</Button>
 							<Button onClick={() =>

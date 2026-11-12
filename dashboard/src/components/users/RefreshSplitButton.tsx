@@ -1,6 +1,5 @@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "components/ui/dropdown-menu";
-import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
-import { ChevronDown, RefreshCw } from "lucide-react";
+import { ChevronDown, LoaderCircle, RefreshCw } from "lucide-react";
 
 import { buttonVariants } from "components/ui/button";
 import { cn } from "lib/cn";
@@ -10,34 +9,12 @@ import { useTranslation } from "react-i18next";
 type RefreshSplitButtonProps = {
 	onRefresh: () => void;
 	loading?: boolean;
-	/** Current auto-refresh interval in ms; `0` means off. */
 	interval: number;
 	onIntervalChange: (interval: number) => void;
 };
 
 export const AUTO_REFRESH_INTERVALS = [3_000, 5_000, 10_000, 30_000] as const;
 
-const spinKeyframes = `
-@keyframes rb-refresh-spin { to { transform: rotate(360deg); } }
-.rb-refresh-spin { animation: rb-refresh-spin 0.9s linear infinite; }
-@media (prefers-reduced-motion: reduce) { .rb-refresh-spin { animation: none; } }
-`;
-
-let keyframesInjected = false;
-const ensureKeyframes = () => {
-	if (keyframesInjected || typeof document === "undefined") return;
-	keyframesInjected = true;
-	const style = document.createElement("style");
-	style.textContent = spinKeyframes;
-	document.head.appendChild(style);
-};
-
-/**
- * One split control for refresh + auto-refresh: the left half refreshes now,
- * the right half opens the interval menu. Both halves are stock 36px ghost buttons
- * in one pill, so the group lines up with the other header controls. The chevron
- * carries a dot while an interval is active.
- */
 export const RefreshSplitButton: FC<RefreshSplitButtonProps> = ({
 	onRefresh,
 	loading: isLoading,
@@ -45,7 +22,6 @@ export const RefreshSplitButton: FC<RefreshSplitButtonProps> = ({
 	onIntervalChange,
 }) => {
 	const { t, i18n } = useTranslation();
-	ensureKeyframes();
 
 	const active = interval > 0;
 	const intervalLabel = active ? t("usersTable.autoRefreshEvery", { seconds: interval / 1000 }) : t("usersTable.autoRefreshOff");
@@ -63,9 +39,11 @@ export const RefreshSplitButton: FC<RefreshSplitButtonProps> = ({
 					"rounded-none text-panel-text-secondary hover:bg-whiteAlpha-100 hover:text-panel-text",
 				)}
 			>
-				<span className={cn("inline-flex", isLoading && "rb-refresh-spin")}>
+				{isLoading ? (
+					<LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
+				) : (
 					<RefreshCw className="size-4" />
-				</span>
+				)}
 			</button>
 			<span aria-hidden="true" className="my-2 w-px bg-panel-border" />
 

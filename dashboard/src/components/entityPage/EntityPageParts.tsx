@@ -35,11 +35,11 @@ const TONE_DOT: Record<EntityTone, string> = {
 const clampPercent = (value: number) => Math.min(100, Math.max(0, value));
 
 export const readAccentColor = () => {
-	if (typeof document === "undefined") return "#e0003c";
+	if (typeof document === "undefined") return "#2563eb";
 	return (
 		getComputedStyle(document.documentElement)
 			.getPropertyValue("--rb-panel-accent")
-			.trim() || "#e0003c"
+			.trim() || "#2563eb"
 	);
 };
 

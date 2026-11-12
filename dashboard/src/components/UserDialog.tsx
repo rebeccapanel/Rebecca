@@ -2,7 +2,7 @@ import { toast } from "components/ui/sonner";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type SubmitStatus, useSubmitTimers } from "hooks/useSubmitTimers";
 import dayjs from "dayjs";
-import { Ban, Check, ChevronDown, Copy, Pencil, Plus, QrCode, RotateCcw, Sparkles, Trash2, UserPlus } from "lucide-react";
+import { Ban, Check, ChevronDown, Copy, LoaderCircle, Pencil, Plus, QrCode, RotateCcw, Sparkles, Trash2, UserPlus } from "lucide-react";
 import { type FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Controller, type Resolver, useForm, useWatch } from "react-hook-form";
 import ReactApexChart from "react-apexcharts";
@@ -1111,7 +1111,11 @@ export const UserDialog: FC<UserDialogProps> = () => {
 							onClick={createRandomUsername}
 							className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }), "absolute inset-y-0.5 end-0.5")}
 						>
-							<Sparkles className={cn(randomUsernameLoading && "animate-pulse")} />
+							{randomUsernameLoading ? (
+								<LoaderCircle className="size-4 animate-spin" />
+							) : (
+								<Sparkles className="size-4" />
+							)}
 						</button>
 					) : null}
 				</div>

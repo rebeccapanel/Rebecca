@@ -2,7 +2,6 @@ import { Field, FieldDescription, FieldLabel } from "components/ui/field";
 import { Input } from "components/ui/input";
 import { Badge } from "components/ui/badge";
 import { Button } from "components/ui/button";
-import { Spinner } from "components/ui/spinner";
 import { Dialog } from "components/ui/dialog";
 import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
 import { Zap } from "lucide-react";
@@ -178,7 +177,7 @@ export const RouteTestModal: FC<RouteTestModalProps> = ({
 				</XrayModalBody>
 				<XrayModalFooter>
 					<Button onClick={onClose} variant="ghost">{t("close")}</Button>
-					<Button onClick={runTest} disabled={isTesting || isMasterTarget || !testURL.trim()}>{isTesting ? <Spinner /> : <Zap />}
+					<Button onClick={runTest} disabled={isMasterTarget || !testURL.trim()} loading={isTesting}><Zap />
 						{t("pages.xray.routeTester.test")}
 					</Button>
 				</XrayModalFooter>

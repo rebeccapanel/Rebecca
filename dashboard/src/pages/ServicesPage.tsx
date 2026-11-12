@@ -653,9 +653,9 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 						<button type="button" onClick={onClose} className={buttonVariants({ variant: "ghost", size: "sm" })}>
 							{t("cancel")}
 						</button>
-						<button type="submit" disabled={isSaving} className={cn(buttonVariants({ size: "sm" }), "ms-auto")}>
+						<Button type="submit" size="sm" loading={isSaving} className="ms-auto">
 							{initialService ? t("saveChanges") : t("create")}
-						</button>
+						</Button>
 					</DialogFooter>
 				</form>
 			</DialogContent>

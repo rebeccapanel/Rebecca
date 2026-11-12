@@ -2,7 +2,7 @@ import type { ButtonProps } from "components/ui/button";
 import { Button } from "components/ui/button";
 import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
 import { withClass } from "lib/withClass";
-import { Check, X } from "lucide-react";
+import { Check, LoaderCircle, X } from "lucide-react";
 
 import type { ComponentPropsWithoutRef } from "react";
 import { cn } from "lib/cn";
@@ -59,7 +59,10 @@ export const AnimatedSubmitButton: FC<AnimatedSubmitButtonProps> = ({
 	const content = (() => {
 		if (status === "loading") {
 			return (
-				<div aria-hidden className="border-2 border-whiteAlpha-600! border-t-white! h-[20px] rounded-full w-[20px] animate-spin" />
+				<LoaderCircle
+					aria-hidden="true"
+					className="size-5 animate-spin text-white"
+				/>
 			);
 		}
 		if (status === "success") {
