@@ -1,81 +1,92 @@
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "components/ui/dropdown-menu";
-import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
-import { withClass } from "lib/withClass";
-import { Check, Languages } from "lucide-react";
-
-import { cn } from "lib/cn";
 import { Button } from "components/ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "components/ui/dropdown-menu";
+import { cn } from "lib/cn";
+import { Check, Languages } from "lucide-react";
 import type { FC, MutableRefObject, ReactNode } from "react";
 import ReactCountryFlag from "react-country-flag";
 import { useTranslation } from "react-i18next";
 import ImperialIranFlag from "../assets/imperial-iran-flag.svg?react";
+import { resolveAppLanguageCode } from "lib/language";
 
-type HeaderProps = {
+type LanguageProps = {
 	actions?: ReactNode;
 	portalContainer?: MutableRefObject<HTMLElement | null>;
 	triggerVariant?: "outline" | "ghost";
 };
 
-const LangIcon = withClass(Languages, "w-4 h-4");
+const LANGUAGE_OPTIONS = [
+	{ code: "en", label: "English", flag: "US" },
+	{ code: "fa", label: "پارسی", flag: "IR" },
+	{ code: "zh-cn", label: "中文", flag: "CN" },
+	{ code: "ru", label: "Русский", flag: "RU" },
+] as const;
 
-const CheckIconChakra = withClass(Check, "w-4 h-4");
-
-export const Language: FC<HeaderProps> = ({
-	portalContainer,
+export const Language: FC<LanguageProps> = ({
 	triggerVariant = "outline",
 }) => {
-	const { i18n } = useTranslation();
-	const menuBg = "bg-surface-light dark:bg-surface-dark";
-	const borderColor = "border-blackAlpha-200! dark:border-whiteAlpha-200!";
-	const textColor = "text-gray-800 dark:text-gray-100";
-
-	const changeLanguage = (lang: string) => {
-		i18n.changeLanguage(lang);
-	};
-
-	const items = [
-		{ code: "en", label: "English", flag: "US" },
-		{ code: "fa", label: "پارسی", flag: "IR" },
-		{ code: "zh-cn", label: "中文", flag: "CN" },
-		{ code: "ru", label: "Русский", flag: "RU" },
-	];
-
-	const menuList = (
-		<DropdownMenuContent className={cn("min-w-[calc(100vw_-_24px)]! sm:min-w-[200px]! max-w-[calc(100vw_-_16px)] z-[9999]", menuBg, borderColor, textColor)}>
-			{items.map(({ code, label, flag }) => (
-				<DropdownMenuItem key={code} onSelect={() => changeLanguage(code)} className="text-[0.875rem] bg-transparent">
-					<div className="flex flex-row items-center gap-2 justify-between w-full">
-						<div className="flex flex-row items-center gap-2">
-							{code === "fa" ? (
-								<ImperialIranFlag style={{ width: "16px", height: "12px" }} />
-							) : (
-								<ReactCountryFlag
-									countryCode={flag}
-									svg
-									style={{ width: "16px", height: "12px" }}
-								/>
-							)}
-							<p>{label}</p>
-						</div>
-						{i18n.language === code && <CheckIconChakra />}
-					</div>
-				</DropdownMenuItem>
-			))}
-		</DropdownMenuContent>
+	const { t, i18n } = useTranslation();
+	const isRTL = i18n.dir(i18n.language) === "rtl";
+	const activeLanguage = resolveAppLanguageCode(
+		i18n.language || i18n.resolvedLanguage,
 	);
 
 	return (
-		<DropdownMenu>
+		<DropdownMenu dir={isRTL ? "rtl" : "ltr"}>
 			<DropdownMenuTrigger asChild>
-				<Button type="button" size="sm" variant={triggerVariant} className="relative">
-					<LangIcon />
+				<Button
+					type="button"
+					size="sm"
+					variant={triggerVariant}
+					aria-label={t("header.language")}
+					className="relative h-[34px] min-w-[34px]! rounded-[12px] border-panel-border! bg-panel-surface px-2.5 text-panel-text shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,box-shadow,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:bg-panel-surface dark:hover:bg-input/30 active:scale-[0.97] min-[769px]:hover:border-panel-border-strong! min-[769px]:hover:bg-panel-elevated min-[769px]:dark:hover:bg-panel-elevated min-[769px]:hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)]"
+				>
+					<Languages className="size-4" strokeWidth={1.75} />
 				</Button>
 			</DropdownMenuTrigger>
-			{portalContainer ? (
-				<>{menuList}</>
-			) : (
-				<>{menuList}</>
-			)}
+			<DropdownMenuContent
+				align={isRTL ? "start" : "end"}
+				sideOffset={8}
+				className="z-[9999] min-w-[180px]! rounded-[16px] border border-panel-border! bg-panel-surface p-1.5 text-panel-text shadow-[0_12px_32px_rgba(0,0,0,0.24)] select-none"
+			>
+				{LANGUAGE_OPTIONS.map(({ code, label, flag }) => {
+					const isActive = activeLanguage === code;
+					return (
+						<DropdownMenuItem
+							key={code}
+							onSelect={() => i18n.changeLanguage(code)}
+							className={cn(
+								"flex cursor-pointer items-center justify-between gap-3 rounded-[10px] px-3 py-2 text-[13px] transition-[background-color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.98] focus:bg-panel-elevated min-[769px]:hover:bg-panel-elevated",
+								isActive
+									? "bg-panel-elevated/60 font-semibold text-panel-text"
+									: "font-medium text-panel-text-secondary",
+							)}
+						>
+							<span className="flex items-center gap-2.5">
+								{code === "fa" ? (
+									<ImperialIranFlag
+										style={{ width: "16px", height: "12px", borderRadius: "2px" }}
+									/>
+								) : (
+									<ReactCountryFlag
+										countryCode={flag}
+										svg
+										style={{ width: "16px", height: "12px", borderRadius: "2px" }}
+									/>
+								)}
+								<span>{label}</span>
+							</span>
+							{isActive ? (
+								<Check className="size-4 text-panel-accent" />
+							) : null}
+						</DropdownMenuItem>
+					);
+				})}
+			</DropdownMenuContent>
 		</DropdownMenu>
 	);
 };

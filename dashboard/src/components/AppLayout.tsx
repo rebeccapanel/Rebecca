@@ -1,20 +1,42 @@
-import { Button } from "components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "components/ui/dropdown-menu";
-import { Popover, PopoverContent, PopoverTrigger } from "components/ui/popover";
-import { Sheet, SheetContent, SheetTitle } from "components/ui/sheet";
-import { TriangleAlert } from "lucide-react";
-import { LogOut, ArrowLeftRight, Share, Menu, Bell, BookOpen, Briefcase, Check, Database, Clock, SquareCode, Settings, Settings2, Terminal, Copy, Eye, House as HeroHomeIcon, Languages, Link, Server, LayoutGrid, User as UserIcon, Users, Wrench, Bell as BellSolidIcon, Briefcase as BriefcaseSolidIcon, Settings as Cog6ToothSolidIcon, House as HomeSolidIcon, Users as UserGroupSolidIcon, User as UserSolidIcon } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import {
 	Breadcrumb,
+	BreadcrumbEllipsisDropdown,
 	BreadcrumbItem,
 	BreadcrumbLink,
 	BreadcrumbList,
 	BreadcrumbPage,
 	BreadcrumbSeparator,
 } from "components/ui/breadcrumb";
+import { Button } from "components/ui/button";
+import {
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+} from "components/ui/popover";
+import { Sheet, SheetContent, SheetTitle } from "components/ui/sheet";
 import { motion, useReducedMotion } from "framer-motion";
+import { useDisclosure } from "hooks/useDisclosure";
 import useGetUser from "hooks/useGetUser";
-import { useQuery } from "@tanstack/react-query";
+import { useMediaQuery } from "hooks/useMediaQuery";
+import { useSheetSwipeToClose } from "hooks/useSheetSwipeToClose";
+import { cn } from "lib/cn";
+import { EDITOR_PAGE_ID, useActiveEntityPage } from "lib/entityPages";
+import { resolveAppLanguageCode } from "lib/language";
+import {
+	Bell,
+	BellRing,
+	Briefcase,
+	Check,
+	ChevronDown,
+	CircleUser,
+	House,
+	Languages,
+	LogOut,
+	Settings,
+	Share,
+	Users,
+} from "lucide-react";
 import {
 	type CSSProperties,
 	type ElementType,
@@ -31,65 +53,43 @@ import ReactCountryFlag from "react-country-flag";
 import { useTranslation } from "react-i18next";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { logout as logoutSession } from "service/auth";
-import { AdminRole, AdminSection, AdminSudoScope } from "types/Admin";
-import { clearClientSession } from "utils/session";
 import { getSponsors, type SponsorAsset } from "service/sponsors";
+import { AdminRole, AdminSection } from "types/Admin";
+import { clearClientSession } from "utils/session";
 import ImperialIranFlag from "../assets/imperial-iran-flag.svg?react";
 import { AppSidebar } from "./AppSidebar";
-import { useSheetSwipeToClose } from "hooks/useSheetSwipeToClose";
-import { useDisclosure } from "hooks/useDisclosure";
-import { useMediaQuery } from "hooks/useMediaQuery";
-
-import { cn } from "lib/cn";
-import { EDITOR_PAGE_ID, useActiveEntityPage } from "lib/entityPages";
 import { GitHubStars } from "./GitHubStars";
 import { HeaderCalendar } from "./HeaderCalendar";
-import { NotificationBell } from "./NotificationBell";
-import ThemeSelector from "./ThemeSelector";
+import {
+	DEFAULT_TAB_BY_PATH,
+	type DirectNavItem,
+	filterNavSectionsExcluding,
+	type GroupSubItem,
+	useNavSections,
+} from "./layout/navConfig";
+import {
+	NotificationBell,
+	NotificationMenuItem,
+	NotificationProvider,
+	useNotificationCenter,
+} from "./NotificationBell";
 import { SponsorCarousel } from "./SponsorCarousel";
+import ThemeSelector from "./ThemeSelector";
 
-/** Icons are sized by the call site with `size-*` classes now, not by a Chakra wrapper. */
-const LogoutIcon = LogOut;
-const MenuIcon = Menu;
-const LanguageIconStyled = Languages;
-const DocsIcon = SquareCode;
-const PHPMyAdminIcon = Database;
-const ExternalAppsIcon = Terminal;
-const PlaceholderIcon = Copy;
-const PersonIcon = UserIcon;
-const MasterSettingsIcon = Settings2;
-const XraySettingsIcon = Wrench;
-const TAB_ICONS: Record<string, [ElementType, ElementType]> = {
-	dashboard: [HeroHomeIcon, HomeSolidIcon],
-	users: [Users, UserGroupSolidIcon],
-	admins: [Briefcase, BriefcaseSolidIcon],
-	settings: [Settings, Cog6ToothSolidIcon],
-	myaccount: [UserIcon, UserSolidIcon],
-	notifications: [Bell, BellSolidIcon],
+const TAB_ICONS: Record<string, ElementType> = {
+	dashboard: House,
+	users: Users,
+	admins: Briefcase,
+	settings: Settings,
+	myaccount: CircleUser,
+	notifications: Bell,
 };
-const ServicesIcon = LayoutGrid;
-const HostsIcon = Link;
-const HAProxyIcon = ArrowLeftRight;
-const NodesIcon = Server;
-const InsightsIcon = Eye;
-const RecentActionsIcon = Clock;
-const ShareIcon = Share;
-const TutorialIcon = BookOpen;
 
-/** Primary tint for avatars and the active tab, per color mode. */
 const TINT_CLASS =
 	"bg-[color-mix(in_srgb,var(--primary-500)_12%,transparent)] text-[var(--primary-500)] dark:bg-[color-mix(in_srgb,var(--primary-300)_20%,transparent)] dark:text-[var(--primary-300)]";
 
-/** The frosted dock surface, shared by the bottom bar and its popovers. */
-const DOCK_CLASS =
-	"border-[rgba(15,23,42,0.08)]! bg-[color-mix(in_srgb,var(--rb-panel-surface)_78%,transparent)] shadow-[0_12px_32px_rgba(15,23,42,0.14),0_1px_3px_rgba(15,23,42,0.08)] [backdrop-filter:saturate(180%)_blur(20px)] dark:border-[rgba(255,255,255,0.09)]! dark:bg-[color-mix(in_srgb,var(--rb-panel-surface)_72%,transparent)] dark:shadow-[0_12px_32px_rgba(0,0,0,0.5)]";
-
-type SettingsMenuItem = {
-	key: string;
-	label: string;
-	to: string;
-	icon?: ElementType;
-};
+const DOCK_SURFACE_CLASS =
+	"border-panel-border! bg-panel-surface/95 shadow-[0_12px_32px_rgba(15,23,42,0.16)] dark:bg-panel-surface/95 dark:shadow-[0_12px_32px_rgba(0,0,0,0.48)]";
 
 type BottomNavItem = {
 	key: string;
@@ -98,12 +98,72 @@ type BottomNavItem = {
 	kind?: "menu" | "link";
 };
 
-const breadcrumbLabels: Record<string, string> = {
-	"node-settings": "nodes",
-	"xray-settings": "xray",
+const AnimatedHamburger = ({
+	isOpen,
+	isRTL,
+}: {
+	isOpen: boolean;
+	isRTL?: boolean;
+}) => (
+	<svg
+		width="16"
+		height="16"
+		viewBox="0 0 18 18"
+		fill="none"
+		stroke="currentColor"
+		strokeWidth="1.75"
+		strokeLinecap="round"
+		aria-hidden="true"
+		style={{ transform: isRTL ? "scaleX(-1)" : undefined }}
+	>
+		<motion.line
+			x1="3"
+			y1="5"
+			x2="15"
+			y2="5"
+			initial={false}
+			animate={{ x2: isOpen ? 10 : 15 }}
+			transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
+		/>
+		<motion.line
+			x1="3"
+			y1="9"
+			x2="15"
+			y2="9"
+			initial={false}
+			animate={{ x2: 15 }}
+			transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
+		/>
+		<motion.line
+			x1="3"
+			y1="13"
+			x2="15"
+			y2="13"
+			initial={false}
+			animate={{ x2: isOpen ? 12 : 15 }}
+			transition={{ duration: 0.22, ease: [0.23, 1, 0.32, 1] }}
+		/>
+	</svg>
+);
+
+let textMeasureCanvas: HTMLCanvasElement | null = null;
+const measureBreadcrumbLabel = (text: string, isPage: boolean): number => {
+	if (typeof document === "undefined") {
+		return Math.ceil(text.length * (isPage ? 8.5 : 8));
+	}
+	if (!textMeasureCanvas) {
+		textMeasureCanvas = document.createElement("canvas");
+	}
+	const ctx = textMeasureCanvas.getContext("2d");
+	if (!ctx) {
+		return Math.ceil(text.length * (isPage ? 8.5 : 8));
+	}
+	ctx.font = `${isPage ? "600" : "500"} 12.5px "Arad", "Inter", system-ui, -apple-system, sans-serif`;
+	return Math.ceil(ctx.measureText(text).width);
 };
 
-export function AppLayout() {
+function AppLayoutContent() {
+	const { unread } = useNotificationCenter();
 	const editorPageSection = useActiveEntityPage((state) => state.section);
 	const editorPageTitle = useActiveEntityPage((state) => state.title);
 	const mainRef = useRef<HTMLElement>(null);
@@ -113,61 +173,171 @@ export function AppLayout() {
 			mainRef.current.scrollTop = editorPageSection ? 0 : listScrollTop.current;
 		}
 	}, [editorPageSection]);
+
 	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-	const isMobile = !useMediaQuery("(min-width: 48em)");
+	const handleSidebarExpand = useCallback(() => setSidebarCollapsed(false), []);
+	const isMobile = !useMediaQuery("(min-width: 769px)");
 	const sidebarDrawer = useDisclosure();
+	const handleDrawerClose = useCallback(
+		() => sidebarDrawer.onClose(),
+		[sidebarDrawer],
+	);
 	useSheetSwipeToClose();
-	const languageMenu = useDisclosure();
+
+	useEffect(() => {
+		if (typeof document === "undefined" || !document.body) return;
+		if (sidebarCollapsed && !isMobile) {
+			document.body.setAttribute("data-sidebar-collapsed", "true");
+		} else {
+			document.body.removeAttribute("data-sidebar-collapsed");
+		}
+		return () => {
+			document.body?.removeAttribute("data-sidebar-collapsed");
+		};
+	}, [sidebarCollapsed, isMobile]);
+
 	const userMenu = useDisclosure();
 	const accountMenu = useDisclosure();
 	const settingsMenu = useDisclosure();
+	const dockSettingsScrollRef = useRef<HTMLDivElement | null>(null);
+
+	const [activeProfileSubmenu, setActiveProfileSubmenu] = useState<
+		"notifications" | "language" | "theme" | "calendar" | null
+	>(null);
+	const [pressingProfileSubmenu, setPressingProfileSubmenu] = useState<
+		"notifications" | "language" | "theme" | "calendar" | null
+	>(null);
+	const profileSubmenuTimerRef = useRef<number | null>(null);
+
+	useEffect(() => {
+		return () => {
+			if (profileSubmenuTimerRef.current) {
+				window.clearTimeout(profileSubmenuTimerRef.current);
+			}
+		};
+	}, []);
+
 	const { t, i18n } = useTranslation();
 	const { userData, getUserIsSuccess } = useGetUser();
+	const cachedRole = useMemo(() => {
+		try {
+			return localStorage.getItem("rb-user-role");
+		} catch {
+			return null;
+		}
+	}, []);
+	const effectiveRole = getUserIsSuccess
+		? userData.role
+		: (cachedRole as AdminRole | null);
 	const canSeeSponsors =
-		getUserIsSuccess &&
-		(userData.role === AdminRole.FullAccess || userData.role === AdminRole.Sudo);
-	const sponsorsQuery = useQuery({ queryKey: ["sponsors"], queryFn: getSponsors, staleTime: 5 * 60 * 1000,
+		effectiveRole === AdminRole.FullAccess || effectiveRole === AdminRole.Sudo;
+
+	useEffect(() => {
+		if (getUserIsSuccess && userData.role) {
+			try {
+				localStorage.setItem("rb-user-role", userData.role);
+			} catch {}
+		}
+	}, [getUserIsSuccess, userData.role]);
+
+	const sponsorsQuery = useQuery({
+		queryKey: ["sponsors"],
+		queryFn: getSponsors,
+		staleTime: 5 * 60 * 1000,
 		gcTime: 30 * 60 * 1000,
 		retry: false,
-		enabled: canSeeSponsors, });
+		enabled: canSeeSponsors,
+		initialData: () => {
+			try {
+				const raw = sessionStorage.getItem("rb-sponsors-cache");
+				return raw ? JSON.parse(raw) : undefined;
+			} catch {
+				return undefined;
+			}
+		},
+		initialDataUpdatedAt: 0,
+	});
+
+	useEffect(() => {
+		if (sponsorsQuery.data && canSeeSponsors) {
+			try {
+				sessionStorage.setItem(
+					"rb-sponsors-cache",
+					JSON.stringify(sponsorsQuery.data),
+				);
+			} catch {}
+		}
+	}, [sponsorsQuery.data, canSeeSponsors]);
+
 	const sponsorData = canSeeSponsors ? sponsorsQuery.data : undefined;
-	const sponsorHeaderItems = (sponsorData?.header ?? []).slice(0, 3).map(
-		(asset: SponsorAsset) => ({
-			id: asset.id,
-			src: asset.image_url,
-			alt: asset.alt || asset.label || "Sponsor",
-			href: asset.target_url,
-			label: asset.label,
-			isSponsor: true,
-		}),
+	const sponsorHeaderItems = useMemo(
+		() =>
+			(sponsorData?.header ?? []).slice(0, 3).map((asset: SponsorAsset) => ({
+				id: asset.id,
+				src: asset.image_url,
+				alt: asset.alt || asset.label || "Sponsor",
+				href: asset.target_url,
+				label: asset.label,
+				isSponsor: true,
+			})),
+		[sponsorData?.header],
 	);
-	const sponsorHeaderMobileItems = (sponsorData?.header_mobile ?? [])
-		.slice(0, 3)
-		.map((asset: SponsorAsset) => ({
-			id: asset.id,
-			src: asset.image_url,
-			alt: asset.alt || asset.label || "Sponsor",
-			href: asset.target_url,
-			label: asset.label,
-			isSponsor: true,
-		}));
-	const sponsorSidebarLogoItems = (sponsorData?.sidebar_logo ?? []).slice(0, 5);
-	const sponsorSidebarBanners = (sponsorData?.sidebar ?? []).slice(0, 5);
-	const mobileHeaderItems = sponsorHeaderMobileItems.length > 0
-		? sponsorHeaderMobileItems
-		: sponsorHeaderItems;
+	const sponsorHeaderMobileItems = useMemo(
+		() =>
+			(sponsorData?.header_mobile ?? [])
+				.slice(0, 3)
+				.map((asset: SponsorAsset) => ({
+					id: asset.id,
+					src: asset.image_url,
+					alt: asset.alt || asset.label || "Sponsor",
+					href: asset.target_url,
+					label: asset.label,
+					isSponsor: true,
+				})),
+		[sponsorData?.header_mobile],
+	);
+	const sponsorSidebarLogoItems = useMemo(() => {
+		const extra = sponsorData as unknown as
+			| { sidebarLogo?: SponsorAsset[] }
+			| undefined;
+		const rawLogoList: SponsorAsset[] = [
+			...(sponsorData?.sidebar_logo ?? []),
+			...(extra?.sidebarLogo ?? []),
+			...(sponsorData?.sidebar ?? []).filter(
+				(a: SponsorAsset) => a.placement === "sidebar_logo",
+			),
+		];
+		return rawLogoList
+			.filter((a, i, arr) => arr.findIndex((x) => x.id === a.id) === i)
+			.slice(0, 5);
+	}, [sponsorData]);
+	const sponsorSidebarBanners = useMemo(
+		() =>
+			(sponsorData?.sidebar ?? [])
+				.filter((a: SponsorAsset) => a.placement !== "sidebar_logo")
+				.slice(0, 5),
+		[sponsorData?.sidebar],
+	);
+	const mobileHeaderItems = useMemo(
+		() =>
+			sponsorHeaderMobileItems.length > 0
+				? sponsorHeaderMobileItems
+				: sponsorHeaderItems,
+		[sponsorHeaderMobileItems, sponsorHeaderItems],
+	);
+
 	const navigate = useNavigate();
 	const location = useLocation();
 	const [activeLocationHash, setActiveLocationHash] = useState(
 		() => window.location.hash,
 	);
 	const isRTL = i18n.dir(i18n.language) === "rtl";
-	const tutorialsUrl = "/tutorials";
+	const { navSections } = useNavSections();
 	const sectionAccess = userData.permissions?.sections;
-	const userMenuContentRef = useRef<HTMLDivElement | null>(null);
-	const [isThemeModalOpen, setIsThemeModalOpen] = useState(false);
+	const headerRef = useRef<HTMLElement | null>(null);
 	const contentRef = useRef<HTMLDivElement | null>(null);
 	const [showIosPrompt, setShowIosPrompt] = useState(false);
+
 	const accountHoldTimeout = useRef<number | null>(null);
 	const accountHoldOpened = useRef(false);
 	const accountHoldStartPoint = useRef<{ x: number; y: number } | null>(null);
@@ -198,10 +368,29 @@ export function AppLayout() {
 	const reduceMotion = useReducedMotion();
 	const navSpring = reduceMotion
 		? { duration: 0 }
-		: { type: "spring" as const, stiffness: 300, damping: 30, mass: 0.8 };
+		: { type: "spring" as const, stiffness: 320, damping: 32, mass: 0.8 };
 	const tapSpring = reduceMotion
 		? { duration: 0 }
 		: { type: "spring" as const, stiffness: 520, damping: 32, mass: 0.6 };
+
+	const [calendarCompact, setCalendarCompact] = useState(false);
+	const [starsCompact, setStarsCompact] = useState(false);
+	const starsExpandedWidthRef = useRef(88);
+	const [breadcrumbMode, setBreadcrumbMode] = useState<
+		"full" | "compact" | "minimal"
+	>("full");
+	const [bannerShrinkable, setBannerShrinkable] = useState(false);
+	const [canTruncateLastCrumbState, setCanTruncateLastCrumbState] =
+		useState(false);
+	const [bannerDimensions, setBannerDimensions] = useState({
+		natural: 220,
+		half: 110,
+	});
+	const canTruncateLastCrumb =
+		canTruncateLastCrumbState &&
+		calendarCompact &&
+		starsCompact &&
+		breadcrumbMode === "minimal";
 
 	useEffect(() => {
 		const syncHash = () => setActiveLocationHash(window.location.hash);
@@ -214,6 +403,28 @@ export function AppLayout() {
 		previewTabKeyRef.current = value;
 		setPreviewTabKey(value);
 	};
+
+	const toggleProfileSubmenu = useCallback(
+		(target: "notifications" | "language" | "theme" | "calendar") => {
+			if (profileSubmenuTimerRef.current) {
+				window.clearTimeout(profileSubmenuTimerRef.current);
+				profileSubmenuTimerRef.current = null;
+			}
+
+			if (activeProfileSubmenu === target) {
+				setActiveProfileSubmenu(null);
+				setPressingProfileSubmenu(null);
+				return;
+			}
+
+			setPressingProfileSubmenu(target);
+			profileSubmenuTimerRef.current = window.setTimeout(() => {
+				setPressingProfileSubmenu(null);
+				setActiveProfileSubmenu(target);
+			}, 90);
+		},
+		[activeProfileSubmenu],
+	);
 
 	const roleLabel = useMemo(() => {
 		switch (userData.role) {
@@ -234,161 +445,85 @@ export function AppLayout() {
 		{ code: "zh-cn", label: "中文", flag: "CN" },
 		{ code: "ru", label: "Русский", flag: "RU" },
 	];
+	const activeLanguage = resolveAppLanguageCode(
+		i18n.language || i18n.resolvedLanguage,
+	);
 
-	const isPrivilegedAdmin =
-		userData.role === AdminRole.FullAccess || userData.role === AdminRole.Sudo;
-	const canViewRecentActions =
-		userData.role === AdminRole.FullAccess ||
-		(userData.role === AdminRole.Sudo &&
-			Boolean(userData.permissions?.sudo?.[AdminSudoScope.Xray]));
-	const canManagePlaceholders =
-		userData.role === AdminRole.FullAccess ||
-		(userData.role === AdminRole.Sudo &&
-			Boolean(userData.permissions?.sudo?.[AdminSudoScope.Subscriptions])) ||
-		Boolean(userData.permissions?.self_permissions?.self_placeholders);
+	const [openDockGroups, setOpenDockGroups] = useState<Record<string, boolean>>({
+		users_hub: true,
+	});
+	const canSeeAdmins = Boolean(sectionAccess?.[AdminSection.Admins]);
+	const includeNotificationsInDock = !canSeeAdmins;
 
-	const settingsMenuItems = useMemo(() => {
-		const items: Array<SettingsMenuItem | null> = [
-			isPrivilegedAdmin
-				? {
-						key: "errors",
-						label: "errors",
-						to: "/errors",
-						icon: InsightsIcon,
-					}
-				: null,
-			isPrivilegedAdmin && sectionAccess?.[AdminSection.Services]
-				? {
-						key: "services",
-						label: t("services.title"),
-						to: "/services",
-						icon: ServicesIcon,
-					}
-				: null,
-			isPrivilegedAdmin && sectionAccess?.[AdminSection.Hosts]
-				? {
-						key: "hosts",
-						label: t("header.hostSettings"),
-						to: "/hosts",
-						icon: HostsIcon,
-					}
-				: null,
-			isPrivilegedAdmin && sectionAccess?.[AdminSection.Nodes]
-				? {
-						key: "node-settings",
-						label: t("header.nodeSettings"),
-						to: "/node-settings",
-						icon: NodesIcon,
-					}
-				: null,
-			isPrivilegedAdmin && sectionAccess?.[AdminSection.Integrations]
-				? {
-						key: "settings",
-						label: t("header.integrationSettings"),
-						to: "/settings",
-						icon: MasterSettingsIcon,
-					}
-				: null,
-			isPrivilegedAdmin && sectionAccess?.[AdminSection.Xray]
-				? {
-						key: "xray-settings",
-						label: t("header.xraySettings"),
-						to: "/xray-settings",
-						icon: XraySettingsIcon,
-					}
-				: null,
-			isPrivilegedAdmin
-				? {
-						key: "haproxy",
-						label: t("haproxy.title"),
-						to: "/haproxy",
-						icon: HAProxyIcon,
-					}
-				: null,
-			isPrivilegedAdmin && sectionAccess?.[AdminSection.Xray]
-				? {
-						key: "access-insights",
-						label: t("header.accessInsights"),
-						to: "/access-insights",
-						icon: InsightsIcon,
-					}
-				: null,
-			canViewRecentActions
-				? {
-						key: "recent-actions",
-						label: t("recentActions.title"),
-						to: "/recent-actions",
-						icon: RecentActionsIcon,
-					}
-				: null,
-			isPrivilegedAdmin
-				? {
-						key: "phpmyadmin",
-						label: t("phpmyadmin.menu"),
-						to: "/phpmyadmin",
-						icon: PHPMyAdminIcon,
-					}
-				: null,
-			isPrivilegedAdmin
-				? {
-						key: "external-apps",
-						label: t("externalApps.menu"),
-						to: "/external-apps",
-						icon: ExternalAppsIcon,
-					}
-				: null,
-			isPrivilegedAdmin
-				? {
-						key: "api-docs",
-						label: t("apiDocs.menu"),
-						to: "/api-docs",
-						icon: DocsIcon,
-					}
-				: null,
-			canManagePlaceholders
-				? {
-						key: "placeholders",
-						label: isPrivilegedAdmin
-							? t("placeholders.menu")
-							: t("placeholders.settingsMenu"),
-						to: "/placeholders",
-						icon: PlaceholderIcon,
-					}
-				: null,
-			{
-				key: "tutorials",
-				label: t("tutorials.menu"),
-				to: tutorialsUrl,
-				icon: TutorialIcon,
-			},
-		];
-		return items.filter(Boolean) as SettingsMenuItem[];
-	}, [
-		canManagePlaceholders,
-		canViewRecentActions,
-		isPrivilegedAdmin,
-		sectionAccess,
-		t,
-	]);
+	const dockExcludedRoutes = useMemo(() => {
+		const routes = new Set<string>(["/", "/users", "/myaccount"]);
+		if (canSeeAdmins) routes.add("/admins");
+		if (includeNotificationsInDock) routes.add("/notifications");
+		return routes;
+	}, [canSeeAdmins, includeNotificationsInDock]);
 
-	const hasSettingsMenu = settingsMenuItems.length > 0;
+	const dockSettingsSections = useMemo(
+		() => filterNavSectionsExcluding(navSections, dockExcludedRoutes),
+		[navSections, dockExcludedRoutes],
+	);
 
-	const changeLanguage = (lang: string) => {
-		i18n.changeLanguage(lang);
-	};
+	const flatDockSettingsItems = useMemo(() => {
+		const items: Array<DirectNavItem | GroupSubItem> = [];
+		for (const section of dockSettingsSections) {
+			for (const item of section.items) {
+				if (!item.visible) continue;
+				if (item.type === "direct") {
+					items.push(item);
+				} else {
+					for (const sub of item.subItems) {
+						if (sub.visible) items.push(sub);
+					}
+				}
+			}
+		}
+		return items;
+	}, [dockSettingsSections]);
 
-	const closeUserMenu = () => {
+	const hasSettingsMenu = flatDockSettingsItems.length > 0;
+
+	useEffect(() => {
+		const path = location.pathname;
+		const matchingGroupIds: string[] = [];
+		for (const section of dockSettingsSections) {
+			for (const item of section.items) {
+				if (
+					item.type === "group" &&
+					item.subItems.some(
+						(sub) =>
+							sub.visible &&
+							(path === sub.url ||
+								(sub.url !== "/" && path.startsWith(sub.url))),
+					)
+				) {
+					matchingGroupIds.push(item.id);
+				}
+			}
+		}
+		if (matchingGroupIds.length > 0) {
+			setOpenDockGroups((prev) => {
+				const next = { ...prev };
+				let changed = false;
+				for (const id of matchingGroupIds) {
+					if (!next[id]) {
+						next[id] = true;
+						changed = true;
+					}
+				}
+				return changed ? next : prev;
+			});
+		}
+	}, [dockSettingsSections, location.pathname]);
+
+	const closeUserMenu = useCallback(() => {
 		userMenu.onClose();
-		languageMenu.onClose();
-	};
-
-	const handleUserMenuClose = () => {
-		if (isThemeModalOpen) return;
-		closeUserMenu();
-	};
-
-	const handleThemeModalOpen = () => setIsThemeModalOpen(true);
-	const handleThemeModalClose = () => setIsThemeModalOpen(false);
+		setActiveProfileSubmenu(null);
+		setPressingProfileSubmenu(null);
+	}, [userMenu]);
 
 	useEffect(() => {
 		if (!isMobile) return;
@@ -471,21 +606,24 @@ export function AppLayout() {
 	}, [isMobile, isRTL, sidebarDrawer]);
 
 	const bottomNavItems = useMemo<BottomNavItem[]>(() => {
-		const canSeeAdmins = Boolean(sectionAccess?.[AdminSection.Admins]);
 		const items: BottomNavItem[] = [
-			{ key: "users", label: t("nav.users"), to: "/users" },
+			{ key: "users", label: t("users"), to: "/users" },
 		];
 		if (canSeeAdmins) {
-			items.push({ key: "admins", label: t("nav.admins"), to: "/admins" });
+			items.push({ key: "admins", label: t("admins"), to: "/admins" });
 		}
-			if (items.length + 3 + (hasSettingsMenu ? 1 : 0) <= 5) {
+		if (includeNotificationsInDock) {
 			items.push({
 				key: "notifications",
 				label: t("notifications.menu"),
 				to: "/notifications",
 			});
 		}
-		items.push({ key: "myaccount", label: t("nav.myaccount"), to: "/myaccount" });
+		items.push({
+			key: "myaccount",
+			label: t("myaccount.menu"),
+			to: "/myaccount",
+		});
 		if (hasSettingsMenu) {
 			items.push({ key: "settings", label: t("header.settings"), kind: "menu" });
 		}
@@ -495,18 +633,21 @@ export function AppLayout() {
 			to: "/",
 		});
 		return items;
-	}, [t, sectionAccess, hasSettingsMenu]);
+	}, [t, canSeeAdmins, includeNotificationsInDock, hasSettingsMenu]);
+
+	const isDockItemActive = useCallback(
+		(url: string) =>
+			location.pathname === url ||
+			(url !== "/" && location.pathname.startsWith(url)),
+		[location.pathname],
+	);
 
 	const activeSettingsItem = useMemo(
-		() =>
-			settingsMenuItems.find((item) => {
-				if (item.to === "/") return location.pathname === "/";
-				return location.pathname.startsWith(item.to);
-			}),
-		[settingsMenuItems, location.pathname],
+		() => flatDockSettingsItems.find((item) => isDockItemActive(item.url)),
+		[flatDockSettingsItems, isDockItemActive],
 	);
 	const isSettingsRoute = Boolean(activeSettingsItem);
-	const activeSettingsKey = activeSettingsItem?.key ?? null;
+	const activeSettingsId = activeSettingsItem?.id ?? null;
 
 	const resolveActive = useCallback(
 		(item: BottomNavItem) => {
@@ -603,7 +744,12 @@ export function AppLayout() {
 		setPreviewTabKeySafe(null);
 		if (!moved) {
 			const target = bottomNavItems.find((item) => item.key === key);
-			if (key && key !== activeTabKey && target?.to && !accountHoldOpened.current) {
+			if (
+				key &&
+				key !== activeTabKey &&
+				target?.to &&
+				!accountHoldOpened.current
+			) {
 				setPendingTabKey(key);
 				navigate(target.to);
 			}
@@ -639,15 +785,9 @@ export function AppLayout() {
 	};
 
 	const handleNavClick = (to?: string) => {
-		if (!to) {
-			return;
-		}
-		if (Date.now() < suppressNavClickUntil.current) {
-			return;
-		}
-		if (navDragRef.current.active || isNavDragging) {
-			return;
-		}
+		if (!to) return;
+		if (Date.now() < suppressNavClickUntil.current) return;
+		if (navDragRef.current.active || isNavDragging) return;
 		handleSettingsMenuClose();
 		handleAccountMenuClose();
 		if (to !== location.pathname) navigate(to);
@@ -746,39 +886,448 @@ export function AppLayout() {
 		openSettingsMenu();
 	};
 
-	const settingsDefaultTabByPath: Record<string, string> = {
-		"/settings": "panel",
-		"/hosts": "inbounds",
-		"/usage": "services",
-		"/xray-settings": "basic",
-	};
-	const routeTrail = [
-		"dashboard",
-		...location.pathname.split("/").filter(Boolean),
-		activeLocationHash.replace(/^#/, "") ||
-			settingsDefaultTabByPath[location.pathname] ||
-			"",
-	]
-		.filter(Boolean)
-		.map((part) => breadcrumbLabels[part] ?? part.replace(/[-_]+/g, " "));
-	const locationTrail = editorPageTitle ? [...routeTrail, editorPageTitle] : routeTrail;
-	const openCurrentPage = () => {
-		const defaultTab = settingsDefaultTabByPath[location.pathname];
-		if (defaultTab) {
-			window.location.hash = defaultTab;
-			return;
+	const breadcrumbItems = useMemo(() => {
+		const path = location.pathname;
+		const hashKey = (activeLocationHash || "")
+			.replace(/^#/, "")
+			.split("?")[0]
+			.toLowerCase();
+
+		let items: { label: string; path?: string }[] = [];
+
+		if (path === "/") {
+			items = [{ label: t("dashboard"), path: "/" }];
+		} else if (path === "/users") {
+			items = [
+				{ label: t("dashboard"), path: "/" },
+				{ label: t("sidebar.groups.userHub", "User Management") },
+				{ label: t("sidebar.usersList", t("users")), path: "/users" },
+			];
+		} else if (path === "/groups") {
+			items = [
+				{ label: t("dashboard"), path: "/" },
+				{ label: t("sidebar.groups.userHub", "User Management") },
+				{ label: t("groups.title"), path: "/groups" },
+			];
+		} else if (path === "/bulk-actions") {
+			const bulkActionsTabs: Record<string, string> = {
+				edit: t("bulkActions.tabs.edit"),
+				delete: t("bulkActions.tabs.delete"),
+				permissions: t("bulkActions.tabs.permissions"),
+			};
+			const activeBulkTab = bulkActionsTabs[hashKey];
+			items = [
+				{ label: t("dashboard"), path: "/" },
+				{ label: t("sidebar.groups.userHub", "User Management") },
+				{ label: t("bulkActions.menu"), path: "/bulk-actions" },
+				...(activeBulkTab ? [{ label: activeBulkTab }] : []),
+			];
+		} else if (path === "/admins") {
+			items = [
+				{ label: t("dashboard"), path: "/" },
+				{ label: t("admins"), path: "/admins" },
+			];
+		} else if (path === "/myaccount") {
+			items = [
+				{ label: t("dashboard"), path: "/" },
+				{ label: t("myaccount.menu"), path: "/myaccount" },
+			];
+		} else if (path === "/usage") {
+			const usageTabs: Record<string, string> = {
+				services: t("usage.tabs.services"),
+				admins: t("usage.tabs.admins"),
+				nodes: t("usage.tabs.nodes"),
+			};
+			const activeUsageTab = usageTabs[hashKey] || usageTabs.services;
+			items = [
+				{ label: t("dashboard"), path: "/" },
+				{ label: t("usage.menu"), path: "/usage#services" },
+				{ label: activeUsageTab },
+			];
+		} else if (path === "/hosts") {
+			const hostsTabs: Record<string, string> = {
+				inbounds: t("hostsPage.tabInbounds"),
+				hosts: t("hostsPage.tabHosts"),
+			};
+			const activeHostsTab = hostsTabs[hashKey] || hostsTabs.inbounds;
+			items = [
+				{ label: t("dashboard"), path: "/" },
+				{ label: t("header.hostSettings"), path: "/hosts#inbounds" },
+				{ label: activeHostsTab },
+			];
+		} else if (path === "/services") {
+			items = [
+				{ label: t("dashboard"), path: "/" },
+				{ label: t("services.title"), path: "/services" },
+			];
+		} else if (path === "/node-settings") {
+			items = [
+				{ label: t("dashboard"), path: "/" },
+				{ label: t("header.nodeSettings"), path: "/node-settings" },
+			];
+		} else if (path === "/xray-logs") {
+			items = [
+				{ label: t("dashboard"), path: "/" },
+				{ label: t("sidebar.groups.observability", "Monitoring & Logs") },
+				{ label: t("pages.xray.logs"), path: "/xray-logs" },
+			];
+		} else if (path === "/errors") {
+			items = [
+				{ label: t("dashboard"), path: "/" },
+				{ label: t("sidebar.groups.observability", "Monitoring & Logs") },
+				{ label: t("diagnostics.menu"), path: "/errors" },
+			];
+		} else if (path === "/access-insights") {
+			items = [
+				{ label: t("dashboard"), path: "/" },
+				{ label: t("sidebar.groups.observability", "Monitoring & Logs") },
+				{ label: t("header.accessInsights"), path: "/access-insights" },
+			];
+		} else if (path === "/recent-actions") {
+			items = [
+				{ label: t("dashboard"), path: "/" },
+				{ label: t("sidebar.groups.observability", "Monitoring & Logs") },
+				{ label: t("recentActions.title"), path: "/recent-actions" },
+			];
+		} else if (path === "/xray-settings") {
+			const xrayTabs: Record<string, string> = {
+				basic: t("pages.xray.basicTemplate"),
+				routing: t("pages.xray.Routings"),
+				outbounds: t("pages.xray.Outbounds"),
+				reverse: t("pages.xray.reverse.title"),
+				balancers: t("pages.xray.Balancers"),
+				dns: t("DNS"),
+				advanced: t("pages.xray.advancedTemplate"),
+			};
+			const activeXrayTab = xrayTabs[hashKey] || xrayTabs.basic;
+			items = [
+				{ label: t("dashboard"), path: "/" },
+				{ label: t("sidebar.groups.coreRouting", "Core & Routing") },
+				{ label: t("header.xraySettings"), path: "/xray-settings#basic" },
+				{ label: activeXrayTab },
+			];
+		} else if (path === "/haproxy") {
+			items = [
+				{ label: t("dashboard"), path: "/" },
+				{ label: t("sidebar.groups.coreRouting", "Core & Routing") },
+				{ label: t("haproxy.title"), path: "/haproxy" },
+			];
+		} else if (path === "/notifications") {
+			items = [
+				{ label: t("dashboard"), path: "/" },
+				{ label: t("sidebar.groups.system", "System") },
+				{ label: t("notifications.menu"), path: "/notifications" },
+			];
+		} else if (path === "/settings") {
+			const settingsTabs: Record<string, string> = {
+				panel: t("settings.panel.tabTitle"),
+				telegram: t("settings.telegram"),
+				subscriptions: t("settings.subscriptions.tabTitle"),
+				ssl: t("settings.ssl.tabTitle"),
+			};
+			const activeSettingsTab = settingsTabs[hashKey] || settingsTabs.panel;
+			items = [
+				{ label: t("dashboard"), path: "/" },
+				{ label: t("sidebar.groups.system", "System") },
+				{ label: t("header.integrationSettings"), path: "/settings#panel" },
+				{ label: activeSettingsTab },
+			];
+		} else if (path === "/placeholders") {
+			items = [
+				{ label: t("dashboard"), path: "/" },
+				{ label: t("sidebar.groups.system", "System") },
+				{ label: t("placeholders.menu"), path: "/placeholders" },
+			];
+		} else if (path === "/phpmyadmin") {
+			items = [
+				{ label: t("dashboard"), path: "/" },
+				{ label: t("sidebar.groups.system", "System") },
+				{ label: t("phpmyadmin.menu"), path: "/phpmyadmin" },
+			];
+		} else if (path === "/external-apps") {
+			items = [
+				{ label: t("dashboard"), path: "/" },
+				{ label: t("sidebar.groups.system", "System") },
+				{ label: t("externalApps.menu"), path: "/external-apps" },
+			];
+		} else if (path === "/api-docs") {
+			items = [
+				{ label: t("dashboard"), path: "/" },
+				{ label: t("apiDocs.menu"), path: "/api-docs" },
+			];
+		} else if (path === "/tutorials") {
+			items = [
+				{ label: t("dashboard"), path: "/" },
+				{
+					label: t("sidebar.tutorialsAndFaq", t("tutorials.menu")),
+					path: "/tutorials",
+				},
+			];
+		} else {
+			items = [
+				{ label: t("dashboard"), path: "/" },
+				...path
+					.split("/")
+					.filter(Boolean)
+					.map((part) => ({
+						label: part.replace(/[-_]+/g, " "),
+					})),
+			];
 		}
-		navigate(location.pathname);
-	};
+
+		if (editorPageTitle) {
+			items = [...items, { label: editorPageTitle }];
+		}
+
+		return items;
+	}, [location.pathname, activeLocationHash, editorPageTitle, t]);
 
 	const navigateToSettingsItem = (target: string) => {
-		const defaultTab = settingsDefaultTabByPath[target];
+		handleSettingsMenuClose();
+		setPreviewTabKeySafe("settings");
+		const defaultTab = DEFAULT_TAB_BY_PATH[target];
 		if (defaultTab) {
 			navigate(`${target}#${defaultTab}`);
 			return;
 		}
 		navigate(target);
 	};
+
+	useEffect(() => {
+		const firstBannerSrc = sponsorHeaderItems[0]?.src;
+		if (!firstBannerSrc) return;
+		const probe = new Image();
+		const update = () => {
+			if (probe.naturalWidth && probe.naturalHeight) {
+				const natural = Math.round(
+					(probe.naturalWidth / probe.naturalHeight) * 38,
+				);
+				const half = Math.max(90, Math.round(natural / 2));
+				setBannerDimensions((prev) => {
+					if (prev.natural === natural && prev.half === half) return prev;
+					return { natural, half };
+				});
+			}
+		};
+		probe.onload = update;
+		probe.src = firstBannerSrc;
+		if (probe.complete) update();
+	}, [sponsorHeaderItems[0]?.src]);
+
+	useEffect(() => {
+		const headerEl = headerRef.current;
+		if (!headerEl) return;
+
+		const checkFit = () => {
+			if (!headerRef.current) return;
+			const totalWidth = headerRef.current.clientWidth;
+			const hasBanner = sponsorHeaderItems.length > 0;
+			const bannerImg = headerRef.current.querySelector<HTMLImageElement>(
+				"[data-header-banner] img",
+			);
+			let naturalBannerWidth = 0;
+			if (hasBanner) {
+				if (bannerImg?.naturalWidth && bannerImg.naturalHeight) {
+					naturalBannerWidth = Math.round(
+						(bannerImg.naturalWidth / bannerImg.naturalHeight) * 38,
+					);
+				} else {
+					naturalBannerWidth = bannerDimensions.natural;
+				}
+			}
+			const bannerWidth = hasBanner ? naturalBannerWidth + 2 : 0;
+			const minBannerWidth = hasBanner
+				? Math.max(Math.round(naturalBannerWidth * 0.5), 60)
+				: 0;
+
+			const profileEl = headerRef.current.querySelector<HTMLElement>(
+				"[data-header-profile]",
+			);
+			const notifEl = headerRef.current.querySelector<HTMLElement>(
+				"[data-header-notifications]",
+			);
+			const starsEl = headerRef.current.querySelector<HTMLElement>(
+				"[data-header-github-stars]",
+			);
+			const profileWidth = profileEl ? profileEl.offsetWidth : 90;
+			const notifWidth =
+				!isMobile && getUserIsSuccess && notifEl ? notifEl.offsetWidth : 0;
+			if (!starsCompact && starsEl && starsEl.offsetWidth > 44) {
+				starsExpandedWidthRef.current = starsEl.offsetWidth;
+			}
+			const fullStarsWidth = starsEl ? starsExpandedWidthRef.current : 0;
+			const compactStarsWidth = starsEl ? 34 : 0;
+			const isFa = i18n.language?.startsWith("fa");
+			const fullCalendarWidth = isFa ? 184 : 200;
+			const compactCalendarWidth = 34;
+			const navButtonWidth = 34;
+			const isDesktop = !isMobile && window.innerWidth >= 769;
+			const headerPadding = isDesktop ? 40 : 24;
+			const hstackGap = 12;
+			const navDividerGaps = 25;
+			const bannerGap = hasBanner ? 10 : 0;
+
+			const getAvailableSpace = (calWidth: number, strWidth: number) => {
+				const rightControlsWidth =
+					profileWidth +
+					(notifWidth > 0 ? notifWidth + 8 : 0) +
+					(strWidth > 0 ? strWidth + 8 : 0);
+				const controlsWidth = calWidth + 8 + rightControlsWidth;
+				const fixedOverhead =
+					headerPadding +
+					hstackGap +
+					navButtonWidth +
+					navDividerGaps +
+					bannerGap +
+					controlsWidth;
+				return totalWidth - fixedOverhead;
+			};
+
+			const spaceFullCalFullStars = getAvailableSpace(
+				fullCalendarWidth,
+				fullStarsWidth,
+			);
+			const spaceCompactCalFullStars = getAvailableSpace(
+				compactCalendarWidth,
+				fullStarsWidth,
+			);
+			const spaceCompactCalCompactStars = getAvailableSpace(
+				compactCalendarWidth,
+				compactStarsWidth,
+			);
+
+			const crumbCount = breadcrumbItems.length;
+			const fullBreadcrumbWidth =
+				crumbCount === 0
+					? 0
+					: crumbCount === 1
+						? measureBreadcrumbLabel(breadcrumbItems[0]?.label || "", true)
+						: breadcrumbItems.reduce((acc, item, idx) => {
+								const isLast = idx === crumbCount - 1;
+								return (
+									acc +
+									measureBreadcrumbLabel(item.label || "", isLast) +
+									(idx > 0 ? 24 : 0)
+								);
+							}, 0);
+
+			const compactBreadcrumbWidth =
+				crumbCount <= 2
+					? fullBreadcrumbWidth
+					: measureBreadcrumbLabel(breadcrumbItems[0]?.label || "", false) +
+						24 +
+						22 +
+						24 +
+						measureBreadcrumbLabel(
+							breadcrumbItems[crumbCount - 1]?.label || "",
+							true,
+						);
+
+			const minimalBreadcrumbWidth =
+				crumbCount <= 1
+					? measureBreadcrumbLabel(breadcrumbItems[0]?.label || "", true)
+					: 22 +
+						24 +
+						measureBreadcrumbLabel(
+							breadcrumbItems[crumbCount - 1]?.label || "",
+							true,
+						);
+
+			const buffer = 20;
+			const stage1Needed = fullBreadcrumbWidth + bannerWidth + buffer;
+			const stage2Needed = fullBreadcrumbWidth + bannerWidth + buffer;
+			const stage3Needed = compactBreadcrumbWidth + bannerWidth + buffer;
+			const stage4Needed = minimalBreadcrumbWidth + bannerWidth + buffer;
+			const stage5Needed = minimalBreadcrumbWidth + minBannerWidth + buffer;
+
+			let nextCalendarCompact = true;
+			let nextStarsCompact = false;
+			let nextBreadcrumbMode: "full" | "compact" | "minimal" = "minimal";
+			let nextBannerShrinkable = false;
+			let nextTruncate = true;
+
+			if (spaceFullCalFullStars >= stage1Needed) {
+				nextCalendarCompact = false;
+				nextStarsCompact = false;
+				nextBreadcrumbMode = "full";
+				nextBannerShrinkable = false;
+				nextTruncate = false;
+			} else if (spaceCompactCalFullStars >= stage2Needed) {
+				nextCalendarCompact = true;
+				nextStarsCompact = false;
+				nextBreadcrumbMode = "full";
+				nextBannerShrinkable = false;
+				nextTruncate = false;
+			} else if (spaceCompactCalCompactStars >= stage2Needed) {
+				nextCalendarCompact = true;
+				nextStarsCompact = true;
+				nextBreadcrumbMode = "full";
+				nextBannerShrinkable = false;
+				nextTruncate = false;
+			} else if (spaceCompactCalCompactStars >= stage3Needed) {
+				nextCalendarCompact = true;
+				nextStarsCompact = true;
+				nextBreadcrumbMode = "compact";
+				nextBannerShrinkable = false;
+				nextTruncate = false;
+			} else if (spaceCompactCalCompactStars >= stage4Needed) {
+				nextCalendarCompact = true;
+				nextStarsCompact = true;
+				nextBreadcrumbMode = "minimal";
+				nextBannerShrinkable = false;
+				nextTruncate = false;
+			} else if (hasBanner && spaceCompactCalCompactStars >= stage5Needed) {
+				nextCalendarCompact = true;
+				nextStarsCompact = true;
+				nextBreadcrumbMode = "minimal";
+				nextBannerShrinkable = true;
+				nextTruncate = false;
+			} else {
+				nextCalendarCompact = true;
+				nextStarsCompact = true;
+				nextBreadcrumbMode = "minimal";
+				nextBannerShrinkable = hasBanner;
+				nextTruncate = true;
+			}
+
+			setCalendarCompact((prev) =>
+				prev !== nextCalendarCompact ? nextCalendarCompact : prev,
+			);
+			setStarsCompact((prev) =>
+				prev !== nextStarsCompact ? nextStarsCompact : prev,
+			);
+			setBreadcrumbMode((prev) =>
+				prev !== nextBreadcrumbMode ? nextBreadcrumbMode : prev,
+			);
+			setBannerShrinkable((prev) =>
+				prev !== nextBannerShrinkable ? nextBannerShrinkable : prev,
+			);
+			setCanTruncateLastCrumbState((prev) =>
+				prev !== nextTruncate ? nextTruncate : prev,
+			);
+		};
+		const timer = window.setTimeout(checkFit, 20);
+		const ro = new ResizeObserver(checkFit);
+		ro.observe(headerEl);
+		const controlsEl = headerEl.querySelector<HTMLElement>(
+			"[data-header-controls]",
+		);
+		if (controlsEl) {
+			ro.observe(controlsEl);
+		}
+		return () => {
+			window.clearTimeout(timer);
+			ro.disconnect();
+		};
+	}, [
+		sponsorHeaderItems.length,
+		breadcrumbItems,
+		i18n.language,
+		bannerDimensions.natural,
+		isMobile,
+		getUserIsSuccess,
+		starsCompact,
+	]);
 
 	return (
 		<>
@@ -788,7 +1337,7 @@ export function AppLayout() {
 			<div
 				dir={isRTL ? "rtl" : "ltr"}
 				className={cn(
-					"flex min-h-[100vh] max-h-[100vh] overflow-hidden bg-panel-app",
+					"flex h-[100dvh] max-h-[100dvh] min-h-[100dvh] overflow-hidden bg-panel-app min-[769px]:h-[100vh] min-[769px]:max-h-[100vh] min-[769px]:min-h-[100vh]",
 					isRTL ? "flex-row-reverse" : "flex-row",
 				)}
 				style={
@@ -797,288 +1346,849 @@ export function AppLayout() {
 							? "0px"
 							: sidebarCollapsed
 								? "88px"
-								: "248px",
+								: "calc(var(--rb-sidebar-width, 240px) + 20px)",
 					} as CSSProperties
 				}
 			>
-				{/* persistent sidebar on md+; drawer on mobile */}
 				{!isMobile ? (
 					<AppSidebar
 						collapsed={sidebarCollapsed}
 						sponsors={sponsorSidebarLogoItems}
 						sidebarBanners={sponsorSidebarBanners}
-						onRequestExpand={() => setSidebarCollapsed(false)}
+						onRequestExpand={handleSidebarExpand}
 					/>
 				) : null}
 
 				<div
 					ref={contentRef}
-					className="flex min-w-0 flex-1 flex-col overflow-hidden"
+					className="relative flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-panel-main transition-[margin] duration-[220ms] ease-[cubic-bezier(0.16,1,0.3,1)]"
 					style={{
-						marginLeft: isMobile || isRTL ? "0" : sidebarCollapsed ? "88px" : "248px",
-						marginRight: isMobile || !isRTL ? "0" : sidebarCollapsed ? "88px" : "248px",
-						transition: "margin 0.3s cubic-bezier(0.16, 1, 0.3, 1)",
+						marginLeft:
+							isMobile || isRTL
+								? "0px"
+								: sidebarCollapsed
+									? "88px"
+									: "calc(var(--rb-sidebar-width, 240px) + 20px)",
+						marginRight:
+							isMobile || !isRTL
+								? "0px"
+								: sidebarCollapsed
+									? "88px"
+									: "calc(var(--rb-sidebar-width, 240px) + 20px)",
 					}}
 				>
-					<header className="sticky top-3 z-40 mx-3 mt-3 flex h-14 min-h-14 shrink-0 select-none items-center justify-between gap-4 rounded-2xl border border-panel-border! bg-panel-surface px-3 md:mx-4 md:px-5">
-						<div className="flex min-w-0 flex-1 items-center gap-3">
-							<Button aria-label={t("a11y.toggleSidebar")} onClick={() => {
-									if (isMobile) sidebarDrawer.onOpen();
-									else setSidebarCollapsed(!sidebarCollapsed);
-								}} variant="outline" size="icon" className="shrink-0 border-panel-border! bg-panel-elevated hover:bg-panel-border-strong">
-								<MenuIcon className="size-4" />
-							</Button>
+					<div className="relative z-[100] shrink-0">
+						<header
+							ref={headerRef}
+							dir={isRTL ? "rtl" : "ltr"}
+							className="mx-3 mt-3 flex h-[52px] min-h-[52px] items-center justify-between gap-3 overflow-hidden rounded-[18px] border border-panel-border! bg-panel-surface px-3 shadow-[0_1px_2px_rgba(0,0,0,0.03),inset_0_1px_0_0_rgba(255,255,255,0.75)] select-none min-[769px]:mx-4 min-[769px]:px-5 dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
+						>
+							<div className="flex h-full min-w-0 flex-1 items-center gap-2.5 overflow-hidden">
+								<button
+									type="button"
+									aria-label={t("a11y.toggleSidebar")}
+									onClick={() => {
+										if (isMobile) sidebarDrawer.onOpen();
+										else setSidebarCollapsed(!sidebarCollapsed);
+									}}
+									className="inline-flex size-[34px] min-w-[34px]! shrink-0 items-center justify-center rounded-full border border-panel-border! bg-panel-surface dark:bg-input/30 text-panel-text-secondary shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,color,box-shadow,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] outline-none active:scale-[0.95] focus-visible:ring-2 focus-visible:ring-panel-accent/50 min-[769px]:rounded-[12px] min-[769px]:hover:border-panel-border-strong! min-[769px]:hover:bg-panel-elevated min-[769px]:dark:hover:bg-panel-elevated min-[769px]:hover:text-panel-text min-[769px]:hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)]"
+								>
+									<AnimatedHamburger
+										isOpen={isMobile ? sidebarDrawer.isOpen : !sidebarCollapsed}
+										isRTL={isRTL}
+									/>
+								</button>
 
-							{/* Stock shadcn Breadcrumb: the trail is the same, the markup is the kit's. */}
-							<Breadcrumb dir="ltr" className="hidden min-w-0 shrink md:block">
-								<BreadcrumbList className="flex-nowrap items-center gap-1 overflow-hidden text-xs whitespace-nowrap md:text-sm">
-									<BreadcrumbItem className="shrink-0">
-										<BreadcrumbLink asChild>
-											<button
-												type="button"
-												onClick={() => navigate("/")}
-												className="whitespace-nowrap font-semibold text-panel-text-secondary transition-colors hover:text-panel-text"
+								<span
+									aria-hidden="true"
+									className="mx-0.5 hidden h-4 w-px shrink-0 bg-panel-border min-[769px]:block"
+								/>
+
+								<Breadcrumb
+									data-header-breadcrumb="true"
+									dir={isRTL ? "rtl" : "ltr"}
+									className={cn(
+										"hidden min-[769px]:flex",
+										canTruncateLastCrumb
+											? "min-w-0 shrink overflow-hidden"
+											: "min-w-fit shrink-0 overflow-visible",
+									)}
+								>
+									<BreadcrumbList
+										className={cn(
+											canTruncateLastCrumb ? "min-w-0" : "min-w-fit",
+										)}
+									>
+										{breadcrumbItems.length === 1 ? (
+											<BreadcrumbItem
+												className={cn(
+													canTruncateLastCrumb
+														? "min-w-0 shrink"
+														: "min-w-fit shrink-0",
+												)}
 											>
-												dashboard
-											</button>
-										</BreadcrumbLink>
-									</BreadcrumbItem>
-									{locationTrail.length > 1 && (
-										<>
-											<BreadcrumbSeparator className="text-panel-text-muted">/</BreadcrumbSeparator>
-											<BreadcrumbItem>
-												<BreadcrumbLink asChild>
-													<button
-														type="button"
-														onClick={openCurrentPage}
-														className="whitespace-nowrap font-semibold text-panel-text-secondary transition-colors hover:text-panel-text"
-													>
-														{locationTrail[1]}
-													</button>
-												</BreadcrumbLink>
+												<BreadcrumbPage isTruncated={canTruncateLastCrumb}>
+													{breadcrumbItems[0].label}
+												</BreadcrumbPage>
 											</BreadcrumbItem>
-										</>
-									)}
-									{locationTrail.length > 2 && (
-										<BreadcrumbSeparator className="text-panel-text-muted">/</BreadcrumbSeparator>
-									)}
-									{locationTrail.length > 2 && (
-										<BreadcrumbItem className="min-w-0">
-											<BreadcrumbPage className="truncate text-xs font-semibold text-panel-text-secondary md:text-sm">
-												{locationTrail.slice(2).join(" / ")}
-											</BreadcrumbPage>
-										</BreadcrumbItem>
-									)}
-								</BreadcrumbList>
-							</Breadcrumb>
-							{mobileHeaderItems.length > 0 && (
-								<div className="block w-[160px] min-w-0 shrink sm:w-[220px] md:hidden md:w-[360px]">
-									<SponsorCarousel items={mobileHeaderItems} variant="banner" />
-								</div>
-							)}
-							{sponsorHeaderItems.length > 0 && (
-								<div className="hidden w-[160px] min-w-0 shrink sm:w-[220px] md:block md:w-[360px]">
-									<SponsorCarousel items={sponsorHeaderItems} variant="banner" />
-								</div>
-							)}
-						</div>
+										) : null}
 
-						<div className="flex shrink-0 items-center gap-2">
-							<div className="flex h-[34px] items-center rounded-full border border-panel-border! bg-panel-elevated px-1">
-								<HeaderCalendar />
-								{getUserIsSuccess && userData.username && <NotificationBell />}
-								<GitHubStars />
+										{breadcrumbItems.length === 2 ? (
+											breadcrumbMode === "minimal" ? (
+												<>
+													<BreadcrumbItem className="shrink-0">
+														<BreadcrumbEllipsisDropdown
+															items={[breadcrumbItems[0]]}
+															onNavigate={(path) => navigate(path)}
+														/>
+													</BreadcrumbItem>
+													<BreadcrumbSeparator />
+													<BreadcrumbItem
+														className={cn(
+															canTruncateLastCrumb
+																? "min-w-0 shrink"
+																: "min-w-fit shrink-0",
+														)}
+													>
+														<BreadcrumbPage isTruncated={canTruncateLastCrumb}>
+															{breadcrumbItems[1].label}
+														</BreadcrumbPage>
+													</BreadcrumbItem>
+												</>
+											) : (
+												<>
+													<BreadcrumbItem className="shrink-0">
+														<BreadcrumbLink
+															isClickable={Boolean(breadcrumbItems[0].path)}
+															onClick={() => {
+																if (breadcrumbItems[0].path) {
+																	navigate(breadcrumbItems[0].path);
+																}
+															}}
+														>
+															{breadcrumbItems[0].label}
+														</BreadcrumbLink>
+													</BreadcrumbItem>
+													<BreadcrumbSeparator />
+													<BreadcrumbItem
+														className={cn(
+															canTruncateLastCrumb
+																? "min-w-0 shrink"
+																: "min-w-fit shrink-0",
+														)}
+													>
+														<BreadcrumbPage isTruncated={canTruncateLastCrumb}>
+															{breadcrumbItems[1].label}
+														</BreadcrumbPage>
+													</BreadcrumbItem>
+												</>
+											)
+										) : null}
+
+										{breadcrumbItems.length === 3 ? (
+											<>
+												{breadcrumbMode === "full" ? (
+													<>
+														<BreadcrumbItem className="shrink-0">
+															<BreadcrumbLink
+																isClickable={Boolean(breadcrumbItems[0].path)}
+																onClick={() => {
+																	if (breadcrumbItems[0].path) {
+																		navigate(breadcrumbItems[0].path);
+																	}
+																}}
+															>
+																{breadcrumbItems[0].label}
+															</BreadcrumbLink>
+														</BreadcrumbItem>
+														<BreadcrumbSeparator />
+														<BreadcrumbItem className="shrink-0">
+															<BreadcrumbLink
+																isClickable={Boolean(breadcrumbItems[1].path)}
+																onClick={() => {
+																	if (breadcrumbItems[1].path) {
+																		navigate(breadcrumbItems[1].path);
+																	}
+																}}
+															>
+																{breadcrumbItems[1].label}
+															</BreadcrumbLink>
+														</BreadcrumbItem>
+														<BreadcrumbSeparator />
+														<BreadcrumbItem
+															className={cn(
+																canTruncateLastCrumb
+																	? "min-w-0 shrink"
+																	: "min-w-fit shrink-0",
+															)}
+														>
+															<BreadcrumbPage
+																isTruncated={canTruncateLastCrumb}
+															>
+																{breadcrumbItems[2].label}
+															</BreadcrumbPage>
+														</BreadcrumbItem>
+													</>
+												) : null}
+
+												{breadcrumbMode === "compact" ? (
+													<>
+														<BreadcrumbItem className="shrink-0">
+															<BreadcrumbLink
+																isClickable={Boolean(breadcrumbItems[0].path)}
+																onClick={() => {
+																	if (breadcrumbItems[0].path) {
+																		navigate(breadcrumbItems[0].path);
+																	}
+																}}
+															>
+																{breadcrumbItems[0].label}
+															</BreadcrumbLink>
+														</BreadcrumbItem>
+														<BreadcrumbSeparator />
+														<BreadcrumbItem className="shrink-0">
+															<BreadcrumbEllipsisDropdown
+																items={[breadcrumbItems[1]]}
+																onNavigate={(path) => navigate(path)}
+															/>
+														</BreadcrumbItem>
+														<BreadcrumbSeparator />
+														<BreadcrumbItem
+															className={cn(
+																canTruncateLastCrumb
+																	? "min-w-0 shrink"
+																	: "min-w-fit shrink-0",
+															)}
+														>
+															<BreadcrumbPage
+																isTruncated={canTruncateLastCrumb}
+															>
+																{breadcrumbItems[2].label}
+															</BreadcrumbPage>
+														</BreadcrumbItem>
+													</>
+												) : null}
+
+												{breadcrumbMode === "minimal" ? (
+													<>
+														<BreadcrumbItem className="shrink-0">
+															<BreadcrumbEllipsisDropdown
+																items={[breadcrumbItems[0], breadcrumbItems[1]]}
+																onNavigate={(path) => navigate(path)}
+															/>
+														</BreadcrumbItem>
+														<BreadcrumbSeparator />
+														<BreadcrumbItem
+															className={cn(
+																canTruncateLastCrumb
+																	? "min-w-0 shrink"
+																	: "min-w-fit shrink-0",
+															)}
+														>
+															<BreadcrumbPage
+																isTruncated={canTruncateLastCrumb}
+															>
+																{breadcrumbItems[2].label}
+															</BreadcrumbPage>
+														</BreadcrumbItem>
+													</>
+												) : null}
+											</>
+										) : null}
+
+										{breadcrumbItems.length === 4 ? (
+											<>
+												{breadcrumbMode === "full" ? (
+													<>
+														<BreadcrumbItem className="shrink-0">
+															<BreadcrumbLink
+																isClickable={Boolean(breadcrumbItems[0].path)}
+																onClick={() => {
+																	if (breadcrumbItems[0].path) {
+																		navigate(breadcrumbItems[0].path);
+																	}
+																}}
+															>
+																{breadcrumbItems[0].label}
+															</BreadcrumbLink>
+														</BreadcrumbItem>
+														<BreadcrumbSeparator />
+														<BreadcrumbItem className="shrink-0">
+															<BreadcrumbLink
+																isClickable={Boolean(breadcrumbItems[1].path)}
+																onClick={() => {
+																	if (breadcrumbItems[1].path) {
+																		navigate(breadcrumbItems[1].path);
+																	}
+																}}
+															>
+																{breadcrumbItems[1].label}
+															</BreadcrumbLink>
+														</BreadcrumbItem>
+														<BreadcrumbSeparator />
+														<BreadcrumbItem className="shrink-0">
+															<BreadcrumbLink
+																isClickable={Boolean(breadcrumbItems[2].path)}
+																onClick={() => {
+																	if (breadcrumbItems[2].path) {
+																		navigate(breadcrumbItems[2].path);
+																	}
+																}}
+															>
+																{breadcrumbItems[2].label}
+															</BreadcrumbLink>
+														</BreadcrumbItem>
+														<BreadcrumbSeparator />
+														<BreadcrumbItem
+															className={cn(
+																canTruncateLastCrumb
+																	? "min-w-0 shrink"
+																	: "min-w-fit shrink-0",
+															)}
+														>
+															<BreadcrumbPage
+																isTruncated={canTruncateLastCrumb}
+															>
+																{breadcrumbItems[3].label}
+															</BreadcrumbPage>
+														</BreadcrumbItem>
+													</>
+												) : null}
+
+												{breadcrumbMode === "compact" ? (
+													<>
+														<BreadcrumbItem className="shrink-0">
+															<BreadcrumbLink
+																isClickable={Boolean(breadcrumbItems[0].path)}
+																onClick={() => {
+																	if (breadcrumbItems[0].path) {
+																		navigate(breadcrumbItems[0].path);
+																	}
+																}}
+															>
+																{breadcrumbItems[0].label}
+															</BreadcrumbLink>
+														</BreadcrumbItem>
+														<BreadcrumbSeparator />
+														<BreadcrumbItem className="shrink-0">
+															<BreadcrumbEllipsisDropdown
+																items={[breadcrumbItems[1], breadcrumbItems[2]]}
+																onNavigate={(path) => navigate(path)}
+															/>
+														</BreadcrumbItem>
+														<BreadcrumbSeparator />
+														<BreadcrumbItem
+															className={cn(
+																canTruncateLastCrumb
+																	? "min-w-0 shrink"
+																	: "min-w-fit shrink-0",
+															)}
+														>
+															<BreadcrumbPage
+																isTruncated={canTruncateLastCrumb}
+															>
+																{breadcrumbItems[3].label}
+															</BreadcrumbPage>
+														</BreadcrumbItem>
+													</>
+												) : null}
+
+												{breadcrumbMode === "minimal" ? (
+													<>
+														<BreadcrumbItem className="shrink-0">
+															<BreadcrumbEllipsisDropdown
+																items={[
+																	breadcrumbItems[0],
+																	breadcrumbItems[1],
+																	breadcrumbItems[2],
+																]}
+																onNavigate={(path) => navigate(path)}
+															/>
+														</BreadcrumbItem>
+														<BreadcrumbSeparator />
+														<BreadcrumbItem
+															className={cn(
+																canTruncateLastCrumb
+																	? "min-w-0 shrink"
+																	: "min-w-fit shrink-0",
+															)}
+														>
+															<BreadcrumbPage
+																isTruncated={canTruncateLastCrumb}
+															>
+																{breadcrumbItems[3].label}
+															</BreadcrumbPage>
+														</BreadcrumbItem>
+													</>
+												) : null}
+											</>
+										) : null}
+
+										{breadcrumbItems.length > 4 ? (
+											breadcrumbMode === "minimal" ? (
+												<>
+													<BreadcrumbItem className="shrink-0">
+														<BreadcrumbEllipsisDropdown
+															items={breadcrumbItems.slice(0, -1)}
+															onNavigate={(path) => navigate(path)}
+														/>
+													</BreadcrumbItem>
+													<BreadcrumbSeparator />
+													<BreadcrumbItem
+														className={cn(
+															canTruncateLastCrumb
+																? "min-w-0 shrink"
+																: "min-w-fit shrink-0",
+														)}
+													>
+														<BreadcrumbPage isTruncated={canTruncateLastCrumb}>
+															{
+																breadcrumbItems[breadcrumbItems.length - 1]
+																	.label
+															}
+														</BreadcrumbPage>
+													</BreadcrumbItem>
+												</>
+											) : (
+												<>
+													<BreadcrumbItem className="shrink-0">
+														<BreadcrumbLink
+															isClickable={Boolean(breadcrumbItems[0].path)}
+															onClick={() => {
+																if (breadcrumbItems[0].path) {
+																	navigate(breadcrumbItems[0].path);
+																}
+															}}
+														>
+															{breadcrumbItems[0].label}
+														</BreadcrumbLink>
+													</BreadcrumbItem>
+													<BreadcrumbSeparator />
+													<BreadcrumbItem className="shrink-0">
+														<BreadcrumbEllipsisDropdown
+															items={breadcrumbItems.slice(1, -1)}
+															onNavigate={(path) => navigate(path)}
+														/>
+													</BreadcrumbItem>
+													<BreadcrumbSeparator />
+													<BreadcrumbItem
+														className={cn(
+															canTruncateLastCrumb
+																? "min-w-0 shrink"
+																: "min-w-fit shrink-0",
+														)}
+													>
+														<BreadcrumbPage isTruncated={canTruncateLastCrumb}>
+															{
+																breadcrumbItems[breadcrumbItems.length - 1]
+																	.label
+															}
+														</BreadcrumbPage>
+													</BreadcrumbItem>
+												</>
+											)
+										) : null}
+									</BreadcrumbList>
+								</Breadcrumb>
+
+								{isMobile && mobileHeaderItems.length > 0 ? (
+									<div
+										data-header-mobile-banner="true"
+										className="flex max-h-[38px] min-w-[40px] max-w-full shrink items-center justify-start overflow-hidden"
+									>
+										<SponsorCarousel
+											items={mobileHeaderItems}
+											variant="banner"
+											animateIn={false}
+										/>
+									</div>
+								) : null}
+
+								{!isMobile && sponsorHeaderItems.length > 0 ? (
+									<div
+										data-header-banner="true"
+										style={{
+											width: bannerShrinkable
+												? "100%"
+												: `${bannerDimensions.natural}px`,
+											maxWidth: `${bannerDimensions.natural}px`,
+											minWidth: bannerShrinkable
+												? `${Math.max(Math.round(bannerDimensions.natural * 0.5), 60)}px`
+												: `${bannerDimensions.natural}px`,
+										}}
+										className={cn(
+											"flex max-h-[38px] items-center justify-center overflow-hidden",
+											bannerShrinkable ? "shrink" : "shrink-0",
+										)}
+									>
+										<SponsorCarousel
+											items={sponsorHeaderItems}
+											variant="banner"
+											animateIn={false}
+										/>
+									</div>
+								) : null}
 							</div>
 
-							{/* User menu */}
-							{getUserIsSuccess && userData.username && (
-								<DropdownMenu open={userMenu.isOpen} onOpenChange={(open) => {
-										if (open) userMenu.onOpen();
-										else handleUserMenuClose();
-									}}>
-									<DropdownMenuTrigger asChild>
-										<Button aria-label={t("a11y.userMenu")} variant="outline" className="h-[34px] min-w-[34px] rounded-full border-panel-border! bg-panel-elevated ps-1 pe-1 text-sm font-semibold hover:bg-panel-border-strong sm:pe-3">
-											<span className="flex items-center gap-2">
-												<span
-													className={cn(
-														"flex size-6 shrink-0 items-center justify-center rounded-full",
-														TINT_CLASS,
-													)}
-												>
-													<PersonIcon className="size-3.5" />
-												</span>
-												<span className="hidden max-w-[100px] truncate sm:inline sm:max-w-[130px]">
-													{userData.username}
-												</span>
-											</span>
-										</Button>
-									</DropdownMenuTrigger>
-									<DropdownMenuContent align={isRTL ? "start" : "end"} sideOffset={8} className="min-w-[236px]! rounded-xl border-panel-border! bg-panel-surface p-1.5 text-panel-text shadow-xl select-none">
-										<div ref={userMenuContentRef}>
-											{/* User info */}
-											<div className="mx-1.5 mt-1 mb-1.5 flex items-center gap-3 rounded-lg bg-panel-main px-3 py-2.5">
-												<span
-													className={cn(
-														"flex size-9 shrink-0 items-center justify-center rounded-full",
-														TINT_CLASS,
-													)}
-												>
-													<PersonIcon className="size-5" />
-												</span>
-												<div className="flex min-w-0 flex-col">
-													<span className="max-w-[160px] truncate text-sm font-semibold">
+							<div
+								data-header-controls="true"
+								className="flex h-full shrink-0 items-center gap-1.5 sm:gap-2"
+							>
+								{!isMobile ? (
+									<HeaderCalendar isCompact={calendarCompact} />
+								) : null}
+
+								<GitHubStars compact={isMobile || starsCompact} />
+
+								{!isMobile && getUserIsSuccess && userData.username ? (
+									<NotificationBell />
+								) : null}
+
+								{getUserIsSuccess && userData.username ? (
+									<Popover
+										open={userMenu.isOpen}
+										onOpenChange={(open) => {
+											if (open) userMenu.onOpen();
+											else closeUserMenu();
+										}}
+									>
+										<PopoverTrigger asChild>
+											<Button
+												type="button"
+												data-header-profile="true"
+												variant="outline"
+												size="sm"
+												aria-label={t("a11y.userMenu")}
+												className="h-[34px] w-[34px] min-w-[34px]! rounded-full border-panel-border! bg-panel-surface p-0 text-panel-text shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,box-shadow,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:bg-panel-surface dark:hover:bg-input/30 active:scale-[0.97] active:bg-panel-elevated min-[769px]:w-auto min-[769px]:min-w-0 min-[769px]:rounded-[12px] min-[769px]:px-3 min-[769px]:hover:border-panel-border-strong! min-[769px]:hover:bg-panel-elevated min-[769px]:dark:hover:bg-panel-elevated min-[769px]:hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)]"
+											>
+												<span className="flex items-center justify-center gap-2">
+													<span className="relative inline-flex shrink-0 items-center justify-center">
+														<CircleUser
+															className="size-4 text-panel-text"
+															strokeWidth={1.75}
+														/>
+														{isMobile && unread > 0 ? (
+															<span className="absolute -top-0.5 -end-0.5 size-2 rounded-full border-[1.5px] border-panel-surface bg-panel-accent" />
+														) : null}
+													</span>
+													<span
+														dir="ltr"
+														style={{ unicodeBidi: "isolate" }}
+														className="hidden max-w-[140px] truncate text-xs font-semibold leading-normal text-panel-text min-[769px]:inline"
+													>
 														{userData.username}
 													</span>
-													<span className="text-xs text-panel-text-secondary">
+												</span>
+											</Button>
+										</PopoverTrigger>
+										<PopoverContent
+											dir={isRTL ? "rtl" : "ltr"}
+											align={isRTL ? "start" : "end"}
+											sideOffset={8}
+											collisionPadding={12}
+											id="rb-user-menu"
+											data-profile-window="true"
+											data-profile-menu="true"
+											onOpenAutoFocus={(e) => e.preventDefault()}
+											className="z-[9999] w-[240px] min-w-[240px]! max-w-[240px] max-h-[min(calc(var(--radix-popover-content-available-height,76dvh)-8px),calc(100dvh-24px))] overflow-y-auto overscroll-contain rounded-[20px] border border-panel-border! bg-panel-surface p-2 text-panel-text shadow-[0_20px_48px_rgba(0,0,0,0.34)] select-none"
+										>
+											<div
+												dir={isRTL ? "rtl" : "ltr"}
+												className="mb-1.5 flex w-full items-center justify-start gap-3 rounded-[14px] border border-panel-border! bg-panel-elevated p-2.5 text-start"
+											>
+												<div className="flex size-8 shrink-0 items-center justify-center rounded-[10px] border border-panel-border! bg-panel-surface text-panel-text">
+													<CircleUser className="size-4" strokeWidth={1.75} />
+												</div>
+												<div className="flex min-w-0 flex-1 flex-col items-start text-start">
+													<span
+														dir="ltr"
+														style={{ unicodeBidi: "isolate" }}
+														className="max-w-full truncate text-[13px] font-bold text-panel-text"
+													>
+														{userData.username}
+													</span>
+													<span className="max-w-full truncate text-[11px] font-medium text-panel-text-muted">
 														{roleLabel}
 													</span>
 												</div>
 											</div>
 
-											{/* Language selector */}
-											<Popover open={languageMenu.isOpen} onOpenChange={(open) =>
-													open ? languageMenu.onOpen() : languageMenu.onClose()
-												}>
-												<PopoverTrigger asChild>
-													<Button onClick={(event: ReactMouseEvent) => event.stopPropagation()} variant="ghost" className="h-10 w-full justify-start gap-3 rounded-md bg-transparent px-3 font-medium text-panel-text hover:bg-panel-elevated focus-visible:bg-panel-elevated active:bg-panel-elevated">
-														<LanguageIconStyled className="size-4 shrink-0" />
-														<span className="flex min-w-0 flex-1 items-center justify-between gap-3">
-															<span>{t("header.language")}</span>
-															<span className="text-xs text-panel-text-secondary">
+											<div className="flex flex-col gap-0.5">
+												{isMobile ? (
+													<NotificationMenuItem
+														key={`notif-menu-${isRTL ? "rtl" : "ltr"}`}
+														onNavigate={closeUserMenu}
+														isOpen={activeProfileSubmenu === "notifications"}
+														isPressing={
+															pressingProfileSubmenu === "notifications"
+														}
+														onToggle={() =>
+															toggleProfileSubmenu("notifications")
+														}
+														onClose={() => {
+															if (activeProfileSubmenu === "notifications") {
+																setActiveProfileSubmenu(null);
+															}
+														}}
+													/>
+												) : null}
+
+												{isMobile ? (
+													<HeaderCalendar
+														key={`cal-menu-${isRTL ? "rtl" : "ltr"}`}
+														inMenu
+														isOpen={activeProfileSubmenu === "calendar"}
+														isPressing={pressingProfileSubmenu === "calendar"}
+														onToggle={() => toggleProfileSubmenu("calendar")}
+														onClose={() => {
+															if (activeProfileSubmenu === "calendar") {
+																setActiveProfileSubmenu(null);
+															}
+														}}
+													/>
+												) : null}
+
+												<Popover
+													open={activeProfileSubmenu === "language"}
+													onOpenChange={(open) => {
+														if (open) {
+															setActiveProfileSubmenu("language");
+														} else if (activeProfileSubmenu === "language") {
+															setActiveProfileSubmenu(null);
+														}
+													}}
+												>
+													<PopoverTrigger asChild>
+														<button
+															type="button"
+															data-submenu-trigger="true"
+															onClick={(event: ReactMouseEvent) => {
+																event.stopPropagation();
+																toggleProfileSubmenu("language");
+															}}
+															className={cn(
+																"flex h-[38px] w-full items-center justify-between gap-2.5 rounded-[12px] px-3 text-[13px] font-medium text-panel-text transition-[background-color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] outline-none select-none active:scale-[0.97] active:bg-panel-elevated focus-visible:bg-panel-elevated min-[769px]:hover:bg-panel-elevated",
+																pressingProfileSubmenu === "language" ||
+																	activeProfileSubmenu === "language"
+																	? "bg-panel-elevated"
+																	: "bg-transparent",
+																pressingProfileSubmenu === "language" &&
+																	"scale-[0.97]",
+															)}
+														>
+															<span className="flex min-w-0 items-center gap-2.5">
+																<Languages
+																	className="size-4 shrink-0 text-panel-text"
+																	strokeWidth={1.75}
+																/>
+																<span className="truncate">
+																	{t("header.language")}
+																</span>
+															</span>
+															<span className="shrink-0 text-[11px] font-semibold text-panel-text-muted">
 																{languageItems.find(
-																	(item) => item.code === i18n.language,
+																	(item) => item.code === activeLanguage,
 																)?.label || "English"}
 															</span>
-														</span>
-													</Button>
-												</PopoverTrigger>
-												<PopoverContent side={isMobile ? "bottom" : isRTL ? "left" : "right"} align="start" className="min-w-[160px]! rounded-md border-panel-border! bg-panel-surface py-2 text-panel-text shadow-lg select-none">
-													{languageItems.map(({ code, label, flag }) => {
-														const isActiveLang = i18n.language === code;
-														return (
-															<button
-																key={code}
-																type="button"
-																onClick={() => {
-																	changeLanguage(code);
-																	languageMenu.onClose();
-																}}
-																className="flex w-full items-center justify-between gap-3 px-3 py-2 text-sm text-panel-text transition-colors hover:bg-panel-elevated focus-visible:bg-panel-elevated focus-visible:outline-none"
-															>
-																<span className="flex items-center gap-2">
-																	{code === "fa" ? (
-																		<ImperialIranFlag
-																			style={{ width: "16px", height: "12px" }}
-																		/>
-																	) : (
-																		<ReactCountryFlag
-																			countryCode={flag}
-																			svg
-																			style={{ width: "16px", height: "12px" }}
-																		/>
-																	)}
-																	<span>{label}</span>
-																</span>
-																{isActiveLang && <Check width={16} />}
-															</button>
-														);
-													})}
-												</PopoverContent>
-											</Popover>
+														</button>
+													</PopoverTrigger>
+													<PopoverContent
+														dir={isRTL ? "rtl" : "ltr"}
+														side={isMobile ? "bottom" : isRTL ? "left" : "right"}
+														align={isMobile ? "center" : "start"}
+														sideOffset={8}
+														collisionPadding={12}
+														data-profile-window="true"
+														data-profile-submenu="true"
+														data-language-menu-list="true"
+														className="z-[10005] w-[min(220px,calc(100vw-24px))] min-w-[176px]! max-h-[min(calc(var(--radix-popover-content-available-height,72dvh)-8px),calc(100dvh-24px))] overflow-y-auto overscroll-contain rounded-[20px] border border-panel-border! bg-panel-surface p-1.5 text-panel-text shadow-[0_20px_48px_rgba(0,0,0,0.35)] select-none"
+													>
+														<div className="flex flex-col gap-0.5">
+															{languageItems.map(({ code, label, flag }) => {
+																const isActiveLang = activeLanguage === code;
+																return (
+																	<button
+																		key={code}
+																		type="button"
+																		onClick={(e) => {
+																			e.preventDefault();
+																			e.stopPropagation();
+																			i18n.changeLanguage(code);
+																			setActiveProfileSubmenu(null);
+																		}}
+																		className={cn(
+																			"flex h-9 w-full items-center justify-between gap-3 rounded-[10px] px-2.5 text-xs transition-[background-color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] outline-none active:scale-[0.98] focus-visible:bg-panel-elevated min-[769px]:hover:bg-panel-elevated",
+																			isActiveLang
+																				? "bg-panel-elevated font-bold text-panel-text"
+																				: "font-medium text-panel-text-secondary min-[769px]:hover:text-panel-text",
+																		)}
+																	>
+																		<span className="flex items-center gap-2.5">
+																			{code === "fa" ? (
+																				<ImperialIranFlag
+																					style={{
+																						width: "16px",
+																						height: "12px",
+																						borderRadius: "2px",
+																					}}
+																				/>
+																			) : (
+																				<ReactCountryFlag
+																					countryCode={flag}
+																					svg
+																					style={{
+																						width: "16px",
+																						height: "12px",
+																						borderRadius: "2px",
+																					}}
+																				/>
+																			)}
+																			<span>{label}</span>
+																		</span>
+																		{isActiveLang ? (
+																			<Check className="size-3.5 text-panel-accent" />
+																		) : null}
+																	</button>
+																);
+															})}
+														</div>
+													</PopoverContent>
+												</Popover>
 
-											{/* Theme selector */}
-											<ThemeSelector
-												trigger="menuItem"
-												triggerLabel={t("header.theme")}
-												portalContainer={userMenuContentRef}
-												onModalOpen={handleThemeModalOpen}
-												onModalClose={handleThemeModalClose}
-											/>
+												<ThemeSelector
+													key={`theme-menu-${isRTL ? "rtl" : "ltr"}`}
+													trigger="menuItem"
+													triggerLabel={t("header.theme")}
+													isOpen={activeProfileSubmenu === "theme"}
+													isPressing={pressingProfileSubmenu === "theme"}
+													onToggle={() => toggleProfileSubmenu("theme")}
+													onClose={() => {
+														if (activeProfileSubmenu === "theme") {
+															setActiveProfileSubmenu(null);
+														}
+													}}
+												/>
 
-											<DropdownMenuSeparator className="my-2 opacity-60" />
-											{/* Logout */}
-											<DropdownMenuItem onSelect={async () => {
-													try {
-														await logoutSession();
-													} finally {
-														clearClientSession();
-														navigate("/login");
-													}
-												}} className="px-3 py-1.5 text-sm text-[#E53E3E] focus:bg-[color-mix(in_srgb,#ef4444_12%,transparent)] focus:text-[#E53E3E]">
-												<LogoutIcon className="size-4" />
-												{t("header.logout")}
-											</DropdownMenuItem>
-										</div>
-									</DropdownMenuContent>
-								</DropdownMenu>
-							)}
-						</div>
-					</header>
+												<div className="my-1 h-px bg-panel-border opacity-70" />
+
+												<button
+													type="button"
+													onClick={async () => {
+														try {
+															await logoutSession();
+														} finally {
+															clearClientSession();
+															navigate("/login");
+														}
+													}}
+													className="flex h-[38px] w-full items-center gap-2.5 rounded-[12px] px-3 text-[13px] font-semibold text-red-600 transition-[background-color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] outline-none select-none active:scale-[0.98] active:bg-red-500/20 focus-visible:bg-red-500/14 min-[769px]:hover:bg-red-500/14 dark:text-red-400"
+												>
+													<LogOut className="size-4 shrink-0" />
+													<span>{t("header.logout")}</span>
+												</button>
+											</div>
+										</PopoverContent>
+									</Popover>
+								) : null}
+							</div>
+						</header>
+
+						<div
+							aria-hidden="true"
+							className="pointer-events-none absolute inset-x-0 -bottom-4 z-[99] h-4 bg-gradient-to-b from-panel-main to-transparent"
+						/>
+					</div>
 
 					<main
 						ref={mainRef}
 						onScroll={(event) => {
-							if (!editorPageSection) listScrollTop.current = event.currentTarget.scrollTop;
+							if (!editorPageSection) {
+								listScrollTop.current = event.currentTarget.scrollTop;
+							}
 						}}
-						className="min-h-0 flex-1 overflow-auto bg-panel-main p-3 pb-40 md:p-4 md:pb-4"
+						className="min-h-0 flex-1 overflow-auto overscroll-contain bg-transparent p-3 pt-2.5 pb-40 min-[769px]:p-4 min-[769px]:pt-3 min-[769px]:pb-4"
 					>
 						<div className={cn(editorPageSection && "hidden")}>
 							<Outlet />
 						</div>
-						<div id={EDITOR_PAGE_ID} className={cn(!editorPageSection && "hidden")} />
+						<div
+							id={EDITOR_PAGE_ID}
+							className={cn(!editorPageSection && "hidden")}
+						/>
 					</main>
 				</div>
 
-				{/* mobile drawer */}
-				{isMobile && (
-					<Sheet open={sidebarDrawer.isOpen} onOpenChange={(open) =>
+				{isMobile ? (
+					<Sheet
+						open={sidebarDrawer.isOpen}
+						onOpenChange={(open) =>
 							open ? sidebarDrawer.onOpen() : sidebarDrawer.onClose()
-						}>
-						<SheetContent side={isRTL ? "right" : "left"} className="rb-sidebar-drawer w-[312px] max-w-[100vw] bg-panel-sidebar">
-							<SheetTitle className="sr-only">{t("a11y.toggleSidebar")}</SheetTitle>
-							<div className="h-full overflow-y-auto">
+						}
+					>
+						<SheetContent
+							side={isRTL ? "right" : "left"}
+							dir={isRTL ? "rtl" : "ltr"}
+							showCloseButton={false}
+							data-side={isRTL ? "right" : "left"}
+							className={cn(
+								"rb-sidebar-drawer h-[100dvh] max-h-[100dvh] w-[min(320px,86vw)]! max-w-[min(320px,86vw)]! gap-0 bg-panel-surface p-0 shadow-[0_24px_64px_rgba(0,0,0,0.48)] will-change-transform",
+								isRTL
+									? "rounded-s-[24px] border-s border-e-0 border-panel-border!"
+									: "rounded-e-[24px] border-e border-s-0 border-panel-border!",
+							)}
+						>
+							<SheetTitle className="sr-only">
+								{t("a11y.toggleSidebar")}
+							</SheetTitle>
+							<div className="h-full overflow-hidden">
 								<AppSidebar
 									collapsed={false}
 									sponsors={sponsorSidebarLogoItems}
 									sidebarBanners={sponsorSidebarBanners}
 									inDrawer
-									onRequestExpand={sidebarDrawer.onClose}
+									onRequestExpand={handleDrawerClose}
 								/>
 							</div>
 						</SheetContent>
 					</Sheet>
-				)}
+				) : null}
 
-				{isMobile && (
+				{isMobile ? (
 					<>
-						{showIosPrompt && (
+						{showIosPrompt ? (
 							<div className="fixed inset-x-0 bottom-[86px] z-[2000] px-4 sm:bottom-[90px]">
 								<div className="flex items-center gap-3 rounded-[20px] border border-panel-border! bg-panel-surface px-4 py-3 shadow-lg">
-									<span className="flex size-8 items-center justify-center rounded-full bg-[rgba(255,255,255,0.48)] dark:bg-[rgba(255,255,255,0.16)]">
-										<ShareIcon className="size-4" />
+									<span className="flex size-8 items-center justify-center rounded-full bg-panel-elevated text-panel-text">
+										<Share className="size-4" />
 									</span>
 									<div className="flex-1">
-										<p className="text-sm font-semibold">{t("pwa.ios.title")}</p>
-										<p className="text-xs text-[#4A5568] dark:text-[#CBD5E0]">
+										<p className="text-sm font-semibold">
+											{t("pwa.ios.title")}
+										</p>
+										<p className="text-xs text-panel-text-secondary">
 											{t("pwa.ios.body")}
 										</p>
 									</div>
-									<Button onClick={() => {
+									<Button
+										onClick={() => {
 											setShowIosPrompt(false);
 											localStorage.setItem("ios-pwa-tip-shown", "1");
-										}} variant="ghost" size="xs" className="text-sm">
+										}}
+										variant="ghost"
+										size="xs"
+										className="min-h-9 rounded-[10px] px-3 text-sm hover:bg-transparent dark:hover:bg-transparent active:scale-[0.96]"
+									>
 										{t("pwa.ios.dismiss")}
 									</Button>
 								</div>
 							</div>
-						)}
+						) : null}
 
-						{/* Mobile bottom dock */}
-						<div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 pb-[calc(env(safe-area-inset-bottom)+8px)]">
+						<div className="rb-mobile-dock pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom,0px)+12px)] z-[1500] px-3 min-[769px]:hidden">
 							<div
 								className={cn(
-									"pointer-events-auto mx-auto max-w-[min(480px,100%)] rounded-[30px] border p-1.5",
-									DOCK_CLASS,
+									"pointer-events-auto mx-auto max-w-[min(440px,calc(100vw-20px))] rounded-[24px] border px-2 py-1.5",
+									DOCK_SURFACE_CLASS,
 								)}
 							>
 								<div
@@ -1094,73 +2204,59 @@ export function AppLayout() {
 										const isActive = resolveActive(item);
 										const isSelected = selectedTabKey === item.key;
 										const settingsLabel =
-											item.key === "settings" && activeSettingsItem?.label
-												? activeSettingsItem.label
+											item.key === "settings" && activeSettingsItem?.title
+												? activeSettingsItem.title
 												: item.label;
 										const customIcon =
-											item.key === "settings" ? activeSettingsItem?.icon : undefined;
-										const [OutlineTabIcon, SolidTabIcon] = customIcon
-											? [customIcon, customIcon]
-											: (TAB_ICONS[item.key] ?? TAB_ICONS.myaccount);
-										const tabLabelClass = isSelected
-											? "text-[var(--primary-500)] dark:text-[var(--primary-300)]"
-											: "text-panel-text-secondary";
+											item.key === "settings"
+												? activeSettingsItem?.icon
+												: undefined;
+										const TabIcon = customIcon ?? TAB_ICONS[item.key] ?? CircleUser;
+
 										const tabButtonClass = cn(
-											"relative z-[1] h-auto min-h-12 min-w-0 flex-1 select-none rounded-md px-0 hover:bg-transparent focus:bg-transparent active:bg-transparent",
+											"relative z-[1] h-auto min-h-12 min-w-0 flex-1 select-none rounded-[16px] px-0 hover:bg-transparent focus:bg-transparent active:bg-transparent dark:hover:bg-transparent dark:focus:bg-transparent dark:active:bg-transparent",
 											isActive
-												? "text-[var(--primary-500)] dark:text-[var(--primary-300)]"
-												: "text-[#4A5568] dark:text-[#CBD5E0]",
+												? "text-panel-accent"
+												: "text-panel-text-secondary",
 										);
+
 										const navContent = (
 											<motion.div
-												whileTap={reduceMotion ? undefined : { scale: 0.88 }}
+												whileTap={reduceMotion ? undefined : { scale: 0.9 }}
 												transition={tapSpring}
 												className="w-full"
 											>
-												<div className="flex w-full flex-col items-center gap-1 py-1">
-													<div className="relative grid h-8 w-14 place-items-center">
-														{isSelected && (
+												<div className="flex w-full flex-col items-center gap-0.5 py-1">
+													<div className="relative grid h-7 w-12 place-items-center">
+														{isSelected ? (
 															<motion.span
 																layoutId="mobile-bottom-nav-indicator"
 																transition={navSpring}
-																className="absolute inset-0 rounded-2xl bg-[color-mix(in_srgb,var(--primary-500)_12%,transparent)] dark:bg-[color-mix(in_srgb,var(--primary-300)_20%,transparent)]"
+																className={cn(
+																	"absolute inset-0 rounded-[14px]",
+																	TINT_CLASS,
+																)}
 															/>
-														)}
-														<div
+														) : null}
+														<TabIcon
 															className={cn(
-																"relative grid place-items-center",
-																tabLabelClass,
+																"relative z-[1] size-5 transition-colors duration-200",
+																isSelected
+																	? "text-panel-accent"
+																	: "text-panel-text-secondary",
 															)}
-														>
-															<motion.span
-																initial={false}
-																animate={{
-																	opacity: isSelected ? 0 : 1,
-																	scale: isSelected ? 0.8 : 1,
-																}}
-																transition={navSpring}
-																className="grid place-items-center [grid-area:1/1]"
-															>
-																<OutlineTabIcon className="size-[22px]" />
-															</motion.span>
-															<motion.span
-																initial={false}
-																animate={{
-																	opacity: isSelected ? 1 : 0,
-																	scale: isSelected ? 1 : 0.8,
-																}}
-																transition={navSpring}
-																className="grid place-items-center [grid-area:1/1]"
-															>
-																<SolidTabIcon className="size-[22px]" />
-															</motion.span>
-														</div>
+															strokeWidth={1.75}
+														/>
+														{item.key === "notifications" && unread > 0 ? (
+															<span className="absolute top-0.5 end-2 z-[2] size-2 rounded-full border border-panel-surface bg-panel-accent" />
+														) : null}
 													</div>
 													<span
 														className={cn(
-															"max-w-full truncate px-1 text-center text-[10px] leading-[1.1] transition-colors duration-[250ms]",
-															tabLabelClass,
-															isSelected ? "font-semibold" : "font-medium",
+															"max-w-full truncate px-1 text-center text-[10px] leading-[1.1] transition-colors duration-200",
+															isSelected
+																? "font-bold text-panel-accent"
+																: "font-medium text-panel-text-secondary",
 														)}
 													>
 														{settingsLabel}
@@ -1171,62 +2267,289 @@ export function AppLayout() {
 
 										if (item.key === "settings") {
 											return (
-												<Popover key={item.key} open={settingsMenu.isOpen} onOpenChange={(open) => {
+												<Popover
+													key={item.key}
+													open={settingsMenu.isOpen}
+													onOpenChange={(open) => {
 														if (open) openSettingsMenu();
 														else handleSettingsMenuClose();
-													}}>
+													}}
+												>
 													<PopoverTrigger asChild>
-														<Button ref={(node) => {
+														<Button
+															ref={(node) => {
 																tabContentRefs.current[item.key] = node;
-															}} onClick={(event) => {
-																// The click only toggles through handleSettingsMenuToggle, so
-																// stop the trigger from toggling on its own.
+															}}
+															onClick={(event) => {
 																event.preventDefault();
 																if (settingsHoldOpened.current) return;
 																handleSettingsMenuToggle();
-															}} onPointerDown={(event) => {
+															}}
+															onPointerDown={(event) => {
 																if (event.pointerType === "mouse") return;
 																settingsHoldStartPoint.current = {
 																	x: event.clientX,
 																	y: event.clientY,
 																};
 																handleSettingsHoldStart();
-															}} onPointerMove={(event) => {
+															}}
+															onPointerMove={(event) => {
 																if (event.pointerType === "mouse") return;
-																handleSettingsHoldMove(event.clientX, event.clientY);
-															}} onPointerUp={handleSettingsHoldEnd} onPointerCancel={handleSettingsHoldEnd} onPointerLeave={handleSettingsHoldEnd} onContextMenu={(event) => {
+																handleSettingsHoldMove(
+																	event.clientX,
+																	event.clientY,
+																);
+															}}
+															onPointerUp={handleSettingsHoldEnd}
+															onPointerCancel={handleSettingsHoldEnd}
+															onPointerLeave={handleSettingsHoldEnd}
+															onContextMenu={(event) => {
 																if (isMobile) event.preventDefault();
-															}} variant="ghost" size="sm" className={tabButtonClass}>
+															}}
+															variant="ghost"
+															size="sm"
+															className={tabButtonClass}
+														>
 															{navContent}
 														</Button>
 													</PopoverTrigger>
-													<PopoverContent side="top" align="center" sideOffset={12} collisionPadding={12} className={cn(
-															"w-[min(210px,calc(100vw_-_24px))] max-w-[calc(100vw_-_24px)] max-h-[calc(100vh_-_160px)] overflow-y-auto rounded-[22px] p-2",
-															DOCK_CLASS,
-														)}>
-														<div className="flex flex-col gap-1">
-															{settingsMenuItems.map((entry) => {
-																const ItemIcon = entry.icon;
-																const isSelected = activeSettingsKey === entry.key;
-																return (
-																	<Button key={entry.key} aria-current={isSelected ? "page" : undefined} onClick={() => {
-																			handleSettingsMenuClose();
-																			navigateToSettingsItem(entry.to);
-																		}} variant="ghost" size="xs" className={cn(
-																			"w-full justify-start text-sm",
-																			isSelected
-																				? "bg-panel-elevated font-semibold"
-																				: "bg-transparent font-normal",
-																			isSelected || activeSettingsKey
-																				? "hover:bg-panel-elevated"
-																				: "hover:bg-transparent",
-																			"active:bg-panel-elevated focus-visible:shadow-[0_0_0_2px_var(--primary-200)]",
-																		)}>
-																		{ItemIcon ? <ItemIcon className="size-4" /> : null}
-																		{entry.label}
-																	</Button>
-																);
-															})}
+													<PopoverContent
+														data-dock-settings-popover="true"
+														dir={isRTL ? "rtl" : "ltr"}
+														side="top"
+														align="center"
+														sideOffset={12}
+														collisionPadding={12}
+														className="pointer-events-none z-[1600] flex h-[min(66dvh,calc(100dvh-148px))] w-[min(272px,calc(100vw-24px))] max-w-[calc(100vw-24px)] origin-bottom flex-col justify-end overflow-visible! border-0! bg-transparent! p-0! shadow-none! data-[state=open]:animate-rb-dock-in data-[state=closed]:animate-rb-dock-out"
+													>
+														<div
+															ref={dockSettingsScrollRef}
+															className={cn(
+																"pointer-events-auto max-h-full w-full origin-bottom overflow-y-auto overscroll-contain rounded-[22px] border p-2.5 text-panel-text",
+																DOCK_SURFACE_CLASS,
+															)}
+														>
+															<div className="flex flex-col gap-3.5">
+																{dockSettingsSections.map((section) => (
+																	<div
+																		key={section.id}
+																		data-dock-section={section.id}
+																		className="flex flex-col gap-0.5"
+																	>
+																		<span className="px-2.5 pb-1 text-[10.5px] font-bold tracking-[0.06em] uppercase text-panel-text-muted">
+																			{section.title}
+																		</span>
+
+																		<div className="flex flex-col gap-0.5">
+																			{section.items.map((navEntry) => {
+																				if (navEntry.type === "direct") {
+																					const EntryIcon = navEntry.icon;
+																					const entrySelected =
+																						activeSettingsId === navEntry.id;
+																					const isNotifEntry =
+																						navEntry.url === "/notifications";
+																					const showBadge =
+																						Boolean(navEntry.badge) ||
+																						(isNotifEntry && unread > 0);
+
+																					return (
+																						<button
+																							key={navEntry.id}
+																							type="button"
+																							aria-current={
+																								entrySelected
+																									? "page"
+																									: undefined
+																							}
+																							onClick={() =>
+																								navigateToSettingsItem(
+																									navEntry.url,
+																								)
+																							}
+																							className={cn(
+																								"relative flex min-h-[38px] w-full items-center gap-2.5 overflow-hidden rounded-[12px] px-2.5 text-start text-[13px] transition-[background-color,color,transform] duration-150 outline-none select-none active:scale-[0.98] active:bg-panel-elevated",
+																								entrySelected
+																									? "bg-panel-elevated font-bold text-panel-accent"
+																									: "bg-transparent font-medium text-panel-text-secondary",
+																							)}
+																						>
+																							{entrySelected ? (
+																								<span className="pointer-events-none absolute inset-s-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full bg-panel-accent" />
+																							) : null}
+																							<EntryIcon className="size-[18px] shrink-0" />
+																							<span className="min-w-0 flex-1 truncate">
+																								{navEntry.title}
+																							</span>
+																							{isNotifEntry && unread > 0 ? (
+																								<span
+																									dir="ltr"
+																									className="inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-full bg-panel-accent px-1.5 text-[10px] font-bold text-white tabular-nums [unicode-bidi:isolate]"
+																								>
+																									{unread > 99 ? "99+" : unread}
+																								</span>
+																							) : showBadge ? (
+																								<span className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-panel-accent text-white">
+																									<BellRing className="size-2.5" />
+																								</span>
+																							) : null}
+																						</button>
+																					);
+																				}
+
+																				const isGroupActive =
+																					navEntry.subItems.some((sub) =>
+																						isDockItemActive(sub.url),
+																					);
+																				const isGroupOpen = Boolean(
+																					openDockGroups[navEntry.id],
+																				);
+																				const GroupIcon = navEntry.icon;
+
+																				return (
+																					<div
+																						key={navEntry.id}
+																						data-dock-group={navEntry.id}
+																					>
+																						<button
+																							type="button"
+																							aria-expanded={isGroupOpen}
+																							onClick={(e) => {
+																								const willOpen = !isGroupOpen;
+																								const groupEl = e.currentTarget.closest(
+																									"[data-dock-group]",
+																								) as HTMLElement | null;
+																								setOpenDockGroups((prev) => ({
+																									...prev,
+																									[navEntry.id]: willOpen,
+																								}));
+																								if (willOpen && groupEl) {
+																									window.setTimeout(() => {
+																										groupEl.scrollIntoView({
+																											block: "nearest",
+																											behavior: "smooth",
+																										});
+																									}, 220);
+																								}
+																							}}
+																							className={cn(
+																								"relative flex min-h-[38px] w-full items-center justify-between gap-2.5 overflow-hidden rounded-[12px] px-2.5 text-start text-[13px] transition-[background-color,color,transform] duration-150 outline-none select-none active:scale-[0.98] active:bg-panel-elevated",
+																								isGroupActive && !isGroupOpen
+																									? "bg-panel-elevated font-bold text-panel-accent"
+																									: isGroupActive
+																										? "bg-transparent font-bold text-panel-text"
+																										: "bg-transparent font-medium text-panel-text-secondary",
+																							)}
+																						>
+																							{isGroupActive && !isGroupOpen ? (
+																								<span className="pointer-events-none absolute inset-s-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full bg-panel-accent" />
+																							) : null}
+
+																							<span className="flex min-w-0 flex-1 items-center gap-2.5 overflow-hidden">
+																								<GroupIcon
+																									className={cn(
+																										"size-[18px] shrink-0",
+																										isGroupActive &&
+																											"text-panel-accent",
+																									)}
+																								/>
+																								<span className="truncate">
+																									{navEntry.title}
+																								</span>
+																							</span>
+
+																							<ChevronDown
+																								className={cn(
+																									"size-3.5 shrink-0 text-panel-text-muted transition-transform duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]",
+																									isGroupOpen
+																										? "rotate-0"
+																										: isRTL
+																											? "rotate-90"
+																											: "-rotate-90",
+																								)}
+																							/>
+																						</button>
+
+																						<div
+																							aria-hidden={!isGroupOpen}
+																							inert={!isGroupOpen ? true : undefined}
+																							className={cn(
+																								"grid transition-[grid-template-rows,opacity] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]",
+																								isGroupOpen
+																									? "grid-rows-[1fr] opacity-100"
+																									: "grid-rows-[0fr] opacity-0",
+																							)}
+																						>
+																							<div className="min-h-0 overflow-hidden">
+																								<div
+																									className={cn(
+																										"ms-[19px] flex flex-col gap-0.5 border-s border-panel-border! ps-2.5 pt-1 pb-0.5 transition-transform duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]",
+																										isGroupOpen
+																											? "translate-y-0"
+																											: "translate-y-1.5",
+																									)}
+																								>
+																									{navEntry.subItems.map(
+																										(sub) => {
+																											const SubIcon = sub.icon;
+																											const subSelected =
+																												activeSettingsId ===
+																												sub.id;
+																											const isSubNotif =
+																												sub.url ===
+																												"/notifications";
+																											return (
+																												<button
+																													key={sub.id}
+																													type="button"
+																													aria-current={
+																														subSelected
+																															? "page"
+																															: undefined
+																													}
+																													onClick={() =>
+																														navigateToSettingsItem(
+																															sub.url,
+																														)
+																													}
+																													className={cn(
+																														"relative flex min-h-[34px] w-full items-center gap-2.5 rounded-[10px] px-2.5 text-start text-xs transition-[background-color,color,transform] duration-150 outline-none select-none active:scale-[0.98] active:bg-panel-elevated",
+																														subSelected
+																															? "bg-panel-elevated font-bold text-panel-accent"
+																															: "bg-transparent font-medium text-panel-text-secondary",
+																													)}
+																												>
+																													{subSelected ? (
+																														<span className="pointer-events-none absolute -inset-s-[11.5px] top-1/2 h-3.5 w-[2px] -translate-y-1/2 rounded-full bg-panel-accent" />
+																													) : null}
+																													<SubIcon className="size-4 shrink-0" />
+																													<span className="min-w-0 flex-1 truncate">
+																														{sub.title}
+																													</span>
+																													{isSubNotif &&
+																													unread > 0 ? (
+																														<span
+																															dir="ltr"
+																															className="inline-flex h-[17px] min-w-[17px] shrink-0 items-center justify-center rounded-full bg-panel-accent px-1 text-[10px] font-bold text-white tabular-nums [unicode-bidi:isolate]"
+																														>
+																															{unread > 99
+																																? "99+"
+																																: unread}
+																														</span>
+																													) : null}
+																												</button>
+																											);
+																										},
+																									)}
+																								</div>
+																							</div>
+																						</div>
+																					</div>
+																				);
+																			})}
+																		</div>
+																	</div>
+																))}
+															</div>
 														</div>
 													</PopoverContent>
 												</Popover>
@@ -1235,39 +2558,67 @@ export function AppLayout() {
 
 										if (item.key === "myaccount") {
 											return (
-												<Popover key={item.key} open={accountMenu.isOpen} onOpenChange={(open) => {
+												<Popover
+													key={item.key}
+													open={accountMenu.isOpen}
+													onOpenChange={(open) => {
 														if (!open) handleAccountMenuClose();
-													}}>
+													}}
+												>
 													<PopoverTrigger asChild>
-														<Button ref={(node) => {
+														<Button
+															ref={(node) => {
 																tabContentRefs.current[item.key] = node;
-															}} onClick={(event) => {
-																// Same as the settings tab: the click is handled below only.
+															}}
+															onClick={(event) => {
 																event.preventDefault();
 																if (accountHoldOpened.current) return;
 																handleAccountMenuClose();
 																handleNavClick(item.to);
-															}} onPointerDown={(event) => {
+															}}
+															onPointerDown={(event) => {
 																if (event.pointerType === "mouse") return;
 																accountHoldStartPoint.current = {
 																	x: event.clientX,
 																	y: event.clientY,
 																};
 																handleAccountHoldStart();
-															}} onPointerMove={(event) => {
+															}}
+															onPointerMove={(event) => {
 																if (event.pointerType === "mouse") return;
-																handleAccountHoldMove(event.clientX, event.clientY);
-															}} onPointerUp={handleAccountHoldEnd} onPointerCancel={handleAccountHoldEnd} onPointerLeave={handleAccountHoldEnd} onContextMenu={(event) => {
+																handleAccountHoldMove(
+																	event.clientX,
+																	event.clientY,
+																);
+															}}
+															onPointerUp={handleAccountHoldEnd}
+															onPointerCancel={handleAccountHoldEnd}
+															onPointerLeave={handleAccountHoldEnd}
+															onContextMenu={(event) => {
 																if (isMobile) event.preventDefault();
-															}} variant="ghost" size="sm" className={tabButtonClass}>
+															}}
+															variant="ghost"
+															size="sm"
+															className={tabButtonClass}
+														>
 															{navContent}
 														</Button>
 													</PopoverTrigger>
-													<PopoverContent side="top" align="center" sideOffset={12} collisionPadding={12} onOpenAutoFocus={(event) => event.preventDefault()} className={cn(
-															"w-[min(180px,calc(100vw_-_24px))] max-w-[calc(100vw_-_24px)] max-h-[calc(100vh_-_160px)] overflow-y-auto rounded-[22px] p-2",
-															DOCK_CLASS,
-														)}>
-														<Button onClick={async () => {
+													<PopoverContent
+														dir={isRTL ? "rtl" : "ltr"}
+														side="top"
+														align="center"
+														sideOffset={12}
+														collisionPadding={12}
+														onOpenAutoFocus={(event) => event.preventDefault()}
+														className={cn(
+															"z-[1600] w-[min(188px,calc(100vw-24px))] max-w-[calc(100vw-24px)] rounded-[20px] border p-2",
+															DOCK_SURFACE_CLASS,
+														)}
+													>
+														<button
+															type="button"
+															onClick={async () => {
 																try {
 																	await logoutSession();
 																} finally {
@@ -1275,23 +2626,30 @@ export function AppLayout() {
 																	handleAccountMenuClose();
 																	navigate("/login");
 																}
-															}} variant="ghost" size="xs" className="w-full justify-start text-sm text-[#E53E3E] hover:bg-panel-elevated focus-visible:bg-panel-elevated active:bg-panel-elevated">
-															<LogoutIcon className="size-4" />
-															{t("header.logout")}
-														</Button>
+															}}
+															className="flex min-h-[38px] w-full items-center gap-2.5 rounded-[12px] px-3 text-[13px] font-semibold text-red-600 transition-[background-color,transform] duration-150 outline-none select-none active:scale-[0.98] active:bg-red-500/20 dark:text-red-400"
+														>
+															<LogOut className="size-4 shrink-0" />
+															<span>{t("header.logout")}</span>
+														</button>
 													</PopoverContent>
 												</Popover>
 											);
 										}
 
 										return (
-											<Button key={item.key} ref={(node) => {
+											<Button
+												key={item.key}
+												ref={(node) => {
 													tabContentRefs.current[item.key] = node;
-												}} onClick={() => {
-													if (item.to) {
-														handleNavClick(item.to);
-													}
-												}} variant="ghost" size="sm" className={tabButtonClass}>
+												}}
+												onClick={() => {
+													if (item.to) handleNavClick(item.to);
+												}}
+												variant="ghost"
+												size="sm"
+												className={tabButtonClass}
+											>
 												{navContent}
 											</Button>
 										);
@@ -1300,8 +2658,17 @@ export function AppLayout() {
 							</div>
 						</div>
 					</>
-				)}
+				) : null}
 			</div>
 		</>
 	);
 }
+
+export function AppLayout() {
+	return (
+		<NotificationProvider>
+			<AppLayoutContent />
+		</NotificationProvider>
+	);
+}
+

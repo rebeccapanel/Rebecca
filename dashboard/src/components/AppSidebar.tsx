@@ -1,566 +1,862 @@
-import { FolderTree, ArrowLeftRight, BellRing, Zap, BookOpen, Briefcase, ChevronDown, ChartColumn, Database, Clock, SquareCode, Settings, Settings2, Terminal, Copy, Bell, FileText, Eye, House, Link, Server, LayoutGrid, CircleUser, Users, Wrench } from "lucide-react";
 import logoUrl from "assets/logo.svg";
-import useGetUser from "hooks/useGetUser";
 import {
-	type ElementType,
+	Popover,
+	PopoverAnchor,
+	PopoverContent,
+} from "components/ui/popover";
+import {
+	Tooltip,
+	TooltipContent,
+	TooltipProvider,
+	TooltipTrigger,
+} from "components/ui/tooltip";
+import { AnimatePresence, motion } from "framer-motion";
+import { useMediaQuery } from "hooks/useMediaQuery";
+import { cn } from "lib/cn";
+import { useColorMode } from "lib/color-mode";
+import { BellRing, ChevronDown, X } from "lucide-react";
+import {
 	type FC,
 	type MouseEvent as ReactMouseEvent,
+	type PointerEvent as ReactPointerEvent,
+	memo,
 	useCallback,
 	useEffect,
+	useMemo,
+	useRef,
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { NavLink, useHref, useLocation, useNavigate } from "react-router-dom";
-import { SponsorCarousel, type SponsorCarouselItem } from "./SponsorCarousel";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { apiBaseURL } from "service/http";
 import type { SponsorAsset } from "service/sponsors";
-import { AdminRole, AdminSection, AdminSudoScope } from "types/Admin";
 import {
-	getTutorialManifestUrl,
-	getTutorialSeenKey,
-	normalizeTutorialLang,
-} from "utils/tutorials";
+	DEFAULT_TAB_BY_PATH,
+	type GroupNavItem,
+	useNavSections,
+} from "./layout/navConfig";
+import { useUnreadNotifications } from "./NotificationBell";
+import { SponsorCarousel } from "./SponsorCarousel";
 
-/** Icons keep the sidebar's size without a styled-system wrapper. */
-const iconClass = "size-5 shrink-0";
-
-const HomeIconStyled = () => <House className={iconClass} />;
-const UsersIconStyled = () => <Users className={iconClass} />;
-const BulkActionsIconStyled = () => <Zap className={iconClass} />;
-const GroupsIconStyled = () => <FolderTree className={iconClass} />;
-const RecentActionsIconStyled = () => <Clock className={iconClass} />;
-const SettingsIconStyled = () => <Settings className={iconClass} />;
-const MasterSettingsIconStyled = () => <Settings2 className={iconClass} />;
-const NodeIconStyled = () => <Server className={iconClass} />;
-const AdminIconStyled = () => <Briefcase className={iconClass} />;
-const ServicesIconStyled = () => <LayoutGrid className={iconClass} />;
-const HostsIconStyled = () => <Link className={iconClass} />;
-const HAProxyIconStyled = () => <ArrowLeftRight className={iconClass} />;
-const UsageIconStyled = () => <ChartColumn className={iconClass} />;
-const MyAccountIconStyled = () => <CircleUser className={iconClass} />;
-const NotificationIconStyled = () => <Bell className={iconClass} />;
-const InsightsIconStyled = () => <Eye className={iconClass} />;
-const TutorialIconStyled = () => <BookOpen className={iconClass} />;
-const XraySettingsIconStyled = () => (
-	<Wrench className={iconClass} />
-);
-const XrayLogsIconStyled = () => <FileText className={iconClass} />;
-const ApiDocsIconStyled = () => <SquareCode className={iconClass} />;
-const PHPMyAdminIconStyled = () => <Database className={iconClass} />;
-const ExternalAppsIconStyled = () => <Terminal className={iconClass} />;
-const PlaceholderIconStyled = () => <Copy className={iconClass} />;
-const TutorialUpdateIconStyled = () => <BellRing className="size-3" />;
-
-interface AppSidebarProps {
+export interface AppSidebarProps {
 	collapsed: boolean;
 	sponsors?: SponsorAsset[];
 	sidebarBanners?: SponsorAsset[];
-	/** when rendered inside a Drawer on mobile */
 	inDrawer?: boolean;
-	/** optional callback to request the parent to expand the sidebar */
 	onRequestExpand?: () => void;
 }
 
-type SidebarItem = {
-	title: string;
-	icon: ElementType;
-	url?: string;
-	subItems?: {
-		title: string;
-		url: string;
-		icon: ElementType;
-	}[];
+const resolveAssetUrl = (rawUrl?: string): string => {
+	if (!rawUrl) return "";
+	if (
+		rawUrl.startsWith("http://") ||
+		rawUrl.startsWith("https://") ||
+		rawUrl.startsWith("data:") ||
+		rawUrl.startsWith("blob:")
+	) {
+		return rawUrl;
+	}
+	if (rawUrl.startsWith("/") && !rawUrl.startsWith("//") && apiBaseURL) {
+		const base = apiBaseURL.replace(/\/+$/, "");
+		const cleanPath = rawUrl.startsWith("/api") ? rawUrl.slice(4) : rawUrl;
+		return `${base}${cleanPath.startsWith("/") ? cleanPath : `/${cleanPath}`}`;
+	}
+	return rawUrl;
 };
-type SidebarSubItems = NonNullable<SidebarItem["subItems"]>;
 
-export const AppSidebar: FC<AppSidebarProps> = ({
+interface SidebarLogoCarouselProps {
+	sponsors?: SponsorAsset[];
+	collapsed: boolean;
+	inDrawer: boolean;
+	colorMode: string;
+	isRTL: boolean;
+	onNavigateRoot: () => void;
+	onRequestExpand?: () => void;
+}
+
+const SidebarLogoCarousel: FC<SidebarLogoCarouselProps> = memo(
+	function SidebarLogoCarousel({
+		sponsors = [],
+		collapsed,
+		inDrawer,
+		colorMode,
+		isRTL,
+		onNavigateRoot,
+		onRequestExpand,
+	}) {
+		const [activeIndex, setActiveIndex] = useState(0);
+		const [isPaused, setIsPaused] = useState(false);
+
+		const items = useMemo(() => {
+			const rebeccaItem = {
+				id: "rebecca",
+				src: logoUrl,
+				alt: "Rebecca",
+				label: "Rebecca",
+				isSponsor: false,
+				href: undefined as string | undefined,
+			};
+			const validSponsors = (sponsors || [])
+				.filter((s) =>
+					Boolean(
+						s?.image_url || (s as unknown as { src?: string })?.src,
+					),
+				)
+				.map((s) => {
+					const rawSrc =
+						s.image_url || (s as unknown as { src?: string })?.src || "";
+					const href =
+						s.target_url || (s as unknown as { href?: string })?.href;
+					return {
+						id: s.id,
+						src: resolveAssetUrl(rawSrc),
+						alt: s.alt || s.label || "Sponsor",
+						label: s.label
+							? s.label.charAt(0).toUpperCase() + s.label.slice(1)
+							: s.alt || "Sponsor",
+						isSponsor: true,
+						href,
+					};
+				});
+			if (validSponsors.length === 0) {
+				return [rebeccaItem];
+			}
+			const result: typeof rebeccaItem[] = [];
+			for (const sp of validSponsors) {
+				result.push(rebeccaItem, sp);
+			}
+			return result;
+		}, [sponsors]);
+
+		useEffect(() => {
+			if (activeIndex >= items.length) {
+				setActiveIndex(0);
+			}
+		}, [activeIndex, items.length]);
+
+		useEffect(() => {
+			if (isPaused || items.length < 2) return;
+			const current = items[activeIndex];
+			const delay = current?.isSponsor ? 7000 : 10000;
+			const timer = window.setTimeout(() => {
+				setActiveIndex((prev) => (prev + 1) % items.length);
+			}, delay);
+			return () => window.clearTimeout(timer);
+		}, [isPaused, items, activeIndex]);
+
+		const currentItem = items[activeIndex] || items[0];
+
+		const handleClick = (e: ReactMouseEvent) => {
+			e.stopPropagation();
+			if (currentItem.isSponsor && currentItem.href) {
+				window.open(currentItem.href, "_blank", "noopener,noreferrer");
+			} else {
+				onNavigateRoot();
+				if (inDrawer && onRequestExpand) {
+					onRequestExpand();
+				}
+			}
+		};
+
+		const logoGraphic = (
+			<div className="flex size-[30px] shrink-0 items-center justify-center">
+				{currentItem.isSponsor ? (
+					<img
+						src={currentItem.src}
+						alt={currentItem.alt}
+						draggable={false}
+						onDragStart={(e) => e.preventDefault()}
+						onContextMenu={(e) => e.preventDefault()}
+						className="pointer-events-none size-[30px] rounded-[8px] object-contain select-none [-webkit-user-drag:none]"
+					/>
+				) : (
+					<img
+						src={currentItem.src}
+						alt="Rebecca"
+						draggable={false}
+						style={{
+							filter:
+								colorMode === "dark"
+									? "brightness(0) invert(1)"
+									: "brightness(0)",
+							transition: "filter 0.25s ease",
+						}}
+						className="pointer-events-none size-[30px] object-contain select-none [-webkit-user-drag:none]"
+					/>
+				)}
+			</div>
+		);
+
+		const slideOffset = isRTL ? "100%" : "-100%";
+
+		return (
+			<button
+				type="button"
+				title={currentItem.label}
+				onClick={handleClick}
+				onMouseEnter={() => setIsPaused(true)}
+				onMouseLeave={() => setIsPaused(false)}
+				className="relative flex h-[34px] min-w-0 flex-1 cursor-pointer items-center justify-start overflow-hidden text-start transition-transform duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] outline-none select-none active:scale-[0.98]"
+			>
+				<AnimatePresence mode="wait" initial={false}>
+					<motion.div
+						key={currentItem.id}
+						initial={{ transform: `translate3d(${slideOffset}, 0, 0)` }}
+						animate={{ transform: "translate3d(0%, 0, 0)" }}
+						exit={{ transform: `translate3d(${slideOffset}, 0, 0)` }}
+						transition={{ duration: 0.56, ease: [0.22, 1, 0.36, 1] }}
+						className={cn(
+							"flex h-[34px] w-full items-center justify-start gap-2.5 ps-[18px] transition-[padding] duration-[260ms] ease-[cubic-bezier(0.16,1,0.3,1)] will-change-transform",
+							collapsed ? "pe-0" : "pe-2.5",
+						)}
+					>
+						{collapsed ? (
+							<Tooltip>
+								<TooltipTrigger asChild>{logoGraphic}</TooltipTrigger>
+								<TooltipContent
+									side={isRTL ? "left" : "right"}
+									sideOffset={10}
+									className="z-[2200] rounded-[10px] border border-panel-border! bg-panel-elevated px-3 py-1.5 text-xs font-semibold text-panel-text shadow-lg"
+								>
+									{currentItem.label}
+								</TooltipContent>
+							</Tooltip>
+						) : (
+							logoGraphic
+						)}
+						<span
+							aria-hidden={collapsed}
+							className={cn(
+								"min-w-0 flex-1 truncate pt-0.5 text-[17px] font-extrabold tracking-[-0.02em] text-panel-text transition-opacity ease-out",
+								collapsed
+									? "pointer-events-none opacity-0 duration-150"
+									: "opacity-100 delay-[40ms] duration-200",
+							)}
+						>
+							{currentItem.label}
+						</span>
+					</motion.div>
+				</AnimatePresence>
+			</button>
+		);
+	},
+);
+
+interface GroupNavRowProps {
+	group: GroupNavItem;
+	collapsed: boolean;
+	isGroupActive: boolean;
+	isOpen: boolean;
+	isRTL: boolean;
+	unreadCount: number;
+	isItemActive: (url: string) => boolean;
+	onToggleOpen: () => void;
+	onNavigate: (url: string, event?: ReactMouseEvent) => void;
+}
+
+const GroupNavRow: FC<GroupNavRowProps> = ({
+	group,
+	collapsed,
+	isGroupActive,
+	isOpen,
+	isRTL,
+	unreadCount,
+	isItemActive,
+	onToggleOpen,
+	onNavigate,
+}) => {
+	const [flyoutOpen, setFlyoutOpen] = useState(false);
+	const isDesktop = useMediaQuery("(min-width: 769px)");
+	const triggerRef = useRef<HTMLButtonElement | null>(null);
+	const triggerHoveredRef = useRef(false);
+	const contentHoveredRef = useRef(false);
+	const closeTimeoutRef = useRef<number | null>(null);
+	const GroupIcon = group.icon;
+	const visibleSubs = group.subItems.filter((sub) => sub.visible);
+
+	const clearCloseTimer = useCallback(() => {
+		if (closeTimeoutRef.current !== null) {
+			window.clearTimeout(closeTimeoutRef.current);
+			closeTimeoutRef.current = null;
+		}
+	}, []);
+
+	const scheduleClose = () => {
+		clearCloseTimer();
+		closeTimeoutRef.current = window.setTimeout(() => {
+			if (!triggerHoveredRef.current && !contentHoveredRef.current) {
+				setFlyoutOpen(false);
+			}
+		}, 300);
+	};
+
+	const handleTriggerPointerEnter = (e: ReactPointerEvent<HTMLButtonElement>) => {
+		if (!collapsed || !isDesktop || e.pointerType !== "mouse") return;
+		clearCloseTimer();
+		triggerHoveredRef.current = true;
+		setFlyoutOpen(true);
+	};
+
+	const handleTriggerPointerLeave = (e: ReactPointerEvent<HTMLButtonElement>) => {
+		if (!collapsed || !isDesktop || e.pointerType !== "mouse") return;
+		triggerHoveredRef.current = false;
+		scheduleClose();
+	};
+
+	const handleContentPointerEnter = (e: ReactPointerEvent<HTMLDivElement>) => {
+		if (!collapsed || !isDesktop || e.pointerType !== "mouse") return;
+		clearCloseTimer();
+		contentHoveredRef.current = true;
+	};
+
+	const handleContentPointerLeave = (e: ReactPointerEvent<HTMLDivElement>) => {
+		if (!collapsed || !isDesktop || e.pointerType !== "mouse") return;
+		contentHoveredRef.current = false;
+		scheduleClose();
+	};
+
+	useEffect(() => {
+		if (!collapsed) {
+			triggerHoveredRef.current = false;
+			contentHoveredRef.current = false;
+			clearCloseTimer();
+			setFlyoutOpen(false);
+		}
+	}, [collapsed, clearCloseTimer]);
+
+	useEffect(() => {
+		return () => {
+			if (closeTimeoutRef.current !== null) {
+				window.clearTimeout(closeTimeoutRef.current);
+			}
+		};
+	}, []);
+
+	const showAccentBar = isGroupActive && (collapsed || !isOpen);
+
+	return (
+		<div data-nav-group={group.id}>
+			<Popover
+				open={collapsed ? flyoutOpen : false}
+				onOpenChange={(next) => {
+					if (!collapsed) return;
+					if (!next && (triggerHoveredRef.current || contentHoveredRef.current)) {
+						return;
+					}
+					setFlyoutOpen(next);
+				}}
+			>
+				<PopoverAnchor asChild>
+					<button
+						ref={triggerRef}
+						type="button"
+						aria-label={group.title}
+						aria-expanded={collapsed ? flyoutOpen : isOpen}
+						onPointerEnter={handleTriggerPointerEnter}
+						onPointerLeave={handleTriggerPointerLeave}
+						onClick={() => {
+							if (!collapsed) {
+								onToggleOpen();
+							} else if (!isDesktop) {
+								setFlyoutOpen((prev) => !prev);
+							} else if (visibleSubs[0]?.url) {
+								setFlyoutOpen(false);
+								onNavigate(visibleSubs[0].url);
+							}
+						}}
+						className={cn(
+							"relative flex h-[38px] w-full cursor-pointer items-center justify-start gap-2.5 overflow-hidden rounded-[12px] text-[13px] transition-[padding,background-color,color,transform] duration-[260ms] ease-[cubic-bezier(0.16,1,0.3,1)] outline-none select-none active:scale-[0.98] min-[769px]:hover:bg-panel-elevated",
+							collapsed ? "ps-4 pe-4" : "ps-3 pe-2.5",
+							showAccentBar
+								? "bg-panel-elevated font-bold text-panel-accent"
+								: isGroupActive
+									? "bg-transparent font-bold text-panel-text"
+									: "bg-transparent font-medium text-panel-text-secondary min-[769px]:hover:text-panel-text",
+						)}
+					>
+						{showAccentBar ? (
+							<span className="pointer-events-none absolute inset-s-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full bg-panel-accent" />
+						) : null}
+
+						<span
+							className={cn(
+								"inline-flex size-[18px] shrink-0 items-center justify-center",
+								isGroupActive && "text-panel-accent",
+							)}
+						>
+							<GroupIcon className="size-[18px] shrink-0" />
+						</span>
+
+						<span
+							aria-hidden={collapsed}
+							className={cn(
+								"flex min-w-0 flex-1 items-center justify-between gap-2 overflow-hidden whitespace-nowrap transition-opacity ease-out",
+								collapsed
+									? "pointer-events-none opacity-0 duration-150"
+									: "opacity-100 delay-[40ms] duration-200",
+							)}
+						>
+							<span className="truncate">{group.title}</span>
+							<ChevronDown
+								className={cn(
+									"size-3.5 shrink-0 text-panel-text-muted transition-transform duration-200 ease-[cubic-bezier(0.16,1,0.3,1)]",
+									isOpen
+										? "rotate-0"
+										: isRTL
+											? "rotate-90"
+											: "-rotate-90",
+								)}
+							/>
+						</span>
+					</button>
+				</PopoverAnchor>
+				<PopoverContent
+					dir={isRTL ? "rtl" : "ltr"}
+					side={isRTL ? "left" : "right"}
+					align="start"
+					sideOffset={6}
+					collisionPadding={12}
+					onPointerEnter={handleContentPointerEnter}
+					onPointerLeave={handleContentPointerLeave}
+					onPointerDownOutside={(e) => {
+						if (
+							triggerRef.current &&
+							e.target instanceof Node &&
+							triggerRef.current.contains(e.target)
+						) {
+							e.preventDefault();
+						}
+					}}
+					onOpenAutoFocus={(e) => e.preventDefault()}
+					className="relative z-[2200] w-auto min-w-[196px]! rounded-[16px] border border-panel-border! bg-panel-surface p-1.5 text-panel-text shadow-[0_14px_34px_rgba(0,0,0,0.28)] select-none before:pointer-events-auto before:absolute before:inset-y-0 before:w-4 before:content-[''] data-[side=right]:before:-left-4 data-[side=left]:before:-right-4"
+				>
+					<div className="mb-1 border-b border-panel-border! px-2.5 pt-1 pb-1.5 text-[11px] font-bold tracking-wider uppercase text-panel-text-muted">
+						{group.title}
+					</div>
+					<div className="flex flex-col gap-0.5">
+						{visibleSubs.map((sub) => {
+							const subActive = isItemActive(sub.url);
+							const SubIcon = sub.icon;
+							const isNotif = sub.url === "/notifications";
+							return (
+								<NavLink
+									key={sub.id}
+									to={sub.url}
+									onClick={(e) => {
+										setFlyoutOpen(false);
+										onNavigate(sub.url, e);
+									}}
+									className={cn(
+										"relative flex h-[34px] items-center gap-2.5 rounded-[10px] px-2.5 text-xs no-underline transition-[background-color,color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.98] min-[769px]:hover:bg-panel-elevated",
+										subActive
+											? "bg-panel-elevated font-bold text-panel-accent"
+											: "bg-transparent font-medium text-panel-text-secondary min-[769px]:hover:text-panel-text",
+									)}
+								>
+									<SubIcon className="size-4 shrink-0" />
+									<span className="min-w-0 flex-1 truncate">{sub.title}</span>
+									{isNotif && unreadCount > 0 ? (
+										<span
+											dir="ltr"
+											className="inline-flex h-[17px] min-w-[17px]! shrink-0 items-center justify-center rounded-full bg-panel-accent px-1 text-[10px] font-bold text-white tabular-nums [unicode-bidi:isolate]"
+										>
+											{unreadCount > 99 ? "99+" : unreadCount}
+										</span>
+									) : null}
+								</NavLink>
+							);
+						})}
+					</div>
+				</PopoverContent>
+			</Popover>
+
+			{!collapsed ? (
+				<div
+					aria-hidden={!isOpen}
+					inert={!isOpen ? true : undefined}
+					className={cn(
+						"grid transition-[grid-template-rows,opacity] duration-200 ease-[cubic-bezier(0.23,1,0.32,1)]",
+						isOpen
+							? "grid-rows-[1fr] opacity-100"
+							: "grid-rows-[0fr] opacity-0",
+					)}
+				>
+					<div className="min-h-0 overflow-hidden">
+						<div className="ms-[21px] flex flex-col gap-0.5 border-s border-panel-border! ps-2.5 pt-1 pb-0.5">
+							{visibleSubs.map((sub) => {
+								const subActive = isItemActive(sub.url);
+								const SubIcon = sub.icon;
+								const isNotif = sub.url === "/notifications";
+
+								return (
+									<NavLink
+										key={sub.id}
+										to={sub.url}
+										onClick={(e) => onNavigate(sub.url, e)}
+										className={cn(
+											"relative flex h-[34px] items-center gap-2.5 rounded-[10px] px-2.5 text-xs no-underline transition-[background-color,color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] outline-none select-none active:scale-[0.98] min-[769px]:hover:bg-panel-elevated",
+											subActive
+												? "bg-panel-elevated font-bold text-panel-accent"
+												: "bg-transparent font-medium text-panel-text-secondary min-[769px]:hover:text-panel-text",
+										)}
+									>
+										{subActive ? (
+											<span className="pointer-events-none absolute -inset-s-[11.5px] top-1/2 h-3.5 w-[2px] -translate-y-1/2 rounded-full bg-panel-accent" />
+										) : null}
+										<SubIcon className="size-4 shrink-0" />
+										<span className="min-w-0 flex-1 truncate">{sub.title}</span>
+										{isNotif && unreadCount > 0 ? (
+											<span
+												dir="ltr"
+												className="inline-flex h-[17px] min-w-[17px]! shrink-0 items-center justify-center rounded-full bg-panel-accent px-1 text-[10px] font-bold text-white tabular-nums [unicode-bidi:isolate]"
+											>
+												{unreadCount > 99 ? "99+" : unreadCount}
+											</span>
+										) : null}
+									</NavLink>
+								);
+							})}
+						</div>
+					</div>
+				</div>
+			) : null}
+		</div>
+	);
+};
+
+interface SidebarBannerSectionProps {
+	banners: SponsorAsset[];
+	collapsed: boolean;
+	inDrawer: boolean;
+}
+
+const SidebarBannerSection: FC<SidebarBannerSectionProps> = ({
+	banners,
+	collapsed,
+	inDrawer,
+}) => {
+	if (collapsed || banners.length === 0) return null;
+
+	return (
+		<div
+			className={cn(
+				"w-full shrink-0 border-t border-panel-border! pt-2.5",
+				inDrawer
+					? "mx-auto max-w-[min(154px,calc(100%-84px))] pt-2 pb-[calc(env(safe-area-inset-bottom,0px)+8px)]"
+					: "pb-0",
+			)}
+		>
+			<SponsorCarousel
+				items={banners.map((asset) => ({
+					id: asset.id,
+					src: resolveAssetUrl(asset.image_url),
+					alt: asset.alt || asset.label || "Sponsor",
+					href: asset.target_url,
+					label: asset.label,
+					isSponsor: true,
+				}))}
+				variant="sidebar"
+				animateIn={false}
+			/>
+		</div>
+	);
+};
+
+export const AppSidebar: FC<AppSidebarProps> = memo(function AppSidebar({
 	collapsed,
 	sponsors = [],
 	sidebarBanners = [],
 	inDrawer = false,
 	onRequestExpand,
-}) => {
+}) {
 	const { t, i18n } = useTranslation();
 	const location = useLocation();
 	const navigate = useNavigate();
-	const dashboardRoot = useHref("/");
-	const { userData } = useGetUser();
-	const currentLanguage = i18n.language || "en";
-	const tutorialsUrl = "/tutorials";
-	const sectionAccess = userData.permissions?.sections;
-	const isFullAccess = userData.role === AdminRole.FullAccess;
-	const isPrivilegedAdmin = isFullAccess || userData.role === AdminRole.Sudo;
-	const defaultSelfPermissions = {
-		self_myaccount: false,
-		self_change_password: false,
-		self_api_keys: false,
-		self_placeholders: false,
-	};
-	const baseSelf =
-		userData.permissions?.self_permissions ?? defaultSelfPermissions;
-	const selfAccess = isFullAccess
-		? { self_myaccount: true, self_change_password: true, self_api_keys: true }
-		: baseSelf;
-	const canViewUsage = Boolean(sectionAccess?.[AdminSection.Usage]);
-	const canViewAdmins = Boolean(sectionAccess?.[AdminSection.Admins]);
-	const canViewServicesSection = Boolean(
-		sectionAccess?.[AdminSection.Services],
-	);
-	const canViewRecentActions =
-		isFullAccess ||
-		(userData.role === AdminRole.Sudo &&
-			Boolean(userData.permissions?.sudo?.[AdminSudoScope.Xray]));
-	const canManagePlaceholders =
-		isFullAccess ||
-		(userData.role === AdminRole.Sudo &&
-			Boolean(userData.permissions?.sudo?.[AdminSudoScope.Subscriptions])) ||
-		Boolean(baseSelf.self_placeholders);
-	const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
-	const [hasNewTutorials, setHasNewTutorials] = useState(false);
+	const { colorMode } = useColorMode();
+	const isRTL = i18n.dir(i18n.language) === "rtl";
+	const { navSections } = useNavSections();
+	const unreadNotifications = useUnreadNotifications();
+	const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
+		users_hub: true,
+	});
 
-	const checkTutorialUpdates = useCallback(async () => {
-		const langKey = normalizeTutorialLang(i18n.language);
-		try {
-			const response = await fetch(getTutorialManifestUrl(dashboardRoot), {
-				headers: { "Cache-Control": "no-cache" },
-			});
-			if (!response.ok) {
-				throw new Error(`Failed to load tutorial meta: ${response.status}`);
+	const handleNavigate = useCallback(
+		(url: string, event?: ReactMouseEvent) => {
+			event?.preventDefault();
+			const defaultTab = DEFAULT_TAB_BY_PATH[url];
+			const normalized = url.startsWith("/") ? url : `/${url}`;
+			navigate(defaultTab ? `${normalized}#${defaultTab}` : normalized);
+			if (inDrawer && onRequestExpand) {
+				onRequestExpand();
 			}
-			const manifest = (await response.json()) as Record<string, string>;
-			const version = manifest[langKey]?.toString().trim();
-			if (!version) {
-				setHasNewTutorials(false);
-				return;
-			}
-			const seenKey = getTutorialSeenKey(langKey);
-			const seenVersion = window.localStorage.getItem(seenKey);
-			if (seenVersion === null) {
-				window.localStorage.setItem(seenKey, version);
-				setHasNewTutorials(false);
-				return;
-			}
-			setHasNewTutorials(seenVersion !== version);
-		} catch (err) {
-			console.error("Failed to check tutorial updates", err);
-			setHasNewTutorials(false);
-		}
-	}, [dashboardRoot, i18n.language]);
+		},
+		[inDrawer, navigate, onRequestExpand],
+	);
 
 	useEffect(() => {
-		void checkTutorialUpdates();
-	}, [checkTutorialUpdates]);
-
-	const baseSettingsSubItems: SidebarSubItems = [
-		isPrivilegedAdmin
-			? {
-					title: t("diagnostics.menu"),
-					url: "/errors",
-					icon: InsightsIconStyled,
-				}
-			: null,
-		sectionAccess?.[AdminSection.Hosts]
-			? {
-					title: t("header.hostSettings"),
-					url: "/hosts",
-					icon: HostsIconStyled,
-				}
-			: null,
-		sectionAccess?.[AdminSection.Nodes]
-			? {
-					title: t("header.nodeSettings"),
-					url: "/node-settings",
-					icon: NodeIconStyled,
-				}
-			: null,
-		sectionAccess?.[AdminSection.Integrations]
-			? {
-					title: t("header.integrationSettings"),
-					url: "/settings",
-					icon: MasterSettingsIconStyled,
-				}
-			: null,
-		sectionAccess?.[AdminSection.Xray]
-			? {
-					title: t("header.xraySettings"),
-					url: "/xray-settings",
-					icon: XraySettingsIconStyled,
-				}
-			: null,
-		isPrivilegedAdmin
-			? {
-					title: t("haproxy.title"),
-					url: "/haproxy",
-					icon: HAProxyIconStyled,
-				}
-			: null,
-		sectionAccess?.[AdminSection.Xray]
-			? {
-					title: t("pages.xray.logs"),
-					url: "/xray-logs",
-					icon: XrayLogsIconStyled,
-				}
-			: null,
-		sectionAccess?.[AdminSection.Xray]
-			? {
-					title: t("header.accessInsights"),
-					url: "/access-insights",
-					icon: InsightsIconStyled,
-				}
-			: null,
-		canViewRecentActions
-			? {
-					title: t("recentActions.title"),
-					url: "/recent-actions",
-					icon: RecentActionsIconStyled,
-				}
-			: null,
-		isPrivilegedAdmin
-			? {
-					title: t("phpmyadmin.menu"),
-					url: "/phpmyadmin",
-					icon: PHPMyAdminIconStyled,
-				}
-			: null,
-		isPrivilegedAdmin
-			? {
-					title: t("externalApps.menu"),
-					url: "/external-apps",
-					icon: ExternalAppsIconStyled,
-				}
-			: null,
-		isPrivilegedAdmin
-			? {
-					title: t("apiDocs.menu"),
-					url: "/api-docs",
-					icon: ApiDocsIconStyled,
-				}
-			: null,
-		canManagePlaceholders
-			? {
-					title: isPrivilegedAdmin
-						? t("placeholders.menu")
-						: t("placeholders.settingsMenu"),
-					url: "/placeholders",
-					icon: PlaceholderIconStyled,
-				}
-			: null,
-		{
-			title: t("tutorials.menu"),
-			url: tutorialsUrl,
-			icon: TutorialIconStyled,
-		},
-	].filter(Boolean) as SidebarSubItems;
-
-	const settingsSubItems: SidebarSubItems = [...baseSettingsSubItems];
-	if (canViewServicesSection) {
-		settingsSubItems.unshift({
-			title: t("services.title"),
-			url: "/services",
-			icon: ServicesIconStyled,
-		});
-	}
-
-	const defaultTabByPath: Record<string, string> = {
-		"/settings": "panel",
-		"/hosts": "inbounds",
-		"/usage": "services",
-		"/xray-settings": "basic",
-	};
-
-	const handleNavClick = (event?: ReactMouseEvent, targetUrl?: string) => {
-		if (inDrawer && onRequestExpand) {
-			onRequestExpand();
+		const path = location.pathname;
+		if (path === "/users" || path === "/groups" || path === "/bulk-actions") {
+			setOpenGroups((prev) => ({ ...prev, users_hub: true }));
+		} else if (
+			path.startsWith("/xray-logs") ||
+			path.startsWith("/errors") ||
+			path.startsWith("/access-insights") ||
+			path.startsWith("/recent-actions")
+		) {
+			setOpenGroups((prev) => ({ ...prev, observability: true }));
+		} else if (
+			path.startsWith("/xray-settings") ||
+			path.startsWith("/haproxy")
+		) {
+			setOpenGroups((prev) => ({ ...prev, core_routing: true }));
+		} else if (
+			path.startsWith("/settings") ||
+			path.startsWith("/notifications") ||
+			path.startsWith("/placeholders") ||
+			path.startsWith("/phpmyadmin") ||
+			path.startsWith("/external-apps")
+		) {
+			setOpenGroups((prev) => ({ ...prev, system_tools: true }));
 		}
-		if (!targetUrl) return;
-		const defaultTab = defaultTabByPath[targetUrl];
-		if (defaultTab) {
-			event?.preventDefault();
-			const normalized = targetUrl.startsWith("/")
-				? targetUrl
-				: `/${targetUrl}`;
-			navigate(`${normalized}#${defaultTab}`);
+	}, [location.pathname]);
+
+	const dynamicSidebarWidth = useMemo(() => {
+		let maxLen = 0;
+		for (const section of navSections) {
+			for (const item of section.items) {
+				if (item.title && item.title.length > maxLen) {
+					maxLen = item.title.length;
+				}
+				if (item.type === "group") {
+					for (const sub of item.subItems) {
+						if (sub.title && sub.title.length > maxLen) {
+							maxLen = sub.title.length;
+						}
+					}
+				}
+			}
 		}
-	};
+		if (maxLen > 20) {
+			return Math.min(288, Math.round(240 + (maxLen - 20) * 5));
+		}
+		return 240;
+	}, [navSections]);
 
-	const items: SidebarItem[] = [
-		{ title: t("dashboard"), url: "/", icon: HomeIconStyled },
-		{ title: t("users"), url: "/users", icon: UsersIconStyled },
-		{ title: t("groups.title"), url: "/groups", icon: GroupsIconStyled },
-	];
+	useEffect(() => {
+		if (typeof document !== "undefined") {
+			document.documentElement.style.setProperty(
+				"--rb-sidebar-width",
+				`${dynamicSidebarWidth}px`,
+			);
+		}
+	}, [dynamicSidebarWidth]);
 
-	items.push({
-		title: t("bulkActions.menu"),
-		url: "/bulk-actions",
-		icon: BulkActionsIconStyled,
-	});
+	const navScrollRef = useRef<HTMLDivElement | null>(null);
 
-	if (selfAccess.self_myaccount) {
-		items.splice(1, 0, {
-			title: t("myaccount.menu"),
-			url: "/myaccount",
-			icon: MyAccountIconStyled,
-		});
-	}
-
-	items.push({
-		title: t("notifications.menu"),
-		url: "/notifications",
-		icon: NotificationIconStyled,
-	});
-
-	if (canViewUsage) {
-		items.push({
-			title: t("usage.menu"),
-			url: "/usage",
-			icon: UsageIconStyled,
-		});
-	}
-	if (canViewAdmins) {
-		items.push({
-			title: t("admins"),
-			url: "/admins",
-			icon: AdminIconStyled,
-		});
-	}
-	if (settingsSubItems.length > 0) {
-		items.push({
-			title: t("header.settings"),
-			icon: SettingsIconStyled,
-			subItems: settingsSubItems,
-		});
-	}
-
-	const directItems = items.filter((item) => item.url);
-	const directByUrl = new Map(
-		directItems.map((item) => [item.url as string, item]),
+	const handleGroupClick = useCallback(
+		(groupId: string) => {
+			setOpenGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
+		},
+		[],
 	);
-	const settingsByUrl = new Map(
-		settingsSubItems.map((item) => [item.url, item as SidebarItem]),
-	);
-	const pickDirect = (url: string) => directByUrl.get(url);
-	const pickSetting = (url: string) => settingsByUrl.get(url);
-	const compactGroups = [
-		{
-			title: t("dashboard"),
-			items: [pickDirect("/")],
-		},
-		{
-			title: t("users"),
-			items: [pickDirect("/users"), pickDirect("/groups"), pickDirect("/bulk-actions")],
-		},
-		{
-			title: t("sidebar.groups.infrastructure"),
-			items: [
-				pickSetting("/node-settings"),
-				pickSetting("/services"),
-				pickSetting("/hosts"),
-			],
-		},
-		{
-			title: t("admins.admin"),
-			items: [
-				pickDirect("/admins"),
-				pickDirect("/usage"),
-				pickDirect("/myaccount"),
-				pickDirect("/notifications"),
-			],
-		},
-		{
-			title: t("sidebar.groups.system"),
-			items: [
-				pickSetting("/settings"),
-				pickSetting("/xray-settings"),
-				pickSetting("/haproxy"),
-				pickSetting("/xray-logs"),
-				pickSetting("/errors"),
-				pickSetting("/access-insights"),
-				pickSetting("/recent-actions"),
-				pickSetting("/phpmyadmin"),
-				pickSetting("/external-apps"),
-				pickSetting("/placeholders"),
-				pickSetting("/api-docs"),
-				pickSetting(tutorialsUrl),
-			],
-		},
-	].map((group) => ({
-		...group,
-		items: group.items.filter(Boolean) as SidebarItem[],
-	}));
 
-	const isRTL = i18n.dir(currentLanguage) === "rtl";
-	const isItemActive = (url: string) =>
-		location.pathname === url ||
-		(url !== "/" && location.pathname.startsWith(url));
-	const groupIsOpen = (group: (typeof compactGroups)[number]) =>
-		openGroups[group.title] ??
-		(group.items.length <= 4 ||
-			group.items.some((item) => isItemActive(item.url as string)));
-	const sponsorItems: SponsorCarouselItem[] = [
-		{
-			id: "rebecca",
-			src: logoUrl,
-			alt: "Rebecca",
-			label: "Rebecca",
-		},
-		...sponsors.map((asset) => ({
-			id: asset.id,
-			src: asset.image_url,
-			alt: asset.alt || asset.label || "Sponsor",
-			href: asset.target_url,
-			label: asset.label,
-			isSponsor: true,
-		})),
-	];
+	const isItemActive = useCallback(
+		(url: string) =>
+			location.pathname === url ||
+			(url !== "/" && location.pathname.startsWith(url)),
+		[location.pathname],
+	);
 
 	return (
-		<aside
-			dir={isRTL ? "rtl" : "ltr"}
-			data-dir={isRTL ? "rtl" : "ltr"}
-			data-collapsed={collapsed ? "true" : "false"}
-			className={[
-				"flex shrink-0 select-none overflow-hidden bg-panel-sidebar transition-[width] duration-300 ease-out",
-				inDrawer
-					? "relative h-full w-full"
-					: "fixed top-3 h-[calc(100vh-24px)] rounded-2xl border border-panel-border shadow-[0_18px_48px_rgba(15,23,42,0.10)] dark:shadow-[0_18px_48px_rgba(0,0,0,0.32)]",
-			].join(" ")}
-			style={{
-				width: inDrawer ? "100%" : collapsed ? 64 : 224,
-				...(inDrawer ? {} : { [isRTL ? "right" : "left"]: 12 }),
-			}}
-		>
-			<div
-				className={[
-					"flex h-full min-h-0 w-full flex-col justify-between gap-2",
-					collapsed ? "p-2" : "p-4",
-				].join(" ")}
+		<TooltipProvider delayDuration={180}>
+			<aside
+				dir={isRTL ? "rtl" : "ltr"}
+				data-dir={isRTL ? "rtl" : "ltr"}
+				data-collapsed={collapsed ? "true" : "false"}
+				style={{
+					width: inDrawer
+						? "100%"
+						: collapsed
+							? "68px"
+							: `var(--rb-sidebar-width, ${dynamicSidebarWidth}px)`,
+					...(inDrawer ? {} : { [isRTL ? "right" : "left"]: 12 }),
+				}}
+				className={cn(
+					"flex shrink-0 overflow-hidden bg-panel-surface select-none [touch-action:manipulation]",
+					inDrawer
+						? "relative h-full max-h-full w-full"
+						: "fixed top-3 z-[200] h-[calc(100dvh-24px)] max-h-[calc(100dvh-24px)] rounded-[20px] border border-panel-border! shadow-[0_1px_2px_rgba(0,0,0,0.03),inset_0_1px_0_0_rgba(255,255,255,0.7)] transition-[width] duration-[260ms] ease-[cubic-bezier(0.16,1,0.3,1)] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]",
+				)}
 			>
-				<div className="rb-sidebar-scroll min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-					{/* Sponsor strip, hidden while collapsed. */}
-					<div className="mb-3 rounded-md border border-panel-border bg-panel-elevated px-2 py-2">
-						<SponsorCarousel
-							items={sponsorItems}
-							variant="logo"
+				<div className="flex h-full min-h-0 w-full flex-col justify-between px-2 py-2.5">
+					<div
+						className={cn(
+							"-mx-2 mb-2 flex min-h-[48px] items-center justify-between border-b border-panel-border! py-2.5 ps-0",
+							inDrawer ? "pe-2.5" : "pe-0",
+						)}
+					>
+						<SidebarLogoCarousel
+							sponsors={sponsors}
 							collapsed={collapsed}
+							inDrawer={inDrawer}
+							colorMode={colorMode}
+							isRTL={isRTL}
+							onNavigateRoot={() => navigate("/")}
+							onRequestExpand={onRequestExpand}
 						/>
+
+						{inDrawer && onRequestExpand ? (
+							<button
+								type="button"
+								data-drawer-close="true"
+								aria-label={t("close")}
+								onClick={onRequestExpand}
+								className="inline-flex size-9 min-w-9 shrink-0 items-center justify-center rounded-full border border-panel-border! bg-panel-elevated/60 text-panel-text-secondary transition-[background-color,color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] outline-none active:scale-[0.92] min-[769px]:hover:bg-panel-elevated min-[769px]:hover:text-panel-text"
+							>
+								<X className="size-4" />
+							</button>
+						) : null}
 					</div>
 
-					<div className={collapsed ? "flex flex-col gap-1" : "flex flex-col gap-2"}>
-						{compactGroups.map((group) => {
-							if (group.items.length === 0) return null;
-							const isOpen = collapsed || groupIsOpen(group);
+					<div
+						ref={navScrollRef}
+						dir={isRTL ? "rtl" : "ltr"}
+						className="rb-sidebar-scroll min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain [overflow-anchor:none] px-0"
+					>
+						<div
+							className={cn(
+								"flex flex-col py-1.5",
+								collapsed ? "gap-3" : "gap-4",
+							)}
+						>
+							{navSections.map((section) => {
+								const visibleItems = section.items.filter(
+									(item) => item.visible,
+								);
+								if (visibleItems.length === 0) return null;
 
-							return (
-								<div key={group.title}>
-									{collapsed ? (
-										<div className="mx-2 my-2 border-t border-panel-border" />
-									) : (
-										<button
-											type="button"
-											aria-expanded={isOpen}
-											onClick={() =>
-												setOpenGroups((prev) => ({
-													...prev,
-													[group.title]: !isOpen,
-												}))
-											}
-											className="mb-1 flex w-full items-center justify-between rounded-[4px] px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-panel-text-muted transition-colors hover:text-panel-text"
+								return (
+									<div key={section.id} data-nav-section={section.id}>
+
+										<div
+											className={cn(
+												"pointer-events-none overflow-hidden whitespace-nowrap transition-[max-height,opacity,margin] duration-[260ms] ease-[cubic-bezier(0.16,1,0.3,1)]",
+												collapsed
+													? "mb-0 mt-0 max-h-0 opacity-0"
+													: "mb-1.5 mt-0 max-h-[26px] opacity-100",
+											)}
 										>
-											<span>{group.title}</span>
-											<ChevronDown
-												width={14}
-												height={14}
-												style={{
-													transform: isOpen ? undefined : "rotate(-90deg)",
-													transition: "transform 0.15s ease",
-												}}
-											/>
-										</button>
-									)}
+											<span className="block truncate px-3 text-[10.5px] font-bold tracking-[0.06em] uppercase text-panel-text-muted">
+												{section.title}
+											</span>
+										</div>
 
-									<div
-										className={[
-											"flex flex-col gap-0.5",
-											isOpen ? "" : "hidden",
-										].join(" ")}
-									>
-										{group.items.map((item) => {
-											if (!item.url) return null;
-											const itemUrl = item.url;
-											const isActive = isItemActive(itemUrl);
-											const Icon = item.icon;
-											const showTutorialBadge =
-												itemUrl === tutorialsUrl && hasNewTutorials;
+										<div className="flex flex-col gap-0.5">
+											{visibleItems.map((item) => {
+												if (item.type === "direct") {
+													const isActive = isItemActive(item.url);
+													const ItemIcon = item.icon;
+													const showBadge = Boolean(item.badge);
 
-											return (
-												<NavLink
-													key={itemUrl}
-													to={itemUrl}
-													onClick={(e) => handleNavClick(e, itemUrl)}
-													className={[
-														"group relative flex min-h-[44px] items-center gap-3 rounded-[4px] border-s-[3px] py-1.5 transition-colors md:min-h-[36px]",
-														collapsed ? "justify-center px-2" : "px-3",
-														isActive
-															? "border-s-panel-accent bg-panel-elevated text-panel-text"
-															: "border-s-transparent text-panel-text-secondary hover:bg-panel-elevated hover:text-panel-text",
-													].join(" ")}
-												>
-													<span className="relative inline-flex">
-														<Icon />
-														{showTutorialBadge && collapsed ? (
-															<span className="absolute -end-2 -top-1.5 inline-flex size-4 items-center justify-center rounded-full bg-panel-accent text-white ring-2 ring-panel-sidebar">
-																<TutorialUpdateIconStyled />
-															</span>
-														) : null}
-													</span>
-													{!collapsed ? (
-														<>
-															<span
-																className={[
-																	"truncate text-sm",
-																	isActive ? "font-bold" : "font-semibold",
-																].join(" ")}
+													return (
+														<Tooltip
+															key={item.id}
+															open={collapsed ? undefined : false}
+														>
+															<TooltipTrigger asChild>
+																<NavLink
+																	to={item.url}
+																	onClick={(e) => handleNavigate(item.url, e)}
+																	className={cn(
+																		"relative flex h-[38px] w-full items-center justify-start gap-2.5 overflow-hidden rounded-[12px] text-[13px] no-underline transition-[padding,background-color,color,transform] duration-[260ms] ease-[cubic-bezier(0.16,1,0.3,1)] outline-none select-none active:scale-[0.98] min-[769px]:hover:bg-panel-elevated",
+																		collapsed ? "ps-4 pe-4" : "ps-3 pe-2.5",
+																		isActive
+																			? "bg-panel-elevated font-bold text-panel-accent"
+																			: "bg-transparent font-medium text-panel-text-secondary min-[769px]:hover:text-panel-text",
+																	)}
+																>
+																	{isActive ? (
+																		<span className="pointer-events-none absolute inset-s-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-full bg-panel-accent" />
+																	) : null}
+
+																	<span className="relative inline-flex size-[18px] shrink-0 items-center justify-center">
+																		<ItemIcon className="size-[18px]" />
+																		{showBadge && collapsed ? (
+																			<span className="absolute -top-1 -end-1 size-2 rounded-full border-[1.5px] border-panel-surface bg-panel-accent" />
+																		) : null}
+																	</span>
+
+																	<span
+																		aria-hidden={collapsed}
+																		className={cn(
+																			"flex min-w-0 flex-1 items-center justify-between gap-2 overflow-hidden whitespace-nowrap transition-opacity ease-out",
+																			collapsed
+																				? "pointer-events-none opacity-0 duration-150"
+																				: "opacity-100 delay-[40ms] duration-200",
+																		)}
+																	>
+																		<span className="truncate">
+																			{item.title}
+																		</span>
+																		{showBadge ? (
+																			<span className="inline-flex size-4 shrink-0 items-center justify-center rounded-full bg-panel-accent text-white">
+																				<BellRing className="size-2.5" />
+																			</span>
+																		) : null}
+																	</span>
+																</NavLink>
+															</TooltipTrigger>
+															<TooltipContent
+																side={isRTL ? "left" : "right"}
+																sideOffset={10}
+																className="z-[2200] rounded-[10px] border border-panel-border! bg-panel-elevated px-3 py-1.5 text-xs font-semibold text-panel-text shadow-lg"
 															>
 																{item.title}
-															</span>
-															{showTutorialBadge ? (
-																<span className="ms-auto inline-flex size-5 items-center justify-center rounded-full bg-panel-accent text-white">
-																	<TutorialUpdateIconStyled />
-																</span>
-															) : null}
-														</>
-													) : (
-														/* Collapsed rail: the label appears on hover, like
-														   the old Tooltip did. */
-														<span className="pointer-events-none absolute start-full top-1/2 z-20 ms-2 -translate-y-1/2 whitespace-nowrap rounded-md border border-panel-border bg-panel-elevated px-2 py-1 text-xs text-panel-text opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
-															{item.title}
-														</span>
-													)}
-												</NavLink>
-											);
-										})}
-									</div>
-								</div>
-							);
-						})}
-					</div>
-				</div>
+															</TooltipContent>
+														</Tooltip>
+													);
+												}
 
-				{!collapsed && sidebarBanners.length > 0 ? (
-					<div className="w-full shrink-0">
-						<SponsorCarousel
-							items={sidebarBanners.map((asset) => ({
-								id: asset.id,
-								src: asset.image_url,
-								alt: asset.alt || asset.label || "Sponsor",
-								href: asset.target_url,
-								label: asset.label,
-								isSponsor: true,
-							}))}
-							variant="sidebar"
-						/>
+												const visibleSubs = item.subItems.filter(
+													(sub) => sub.visible,
+												);
+												if (visibleSubs.length === 0) return null;
+
+												const isGroupActive = visibleSubs.some((sub) =>
+													isItemActive(sub.url),
+												);
+												const isOpen = Boolean(openGroups[item.id]);
+
+												return (
+													<GroupNavRow
+														key={item.id}
+														group={item}
+														collapsed={collapsed}
+														isGroupActive={isGroupActive}
+														isOpen={isOpen}
+														isRTL={isRTL}
+														unreadCount={unreadNotifications}
+														isItemActive={isItemActive}
+														onToggleOpen={() => handleGroupClick(item.id)}
+														onNavigate={handleNavigate}
+													/>
+												);
+											})}
+										</div>
+									</div>
+								);
+							})}
+						</div>
 					</div>
-				) : null}
-			</div>
-		</aside>
+
+					<SidebarBannerSection
+						banners={sidebarBanners}
+						collapsed={collapsed}
+						inDrawer={inDrawer}
+					/>
+				</div>
+			</aside>
+		</TooltipProvider>
 	);
-};
+});
+
