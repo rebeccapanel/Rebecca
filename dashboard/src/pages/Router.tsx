@@ -65,7 +65,7 @@ const XrayLogsPage = lazy(() => import("./XrayLogsPage"));
 const ErrorsPage = lazy(() => import("./ErrorsPage"));
 const NotificationsPage = lazy(() => import("./NotificationsPage"));
 
-const PageLoading = () => <PageLoadingSkeleton />;
+const PageLoading = () => <PageLoadingSkeleton variant="box" />;
 
 const LazyPage = ({ Page }: { Page: ComponentType }) => (
 	<Suspense fallback={<PageLoading />}>

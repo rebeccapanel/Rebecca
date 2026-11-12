@@ -1705,8 +1705,8 @@ export const IntegrationSettingsPage = () => {
 	);
 
 				if (!getUserIsSuccess) {
-		return <PageLoadingSkeleton />;
-	}
+					return <PageLoadingSkeleton variant="settings" />;
+				}
 
 	if (!canManageIntegrations) {
 		return (

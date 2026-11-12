@@ -2886,6 +2886,51 @@ input[type="number"] {
   }
 }
 
+@keyframes rb-skeleton-sweep {
+  from {
+    transform: translate3d(-100%, 0, 0);
+  }
+  to {
+    transform: translate3d(100%, 0, 0);
+  }
+}
+
+.rb-skeleton-sweep {
+  position: relative;
+  overflow: hidden;
+}
+
+.rb-skeleton-sweep::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.045) 50%,
+    transparent 100%
+  );
+  animation: rb-skeleton-sweep 1.5s cubic-bezier(0.23, 1, 0.32, 1) infinite;
+}
+
+.rb-theme-light .rb-skeleton-sweep::after,
+.chakra-ui-light .rb-skeleton-sweep::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(0, 0, 0, 0.035) 50%,
+    transparent 100%
+  );
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rb-skeleton-sweep::after {
+    animation: none;
+    display: none;
+  }
+}
+
 [data-radix-popper-content-wrapper]:has([data-dock-settings-popover]) {
   pointer-events: none !important;
 }

@@ -4019,7 +4019,7 @@ export const CoreSettingsPage: FC = () => {
 	];
 
 	if (!getUserIsSuccess) {
-		return <PageLoadingSkeleton />;
+		return <PageLoadingSkeleton variant="settings" />;
 	}
 
 	if (!canManageXraySettings) {

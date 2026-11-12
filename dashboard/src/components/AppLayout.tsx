@@ -23,6 +23,7 @@ import { useSheetSwipeToClose } from "hooks/useSheetSwipeToClose";
 import { cn } from "lib/cn";
 import { EDITOR_PAGE_ID, useActiveEntityPage } from "lib/entityPages";
 import { resolveAppLanguageCode } from "lib/language";
+import { useShellLoading } from "lib/shellLoading";
 import {
 	Bell,
 	BellRing,
@@ -67,6 +68,10 @@ import {
 	type GroupSubItem,
 	useNavSections,
 } from "./layout/navConfig";
+import {
+	HeaderSkeletonContent,
+	MobileDockSkeletonContent,
+} from "./layout/ShellSkeletons";
 import {
 	NotificationBell,
 	NotificationMenuItem,
@@ -255,7 +260,35 @@ function AppLayoutContent() {
 	}, []);
 
 	const { t, i18n } = useTranslation();
-	const { userData, getUserIsSuccess } = useGetUser();
+	const { userData, getUserIsSuccess, getUserIsError } = useGetUser();
+	const activeLoadingCount = useShellLoading(
+		(state) => Object.keys(state.activeScopes).length,
+	);
+	const [shellBootSettled, setShellBootSettled] = useState(false);
+	const [shellReady, setShellReady] = useState(false);
+
+	useEffect(() => {
+		const frame = window.requestAnimationFrame(() => {
+			setShellBootSettled(true);
+		});
+		return () => window.cancelAnimationFrame(frame);
+	}, []);
+
+	useLayoutEffect(() => {
+		if (shellReady) return;
+		if (!shellBootSettled) return;
+		if (!getUserIsSuccess && !getUserIsError) return;
+		if (activeLoadingCount > 0) return;
+		setShellReady(true);
+	}, [
+		shellReady,
+		shellBootSettled,
+		getUserIsSuccess,
+		getUserIsError,
+		activeLoadingCount,
+	]);
+
+	const isShellLoading = !shellReady;
 	const cachedRole = useMemo(() => {
 		try {
 			return localStorage.getItem("rb-user-role");
@@ -1185,6 +1218,7 @@ function AppLayoutContent() {
 	}, [sponsorHeaderItems[0]?.src]);
 
 	useEffect(() => {
+		if (isShellLoading) return;
 		const headerEl = headerRef.current;
 		if (!headerEl) return;
 
@@ -1432,6 +1466,7 @@ function AppLayoutContent() {
 		getUserIsSuccess,
 		starsCompact,
 		profileCompact,
+		isShellLoading,
 	]);
 
 	return (
@@ -1458,6 +1493,7 @@ function AppLayoutContent() {
 				{!isMobile ? (
 					<AppSidebar
 						collapsed={sidebarCollapsed}
+						loading={isShellLoading}
 						sponsors={sponsorSidebarLogoItems}
 						sidebarBanners={sponsorSidebarBanners}
 						onRequestExpand={handleSidebarExpand}
@@ -1488,7 +1524,14 @@ function AppLayoutContent() {
 							dir={isRTL ? "rtl" : "ltr"}
 							className="mx-3 mt-3 flex h-[52px] min-h-[52px] items-center justify-between gap-3 overflow-hidden rounded-[18px] border border-panel-border! bg-panel-surface px-3 shadow-[0_1px_2px_rgba(0,0,0,0.03),inset_0_1px_0_0_rgba(255,255,255,0.75)] select-none min-[769px]:mx-4 min-[769px]:px-5 dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
 						>
-							<div className="flex h-full min-w-0 flex-1 items-center gap-2.5 overflow-hidden">
+							{isShellLoading ? (
+								<HeaderSkeletonContent
+									isMobile={isMobile}
+									breadcrumbCount={breadcrumbItems.length}
+								/>
+							) : (
+								<>
+									<div className="flex h-full min-w-0 flex-1 items-center gap-2.5 overflow-hidden">
 								<button
 									type="button"
 									aria-label={t("a11y.toggleSidebar")}
@@ -2208,6 +2251,8 @@ function AppLayoutContent() {
 									</Popover>
 								) : null}
 							</div>
+								</>
+							)}
 						</header>
 
 						<div
@@ -2308,6 +2353,9 @@ function AppLayoutContent() {
 									DOCK_SURFACE_CLASS,
 								)}
 							>
+								{isShellLoading ? (
+									<MobileDockSkeletonContent count={bottomNavItems.length} />
+								) : (
 								<div
 									className="relative flex items-center justify-between"
 									dir={isRTL ? "rtl" : "ltr"}
@@ -2775,6 +2823,7 @@ function AppLayoutContent() {
 										);
 									})}
 								</div>
+								)}
 							</div>
 						</div>
 					</>

@@ -10,6 +10,7 @@ import {
 	type DataTableColumn,
 	type DataTableRowAction,
 	PageHeader,
+	PageLoadingSkeleton,
 	TabSystem,
 } from "components/ui";
 import { FormField } from "components/ui/form-field";
@@ -222,6 +223,10 @@ const GroupsPage: FC = () => {
 				]
 			: []),
 	];
+
+	if (isLoading) {
+		return <PageLoadingSkeleton />;
+	}
 
 	return (
 		<div

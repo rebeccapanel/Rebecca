@@ -15,6 +15,7 @@ import { DEFAULT_SEARCH_MATCH_OPTIONS } from "utils/searchMatch";
 import {
 	DataTable,
 	PageHeader,
+	PageLoadingSkeleton,
 	ResourceRefreshButton,
 	type DataTableColumn,
 	type DataTableRowAction,
@@ -197,6 +198,10 @@ export default function HAProxyPage() {
 			onClick: () => (deleteArmed === config.id ? remove.mutate(config.id) : setDeleteArmed(config.id)),
 		},
 	];
+
+	if (overview.isLoading) {
+		return <PageLoadingSkeleton />;
+	}
 
 	return (
 		<div className="flex flex-col items-stretch gap-5">

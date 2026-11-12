@@ -13,7 +13,7 @@ import { Check, CheckCheck, MailOpen, RotateCcw, Send } from "lucide-react";
 import { cn } from "lib/cn";
 import dayjs from "dayjs";
 import { BrowserNotificationsCard } from "components/BrowserNotificationsCard";
-import { PageHeader, TabSystem } from "components/ui";
+import { PageHeader, PageLoadingSkeleton, TabSystem } from "components/ui";
 import useGetUser from "hooks/useGetUser";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -405,7 +405,7 @@ const RulesPanel = () => {
 
 export default function NotificationsPage() {
 	const { t } = useTranslation();
-	const { userData } = useGetUser();
+	const { userData, getUserIsPending } = useGetUser();
 	const canSend =
 		userData.role === AdminRole.Sudo || userData.role === AdminRole.FullAccess;
 	const isFullAccess = userData.role === AdminRole.FullAccess;
@@ -416,6 +416,10 @@ export default function NotificationsPage() {
 		{ id: "rules" as const, label: t("notifications.tabs.rules"), visible: isFullAccess },
 	].filter((section) => section.visible);
 	const current = sections.some((section) => section.id === tab) ? tab : "inbox";
+
+	if (getUserIsPending) {
+		return <PageLoadingSkeleton />;
+	}
 
 	return (
 		<div className="flex flex-col gap-5">

@@ -1,11 +1,13 @@
 import { Skeleton } from "components/ui/skeleton";
 import { cn } from "lib/cn";
+import { useRegisterShellLoading } from "lib/shellLoading";
 import type { FC } from "react";
 
 export interface PageLoadingSkeletonProps {
-	variant?: "entity" | "dashboard";
+	variant?: "box" | "dashboard" | "entity" | "settings" | "frame";
 	canSeeGlobal?: boolean;
 	isRTL?: boolean;
+	syncShell?: boolean;
 	className?: string;
 }
 
@@ -20,15 +22,120 @@ const DASHBOARD_USER_ROWS = [
 	{ id: "expired", labelWidth: "w-20", valWidth: "w-8", pill: false },
 ] as const;
 
-const glassCardClass =
-	"rb-stat-card shimmer-box";
+const cardShellClass = "rb-stat-card";
 
 export const PageLoadingSkeleton: FC<PageLoadingSkeletonProps> = ({
 	variant = "entity",
 	canSeeGlobal = true,
 	isRTL = false,
+	syncShell = true,
 	className,
 }) => {
+	useRegisterShellLoading(
+		syncShell,
+		variant === "box" ? "route-suspense" : "page-loading",
+	);
+
+	if (variant === "box") {
+		return (
+			<div
+				aria-busy="true"
+				aria-live="polite"
+				className={cn("flex w-full flex-1 flex-col", className)}
+			>
+				<div
+					className={cn(
+						cardShellClass,
+						"rb-skeleton-sweep min-h-[calc(100dvh-172px)] w-full rounded-[20px] min-[769px]:min-h-[calc(100vh-104px)]",
+					)}
+				/>
+			</div>
+		);
+	}
+
+	if (variant === "frame") {
+		return (
+			<div
+				aria-busy="true"
+				aria-live="polite"
+				className={cn("flex w-full flex-1 flex-col", className)}
+			>
+				<div
+					className={cn(
+						cardShellClass,
+						"flex min-h-[calc(100dvh-172px)] w-full flex-col overflow-hidden rounded-[20px] min-[769px]:min-h-[calc(100vh-104px)]",
+					)}
+				>
+					<div className="flex items-center justify-between gap-3 border-b border-panel-border! px-4 py-3.5 min-[769px]:px-6">
+						<div className="flex items-center gap-2.5">
+							<Skeleton className="size-7 rounded-[9px] page-skeleton" />
+							<Skeleton className="h-4 w-32 rounded-md page-skeleton" />
+						</div>
+						<Skeleton className="h-8 w-20 rounded-[10px] page-skeleton" />
+					</div>
+					<div className="flex flex-1 flex-col gap-4 p-4 min-[769px]:p-6">
+						<Skeleton className="h-6 w-52 rounded-md page-skeleton" />
+						<Skeleton className="h-4 w-full max-w-2xl rounded-xs page-skeleton" />
+						<Skeleton className="h-4 w-4/5 max-w-xl rounded-xs page-skeleton" />
+						<Skeleton className="mt-2 min-h-[240px] w-full flex-1 rounded-[16px] page-skeleton" />
+					</div>
+				</div>
+			</div>
+		);
+	}
+
+	if (variant === "settings") {
+		return (
+			<div
+				dir={isRTL ? "rtl" : "ltr"}
+				aria-busy="true"
+				aria-live="polite"
+				className={cn(
+					"flex w-full flex-col items-stretch gap-4 min-[769px]:gap-5",
+					className,
+				)}
+			>
+				<div className="flex flex-col gap-3 min-[769px]:flex-row min-[769px]:items-center min-[769px]:justify-between">
+					<div className="flex items-center gap-1.5 overflow-hidden rounded-[12px] border border-panel-border! bg-panel-surface p-1">
+						{["tab-1", "tab-2", "tab-3", "tab-4"].map((id, idx) => (
+							<Skeleton
+								key={id}
+								className={cn(
+									"h-8 rounded-[9px] page-skeleton",
+									idx === 0 ? "w-24" : "w-20",
+								)}
+							/>
+						))}
+					</div>
+					<Skeleton className="h-9 w-28 rounded-[12px] page-skeleton" />
+				</div>
+
+				{["sec-1", "sec-2"].map((sec) => (
+					<div key={sec} className={cardShellClass}>
+						<div className="flex items-center justify-between gap-3 border-b border-panel-border! px-4 py-3.5 sm:px-5 min-[769px]:px-6">
+							<div className="flex items-center gap-2.5">
+								<Skeleton className="size-7 rounded-[9px] page-skeleton" />
+								<Skeleton className="h-4 w-36 rounded-md page-skeleton" />
+							</div>
+							<Skeleton className="h-7 w-20 rounded-[10px] page-skeleton" />
+						</div>
+						<div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2 sm:p-5 min-[769px]:p-6">
+							{["f-1", "f-2", "f-3", "f-4"].map((field) => (
+								<div key={field} className="flex flex-col gap-2">
+									<Skeleton className="h-3 w-24 rounded-xs page-skeleton" />
+									<Skeleton className="h-10 w-full rounded-[10px] page-skeleton" />
+								</div>
+							))}
+						</div>
+						<div className="flex justify-end gap-2 border-t border-panel-border/70! px-4 py-3 sm:px-5 min-[769px]:px-6">
+							<Skeleton className="h-9 w-24 rounded-[12px] page-skeleton" />
+						</div>
+					</div>
+				))}
+			</div>
+		);
+	}
+
 	if (variant === "dashboard") {
 		return (
 			<div
@@ -46,10 +153,10 @@ export const PageLoadingSkeleton: FC<PageLoadingSkeletonProps> = ({
 							<Skeleton className="h-[18px] w-14 rounded-full page-skeleton" />
 						</div>
 					</div>
-					<div className="grid w-full grid-cols-2 gap-2 min-[600px]:flex min-[600px]:w-auto min-[600px]:items-center">
-						<Skeleton className="col-span-2 h-8 w-full rounded-[12px] page-skeleton min-[600px]:w-24" />
-						<Skeleton className="h-8 w-full rounded-[12px] page-skeleton min-[600px]:w-24" />
-						<Skeleton className="h-8 w-full rounded-[12px] page-skeleton min-[600px]:w-24" />
+					<div className="grid w-full grid-cols-2 gap-2 min-[769px]:flex min-[769px]:w-auto min-[769px]:items-center">
+						<Skeleton className="col-span-2 h-9 w-full rounded-[12px] page-skeleton min-[769px]:col-span-1 min-[769px]:h-8 min-[769px]:w-28" />
+						<Skeleton className="h-9 w-full rounded-[12px] page-skeleton min-[769px]:h-8 min-[769px]:w-24" />
+						<Skeleton className="h-9 w-full rounded-[12px] page-skeleton min-[769px]:h-8 min-[769px]:w-28" />
 					</div>
 				</div>
 
@@ -57,7 +164,7 @@ export const PageLoadingSkeleton: FC<PageLoadingSkeletonProps> = ({
 					{DASHBOARD_KPI_CARDS.map((cardKey, index) => (
 						<div
 							key={cardKey}
-							className={cn(glassCardClass, "flex flex-col justify-between p-4 sm:p-5")}
+							className={cn(cardShellClass, "flex flex-col justify-between p-4 sm:p-5")}
 						>
 							<div>
 								<div className="mb-3 flex items-center justify-between gap-2">
@@ -75,7 +182,7 @@ export const PageLoadingSkeleton: FC<PageLoadingSkeletonProps> = ({
 							<div className="mt-3.5 flex flex-col gap-2">
 								<Skeleton className="h-3 w-10 rounded-xs page-skeleton" />
 								<Skeleton className="h-[6px] w-full rounded-full page-skeleton" />
-								<div className="mt-1 flex items-center justify-between border-t border-panel-border/70 pt-2">
+								<div className="mt-1 flex items-center justify-between border-t border-panel-border/70! pt-2">
 									<Skeleton className="h-3 w-20 rounded-xs page-skeleton" />
 									<Skeleton className="h-3 w-16 rounded-xs page-skeleton" />
 								</div>
@@ -86,15 +193,24 @@ export const PageLoadingSkeleton: FC<PageLoadingSkeletonProps> = ({
 
 				<div className="rb-dashboard-grid-guard grid grid-cols-1 gap-3 min-[769px]:grid-cols-2 min-[769px]:gap-4">
 					{["bandwidth", "uptime"].map((sectionKey, idx) => (
-						<div key={sectionKey} className={glassCardClass}>
-							<div className="flex items-center justify-between border-b border-panel-border px-4 py-3.5 sm:px-5 min-[769px]:px-6">
+						<div key={sectionKey} className={cardShellClass}>
+							<div className="flex items-center justify-between border-b border-panel-border! px-4 py-3.5 sm:px-5 min-[769px]:px-6">
 								<div className="flex items-center gap-2.5">
-									<Skeleton className="size-[26px] rounded-[7px] page-skeleton" />
+									<Skeleton
+										className={cn(
+											"page-skeleton",
+											idx === 0
+												? "size-6 rounded-[8px] sm:size-7 sm:rounded-[9px]"
+												: "size-7 rounded-[9px]",
+										)}
+									/>
 									<Skeleton className="h-4 w-28 rounded-md page-skeleton" />
 								</div>
 								{idx === 0 && (
-									<div className="flex items-center gap-2">
-										<Skeleton className="h-[26px] w-24 rounded-[10px] page-skeleton" />
+									<div className="flex items-center gap-1.5 sm:gap-2">
+										{canSeeGlobal && (
+											<Skeleton className="h-[22px] w-20 rounded-[9px] page-skeleton" />
+										)}
 										<Skeleton className="h-[22px] w-16 rounded-full page-skeleton" />
 									</div>
 								)}
@@ -114,10 +230,10 @@ export const PageLoadingSkeleton: FC<PageLoadingSkeletonProps> = ({
 					))}
 				</div>
 
-				<div className={glassCardClass}>
-					<div className="flex items-center justify-between border-b border-panel-border px-4 py-3.5 sm:px-5 min-[769px]:px-6">
+				<div className={cardShellClass}>
+					<div className="flex items-center justify-between border-b border-panel-border! px-4 py-3.5 sm:px-5 min-[769px]:px-6">
 						<div className="flex items-center gap-2.5">
-							<Skeleton className="size-[26px] rounded-[7px] page-skeleton" />
+							<Skeleton className="size-7 rounded-[9px] page-skeleton" />
 							<Skeleton className="h-4 w-32 rounded-md page-skeleton" />
 						</div>
 						<Skeleton className="h-[22px] w-20 rounded-full page-skeleton" />
@@ -139,10 +255,10 @@ export const PageLoadingSkeleton: FC<PageLoadingSkeletonProps> = ({
 					</div>
 				</div>
 
-				<div className={glassCardClass}>
-					<div className="flex items-center justify-between border-b border-panel-border px-4 py-3.5 sm:px-5 min-[769px]:px-6">
+				<div className={cardShellClass}>
+					<div className="flex items-center justify-between border-b border-panel-border! px-4 py-3.5 sm:px-5 min-[769px]:px-6">
 						<div className="flex items-center gap-2.5">
-							<Skeleton className="size-7 rounded-[10px] page-skeleton" />
+							<Skeleton className="size-7 rounded-[9px] page-skeleton" />
 							<Skeleton className="h-4 w-24 rounded-md page-skeleton" />
 						</div>
 						{canSeeGlobal && <Skeleton className="h-[26px] w-32 rounded-[10px] page-skeleton" />}
@@ -162,10 +278,10 @@ export const PageLoadingSkeleton: FC<PageLoadingSkeletonProps> = ({
 				</div>
 
 				{canSeeGlobal && (
-					<div className={glassCardClass}>
-						<div className="flex items-center justify-between border-b border-panel-border px-4 py-3.5 sm:px-5 min-[769px]:px-6">
+					<div className={cardShellClass}>
+						<div className="flex items-center justify-between border-b border-panel-border! px-4 py-3.5 sm:px-5 min-[769px]:px-6">
 							<div className="flex items-center gap-2.5">
-								<Skeleton className="size-[26px] rounded-[7px] page-skeleton" />
+								<Skeleton className="size-7 rounded-[9px] page-skeleton" />
 								<Skeleton className="h-4 w-24 rounded-md page-skeleton" />
 							</div>
 						</div>
@@ -192,7 +308,7 @@ export const PageLoadingSkeleton: FC<PageLoadingSkeletonProps> = ({
 			aria-live="polite"
 			className={cn("flex w-full flex-col items-stretch gap-4 min-[769px]:gap-5", className)}
 		>
-			<div className={cn(glassCardClass, "flex flex-col gap-4 p-4 min-[769px]:p-5")}>
+			<div className={cn(cardShellClass, "flex flex-col gap-4 p-4 min-[769px]:p-5")}>
 				<div className="flex flex-col items-stretch justify-between gap-4 xl:flex-row xl:items-center">
 					<div className="flex flex-col items-start gap-2">
 						<Skeleton className="h-5 w-40 min-[769px]:w-52 rounded-md page-skeleton" />
@@ -219,8 +335,8 @@ export const PageLoadingSkeleton: FC<PageLoadingSkeletonProps> = ({
 				</div>
 			</div>
 
-			<div className={glassCardClass}>
-				<div className="hidden gap-4 border-b border-panel-border px-5 py-3.5 min-[769px]:flex">
+			<div className={cardShellClass}>
+				<div className="hidden gap-4 border-b border-panel-border! px-5 py-3.5 min-[769px]:flex">
 					{["col-1", "col-2", "col-3", "col-4", "col-5", "col-6", "col-7"].map((id, index) => (
 						<Skeleton
 							key={id}
@@ -235,7 +351,7 @@ export const PageLoadingSkeleton: FC<PageLoadingSkeletonProps> = ({
 					<div
 						key={row}
 						className={cn(
-							"border-panel-border px-4 py-4 min-[769px]:px-5 min-[769px]:py-4.5",
+							"border-panel-border! px-4 py-4 min-[769px]:px-5 min-[769px]:py-4.5",
 							index === ENTITY_ROWS.length - 1 ? "border-b-0" : "border-b",
 						)}
 					>

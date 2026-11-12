@@ -35,11 +35,13 @@ import {
 	type GroupNavItem,
 	useNavSections,
 } from "./layout/navConfig";
+import { SidebarSkeletonBody } from "./layout/ShellSkeletons";
 import { useUnreadNotifications } from "./NotificationBell";
 import { SponsorCarousel } from "./SponsorCarousel";
 
 export interface AppSidebarProps {
 	collapsed: boolean;
+	loading?: boolean;
 	sponsors?: SponsorAsset[];
 	sidebarBanners?: SponsorAsset[];
 	inDrawer?: boolean;
@@ -527,6 +529,7 @@ const SidebarBannerSection: FC<SidebarBannerSectionProps> = ({
 
 export const AppSidebar: FC<AppSidebarProps> = memo(function AppSidebar({
 	collapsed,
+	loading = false,
 	sponsors = [],
 	sidebarBanners = [],
 	inDrawer = false,
@@ -720,7 +723,10 @@ export const AppSidebar: FC<AppSidebarProps> = memo(function AppSidebar({
 						: "fixed top-3 z-[200] h-[calc(100dvh-24px)] max-h-[calc(100dvh-24px)] rounded-[20px] border border-panel-border! shadow-[0_1px_2px_rgba(0,0,0,0.03),inset_0_1px_0_0_rgba(255,255,255,0.7)] transition-[width] duration-[260ms] ease-[cubic-bezier(0.16,1,0.3,1)] dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]",
 				)}
 			>
-				<div className="flex h-full min-h-0 w-full flex-col justify-between px-2 py-2.5">
+				{loading ? (
+					<SidebarSkeletonBody collapsed={collapsed} />
+				) : (
+					<div className="flex h-full min-h-0 w-full flex-col justify-between px-2 py-2.5">
 					<div
 						className={cn(
 							"-mx-2 mb-2 flex min-h-[48px] items-center justify-between border-b border-panel-border! py-2.5 ps-0",
@@ -899,6 +905,7 @@ export const AppSidebar: FC<AppSidebarProps> = memo(function AppSidebar({
 						inDrawer={inDrawer}
 					/>
 				</div>
+				)}
 			</aside>
 		</TooltipProvider>
 	);

@@ -12,7 +12,7 @@ import { cn } from "lib/cn";
 import AdvancedUserActions from "components/AdvancedUserActions";
 import { PanelSelect as Select } from "components/common/PanelSelect";
 import { ConfirmDialog } from "components/dialogs/ConfirmDialog";
-import { PageHeader, TabSystem } from "components/ui";
+import { PageHeader, PageLoadingSkeleton, TabSystem } from "components/ui";
 import { DataSizeField } from "components/ui/data-size-field";
 import { FormField } from "components/ui/form-field";
 import { Input as UiInput } from "components/ui/input";
@@ -953,7 +953,7 @@ export const BulkActionsPage = () => {
 	const { t, i18n } = useTranslation();
 	const location = useLocation();
 	const navigate = useNavigate();
-	const { userData } = useGetUser();
+	const { userData, getUserIsPending } = useGetUser();
 	const permissions = userData.permissions?.users;
 	const privileged = userData.role === AdminRole.FullAccess;
 	const canEditAdmins = Boolean(userData.permissions?.admin_management?.[AdminManagementPermission.Edit] || privileged);
@@ -978,6 +978,10 @@ export const BulkActionsPage = () => {
 			navigate({ hash: activeTab }, { replace: true });
 		}
 	}, [activeTab, location.hash, navigate]);
+
+	if (getUserIsPending) {
+		return <PageLoadingSkeleton variant="settings" />;
+	}
 
 	const tabs = allowedTabs.map((tab) => ({
 		value: tab,
