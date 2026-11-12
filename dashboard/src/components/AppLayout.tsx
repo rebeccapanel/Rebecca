@@ -412,7 +412,9 @@ function AppLayoutContent() {
 
 	const [calendarCompact, setCalendarCompact] = useState(false);
 	const [starsCompact, setStarsCompact] = useState(false);
+	const [profileCompact, setProfileCompact] = useState(false);
 	const starsExpandedWidthRef = useRef(88);
+	const profileExpandedWidthRef = useRef(96);
 	const [breadcrumbMode, setBreadcrumbMode] = useState<
 		"full" | "compact" | "minimal"
 	>("full");
@@ -427,6 +429,7 @@ function AppLayoutContent() {
 		canTruncateLastCrumbState &&
 		calendarCompact &&
 		starsCompact &&
+		profileCompact &&
 		breadcrumbMode === "minimal";
 
 	useEffect(() => {
@@ -1216,7 +1219,11 @@ function AppLayoutContent() {
 			const starsEl = headerRef.current.querySelector<HTMLElement>(
 				"[data-header-github-stars]",
 			);
-			const profileWidth = profileEl ? profileEl.offsetWidth : 90;
+			if (!profileCompact && profileEl && profileEl.offsetWidth > 44) {
+				profileExpandedWidthRef.current = profileEl.offsetWidth;
+			}
+			const fullProfileWidth = profileEl ? profileExpandedWidthRef.current : 90;
+			const compactProfileWidth = profileEl ? 34 : 0;
 			const notifWidth =
 				!isMobile && getUserIsSuccess && notifEl ? notifEl.offsetWidth : 0;
 			if (!starsCompact && starsEl && starsEl.offsetWidth > 44) {
@@ -1234,9 +1241,13 @@ function AppLayoutContent() {
 			const navDividerGaps = 25;
 			const bannerGap = hasBanner ? 10 : 0;
 
-			const getAvailableSpace = (calWidth: number, strWidth: number) => {
+			const getAvailableSpace = (
+				calWidth: number,
+				strWidth: number,
+				profWidth: number,
+			) => {
 				const rightControlsWidth =
-					profileWidth +
+					profWidth +
 					(notifWidth > 0 ? notifWidth + 8 : 0) +
 					(strWidth > 0 ? strWidth + 8 : 0);
 				const controlsWidth = calWidth + 8 + rightControlsWidth;
@@ -1253,14 +1264,22 @@ function AppLayoutContent() {
 			const spaceFullCalFullStars = getAvailableSpace(
 				fullCalendarWidth,
 				fullStarsWidth,
+				fullProfileWidth,
 			);
 			const spaceCompactCalFullStars = getAvailableSpace(
 				compactCalendarWidth,
 				fullStarsWidth,
+				fullProfileWidth,
 			);
 			const spaceCompactCalCompactStars = getAvailableSpace(
 				compactCalendarWidth,
 				compactStarsWidth,
+				fullProfileWidth,
+			);
+			const spaceCompactAllControls = getAvailableSpace(
+				compactCalendarWidth,
+				compactStarsWidth,
+				compactProfileWidth,
 			);
 
 			const crumbCount = breadcrumbItems.length;
@@ -1309,6 +1328,7 @@ function AppLayoutContent() {
 
 			let nextCalendarCompact = true;
 			let nextStarsCompact = false;
+			let nextProfileCompact = false;
 			let nextBreadcrumbMode: "full" | "compact" | "minimal" = "minimal";
 			let nextBannerShrinkable = false;
 			let nextTruncate = true;
@@ -1316,42 +1336,56 @@ function AppLayoutContent() {
 			if (spaceFullCalFullStars >= stage1Needed) {
 				nextCalendarCompact = false;
 				nextStarsCompact = false;
+				nextProfileCompact = false;
 				nextBreadcrumbMode = "full";
 				nextBannerShrinkable = false;
 				nextTruncate = false;
 			} else if (spaceCompactCalFullStars >= stage2Needed) {
 				nextCalendarCompact = true;
 				nextStarsCompact = false;
+				nextProfileCompact = false;
 				nextBreadcrumbMode = "full";
 				nextBannerShrinkable = false;
 				nextTruncate = false;
 			} else if (spaceCompactCalCompactStars >= stage2Needed) {
 				nextCalendarCompact = true;
 				nextStarsCompact = true;
+				nextProfileCompact = false;
 				nextBreadcrumbMode = "full";
 				nextBannerShrinkable = false;
 				nextTruncate = false;
-			} else if (spaceCompactCalCompactStars >= stage3Needed) {
+			} else if (spaceCompactAllControls >= stage2Needed) {
 				nextCalendarCompact = true;
 				nextStarsCompact = true;
+				nextProfileCompact = true;
+				nextBreadcrumbMode = "full";
+				nextBannerShrinkable = false;
+				nextTruncate = false;
+			} else if (spaceCompactAllControls >= stage3Needed) {
+				nextCalendarCompact = true;
+				nextStarsCompact = true;
+				nextProfileCompact = true;
 				nextBreadcrumbMode = "compact";
 				nextBannerShrinkable = false;
 				nextTruncate = false;
-			} else if (spaceCompactCalCompactStars >= stage4Needed) {
+			} else if (spaceCompactAllControls >= stage4Needed) {
 				nextCalendarCompact = true;
 				nextStarsCompact = true;
+				nextProfileCompact = true;
 				nextBreadcrumbMode = "minimal";
 				nextBannerShrinkable = false;
 				nextTruncate = false;
-			} else if (hasBanner && spaceCompactCalCompactStars >= stage5Needed) {
+			} else if (hasBanner && spaceCompactAllControls >= stage5Needed) {
 				nextCalendarCompact = true;
 				nextStarsCompact = true;
+				nextProfileCompact = true;
 				nextBreadcrumbMode = "minimal";
 				nextBannerShrinkable = true;
 				nextTruncate = false;
 			} else {
 				nextCalendarCompact = true;
 				nextStarsCompact = true;
+				nextProfileCompact = true;
 				nextBreadcrumbMode = "minimal";
 				nextBannerShrinkable = hasBanner;
 				nextTruncate = true;
@@ -1362,6 +1396,9 @@ function AppLayoutContent() {
 			);
 			setStarsCompact((prev) =>
 				prev !== nextStarsCompact ? nextStarsCompact : prev,
+			);
+			setProfileCompact((prev) =>
+				prev !== nextProfileCompact ? nextProfileCompact : prev,
 			);
 			setBreadcrumbMode((prev) =>
 				prev !== nextBreadcrumbMode ? nextBreadcrumbMode : prev,
@@ -1394,6 +1431,7 @@ function AppLayoutContent() {
 		isMobile,
 		getUserIsSuccess,
 		starsCompact,
+		profileCompact,
 	]);
 
 	return (
@@ -1925,8 +1963,18 @@ function AppLayoutContent() {
 												data-header-profile="true"
 												variant="outline"
 												size="sm"
+												title={
+													isMobile || profileCompact
+														? userData.username
+														: undefined
+												}
 												aria-label={t("a11y.userMenu")}
-												className="h-[34px] w-[34px] min-w-[34px]! rounded-full border-panel-border! bg-panel-surface p-0 text-panel-text shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,box-shadow,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:bg-panel-surface dark:hover:bg-input/30 active:scale-[0.97] active:bg-panel-elevated min-[769px]:w-auto min-[769px]:min-w-0 min-[769px]:rounded-[12px] min-[769px]:px-3 min-[769px]:hover:border-panel-border-strong! min-[769px]:hover:bg-panel-elevated min-[769px]:dark:hover:bg-panel-elevated min-[769px]:hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)]"
+												className={cn(
+													"h-[34px] border-panel-border! bg-panel-surface text-panel-text shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,box-shadow,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:bg-panel-surface dark:hover:bg-input/30 active:scale-[0.97] active:bg-panel-elevated min-[769px]:hover:border-panel-border-strong! min-[769px]:hover:bg-panel-elevated min-[769px]:dark:hover:bg-panel-elevated min-[769px]:hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)]",
+													isMobile || profileCompact
+														? "w-[34px] min-w-[34px]! rounded-full px-0 min-[769px]:rounded-[12px]"
+														: "w-auto min-w-0 rounded-[12px] px-3",
+												)}
 											>
 												<span className="flex items-center justify-center gap-2">
 													<span className="relative inline-flex shrink-0 items-center justify-center">
@@ -1938,13 +1986,15 @@ function AppLayoutContent() {
 															<span className="absolute -top-0.5 -end-0.5 size-2 rounded-full border-[1.5px] border-panel-surface bg-panel-accent" />
 														) : null}
 													</span>
-													<span
-														dir="ltr"
-														style={{ unicodeBidi: "isolate" }}
-														className="hidden max-w-[140px] truncate text-xs font-semibold leading-normal text-panel-text min-[769px]:inline"
-													>
-														{userData.username}
-													</span>
+													{!(isMobile || profileCompact) ? (
+														<span
+															dir="ltr"
+															style={{ unicodeBidi: "isolate" }}
+															className="max-w-[140px] truncate text-xs font-semibold leading-normal text-panel-text"
+														>
+															{userData.username}
+														</span>
+													) : null}
 												</span>
 											</Button>
 										</PopoverTrigger>

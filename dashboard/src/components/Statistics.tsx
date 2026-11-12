@@ -1866,14 +1866,14 @@ export const Statistics: FC<ComponentPropsWithoutRef<"div">> = (props) => {
 							{canSeeGlobal && (
 								<div
 									data-rb-swap=""
-									className="relative flex h-[22px] shrink-0 items-center gap-0.5 rounded-[9px] bg-panel-elevated p-[2px]"
+									className="relative flex h-[22px] shrink-0 items-center gap-0.5 rounded-[9px] bg-panel-elevated p-[1.5px]"
 								>
 									{(["master", "total"] as const).map((scope) => {
 										const active = bandwidthScope === scope;
 										return (
 											<div
 												key={scope}
-												className="relative flex h-[18px] items-center"
+												className="relative flex h-[19px] items-center"
 											>
 												{active && (
 													<motion.div
@@ -1897,13 +1897,20 @@ export const Statistics: FC<ComponentPropsWithoutRef<"div">> = (props) => {
 													variant="ghost"
 													size="xs"
 													className={cn(
-														"relative z-[2] h-[18px] min-h-0 rounded-[7px] bg-transparent! px-1.5 text-[10px] font-semibold leading-none transition-colors active:scale-[0.97] sm:px-2 sm:text-[10.5px]",
+														"relative z-[2] h-[19px] min-h-0 rounded-[7px] bg-transparent! px-1.5 text-[10px] font-semibold leading-none transition-colors active:scale-[0.97] sm:px-2 sm:text-[10.5px]",
 														active
 															? "text-white! min-[769px]:hover:text-white!"
 															: "text-panel-text-secondary min-[769px]:hover:text-panel-text",
 													)}
 												>
-													{t(`dashboard.system.bandwidthScope.${scope}`)}
+													<span
+														className={cn(
+															"inline-flex items-center leading-none",
+															isRTL && "translate-y-[1.5px]",
+														)}
+													>
+														{t(`dashboard.system.bandwidthScope.${scope}`)}
+													</span>
 												</Button>
 											</div>
 										);

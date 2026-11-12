@@ -691,7 +691,7 @@ export const DashboardMaintenanceControls: FC<DashboardMaintenanceControlsProps>
 			<span className="inline-flex items-center justify-center gap-2">
 				<RotateCw
 					strokeWidth={1.85}
-					className="size-4 shrink-0 text-panel-text-secondary"
+					className="size-4 shrink-0 text-red-600 dark:text-red-400"
 				/>
 				<span className="text-[12px] font-semibold leading-none text-red-600 dark:text-red-400">
 					{t("dashboard.maintenance.restartAction")}

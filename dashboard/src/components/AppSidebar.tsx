@@ -247,10 +247,14 @@ interface GroupNavRowProps {
 	collapsed: boolean;
 	isGroupActive: boolean;
 	isOpen: boolean;
+	flyoutOpen: boolean;
 	isRTL: boolean;
 	unreadCount: number;
 	isItemActive: (url: string) => boolean;
 	onToggleOpen: () => void;
+	onFlyoutPointerEnter: (id: string, part: "trigger" | "content") => void;
+	onFlyoutPointerLeave: (id: string, part: "trigger" | "content") => void;
+	onFlyoutOpenChange: (id: string, open: boolean) => void;
 	onNavigate: (url: string, event?: ReactMouseEvent) => void;
 }
 
@@ -259,78 +263,40 @@ const GroupNavRow: FC<GroupNavRowProps> = ({
 	collapsed,
 	isGroupActive,
 	isOpen,
+	flyoutOpen,
 	isRTL,
 	unreadCount,
 	isItemActive,
 	onToggleOpen,
+	onFlyoutPointerEnter,
+	onFlyoutPointerLeave,
+	onFlyoutOpenChange,
 	onNavigate,
 }) => {
-	const [flyoutOpen, setFlyoutOpen] = useState(false);
 	const isDesktop = useMediaQuery("(min-width: 769px)");
 	const triggerRef = useRef<HTMLButtonElement | null>(null);
-	const triggerHoveredRef = useRef(false);
-	const contentHoveredRef = useRef(false);
-	const closeTimeoutRef = useRef<number | null>(null);
 	const GroupIcon = group.icon;
 	const visibleSubs = group.subItems.filter((sub) => sub.visible);
 
-	const clearCloseTimer = useCallback(() => {
-		if (closeTimeoutRef.current !== null) {
-			window.clearTimeout(closeTimeoutRef.current);
-			closeTimeoutRef.current = null;
-		}
-	}, []);
-
-	const scheduleClose = () => {
-		clearCloseTimer();
-		closeTimeoutRef.current = window.setTimeout(() => {
-			if (!triggerHoveredRef.current && !contentHoveredRef.current) {
-				setFlyoutOpen(false);
-			}
-		}, 300);
-	};
-
 	const handleTriggerPointerEnter = (e: ReactPointerEvent<HTMLButtonElement>) => {
 		if (!collapsed || !isDesktop || e.pointerType !== "mouse") return;
-		clearCloseTimer();
-		triggerHoveredRef.current = true;
-		setFlyoutOpen(true);
+		onFlyoutPointerEnter(group.id, "trigger");
 	};
 
 	const handleTriggerPointerLeave = (e: ReactPointerEvent<HTMLButtonElement>) => {
 		if (!collapsed || !isDesktop || e.pointerType !== "mouse") return;
-		triggerHoveredRef.current = false;
-		scheduleClose();
+		onFlyoutPointerLeave(group.id, "trigger");
 	};
 
 	const handleContentPointerEnter = (e: ReactPointerEvent<HTMLDivElement>) => {
 		if (!collapsed || !isDesktop || e.pointerType !== "mouse") return;
-		clearCloseTimer();
-		contentHoveredRef.current = true;
+		onFlyoutPointerEnter(group.id, "content");
 	};
 
 	const handleContentPointerLeave = (e: ReactPointerEvent<HTMLDivElement>) => {
 		if (!collapsed || !isDesktop || e.pointerType !== "mouse") return;
-		contentHoveredRef.current = false;
-		scheduleClose();
+		onFlyoutPointerLeave(group.id, "content");
 	};
-
-	useEffect(() => {
-		if (!collapsed) {
-			triggerHoveredRef.current = false;
-			contentHoveredRef.current = false;
-			clearCloseTimer();
-			setFlyoutOpen(false);
-		}
-	}, [collapsed, clearCloseTimer]);
-
-	useEffect(() => {
-		return () => {
-			if (closeTimeoutRef.current !== null) {
-				window.clearTimeout(closeTimeoutRef.current);
-			}
-		};
-	}, []);
 
 	const showAccentBar = isGroupActive && (collapsed || !isOpen);
 
@@ -340,10 +306,7 @@ const GroupNavRow: FC<GroupNavRowProps> = ({
 				open={collapsed ? flyoutOpen : false}
 				onOpenChange={(next) => {
 					if (!collapsed) return;
-					if (!next && (triggerHoveredRef.current || contentHoveredRef.current)) {
-						return;
-					}
-					setFlyoutOpen(next);
+					onFlyoutOpenChange(group.id, next);
 				}}
 			>
 				<PopoverAnchor asChild>
@@ -358,9 +321,9 @@ const GroupNavRow: FC<GroupNavRowProps> = ({
 							if (!collapsed) {
 								onToggleOpen();
 							} else if (!isDesktop) {
-								setFlyoutOpen((prev) => !prev);
+								onFlyoutOpenChange(group.id, !flyoutOpen);
 							} else if (visibleSubs[0]?.url) {
-								setFlyoutOpen(false);
+								onFlyoutOpenChange(group.id, false);
 								onNavigate(visibleSubs[0].url);
 							}
 						}}
@@ -428,7 +391,7 @@ const GroupNavRow: FC<GroupNavRowProps> = ({
 						}
 					}}
 					onOpenAutoFocus={(e) => e.preventDefault()}
-					className="relative z-[2200] w-auto min-w-[196px]! rounded-[16px] border border-panel-border! bg-panel-surface p-1.5 text-panel-text shadow-[0_14px_34px_rgba(0,0,0,0.28)] select-none before:pointer-events-auto before:absolute before:inset-y-0 before:w-4 before:content-[''] data-[side=right]:before:-left-4 data-[side=left]:before:-right-4"
+					className="relative z-[2200] w-auto min-w-[196px]! rounded-[16px] border border-panel-border! bg-panel-surface p-1.5 text-panel-text shadow-[0_14px_34px_rgba(0,0,0,0.28)] select-none data-[state=closed]:duration-[75ms] before:pointer-events-auto before:absolute before:inset-y-0 before:w-4 before:content-[''] data-[side=right]:before:-left-4 data-[side=left]:before:-right-4"
 				>
 					<div className="mb-1 border-b border-panel-border! px-2.5 pt-1 pb-1.5 text-[11px] font-bold tracking-wider uppercase text-panel-text-muted">
 						{group.title}
@@ -443,7 +406,7 @@ const GroupNavRow: FC<GroupNavRowProps> = ({
 									key={sub.id}
 									to={sub.url}
 									onClick={(e) => {
-										setFlyoutOpen(false);
+										onFlyoutOpenChange(group.id, false);
 										onNavigate(sub.url, e);
 									}}
 									className={cn(
@@ -579,6 +542,75 @@ export const AppSidebar: FC<AppSidebarProps> = memo(function AppSidebar({
 	const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({
 		users_hub: true,
 	});
+	const [openFlyoutId, setOpenFlyoutId] = useState<string | null>(null);
+	const flyoutCloseTimerRef = useRef<number | null>(null);
+	const hoveredFlyoutRef = useRef<{
+		id: string;
+		part: "trigger" | "content";
+	} | null>(null);
+
+	const clearFlyoutCloseTimer = useCallback(() => {
+		if (flyoutCloseTimerRef.current !== null) {
+			window.clearTimeout(flyoutCloseTimerRef.current);
+			flyoutCloseTimerRef.current = null;
+		}
+	}, []);
+
+	const handleFlyoutPointerEnter = useCallback(
+		(id: string, part: "trigger" | "content") => {
+			clearFlyoutCloseTimer();
+			hoveredFlyoutRef.current = { id, part };
+			setOpenFlyoutId(id);
+		},
+		[clearFlyoutCloseTimer],
+	);
+
+	const handleFlyoutPointerLeave = useCallback(
+		(id: string, part: "trigger" | "content") => {
+			if (
+				hoveredFlyoutRef.current?.id === id &&
+				hoveredFlyoutRef.current.part === part
+			) {
+				hoveredFlyoutRef.current = null;
+			}
+			clearFlyoutCloseTimer();
+			flyoutCloseTimerRef.current = window.setTimeout(() => {
+				if (!hoveredFlyoutRef.current) {
+					setOpenFlyoutId((prev) => (prev === id ? null : prev));
+				}
+			}, 140);
+		},
+		[clearFlyoutCloseTimer],
+	);
+
+	const handleFlyoutOpenChange = useCallback(
+		(id: string, next: boolean) => {
+			if (next) {
+				clearFlyoutCloseTimer();
+				setOpenFlyoutId(id);
+				return;
+			}
+			if (hoveredFlyoutRef.current?.id === id) {
+				return;
+			}
+			setOpenFlyoutId((prev) => (prev === id ? null : prev));
+		},
+		[clearFlyoutCloseTimer],
+	);
+
+	const closeAllFlyoutsImmediate = useCallback(() => {
+		hoveredFlyoutRef.current = null;
+		clearFlyoutCloseTimer();
+		setOpenFlyoutId(null);
+	}, [clearFlyoutCloseTimer]);
+
+	useEffect(() => {
+		if (!collapsed) {
+			closeAllFlyoutsImmediate();
+		}
+	}, [collapsed, closeAllFlyoutsImmediate]);
+
+	useEffect(() => () => clearFlyoutCloseTimer(), [clearFlyoutCloseTimer]);
 
 	const handleNavigate = useCallback(
 		(url: string, event?: ReactMouseEvent) => {
@@ -766,6 +798,14 @@ export const AppSidebar: FC<AppSidebarProps> = memo(function AppSidebar({
 															<TooltipTrigger asChild>
 																<NavLink
 																	to={item.url}
+																	onPointerEnter={(e) => {
+																		if (
+																			collapsed &&
+																			e.pointerType === "mouse"
+																		) {
+																			closeAllFlyoutsImmediate();
+																		}
+																	}}
 																	onClick={(e) => handleNavigate(item.url, e)}
 																	className={cn(
 																		"relative flex h-[38px] w-full items-center justify-start gap-2.5 overflow-hidden rounded-[12px] text-[13px] no-underline transition-[padding,background-color,color,transform] duration-[260ms] ease-[cubic-bezier(0.16,1,0.3,1)] outline-none select-none active:scale-[0.98] min-[769px]:hover:bg-panel-elevated",
@@ -834,10 +874,14 @@ export const AppSidebar: FC<AppSidebarProps> = memo(function AppSidebar({
 														collapsed={collapsed}
 														isGroupActive={isGroupActive}
 														isOpen={isOpen}
+														flyoutOpen={collapsed && openFlyoutId === item.id}
 														isRTL={isRTL}
 														unreadCount={unreadNotifications}
 														isItemActive={isItemActive}
 														onToggleOpen={() => handleGroupClick(item.id)}
+														onFlyoutPointerEnter={handleFlyoutPointerEnter}
+														onFlyoutPointerLeave={handleFlyoutPointerLeave}
+														onFlyoutOpenChange={handleFlyoutOpenChange}
 														onNavigate={handleNavigate}
 													/>
 												);
