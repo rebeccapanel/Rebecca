@@ -2893,12 +2893,12 @@ input[type="number"] {
 
 @keyframes rb-boot-logo {
   0%, 100% {
-    opacity: 0.72;
-    transform: scale(0.97);
-  }
-  50% {
     opacity: 1;
     transform: scale(1);
+  }
+  50% {
+    opacity: 0.78;
+    transform: scale(0.96);
   }
 }
 

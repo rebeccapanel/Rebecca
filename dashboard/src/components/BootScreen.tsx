@@ -1,4 +1,4 @@
-import logoUrl from "assets/logo.svg";
+import bootLogoUrl from "assets/boot-logo.webp";
 import { useColorMode } from "lib/color-mode";
 
 export const BootScreen = () => {
@@ -8,7 +8,7 @@ export const BootScreen = () => {
 		<div className="grid min-h-[100dvh] place-items-center bg-panel-main px-4 select-none">
 			<div className="flex flex-col items-center gap-3.5">
 				<img
-					src={logoUrl}
+					src={bootLogoUrl}
 					alt=""
 					aria-hidden="true"
 					draggable={false}

@@ -587,11 +587,11 @@ export const DashboardMaintenanceControls: FC<DashboardMaintenanceControlsProps>
 					: "border border-panel-border! bg-panel-surface text-panel-text shadow-[0_1px_2px_rgba(0,0,0,0.04)] hover:bg-panel-surface dark:hover:bg-input/30 min-[769px]:hover:border-panel-border-strong! min-[769px]:hover:bg-panel-elevated min-[769px]:dark:hover:bg-panel-elevated min-[769px]:hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)]",
 			)}
 		>
-			<span className="inline-flex items-center justify-center gap-2">
+			<span className="inline-flex items-center justify-center gap-1.5">
 				<ArrowUpCircle
-					strokeWidth={1.85}
+					strokeWidth={1.9}
 					className={cn(
-						"size-4 shrink-0",
+						"size-[13px] shrink-0",
 						update?.available ? "text-white" : "text-panel-text-secondary",
 					)}
 				/>
@@ -688,10 +688,10 @@ export const DashboardMaintenanceControls: FC<DashboardMaintenanceControlsProps>
 				extraClassName,
 			)}
 		>
-			<span className="inline-flex items-center justify-center gap-2">
+			<span className="inline-flex items-center justify-center gap-1.5">
 				<RotateCw
-					strokeWidth={1.85}
-					className="size-4 shrink-0 text-red-600 dark:text-red-400"
+					strokeWidth={1.9}
+					className="size-[13px] shrink-0 text-red-600 dark:text-red-400"
 				/>
 				<span className="text-[12px] font-semibold leading-none text-red-600 dark:text-red-400">
 					{t("dashboard.maintenance.restartAction")}
