@@ -1957,10 +1957,10 @@ function AppLayoutContent() {
 										data-header-mobile-banner="true"
 										aria-hidden={!bannersVisible}
 										className={cn(
-											"flex max-h-[38px] min-w-[40px] max-w-full shrink items-center justify-start overflow-hidden transition-[transform,opacity] duration-[540ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+											"flex max-h-[38px] min-w-[40px] max-w-full shrink items-center justify-start overflow-hidden transition-transform duration-[540ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
 											bannersVisible
-												? "translate-y-0 opacity-100"
-												: "pointer-events-none -translate-y-[54px] opacity-0",
+												? "translate-y-0"
+												: "pointer-events-none -translate-y-[54px]",
 										)}
 									>
 										<SponsorCarousel
@@ -1985,11 +1985,11 @@ function AppLayoutContent() {
 												: `${bannerDimensions.natural}px`,
 										}}
 										className={cn(
-											"flex max-h-[38px] items-center justify-center overflow-hidden transition-[transform,opacity] duration-[540ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+											"flex max-h-[38px] items-center justify-center overflow-hidden transition-transform duration-[540ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
 											bannerShrinkable ? "shrink" : "shrink-0",
 											bannersVisible
-												? "translate-y-0 opacity-100"
-												: "pointer-events-none -translate-y-[54px] opacity-0",
+												? "translate-y-0"
+												: "pointer-events-none -translate-y-[54px]",
 										)}
 									>
 										<SponsorCarousel
@@ -2328,7 +2328,6 @@ function AppLayoutContent() {
 							<div className="h-full overflow-hidden">
 								<AppSidebar
 									collapsed={false}
-									bannerVisible={bannersVisible}
 									sponsors={sponsorSidebarLogoItems}
 									sidebarBanners={sponsorSidebarBanners}
 									inDrawer

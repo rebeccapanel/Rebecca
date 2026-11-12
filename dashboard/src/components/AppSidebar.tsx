@@ -505,39 +505,46 @@ const SidebarBannerSection: FC<SidebarBannerSectionProps> = ({
 }) => {
 	if (collapsed || banners.length === 0) return null;
 
+	const carousel = (
+		<SponsorCarousel
+			items={banners.map((asset) => ({
+				id: asset.id,
+				src: resolveAssetUrl(asset.image_url),
+				alt: asset.alt || asset.label || "Sponsor",
+				href: asset.target_url,
+				label: asset.label,
+				isSponsor: true,
+			}))}
+			variant="sidebar"
+			animateIn={false}
+		/>
+	);
+
+	if (inDrawer) {
+		return (
+			<div className="mx-auto w-full max-w-[min(154px,calc(100%-84px))] shrink-0 border-t border-panel-border! pt-2 pb-[calc(env(safe-area-inset-bottom,0px)+8px)]">
+				{carousel}
+			</div>
+		);
+	}
+
 	return (
 		<div
 			aria-hidden={!visible}
 			inert={!visible ? true : undefined}
 			className={cn(
-				"grid w-full shrink-0 transition-[grid-template-rows,opacity] duration-[540ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
-				visible
-					? "grid-rows-[1fr] opacity-100"
-					: "pointer-events-none grid-rows-[0fr] opacity-0",
+				"grid w-full shrink-0 transition-[grid-template-rows] duration-[600ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+				visible ? "grid-rows-[1fr]" : "pointer-events-none grid-rows-[0fr]",
 			)}
 		>
 			<div className="min-h-0 overflow-hidden">
 				<div
 					className={cn(
-						"w-full border-t border-panel-border! pt-2.5 transition-transform duration-[540ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
-						visible ? "translate-y-0" : "translate-y-4",
-						inDrawer
-							? "mx-auto max-w-[min(154px,calc(100%-84px))] pt-2 pb-[calc(env(safe-area-inset-bottom,0px)+8px)]"
-							: "pb-0",
+						"w-full border-t border-panel-border! pt-2.5 pb-2.5 transition-transform duration-[600ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+						visible ? "translate-y-0" : "translate-y-full",
 					)}
 				>
-					<SponsorCarousel
-						items={banners.map((asset) => ({
-							id: asset.id,
-							src: resolveAssetUrl(asset.image_url),
-							alt: asset.alt || asset.label || "Sponsor",
-							href: asset.target_url,
-							label: asset.label,
-							isSponsor: true,
-						}))}
-						variant="sidebar"
-						animateIn={false}
-					/>
+					{carousel}
 				</div>
 			</div>
 		</div>
@@ -744,7 +751,12 @@ export const AppSidebar: FC<AppSidebarProps> = memo(function AppSidebar({
 				{loading ? (
 					<SidebarSkeletonBody collapsed={collapsed} />
 				) : (
-					<div className="flex h-full min-h-0 w-full flex-col justify-between px-2 py-2.5">
+					<div
+						className={cn(
+							"flex h-full min-h-0 w-full flex-col justify-between px-2 pt-2.5",
+							inDrawer ? "pb-2.5" : "pb-0",
+						)}
+					>
 					<div
 						className={cn(
 							"-mx-2 mb-2 flex min-h-[48px] items-center justify-between border-b border-panel-border! py-2.5 ps-0",
@@ -777,7 +789,10 @@ export const AppSidebar: FC<AppSidebarProps> = memo(function AppSidebar({
 					<div
 						ref={navScrollRef}
 						dir={isRTL ? "rtl" : "ltr"}
-						className="rb-sidebar-scroll min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain [overflow-anchor:none] px-0"
+						className={cn(
+							"rb-sidebar-scroll min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain [overflow-anchor:none] px-0",
+							!inDrawer && "pb-2.5",
+						)}
 					>
 						<div
 							className={cn(
