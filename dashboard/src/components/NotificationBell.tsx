@@ -385,7 +385,7 @@ const NotificationListPanel: FC<NotificationListPanelProps> = ({
 				</div>
 			</div>
 
-			<div className="max-h-[min(320px,52dvh)] overflow-y-auto overscroll-contain px-1 py-2">
+			<div className="max-h-[min(280px,46dvh)] overflow-y-auto overscroll-contain px-1 py-2">
 				{items.length === 0 ? (
 					<div className="flex flex-col items-center justify-center px-4 py-8 text-center">
 						<div className="mb-2.5 flex size-10 items-center justify-center rounded-[12px] border border-panel-border! bg-panel-elevated text-panel-text-muted">
@@ -492,7 +492,7 @@ export const NotificationMenuItem: FC<NotificationMenuItemProps> = ({
 	const isDesktop = useMediaQuery("(min-width: 769px)");
 	const isControlled = controlledIsOpen !== undefined;
 	const isOpen = isControlled ? controlledIsOpen : localDisclosure.isOpen;
-	const { unread, items, openItem, markAll, isMarkingAll, onOpen: openModal } =
+	const { unread, items, openItem, markAll, isMarkingAll } =
 		useNotificationCenter();
 	const isRTL = i18n.dir(i18n.language) === "rtl";
 
@@ -512,20 +512,12 @@ export const NotificationMenuItem: FC<NotificationMenuItemProps> = ({
 			data-submenu-trigger="true"
 			onClick={(e: ReactMouseEvent) => {
 				e.stopPropagation();
-				if (!isDesktop) {
-					handleOpenChange(false);
-					onNavigate?.();
-					openModal();
-					return;
-				}
 				if (controlledOnToggle) controlledOnToggle();
 				else handleOpenChange(!isOpen);
 			}}
 			className={cn(
 				"flex h-[38px] w-full items-center justify-between gap-2.5 rounded-[12px] px-3 text-[13px] font-medium text-panel-text transition-[background-color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] outline-none select-none active:scale-[0.97] active:bg-panel-elevated focus-visible:bg-panel-elevated min-[769px]:hover:bg-panel-elevated",
-				isPressing || (isDesktop && isOpen)
-					? "bg-panel-elevated"
-					: "bg-transparent",
+				isPressing || isOpen ? "bg-panel-elevated" : "bg-transparent",
 				isPressing && "scale-[0.97]",
 			)}
 		>
@@ -544,10 +536,6 @@ export const NotificationMenuItem: FC<NotificationMenuItemProps> = ({
 		</button>
 	);
 
-	if (!isDesktop) {
-		return triggerButton;
-	}
-
 	return (
 		<Popover open={isOpen} onOpenChange={handleOpenChange}>
 			<PopoverTrigger asChild>{triggerButton}</PopoverTrigger>
@@ -556,11 +544,11 @@ export const NotificationMenuItem: FC<NotificationMenuItemProps> = ({
 				data-profile-window="true"
 				data-profile-submenu="true"
 				data-notification-menu-list="true"
-				side={isRTL ? "left" : "right"}
-				align="start"
+				side={isDesktop ? (isRTL ? "left" : "right") : "bottom"}
+				align={isDesktop ? "start" : "center"}
 				sideOffset={8}
 				collisionPadding={12}
-				className="z-[10005] w-[min(360px,calc(100vw-24px))] max-w-[380px] max-h-[min(calc(var(--radix-popover-content-available-height,72dvh)-8px),calc(100dvh-24px))] overflow-y-auto overscroll-contain rounded-[20px] border border-panel-border! bg-panel-surface p-2.5 text-panel-text shadow-[0_20px_52px_-12px_rgba(0,0,0,0.42)]"
+				className="z-[10005] w-[min(340px,calc(100vw-24px))] max-w-[380px] max-h-[min(calc(var(--radix-popover-content-available-height,72dvh)-8px),calc(100dvh-24px))] overflow-y-auto overscroll-contain rounded-[20px] border border-panel-border! bg-panel-surface p-2.5 text-panel-text shadow-[0_20px_52px_-12px_rgba(0,0,0,0.42)]"
 			>
 				<NotificationListPanel
 					items={items}

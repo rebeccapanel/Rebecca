@@ -201,6 +201,43 @@ function AppLayoutContent() {
 	const settingsMenu = useDisclosure();
 	const dockSettingsScrollRef = useRef<HTMLDivElement | null>(null);
 
+	const syncDockSettingsScroll = useCallback((node: HTMLDivElement | null) => {
+		if (!node) return;
+		const activeEl =
+			node.querySelector<HTMLElement>('[aria-current="page"]') ??
+			node.querySelector<HTMLElement>('[data-dock-group-active="true"]');
+		if (!activeEl) return;
+		let top = 0;
+		let cur: HTMLElement | null = activeEl;
+		while (cur && cur !== node && node.contains(cur)) {
+			top += cur.offsetTop;
+			cur = cur.offsetParent as HTMLElement | null;
+		}
+		if (cur !== node) {
+			const nodeRect = node.getBoundingClientRect();
+			const itemRect = activeEl.getBoundingClientRect();
+			top = itemRect.top - nodeRect.top + node.scrollTop;
+		}
+		node.scrollTop = Math.max(
+			0,
+			top - node.clientHeight / 2 + activeEl.offsetHeight / 2,
+		);
+	}, []);
+
+	const setDockSettingsScrollNode = useCallback(
+		(node: HTMLDivElement | null) => {
+			dockSettingsScrollRef.current = node;
+			if (!node) return;
+			syncDockSettingsScroll(node);
+			window.requestAnimationFrame(() => {
+				if (dockSettingsScrollRef.current === node) {
+					syncDockSettingsScroll(node);
+				}
+			});
+		},
+		[syncDockSettingsScroll],
+	);
+
 	const [activeProfileSubmenu, setActiveProfileSubmenu] = useState<
 		"notifications" | "language" | "theme" | "calendar" | null
 	>(null);
@@ -873,6 +910,36 @@ function AppLayoutContent() {
 
 	const openSettingsMenu = () => {
 		accountMenu.onClose();
+		const path = location.pathname;
+		const matchingGroupIds: string[] = [];
+		for (const section of dockSettingsSections) {
+			for (const item of section.items) {
+				if (
+					item.type === "group" &&
+					item.subItems.some(
+						(sub) =>
+							sub.visible &&
+							(path === sub.url ||
+								(sub.url !== "/" && path.startsWith(sub.url))),
+					)
+				) {
+					matchingGroupIds.push(item.id);
+				}
+			}
+		}
+		if (matchingGroupIds.length > 0) {
+			setOpenDockGroups((prev) => {
+				const next = { ...prev };
+				let changed = false;
+				for (const id of matchingGroupIds) {
+					if (!next[id]) {
+						next[id] = true;
+						changed = true;
+					}
+				}
+				return changed ? next : prev;
+			});
+		}
 		settingsMenu.onOpen();
 		setPreviewTabKeySafe("settings");
 	};
@@ -2106,7 +2173,7 @@ function AppLayoutContent() {
 								listScrollTop.current = event.currentTarget.scrollTop;
 							}
 						}}
-						className="min-h-0 flex-1 overflow-auto overscroll-contain bg-transparent p-3 pt-2.5 pb-40 min-[769px]:p-4 min-[769px]:pt-3 min-[769px]:pb-4"
+						className="min-h-0 flex-1 overflow-auto overscroll-contain bg-transparent p-3 pt-2.5 pb-[calc(env(safe-area-inset-bottom,0px)+88px)] min-[769px]:p-4 min-[769px]:pt-3 min-[769px]:pb-4"
 					>
 						<div className={cn(editorPageSection && "hidden")}>
 							<Outlet />
@@ -2320,12 +2387,12 @@ function AppLayoutContent() {
 														align="center"
 														sideOffset={12}
 														collisionPadding={12}
-														className="pointer-events-none z-[1600] flex h-[min(66dvh,calc(100dvh-148px))] w-[min(272px,calc(100vw-24px))] max-w-[calc(100vw-24px)] origin-bottom flex-col justify-end overflow-visible! border-0! bg-transparent! p-0! shadow-none! data-[state=open]:animate-rb-dock-in data-[state=closed]:animate-rb-dock-out"
+														className="pointer-events-none z-[1600] flex h-[min(calc(var(--radix-popover-content-available-height,calc(100dvh-116px))-6px),calc(100dvh-116px))] w-[min(272px,calc(100vw-24px))] max-w-[calc(100vw-24px)] origin-bottom flex-col justify-end overflow-visible! border-0! bg-transparent! p-0! shadow-none! data-[state=open]:animate-rb-dock-in data-[state=closed]:animate-rb-dock-out"
 													>
 														<div
-															ref={dockSettingsScrollRef}
+															ref={setDockSettingsScrollNode}
 															className={cn(
-																"pointer-events-auto max-h-full w-full origin-bottom overflow-y-auto overscroll-contain rounded-[22px] border p-2.5 text-panel-text",
+																"relative pointer-events-auto max-h-full w-full origin-bottom overflow-y-auto overscroll-contain rounded-[22px] border p-2.5 text-panel-text",
 																DOCK_SURFACE_CLASS,
 															)}
 														>
@@ -2409,6 +2476,9 @@ function AppLayoutContent() {
 																					<div
 																						key={navEntry.id}
 																						data-dock-group={navEntry.id}
+																						data-dock-group-active={
+																							isGroupActive ? "true" : undefined
+																						}
 																					>
 																						<button
 																							type="button"

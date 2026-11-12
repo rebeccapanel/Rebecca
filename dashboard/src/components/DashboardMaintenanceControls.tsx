@@ -145,9 +145,9 @@ export const DashboardMaintenanceControls: FC<DashboardMaintenanceControlsProps>
 	const [waitingForAPI, setWaitingForAPI] = useState(false);
 	const [isUpdatePopoverOpen, setUpdatePopoverOpen] = useState(false);
 	const [isUpdateDialogOpen, setUpdateDialogOpen] = useState(false);
-	const [confirmAction, setConfirmAction] = useState<
-		"restart" | "soft-reload" | "update" | null
-	>(null);
+	const [confirmAction, setConfirmAction] =
+		useState<MaintenanceAction>("restart");
+	const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 	const [logsCopied, setLogsCopied] = useState(false);
 
 	const logsContainerRef = useRef<HTMLPreElement | null>(null);
@@ -382,9 +382,14 @@ export const DashboardMaintenanceControls: FC<DashboardMaintenanceControlsProps>
 		return null;
 	}
 
+	const openConfirmModal = (action: MaintenanceAction) => {
+		setConfirmAction(action);
+		setIsConfirmOpen(true);
+	};
+
 	const openConfirmFromPopover = (action: "soft-reload" | "update") => {
 		setUpdatePopoverOpen(false);
-		setConfirmAction(action);
+		openConfirmModal(action);
 	};
 
 	const maintenanceBody = (
@@ -673,7 +678,7 @@ export const DashboardMaintenanceControls: FC<DashboardMaintenanceControlsProps>
 	const renderRestartButton = (extraClassName?: string) => (
 		<Button
 			type="button"
-			onClick={() => setConfirmAction("restart")}
+			onClick={() => openConfirmModal("restart")}
 			disabled={info.isPending || !hostActionsAvailable}
 			variant="outline"
 			size="xs"
@@ -688,7 +693,7 @@ export const DashboardMaintenanceControls: FC<DashboardMaintenanceControlsProps>
 					strokeWidth={1.85}
 					className="size-4 shrink-0 text-panel-text-secondary"
 				/>
-				<span className="text-[12px] font-semibold leading-none">
+				<span className="text-[12px] font-semibold leading-none text-red-600 dark:text-red-400">
 					{t("dashboard.maintenance.restartAction")}
 				</span>
 			</span>
@@ -898,10 +903,8 @@ export const DashboardMaintenanceControls: FC<DashboardMaintenanceControlsProps>
 			</Dialog>
 
 			<Dialog
-				open={confirmAction !== null}
-				onOpenChange={(open) => {
-					if (!open) setConfirmAction(null);
-				}}
+				open={isConfirmOpen}
+				onOpenChange={setIsConfirmOpen}
 			>
 				<DialogContent
 					dir={isRTL ? "rtl" : "ltr"}
@@ -938,7 +941,7 @@ export const DashboardMaintenanceControls: FC<DashboardMaintenanceControlsProps>
 							type="button"
 							variant="ghost"
 							size="icon-sm"
-							onClick={() => setConfirmAction(null)}
+							onClick={() => setIsConfirmOpen(false)}
 							aria-label={t("close")}
 							className="size-8 shrink-0 rounded-[10px] text-panel-text-muted transition-[background-color,color,transform] duration-150 active:scale-[0.95] min-[769px]:hover:bg-panel-elevated min-[769px]:hover:text-panel-text"
 						>
@@ -989,7 +992,7 @@ export const DashboardMaintenanceControls: FC<DashboardMaintenanceControlsProps>
 					<DialogFooter className="flex flex-row items-center justify-end gap-2 border-t border-panel-border/70! px-5 py-3.5">
 						<Button
 							type="button"
-							onClick={() => setConfirmAction(null)}
+							onClick={() => setIsConfirmOpen(false)}
 							variant="ghost"
 							size="sm"
 							className="h-9 rounded-[12px] px-4 text-[12px] font-semibold text-panel-text-muted hover:bg-transparent dark:hover:bg-transparent active:scale-[0.97] min-[769px]:hover:bg-panel-elevated min-[769px]:hover:text-panel-text"
@@ -1000,7 +1003,7 @@ export const DashboardMaintenanceControls: FC<DashboardMaintenanceControlsProps>
 							type="button"
 							onClick={() => {
 								const act = confirmAction;
-								setConfirmAction(null);
+								setIsConfirmOpen(false);
 								if (act === "restart") restartMutation.mutate();
 								if (act === "soft-reload") reloadMutation.mutate();
 								if (act === "update") executeUpdate();

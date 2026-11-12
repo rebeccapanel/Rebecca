@@ -913,7 +913,12 @@ const HistoryModal: FC<{
 				<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 min-[769px]:px-6 min-[769px]:py-5">
 					<div className="flex flex-col gap-4">
 						{(hasEnoughPoints || (isNetwork && canSeeGlobal)) && (
-							<div className="flex flex-wrap items-center justify-between gap-2.5">
+							<div
+								className={cn(
+									"flex-wrap items-center justify-between gap-2.5",
+									hasEnoughPoints ? "flex" : "hidden min-[769px]:flex",
+								)}
+							>
 								{hasEnoughPoints ? (
 									<div className="inline-flex w-full max-w-full items-center gap-1 overflow-x-auto rounded-[12px] border border-panel-border! bg-panel-elevated p-1 min-[769px]:w-fit [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
 										{HISTORY_INTERVALS.map((interval, idx) => {
@@ -974,7 +979,7 @@ const HistoryModal: FC<{
 								)}
 
 								{isNetwork && canSeeGlobal && (
-									<div className="relative flex items-center gap-0.5 rounded-[10px] border border-panel-border! bg-panel-elevated p-0.5">
+									<div className="relative hidden items-center gap-0.5 rounded-[10px] border border-panel-border! bg-panel-elevated p-0.5 min-[769px]:flex">
 										{(["master", "total"] as const).map((scope) => {
 											const active = bandwidthScope === scope;
 											return (
@@ -1861,12 +1866,15 @@ export const Statistics: FC<ComponentPropsWithoutRef<"div">> = (props) => {
 							{canSeeGlobal && (
 								<div
 									data-rb-swap=""
-									className="relative flex shrink-0 items-center gap-0.5 rounded-[10px] bg-panel-elevated p-0.5"
+									className="relative flex h-[22px] shrink-0 items-center gap-0.5 rounded-[9px] bg-panel-elevated p-[2px]"
 								>
 									{(["master", "total"] as const).map((scope) => {
 										const active = bandwidthScope === scope;
 										return (
-											<div key={scope} className="relative">
+											<div
+												key={scope}
+												className="relative flex h-[18px] items-center"
+											>
 												{active && (
 													<motion.div
 														layoutId="bandwidthScopeTabPill"
@@ -1875,7 +1883,7 @@ export const Statistics: FC<ComponentPropsWithoutRef<"div">> = (props) => {
 															ease: [0.16, 1, 0.3, 1],
 															duration: 0.22,
 														}}
-														className="pointer-events-none absolute inset-0 z-[1] rounded-[8px] border border-panel-accent! bg-panel-accent shadow-[0_1px_4px_color-mix(in_srgb,var(--rb-panel-accent)_35%,transparent)]"
+														className="pointer-events-none absolute inset-0 z-[1] rounded-[7px] border border-panel-accent! bg-panel-accent shadow-[0_1px_4px_color-mix(in_srgb,var(--rb-panel-accent)_35%,transparent)]"
 													/>
 												)}
 												<Button
@@ -1889,7 +1897,7 @@ export const Statistics: FC<ComponentPropsWithoutRef<"div">> = (props) => {
 													variant="ghost"
 													size="xs"
 													className={cn(
-														"relative z-[2] h-[22px] rounded-[8px] bg-transparent! px-2 text-[10.5px] font-semibold transition-colors active:scale-[0.97] sm:px-2.5 sm:text-[11px]",
+														"relative z-[2] h-[18px] min-h-0 rounded-[7px] bg-transparent! px-1.5 text-[10px] font-semibold leading-none transition-colors active:scale-[0.97] sm:px-2 sm:text-[10.5px]",
 														active
 															? "text-white! min-[769px]:hover:text-white!"
 															: "text-panel-text-secondary min-[769px]:hover:text-panel-text",
