@@ -2891,17 +2891,35 @@ input[type="number"] {
   }
 }
 
+@keyframes rb-boot-logo {
+  0%, 100% {
+    opacity: 0.72;
+    transform: scale(0.97);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.rb-boot-logo {
+  animation: rb-boot-logo 2.1s ease-in-out infinite;
+}
+
 @keyframes rb-boot-bar {
   0% {
-    transform: translate3d(-110%, 0, 0);
+    transform: translate3d(-90%, 0, 0);
+  }
+  50% {
+    transform: translate3d(125%, 0, 0);
   }
   100% {
-    transform: translate3d(210%, 0, 0);
+    transform: translate3d(240%, 0, 0);
   }
 }
 
 .rb-boot-bar {
-  animation: rb-boot-bar 1.35s cubic-bezier(0.23, 1, 0.32, 1) infinite;
+  animation: rb-boot-bar 1.25s ease-in-out infinite;
 }
 
 @keyframes rb-skeleton-sweep {
@@ -2961,9 +2979,15 @@ input[type="number"] {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .rb-boot-logo {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
   .rb-boot-bar {
     animation: none;
-    transform: translate3d(50%, 0, 0);
+    transform: translate3d(75%, 0, 0);
   }
 
   .rb-skeleton-sweep::after {
