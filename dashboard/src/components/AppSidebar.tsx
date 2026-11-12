@@ -42,6 +42,7 @@ import { SponsorCarousel } from "./SponsorCarousel";
 export interface AppSidebarProps {
 	collapsed: boolean;
 	loading?: boolean;
+	bannerVisible?: boolean;
 	sponsors?: SponsorAsset[];
 	sidebarBanners?: SponsorAsset[];
 	inDrawer?: boolean;
@@ -493,36 +494,52 @@ interface SidebarBannerSectionProps {
 	banners: SponsorAsset[];
 	collapsed: boolean;
 	inDrawer: boolean;
+	visible: boolean;
 }
 
 const SidebarBannerSection: FC<SidebarBannerSectionProps> = ({
 	banners,
 	collapsed,
 	inDrawer,
+	visible,
 }) => {
 	if (collapsed || banners.length === 0) return null;
 
 	return (
 		<div
+			aria-hidden={!visible}
+			inert={!visible ? true : undefined}
 			className={cn(
-				"w-full shrink-0 border-t border-panel-border! pt-2.5",
-				inDrawer
-					? "mx-auto max-w-[min(154px,calc(100%-84px))] pt-2 pb-[calc(env(safe-area-inset-bottom,0px)+8px)]"
-					: "pb-0",
+				"grid w-full shrink-0 transition-[grid-template-rows,opacity] duration-[540ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+				visible
+					? "grid-rows-[1fr] opacity-100"
+					: "pointer-events-none grid-rows-[0fr] opacity-0",
 			)}
 		>
-			<SponsorCarousel
-				items={banners.map((asset) => ({
-					id: asset.id,
-					src: resolveAssetUrl(asset.image_url),
-					alt: asset.alt || asset.label || "Sponsor",
-					href: asset.target_url,
-					label: asset.label,
-					isSponsor: true,
-				}))}
-				variant="sidebar"
-				animateIn={false}
-			/>
+			<div className="min-h-0 overflow-hidden">
+				<div
+					className={cn(
+						"w-full border-t border-panel-border! pt-2.5 transition-transform duration-[540ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+						visible ? "translate-y-0" : "translate-y-4",
+						inDrawer
+							? "mx-auto max-w-[min(154px,calc(100%-84px))] pt-2 pb-[calc(env(safe-area-inset-bottom,0px)+8px)]"
+							: "pb-0",
+					)}
+				>
+					<SponsorCarousel
+						items={banners.map((asset) => ({
+							id: asset.id,
+							src: resolveAssetUrl(asset.image_url),
+							alt: asset.alt || asset.label || "Sponsor",
+							href: asset.target_url,
+							label: asset.label,
+							isSponsor: true,
+						}))}
+						variant="sidebar"
+						animateIn={false}
+					/>
+				</div>
+			</div>
 		</div>
 	);
 };
@@ -530,6 +547,7 @@ const SidebarBannerSection: FC<SidebarBannerSectionProps> = ({
 export const AppSidebar: FC<AppSidebarProps> = memo(function AppSidebar({
 	collapsed,
 	loading = false,
+	bannerVisible = true,
 	sponsors = [],
 	sidebarBanners = [],
 	inDrawer = false,
@@ -903,6 +921,7 @@ export const AppSidebar: FC<AppSidebarProps> = memo(function AppSidebar({
 						banners={sidebarBanners}
 						collapsed={collapsed}
 						inDrawer={inDrawer}
+						visible={bannerVisible}
 					/>
 				</div>
 				)}

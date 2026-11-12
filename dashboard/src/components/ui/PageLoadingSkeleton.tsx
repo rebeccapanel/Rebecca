@@ -22,7 +22,7 @@ const DASHBOARD_USER_ROWS = [
 	{ id: "expired", labelWidth: "w-20", valWidth: "w-8", pill: false },
 ] as const;
 
-const cardShellClass = "rb-stat-card";
+const cardShellClass = "rb-stat-card rb-skeleton-sweep";
 
 export const PageLoadingSkeleton: FC<PageLoadingSkeletonProps> = ({
 	variant = "entity",
@@ -46,7 +46,7 @@ export const PageLoadingSkeleton: FC<PageLoadingSkeletonProps> = ({
 				<div
 					className={cn(
 						cardShellClass,
-						"rb-skeleton-sweep min-h-[calc(100dvh-172px)] w-full rounded-[20px] min-[769px]:min-h-[calc(100vh-104px)]",
+						"rb-skeleton-glass min-h-[calc(100dvh-166px)] w-full flex-1 rounded-[20px] min-[769px]:min-h-[calc(100vh-88px)]",
 					)}
 				/>
 			</div>
@@ -63,7 +63,7 @@ export const PageLoadingSkeleton: FC<PageLoadingSkeletonProps> = ({
 				<div
 					className={cn(
 						cardShellClass,
-						"flex min-h-[calc(100dvh-172px)] w-full flex-col overflow-hidden rounded-[20px] min-[769px]:min-h-[calc(100vh-104px)]",
+						"flex min-h-[calc(100dvh-166px)] w-full flex-1 flex-col overflow-hidden rounded-[20px] min-[769px]:min-h-[calc(100vh-88px)]",
 					)}
 				>
 					<div className="flex items-center justify-between gap-3 border-b border-panel-border! px-4 py-3.5 min-[769px]:px-6">
@@ -96,7 +96,7 @@ export const PageLoadingSkeleton: FC<PageLoadingSkeletonProps> = ({
 				)}
 			>
 				<div className="flex flex-col gap-3 min-[769px]:flex-row min-[769px]:items-center min-[769px]:justify-between">
-					<div className="flex items-center gap-1.5 overflow-hidden rounded-[12px] border border-panel-border! bg-panel-surface p-1">
+					<div className="rb-skeleton-sweep flex items-center gap-1.5 overflow-hidden rounded-[12px] border border-panel-border! bg-panel-surface p-1">
 						{["tab-1", "tab-2", "tab-3", "tab-4"].map((id, idx) => (
 							<Skeleton
 								key={id}
@@ -107,7 +107,7 @@ export const PageLoadingSkeleton: FC<PageLoadingSkeletonProps> = ({
 							/>
 						))}
 					</div>
-					<Skeleton className="h-9 w-28 rounded-[12px] page-skeleton" />
+					<Skeleton className="rb-skeleton-sweep h-9 w-28 rounded-[12px] page-skeleton" />
 				</div>
 
 				{["sec-1", "sec-2"].map((sec) => (
@@ -144,7 +144,7 @@ export const PageLoadingSkeleton: FC<PageLoadingSkeletonProps> = ({
 				aria-live="polite"
 				className={cn("flex w-full flex-col gap-4 min-[769px]:gap-5", className)}
 			>
-				<div className="flex flex-wrap items-center justify-between gap-3 px-1 py-0.5">
+				<div className="rb-skeleton-sweep flex flex-wrap items-center justify-between gap-3 rounded-[16px] px-1 py-0.5">
 					<div className="flex flex-col items-start gap-2">
 						<Skeleton className="h-6 w-36 rounded-[8px] page-skeleton sm:w-44" />
 						<div className="flex flex-wrap items-center gap-2">

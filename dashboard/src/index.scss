@@ -2585,11 +2585,16 @@ img.apple-emoji {
 
 /* Loading skeletons: the pulse that was a Chakra sx block on the page skeleton. */
 @keyframes pageSkeletonPulse {
-  0%, 100% { opacity: 0.45; }
-  50% { opacity: 0.8; }
+  0%, 100% { opacity: 0.52; }
+  50% { opacity: 0.9; }
 }
 .page-skeleton {
+  background-color: rgba(255, 255, 255, 0.09) !important;
   animation: pageSkeletonPulse 1.8s ease-in-out infinite;
+}
+.rb-theme-light .page-skeleton,
+.chakra-ui-light .page-skeleton {
+  background-color: rgba(15, 23, 42, 0.085) !important;
 }
 
 /* Native select popups (drawn by the browser) follow the panel surface instead of
@@ -2886,6 +2891,19 @@ input[type="number"] {
   }
 }
 
+@keyframes rb-boot-bar {
+  0% {
+    transform: translate3d(-110%, 0, 0);
+  }
+  100% {
+    transform: translate3d(210%, 0, 0);
+  }
+}
+
+.rb-boot-bar {
+  animation: rb-boot-bar 1.35s cubic-bezier(0.23, 1, 0.32, 1) infinite;
+}
+
 @keyframes rb-skeleton-sweep {
   from {
     transform: translate3d(-100%, 0, 0);
@@ -2904,27 +2922,50 @@ input[type="number"] {
   content: "";
   position: absolute;
   inset: 0;
+  z-index: 2;
   pointer-events: none;
   background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.045) 50%,
-    transparent 100%
+    105deg,
+    transparent 18%,
+    rgba(255, 255, 255, 0.085) 50%,
+    transparent 82%
   );
-  animation: rb-skeleton-sweep 1.5s cubic-bezier(0.23, 1, 0.32, 1) infinite;
+  animation: rb-skeleton-sweep 1.55s cubic-bezier(0.23, 1, 0.32, 1) infinite;
 }
 
 .rb-theme-light .rb-skeleton-sweep::after,
 .chakra-ui-light .rb-skeleton-sweep::after {
   background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(0, 0, 0, 0.035) 50%,
-    transparent 100%
+    105deg,
+    transparent 18%,
+    rgba(255, 255, 255, 0.65) 50%,
+    transparent 82%
   );
 }
 
+.rb-skeleton-glass {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.032) 0%,
+    rgba(255, 255, 255, 0.01) 100%
+  ), var(--rb-panel-surface);
+}
+
+.rb-theme-light .rb-skeleton-glass,
+.chakra-ui-light .rb-skeleton-glass {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(241, 245, 249, 0.65) 100%
+  ), var(--rb-panel-surface);
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .rb-boot-bar {
+    animation: none;
+    transform: translate3d(50%, 0, 0);
+  }
+
   .rb-skeleton-sweep::after {
     animation: none;
     display: none;

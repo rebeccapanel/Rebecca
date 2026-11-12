@@ -266,6 +266,7 @@ function AppLayoutContent() {
 	);
 	const [shellBootSettled, setShellBootSettled] = useState(false);
 	const [shellReady, setShellReady] = useState(false);
+	const [bannersVisible, setBannersVisible] = useState(false);
 
 	useEffect(() => {
 		const frame = window.requestAnimationFrame(() => {
@@ -287,6 +288,14 @@ function AppLayoutContent() {
 		getUserIsError,
 		activeLoadingCount,
 	]);
+
+	useEffect(() => {
+		if (!shellReady) return;
+		const timer = window.setTimeout(() => {
+			setBannersVisible(true);
+		}, 1000);
+		return () => window.clearTimeout(timer);
+	}, [shellReady]);
 
 	const isShellLoading = !shellReady;
 	const cachedRole = useMemo(() => {
@@ -1494,6 +1503,7 @@ function AppLayoutContent() {
 					<AppSidebar
 						collapsed={sidebarCollapsed}
 						loading={isShellLoading}
+						bannerVisible={bannersVisible}
 						sponsors={sponsorSidebarLogoItems}
 						sidebarBanners={sponsorSidebarBanners}
 						onRequestExpand={handleSidebarExpand}
@@ -1522,7 +1532,10 @@ function AppLayoutContent() {
 						<header
 							ref={headerRef}
 							dir={isRTL ? "rtl" : "ltr"}
-							className="mx-3 mt-3 flex h-[52px] min-h-[52px] items-center justify-between gap-3 overflow-hidden rounded-[18px] border border-panel-border! bg-panel-surface px-3 shadow-[0_1px_2px_rgba(0,0,0,0.03),inset_0_1px_0_0_rgba(255,255,255,0.75)] select-none min-[769px]:mx-4 min-[769px]:px-5 dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]"
+							className={cn(
+								"mx-3 mt-3 flex h-[52px] min-h-[52px] items-center justify-between gap-3 overflow-hidden rounded-[18px] border border-panel-border! bg-panel-surface px-3 shadow-[0_1px_2px_rgba(0,0,0,0.03),inset_0_1px_0_0_rgba(255,255,255,0.75)] select-none min-[769px]:mx-4 min-[769px]:px-5 dark:shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06)]",
+								isShellLoading && "rb-skeleton-sweep",
+							)}
 						>
 							{isShellLoading ? (
 								<HeaderSkeletonContent
@@ -1942,7 +1955,13 @@ function AppLayoutContent() {
 								{isMobile && mobileHeaderItems.length > 0 ? (
 									<div
 										data-header-mobile-banner="true"
-										className="flex max-h-[38px] min-w-[40px] max-w-full shrink items-center justify-start overflow-hidden"
+										aria-hidden={!bannersVisible}
+										className={cn(
+											"flex max-h-[38px] min-w-[40px] max-w-full shrink items-center justify-start overflow-hidden transition-[transform,opacity] duration-[540ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+											bannersVisible
+												? "translate-y-0 opacity-100"
+												: "pointer-events-none -translate-y-[54px] opacity-0",
+										)}
 									>
 										<SponsorCarousel
 											items={mobileHeaderItems}
@@ -1955,6 +1974,7 @@ function AppLayoutContent() {
 								{!isMobile && sponsorHeaderItems.length > 0 ? (
 									<div
 										data-header-banner="true"
+										aria-hidden={!bannersVisible}
 										style={{
 											width: bannerShrinkable
 												? "100%"
@@ -1965,8 +1985,11 @@ function AppLayoutContent() {
 												: `${bannerDimensions.natural}px`,
 										}}
 										className={cn(
-											"flex max-h-[38px] items-center justify-center overflow-hidden",
+											"flex max-h-[38px] items-center justify-center overflow-hidden transition-[transform,opacity] duration-[540ms] ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
 											bannerShrinkable ? "shrink" : "shrink-0",
+											bannersVisible
+												? "translate-y-0 opacity-100"
+												: "pointer-events-none -translate-y-[54px] opacity-0",
 										)}
 									>
 										<SponsorCarousel
@@ -2268,9 +2291,9 @@ function AppLayoutContent() {
 								listScrollTop.current = event.currentTarget.scrollTop;
 							}
 						}}
-						className="min-h-0 flex-1 overflow-auto overscroll-contain bg-transparent p-3 pt-2.5 pb-[calc(env(safe-area-inset-bottom,0px)+88px)] min-[769px]:p-4 min-[769px]:pt-3 min-[769px]:pb-4"
+						className="min-h-0 flex-1 overflow-auto overscroll-contain bg-transparent p-3 pt-2.5 pb-[calc(env(safe-area-inset-bottom,0px)+88px)] min-[769px]:p-4 min-[769px]:pt-3 min-[769px]:pb-3"
 					>
-						<div className={cn(editorPageSection && "hidden")}>
+						<div className={cn("flex min-h-full flex-col", editorPageSection && "hidden")}>
 							<Outlet />
 						</div>
 						<div
@@ -2305,6 +2328,7 @@ function AppLayoutContent() {
 							<div className="h-full overflow-hidden">
 								<AppSidebar
 									collapsed={false}
+									bannerVisible={bannersVisible}
 									sponsors={sponsorSidebarLogoItems}
 									sidebarBanners={sponsorSidebarBanners}
 									inDrawer
@@ -2351,6 +2375,7 @@ function AppLayoutContent() {
 								className={cn(
 									"pointer-events-auto mx-auto max-w-[min(440px,calc(100vw-20px))] rounded-[24px] border px-2 py-1.5",
 									DOCK_SURFACE_CLASS,
+									isShellLoading && "rb-skeleton-sweep",
 								)}
 							>
 								{isShellLoading ? (

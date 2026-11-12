@@ -6,40 +6,46 @@ const SIDEBAR_SKELETON_SECTIONS = [
 	{
 		id: "overview",
 		titleWidth: "w-14",
-		items: [{ id: "dash", labelWidth: "w-20", isGroup: false }],
+		items: [{ id: "dash", labelWidth: "w-20", isGroup: false, subWidths: [] }],
 	},
 	{
 		id: "users",
 		titleWidth: "w-20",
 		items: [
-			{ id: "users-hub", labelWidth: "w-24", isGroup: true },
-			{ id: "admins", labelWidth: "w-16", isGroup: false },
-			{ id: "usage", labelWidth: "w-20", isGroup: false },
+			{
+				id: "users-hub",
+				labelWidth: "w-24",
+				isGroup: true,
+				subWidths: ["w-20", "w-16", "w-24"],
+			},
+			{ id: "admins", labelWidth: "w-16", isGroup: false, subWidths: [] },
+			{ id: "usage", labelWidth: "w-20", isGroup: false, subWidths: [] },
 		],
 	},
 	{
 		id: "infra",
 		titleWidth: "w-24",
 		items: [
-			{ id: "core-routing", labelWidth: "w-28", isGroup: true },
-			{ id: "nodes", labelWidth: "w-20", isGroup: false },
-			{ id: "services", labelWidth: "w-24", isGroup: false },
+			{ id: "core-routing", labelWidth: "w-28", isGroup: true, subWidths: [] },
+			{ id: "hosts", labelWidth: "w-20", isGroup: false, subWidths: [] },
+			{ id: "nodes", labelWidth: "w-20", isGroup: false, subWidths: [] },
+			{ id: "services", labelWidth: "w-24", isGroup: false, subWidths: [] },
 		],
 	},
 	{
 		id: "system",
 		titleWidth: "w-16",
 		items: [
-			{ id: "sys-tools", labelWidth: "w-24", isGroup: true },
-			{ id: "obs", labelWidth: "w-24", isGroup: true },
+			{ id: "sys-tools", labelWidth: "w-24", isGroup: true, subWidths: [] },
+			{ id: "obs", labelWidth: "w-24", isGroup: true, subWidths: [] },
 		],
 	},
 	{
 		id: "help",
 		titleWidth: "w-14",
 		items: [
-			{ id: "api-docs", labelWidth: "w-20", isGroup: false },
-			{ id: "tutorials", labelWidth: "w-28", isGroup: false },
+			{ id: "api-docs", labelWidth: "w-20", isGroup: false, subWidths: [] },
+			{ id: "tutorials", labelWidth: "w-28", isGroup: false, subWidths: [] },
 		],
 	},
 ] as const;
@@ -49,7 +55,7 @@ export const SidebarSkeletonBody: FC<{ collapsed?: boolean }> = ({
 }) => (
 	<div
 		aria-hidden="true"
-		className="flex h-full min-h-0 w-full flex-col justify-between px-2 py-2.5"
+		className="rb-skeleton-sweep flex h-full min-h-0 w-full flex-col justify-between px-2 py-2.5"
 	>
 		<div className="-mx-2 mb-2 flex min-h-[48px] items-center justify-between border-b border-panel-border! py-2.5 ps-0 pe-0">
 			<div
@@ -83,22 +89,38 @@ export const SidebarSkeletonBody: FC<{ collapsed?: boolean }> = ({
 						) : null}
 						<div className="flex flex-col gap-0.5">
 							{section.items.map((item) => (
-								<div
-									key={item.id}
-									className={cn(
-										"flex h-[38px] w-full items-center justify-start gap-2.5 rounded-[12px]",
-										collapsed ? "ps-4 pe-4" : "ps-3 pe-2.5",
-									)}
-								>
-									<Skeleton className="size-[18px] shrink-0 rounded-[5px] page-skeleton" />
-									{!collapsed ? (
-										<div className="flex min-w-0 flex-1 items-center justify-between gap-2">
-											<Skeleton
-												className={cn("h-3.5 rounded-md page-skeleton", item.labelWidth)}
-											/>
-											{item.isGroup ? (
-												<Skeleton className="size-3 shrink-0 rounded-xs page-skeleton" />
-											) : null}
+								<div key={item.id} className="flex flex-col">
+									<div
+										className={cn(
+											"flex h-[38px] w-full items-center justify-start gap-2.5 rounded-[12px]",
+											collapsed ? "ps-4 pe-4" : "ps-3 pe-2.5",
+										)}
+									>
+										<Skeleton className="size-[18px] shrink-0 rounded-[5px] page-skeleton" />
+										{!collapsed ? (
+											<div className="flex min-w-0 flex-1 items-center justify-between gap-2">
+												<Skeleton
+													className={cn("h-3.5 rounded-md page-skeleton", item.labelWidth)}
+												/>
+												{item.isGroup ? (
+													<Skeleton className="size-3 shrink-0 rounded-xs page-skeleton" />
+												) : null}
+											</div>
+										) : null}
+									</div>
+									{!collapsed && item.subWidths.length > 0 ? (
+										<div className="ms-[21px] flex flex-col gap-0.5 border-s border-panel-border/70! ps-2.5 pt-1 pb-0.5">
+											{item.subWidths.map((subWidth, subIdx) => (
+												<div
+													key={`${item.id}-${subIdx}`}
+													className="flex h-[34px] items-center gap-2.5 px-2.5"
+												>
+													<Skeleton className="size-4 shrink-0 rounded-[5px] page-skeleton" />
+													<Skeleton
+														className={cn("h-3 rounded-md page-skeleton", subWidth)}
+													/>
+												</div>
+											))}
 										</div>
 									) : null}
 								</div>
