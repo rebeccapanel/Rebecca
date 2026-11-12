@@ -5,19 +5,9 @@
 @font-face {
   font-family: 'Arad';
   src:
-    url('/statics/fonts/Arad-Regular.woff2') format('woff2'),
-    url('/fonts/Arad-Regular.woff2') format('woff2');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: 'Arad';
-  src:
-    url('/statics/fonts/Arad-Bold.woff2') format('woff2'),
-    url('/fonts/Arad-Bold.woff2') format('woff2');
-  font-weight: 700;
+    url('/statics/fonts/AradVF.woff2') format('woff2'),
+    url('/fonts/AradVF.woff2') format('woff2');
+  font-weight: 400 700;
   font-style: normal;
   font-display: swap;
 }
@@ -36,21 +26,25 @@
   --rb-panel-text: #f5f5f5;
   --rb-panel-text-secondary: #d0d0d0;
   --rb-panel-text-muted: #8a8a8a;
-  --rb-panel-accent: #e0003c;
-  --rb-panel-accent-hover: #f01446;
+  --rb-panel-accent: #2563eb;
+  --rb-panel-accent-hover: #3b82f6;
   --rb-panel-row-hover: #1b1b1b;
   --rb-panel-row-selected: #181818;
   --rb-sidebar-offset: 0px;
-  --primary-50: #ffe6ed;
-  --primary-100: #ffb8c9;
-  --primary-200: #ff88a5;
-  --primary-300: #fb5a82;
-  --primary-400: #f42d62;
-  --primary-500: #e0003c;
-  --primary-600: #bf0033;
-  --primary-700: #990029;
-  --primary-800: #73001f;
-  --primary-900: #4c0015;
+  --bg-light: #101010;
+  --bg-dark: #101010;
+  --surface-light: #242424;
+  --surface-dark: #242424;
+  --primary-50: #eff6ff;
+  --primary-100: #dbeafe;
+  --primary-200: #bfdbfe;
+  --primary-300: #93c5fd;
+  --primary-400: #60a5fa;
+  --primary-500: #2563eb;
+  --primary-600: #1d4ed8;
+  --primary-700: #1e40af;
+  --primary-800: #1e3a8a;
+  --primary-900: #172554;
   --rb-ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --rb-ease-standard: cubic-bezier(0.77, 0, 0.175, 1);
   --rb-duration-fast: 140ms;
@@ -75,18 +69,40 @@
 
 .rb-theme-light,
 .chakra-ui-light {
-  --rb-panel-bg: #f4f5f7;
-  --rb-panel-main: #f7f8fa;
+  --rb-panel-bg: #f0f2f5;
+  --rb-panel-main: #f3f5f8;
   --rb-panel-sidebar: #ffffff;
   --rb-panel-surface: #ffffff;
-  --rb-panel-elevated: #eef0f3;
-  --rb-panel-border: #d8dce2;
-  --rb-panel-border-strong: #c2c8d0;
-  --rb-panel-text: #17191c;
-  --rb-panel-text-secondary: #4f5661;
-  --rb-panel-text-muted: #7a828e;
+  --rb-panel-elevated: #e2e6eb;
+  --rb-panel-border: #cbd2d9;
+  --rb-panel-border-strong: #9aa5b1;
+  --rb-panel-text: #101318;
+  --rb-panel-text-secondary: #3e4651;
+  --rb-panel-text-muted: #626d7a;
   --rb-panel-row-hover: #f0f2f5;
   --rb-panel-row-selected: #ffffff;
+  --bg-light: #f0f2f5;
+  --bg-dark: #f0f2f5;
+  --surface-light: #ffffff;
+  --surface-dark: #ffffff;
+}
+
+/* Christmas seasonal palette, moved from chakra.config.ts. It comes after the theme blocks so it wins, as it did there. */
+.rb-seasonal-christmas {
+  --primary-50: #ffe6e6;
+  --primary-100: #ffcdd2;
+  --primary-200: #ef9a9a;
+  --primary-300: #e57373;
+  --primary-400: #ef5350;
+  --primary-500: #d32f2f;
+  --primary-600: #c62828;
+  --primary-700: #b71c1c;
+  --primary-800: #8d0f0f;
+  --primary-900: #5f0a0a;
+  --bg-light: #fdf7f2;
+  --bg-dark: #0b0f19;
+  --surface-light: #f7eee8;
+  --surface-dark: #172235;
 }
 
 @supports (height: 100svh) {
@@ -117,6 +133,8 @@ textarea,
 }
 
 body {
+  background-color: var(--rb-panel-main);
+  color: var(--rb-panel-text);
   scrollbar-color: var(--rb-panel-border-strong) var(--rb-panel-main);
 }
 
@@ -195,20 +213,25 @@ body {
   text-align: inherit;
 }
 
+/* Dense rows: 13px keeps every column inside a 1440px viewport without the
+   sticky action cell covering the last data column. */
 .rb-data-table td {
+  font-size: 0.8125rem !important;
   background: var(--rb-panel-surface) !important;
   border-top: 1px solid var(--rb-panel-border) !important;
   border-bottom: 1px solid var(--rb-panel-border) !important;
   border-left: 0 !important;
   border-right: 0 !important;
-  height: 48px;
+  /* A minimum, not a fixed height: cells that wrap (tag lists, a metric plus
+     its progress bar) grow instead of having their last line clipped. */
+  height: auto;
   min-height: 48px;
   min-width: 0;
   overflow: hidden;
   vertical-align: middle;
   text-align: inherit;
-  padding-left: clamp(4px, 0.45vw, 8px) !important;
-  padding-right: clamp(4px, 0.45vw, 8px) !important;
+  padding-left: clamp(3px, 0.35vw, 6px) !important;
+  padding-right: clamp(3px, 0.35vw, 6px) !important;
   padding-top: 6px !important;
   padding-bottom: 6px !important;
 }
@@ -368,10 +391,15 @@ body {
 }
 
 .rb-cell-content[data-truncate="true"] .rb-cell-value,
-.rb-resource-primary .rb-cell-content:not([data-multiline="true"]) .rb-cell-value,
-.rb-resource-meta-value .rb-cell-content:not([data-multiline="true"]) .rb-cell-value {
+.rb-resource-primary .rb-cell-content:not([data-multiline="true"]) .rb-cell-value {
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.rb-resource-meta-value .rb-cell-value {
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
 }
 
 .rb-cell-content[data-multiline="true"] {
@@ -448,7 +476,7 @@ body {
   display: flex;
   justify-content: flex-start;
   align-items: center;
-  gap: 0.125rem;
+  gap: 0.25rem;
   min-width: 0;
 }
 
@@ -654,8 +682,9 @@ body {
 
   .rb-resource-expanded {
     margin-top: 0.75rem;
-    padding-top: 0.75rem;
-    border-top: 1px solid var(--rb-panel-border);
+    padding: 0.5rem 0.75rem 0.25rem;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--rb-panel-elevated) 55%, transparent);
   }
 
   .rb-resource-details {
@@ -690,10 +719,11 @@ body {
     align-items: center;
     gap: 0.6rem;
     width: 100%;
+    min-height: 2.25rem;
     background: transparent;
     border-radius: 0;
     border-bottom: 1px solid var(--rb-panel-border);
-    padding: 0.42rem 0;
+    padding: 0.4rem 0;
     font-size: 0.78rem;
   }
 
@@ -728,6 +758,23 @@ body {
   .rb-resource-details[data-density="compact"] .rb-resource-meta-value {
     justify-self: start;
     text-align: start;
+  }
+  .rb-resource-details .rb-resource-meta:has(.rb-stat-pair),
+  .rb-resource-details .rb-resource-meta:has(.rb-chip-list) {
+    grid-column: 1 / -1;
+  }
+
+  .rb-resource-meta-value .rb-stat-pair {
+    flex-wrap: wrap;
+    white-space: normal;
+    justify-content: flex-end;
+    row-gap: 0.2rem;
+    column-gap: 0.75rem;
+  }
+
+  .rb-resource-meta-value .rb-chip-list {
+    justify-content: flex-end;
+    row-gap: 0.3rem;
   }
 
   .rb-resource-expanded-actions {
@@ -1050,7 +1097,7 @@ body {
 [dir="rtl"] .chakra-popover__close-btn,
 [dir="rtl"] .chakra-popover__close-button {
   right: auto !important;
-  left: var(--chakra-space-3) !important;
+  left: 0.75rem !important;
 }
 
 [dir="rtl"] .chakra-input__left-element {
@@ -1070,12 +1117,12 @@ body {
 
 [dir="rtl"] .chakra-select__icon-wrapper {
   right: auto;
-  left: var(--chakra-space-3);
+  left: 0.75rem;
 }
 
 [dir="rtl"] select.chakra-select {
-  padding-inline-start: var(--chakra-space-10);
-  padding-inline-end: var(--chakra-space-3);
+  padding-inline-start: 2.5rem;
+  padding-inline-end: 0.75rem;
   text-align: right;
 }
 
@@ -1134,16 +1181,16 @@ table thead {
 }
 
 .react-datepicker {
-  background-color: var(--chakra-colors-white) !important;
-  border: 1px solid var(--chakra-colors-gray-200);
-  border-radius: var(--chakra-radii-md) !important;
+  background-color: #fff !important;
+  border: 1px solid var(--color-gray-200);
+  border-radius: 0.375rem !important;
   position: relative;
 }
 
 .chakra-ui-dark .react-datepicker {
-  background-color: var(--chakra-colors-gray-700) !important;
-  border: 1px solid var(--chakra-colors-gray-600);
-  border-radius: var(--chakra-radii-md) !important;
+  background-color: var(--color-gray-700) !important;
+  border: 1px solid var(--color-gray-600);
+  border-radius: 0.375rem !important;
   position: relative;
 }
 
@@ -1151,12 +1198,12 @@ table thead {
   text-align: center;
   background-color: unset;
   position: relative;
-  border-bottom: 1px solid var(--chakra-colors-gray-200);
+  border-bottom: 1px solid var(--color-gray-200);
   padding: 8px 32px;
 }
 
 .chakra-ui-dark .react-datepicker__header {
-  border-bottom: 1px solid var(--chakra-colors-gray-600);
+  border-bottom: 1px solid var(--color-gray-600);
   padding: 8px 32px;
 }
 
@@ -1175,64 +1222,70 @@ table thead {
 
 .react-datepicker-popper[data-placement^=bottom] .react-datepicker__triangle::after {
   border-top: none;
-  border-bottom-color: var(--chakra-colors-white);
+  border-bottom-color: #fff;
 }
 
 .react-datepicker-popper[data-placement^=bottom] .react-datepicker__triangle::before {
   top: -1px;
-  border-bottom-color: var(--chakra-colors-gray-200);
+  border-bottom-color: var(--color-gray-200);
 }
 
 .chakra-ui-dark .react-datepicker-popper[data-placement^=bottom] .react-datepicker__triangle::after {
   border-top: none;
-  border-bottom-color: var(--chakra-colors-gray-700);
+  border-bottom-color: var(--color-gray-700);
 }
 
 .chakra-ui-dark .react-datepicker-popper[data-placement^=bottom] .react-datepicker__triangle::before {
   top: -1px;
-  border-bottom-color: var(--chakra-colors-gray-600);
+  border-bottom-color: var(--color-gray-600);
 }
 
 .react-datepicker__current-month,
 .react-datepicker__day-name,
 .react-datepicker__day {
-  color: var(--chakra-colors-chakra-body-text) !important;
+  color: #1a202c !important;
+}
+
+.rb-theme-dark .react-datepicker__current-month,
+.rb-theme-dark .react-datepicker__day-name,
+.rb-theme-dark .react-datepicker__day {
+  color: rgba(255, 255, 255, 0.92) !important;
 }
 
 .chakra-ui-dark .react-datepicker__current-month,
 .chakra-ui-dark .react-datepicker__day-name,
 .chakra-ui-dark .react-datepicker__day {
-  color: var(--chakra-colors-gray-300) !important;
+  color: var(--color-gray-300) !important;
 }
 
 .react-datepicker__day:hover {
   border-radius: 0.3rem;
-  background-color: var(--chakra-colors-primary-300) !important;
-  color: var(--chakra-colors-white) !important;
+  background-color: var(--color-primary-300) !important;
+  color: #fff !important;
 }
 
 .chakra-ui-dark .react-datepicker__day:hover {
   border-radius: 0.3rem;
-  background-color: var(--chakra-colors-primary-500) !important;
-  color: var(--chakra-colors-gray-800) !important;
+  background-color: var(--color-primary-500) !important;
+  color: var(--color-gray-800) !important;
 }
 
 .react-datepicker__day--disabled {
-  color: var(--chakra-colors-gray-400) !important;
+  color: var(--color-gray-400) !important;
 }
 
 .react-datepicker__day--disabled:hover {
   background-color: transparent !important;
-  color: var(--chakra-colors-gray-400) !important;
+  color: var(--color-gray-400) !important;
 }
 
 .chakra-ui-dark .react-datepicker__day--disabled {
-  color: var(--chakra-colors-gray-500) !important;
+  color: var(--color-gray-500) !important;
 }
 
 .chakra-ui-dark .react-datepicker__day--disabled:hover {
   background-color: transparent !important;
-  color: var(--chakra-colors-gray-500) !important;
+  color: var(--color-gray-500) !important;
 }
 
 .react-datepicker__day--keyboard-selected,
@@ -1240,8 +1293,8 @@ table thead {
 .react-datepicker__day--in-selecting-range,
 .react-datepicker__day--in-range {
   border-radius: 0.3rem;
-  background-color: var(--chakra-colors-primary-500) !important;
-  color: var(--chakra-colors-white) !important;
+  background-color: var(--color-primary-500) !important;
+  color: #fff !important;
 }
 
 .chakra-ui-dark .react-datepicker__day--keyboard-selected,
@@ -1249,18 +1302,18 @@ table thead {
 .chakra-ui-dark .react-datepicker__day--in-selecting-range,
 .chakra-ui-dark .react-datepicker__day--in-range {
   border-radius: 0.3rem;
-  background-color: var(--chakra-colors-primary-200) !important;
-  color: var(--chakra-colors-gray-800) !important;
+  background-color: var(--color-primary-200) !important;
+  color: var(--color-gray-800) !important;
 }
 
 .react-datepicker__day--in-selecting-range:not(.react-datepicker__day--in-range) {
   border-radius: 0.3rem;
-  background-color: var(--chakra-colors-primary-400) !important;
+  background-color: var(--color-primary-400) !important;
 }
 
 .chakra-ui-dark .react-datepicker__day--in-selecting-range:not(.react-datepicker__day--in-range) {
   border-radius: 0.3rem;
-  background-color: var(--chakra-colors-primary-400) !important;
+  background-color: var(--color-primary-400) !important;
 }
 
 .react-datepicker__day--outside-month {
@@ -1416,31 +1469,31 @@ table thead {
 }
 
 .datepicker-with-quickselect .react-datepicker__day:hover {
-  background-color: var(--chakra-colors-primary-100) !important;
-  color: var(--chakra-colors-primary-700) !important;
+  background-color: var(--color-primary-100) !important;
+  color: var(--color-primary-700) !important;
 }
 
 .chakra-ui-dark .datepicker-with-quickselect .react-datepicker__day:hover {
-  background-color: var(--chakra-colors-primary-700) !important;
-  color: var(--chakra-colors-white) !important;
+  background-color: var(--color-primary-700) !important;
+  color: #fff !important;
 }
 
 .datepicker-with-quickselect .react-datepicker__day--selected,
 .datepicker-with-quickselect .react-datepicker__day--keyboard-selected {
-  background-color: var(--chakra-colors-primary-500) !important;
-  color: var(--chakra-colors-white) !important;
+  background-color: var(--color-primary-500) !important;
+  color: #fff !important;
   font-weight: 600;
 }
 
 .chakra-ui-dark .datepicker-with-quickselect .react-datepicker__day--selected,
 .chakra-ui-dark .datepicker-with-quickselect .react-datepicker__day--keyboard-selected {
-  background-color: var(--chakra-colors-primary-400) !important;
-  color: var(--chakra-colors-gray-900) !important;
+  background-color: var(--color-primary-400) !important;
+  color: var(--color-gray-900) !important;
 }
 
 .datepicker-with-quickselect .react-datepicker__day--today {
   font-weight: 600;
-  border: 2px solid var(--chakra-colors-primary-500);
+  border: 2px solid var(--color-primary-500);
 }
 
 .datepicker-with-quickselect .react-datepicker__day--disabled {
@@ -1458,8 +1511,8 @@ table thead {
   height: 40px;
   padding: 0 12px;
   background-color: transparent;
-  border: 1.5px solid var(--chakra-colors-gray-300);
-  color: var(--chakra-colors-gray-700);
+  border: 1.5px solid var(--color-gray-300);
+  color: var(--color-gray-700);
   transition:
     background-color var(--rb-duration-ui) var(--rb-ease-out),
     border-color var(--rb-duration-ui) var(--rb-ease-out),
@@ -1472,20 +1525,20 @@ table thead {
 }
 
 .chakra-ui-dark .datepicker-quickselect-panel button {
-  border-color: var(--chakra-colors-gray-600);
-  color: var(--chakra-colors-gray-300);
+  border-color: var(--color-gray-600);
+  color: var(--color-gray-300);
 }
 
 .datepicker-quickselect-panel button:hover {
-  background-color: var(--chakra-colors-primary-50);
-  border-color: var(--chakra-colors-primary-300);
-  color: var(--chakra-colors-primary-700);
+  background-color: var(--color-primary-50);
+  border-color: var(--color-primary-300);
+  color: var(--color-primary-700);
 }
 
 .chakra-ui-dark .datepicker-quickselect-panel button:hover {
-  background-color: var(--chakra-colors-primary-900);
-  border-color: var(--chakra-colors-primary-600);
-  color: var(--chakra-colors-primary-200);
+  background-color: var(--color-primary-900);
+  border-color: var(--color-primary-600);
+  color: var(--color-primary-200);
 }
 
 /* Footer time input styling */
@@ -1494,11 +1547,11 @@ table thead {
   align-items: center;
   gap: 8px;
   padding: 12px 8px 0;
-  border-top: 1px solid var(--chakra-colors-gray-200);
+  border-top: 1px solid var(--color-gray-200);
 }
 
 .chakra-ui-dark .datepicker-footer {
-  border-top-color: var(--chakra-colors-gray-600);
+  border-top-color: var(--color-gray-600);
 }
 
 .datepicker-footer .chakra-numberinput {
@@ -2216,7 +2269,7 @@ img.apple-emoji {
 
 /* Admin and node expansions: keep the attached panel inside the visible part of
    the table so every section is reachable without scrolling sideways. */
-:is(.rb-admins-section, .rb-nodes-section) .rb-data-table-row-detail .rb-data-table-expanded-content {
+:is(.rb-admins-section, .rb-nodes-section, .rb-services-section) .rb-data-table-row-detail .rb-data-table-expanded-content {
   position: sticky;
   left: 0;
   max-width: calc(100vw - 280px);
@@ -2230,4 +2283,719 @@ img.apple-emoji {
 	to {
 		transform: translateY(0);
 	}
+}
+
+@keyframes rb-service-notice-progress {
+	from {
+		transform: scaleX(1);
+	}
+	to {
+		transform: scaleX(0);
+	}
+}
+
+@keyframes rb-click-pulse {
+	0% { transform: scale(1); }
+	40% { transform: scale(0.94); }
+	70% { transform: scale(1.04); }
+	100% { transform: scale(1); }
+}
+
+/* Keyframes that used to live in Chakra style objects on the Statistics cards. */
+@keyframes shimmer {
+  0% { opacity: 0.35; }
+  50% { opacity: 0.75; }
+  100% { opacity: 0.35; }
+}
+
+@keyframes livePulse {
+  0%, 100% { opacity: 0.65; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); box-shadow: 0 0 8px rgba(34, 197, 94, 0.6); }
+}
+
+.shimmer-box {
+  animation: shimmer 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* IntegrationSettingsPage: the card and tab styles that were a Chakra sx block. Colours are the palette the page used. */
+.master-settings-card {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 1rem;
+  padding: 1rem;
+  background-color: #fff;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+.rb-theme-dark .master-settings-card {
+  border-color: rgba(255, 255, 255, 0.08);
+  background-color: rgba(255, 255, 255, 0.04);
+}
+.master-settings-subcard {
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 0.75rem;
+  padding: 0.75rem;
+  background-color: #f7fafc;
+}
+.rb-theme-dark .master-settings-subcard {
+  border-color: rgba(255, 255, 255, 0.08);
+  background-color: rgba(255, 255, 255, 0.06);
+}
+@media (min-width: 48em) {
+  .master-settings-card { padding: 1.25rem; }
+  .master-settings-subcard { padding: 1rem; }
+  .master-settings-tabs > * { min-height: 36px; padding-inline: 1rem; }
+}
+.master-settings-card input,
+.master-settings-card select,
+.master-settings-card textarea,
+.master-settings-subcard input,
+.master-settings-subcard select,
+.master-settings-subcard textarea {
+  background-color: #fff;
+  border-radius: 0.5rem;
+  font-size: 13px;
+}
+.rb-theme-dark .master-settings-card input,
+.rb-theme-dark .master-settings-card select,
+.rb-theme-dark .master-settings-card textarea,
+.rb-theme-dark .master-settings-subcard input,
+.rb-theme-dark .master-settings-subcard select,
+.rb-theme-dark .master-settings-subcard textarea {
+  background-color: rgba(0, 0, 0, 0.08);
+}
+.master-settings-card label,
+.master-settings-subcard label {
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.master-settings-action-row {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+.telegram-settings-form { --telegram-row-bg: #f7fafc; }
+.rb-theme-dark .telegram-settings-form { --telegram-row-bg: rgba(255, 255, 255, 0.06); }
+.telegram-switch-row__inner {
+  background: var(--telegram-row-bg);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  min-height: 56px;
+}
+.rb-theme-dark .telegram-switch-row__inner { border-color: rgba(255, 255, 255, 0.08); }
+.telegram-switch-row__title {
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--rb-panel-text);
+}
+.telegram-switch-row__description {
+  margin-top: 0.25rem;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--rb-panel-text-muted);
+}
+.telegram-switch-row__control {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 44px;
+}
+.master-settings-tabs {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+  scrollbar-width: none;
+  scroll-padding-inline: 8px;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-inline: contain;
+}
+.master-settings-tabs::-webkit-scrollbar { display: none; }
+.master-settings-tabs > * {
+  flex-shrink: 0;
+  scroll-snap-align: start;
+  white-space: nowrap;
+  min-height: 40px;
+  padding-inline: 0.75rem;
+}
+
+/* ServicesPage: the list borders inside the service dialog, previously an sx rule on the dialog. */
+.service-dialog-list {
+  border-color: rgba(0, 0, 0, 0.08);
+  background-color: #f7fafc;
+}
+.rb-theme-dark .service-dialog-list {
+  border-color: rgba(255, 255, 255, 0.08);
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* ServicesPage: the list borders inside the service dialog, previously an sx rule on the dialog. */
+.service-dialog-list {
+  border-color: rgba(0, 0, 0, 0.08);
+  background-color: #f7fafc;
+}
+.rb-theme-dark .service-dialog-list {
+  border-color: rgba(255, 255, 255, 0.08);
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Xray dialogs: the form, tab and section styles that were a Chakra sx block on the modal. */
+.rb-xray-dialog {
+  --xray-field-bg: #fff;
+  --xray-label-color: #2d3748;
+  --xray-muted: #718096;
+  --xray-border: #e2e8f0;
+  --xray-section-bg: #fff;
+  --xray-hover-bg: rgba(0, 0, 0, 0.05);
+  --xray-tab-color: var(--primary-600);
+  --xray-tab-border: var(--primary-500);
+}
+.rb-theme-dark .rb-xray-dialog {
+  --xray-field-bg: rgba(255, 255, 255, 0.05);
+  --xray-label-color: #e2e8f0;
+  --xray-muted: #a0aec0;
+  --xray-border: rgba(255, 255, 255, 0.16);
+  --xray-section-bg: rgba(255, 255, 255, 0.04);
+  --xray-hover-bg: rgba(255, 255, 255, 0.05);
+  --xray-tab-color: var(--primary-300);
+  --xray-tab-border: var(--primary-300);
+}
+@media (max-width: 47.99em) {
+  .rb-xray-dialog {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    height: auto !important;
+    max-height: 92dvh !important;
+    margin: 0 !important;
+    border-radius: 16px 16px 0 0 !important;
+  }
+}
+.rb-xray-dialog input,
+.rb-xray-dialog select,
+.rb-xray-dialog textarea {
+  background-color: var(--xray-field-bg);
+  border-radius: 4px;
+  font-size: 13px;
+  width: 100%;
+}
+.rb-xray-dialog textarea { min-height: 68px; }
+.rb-xray-dialog input.rb-multi-value-autocomplete-input {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-size: 13px !important;
+  height: 24px !important;
+  min-height: 24px !important;
+  outline: 0 !important;
+  padding: 0 !important;
+  width: 100%;
+}
+.rb-xray-dialog label {
+  margin-bottom: 0.25rem;
+  color: var(--xray-label-color);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.rb-xray-dialog [role="tablist"] {
+  display: flex;
+  justify-content: flex-start;
+  width: 100%;
+  gap: 18px;
+  border: 0;
+  border-bottom: 1px solid var(--xray-border);
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  margin-bottom: 1rem;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-wrap: nowrap;
+  scrollbar-width: none;
+  scroll-padding-inline: 8px;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-inline: contain;
+}
+.rb-xray-dialog [role="tablist"]::-webkit-scrollbar { display: none; }
+.rb-xray-dialog [role="tab"] {
+  flex: 0 0 auto;
+  flex-shrink: 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 0.5rem 0.75rem;
+  min-height: 34px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--xray-muted);
+  scroll-snap-align: start;
+  white-space: nowrap;
+}
+.rb-xray-dialog [role="tab"][aria-selected="true"] {
+  background: transparent;
+  border-color: var(--xray-tab-border);
+  color: var(--xray-tab-color);
+}
+.rb-xray-dialog .xray-dialog-section {
+  background-color: var(--xray-section-bg);
+  border: 1px solid var(--xray-border);
+  border-radius: 6px;
+  padding: 0.75rem;
+}
+.rb-xray-dialog .xray-dialog-section.rb-dialog-collapsible-section { padding: 0; overflow: hidden; }
+.inbound-form-modal .xray-dialog-section {
+  border-top: 1px solid var(--rb-panel-border);
+  padding-top: 1.25rem;
+}
+.inbound-form-modal .xray-dialog-section:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.rb-xray-dialog .rb-dialog-collapsible-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 0.625rem 0.75rem;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+.rb-xray-dialog .rb-dialog-collapsible-trigger:hover { background-color: var(--xray-hover-bg); }
+.rb-xray-dialog .rb-dialog-collapsible-title { font-size: 0.875rem; font-weight: 600; line-height: 1.35; }
+.rb-xray-dialog .rb-dialog-collapsible-body { border-top: 1px solid var(--xray-border); padding: 0.75rem; }
+.rb-xray-dialog .rb-dialog-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  min-height: 44px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--xray-border);
+  border-radius: 6px;
+  background-color: var(--xray-section-bg);
+}
+
+/* Loading skeletons: the pulse that was a Chakra sx block on the page skeleton. */
+@keyframes pageSkeletonPulse {
+  0%, 100% { opacity: 0.52; }
+  50% { opacity: 0.9; }
+}
+.page-skeleton {
+  background-color: rgba(255, 255, 255, 0.09) !important;
+  animation: pageSkeletonPulse 1.8s ease-in-out infinite;
+}
+.rb-theme-light .page-skeleton,
+.chakra-ui-light .page-skeleton {
+  background-color: rgba(15, 23, 42, 0.085) !important;
+}
+
+/* Native select popups (drawn by the browser) follow the panel surface instead of
+   the OS theme, so an open dropdown never flashes a white list in dark mode. */
+select.rb-select option {
+  background-color: var(--rb-panel-elevated);
+  color: var(--rb-panel-text);
+}
+
+select.rb-select optgroup {
+  background-color: var(--rb-panel-surface);
+  color: var(--rb-panel-text-secondary);
+}
+
+/* The kit checkbox keeps a native input for behaviour and draws its own box:
+   Chakra's checked/indeterminate look, driven by data-state. */
+.rb-checkbox {
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+.rb-checkbox-check,
+.rb-checkbox-dash {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.rb-checkbox[data-state="checked"],
+.rb-checkbox[data-state="indeterminate"] {
+  background-color: var(--rb-checkbox-accent, var(--rb-panel-accent));
+  border-color: transparent;
+}
+
+.rb-checkbox[data-state="checked"] .rb-checkbox-check,
+.rb-checkbox[data-state="indeterminate"] .rb-checkbox-dash {
+  opacity: 1;
+}
+
+label:hover > .rb-checkbox[data-state="unchecked"] {
+  border-color: var(--rb-panel-text-muted);
+}
+
+input:focus-visible + .rb-checkbox {
+  box-shadow: 0 0 0 2px var(--rb-panel-surface), 0 0 0 4px var(--rb-checkbox-accent, var(--rb-panel-accent));
+}
+
+input:disabled + .rb-checkbox {
+  cursor: not-allowed;
+}
+
+/* Number fields: the browser's spinner arrows are the one control we cannot
+   theme, and Chakra's NumberInput drew its own steppers. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+:is(.rb-users-section, .rb-admins-section, .rb-nodes-section, .rb-services-section) .rb-resource-expanded {
+  margin-top: 0;
+  padding: 0.875rem 1rem 1rem;
+  border-top: 1px solid var(--rb-panel-border);
+  background: color-mix(in srgb, var(--rb-panel-elevated) 55%, transparent);
+}
+
+:is(.rb-users-section, .rb-admins-section, .rb-nodes-section, .rb-services-section) .rb-resource-details {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 11.5rem), 1fr));
+  column-gap: 0.5rem;
+  row-gap: 0.5rem;
+}
+
+:is(.rb-users-section, .rb-admins-section, .rb-nodes-section, .rb-services-section) .rb-resource-details[data-density="compact"] {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 11.5rem), 1fr));
+}
+
+:is(.rb-users-section, .rb-admins-section, .rb-nodes-section, .rb-services-section) .rb-resource-details .rb-resource-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  min-width: 0;
+  width: 100%;
+  border: 1px solid var(--rb-panel-border);
+  border-radius: 0.625rem;
+  background: var(--rb-panel-surface);
+  padding: 0.5rem 0.65rem;
+  font-size: 0.8125rem;
+  line-height: 1.3;
+}
+
+:is(.rb-users-section, .rb-admins-section, .rb-nodes-section, .rb-services-section) .rb-resource-details .rb-resource-meta > span {
+  max-width: 100%;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--rb-panel-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+:is(.rb-users-section, .rb-admins-section, .rb-nodes-section, .rb-services-section) .rb-resource-details .rb-resource-meta-value {
+  justify-self: stretch;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--rb-panel-text);
+  text-align: start;
+}
+
+:is(.rb-users-section, .rb-admins-section, .rb-nodes-section, .rb-services-section) .rb-resource-expanded-actions {
+  margin-top: 0.875rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--rb-panel-border);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  :is(.rb-users-section, .rb-admins-section, .rb-nodes-section, .rb-services-section) .rb-resource-expanded {
+    animation: rb-users-expand-in var(--rb-duration-ui) var(--rb-ease-out);
+    transform-origin: top center;
+  }
+}
+
+.inbound-form-modal [data-form-section] {
+  scroll-margin-top: 0.75rem;
+  padding-block: 1rem;
+  border-top: 1px solid var(--rb-panel-border);
+  border-bottom: 0;
+}
+.inbound-form-modal [data-form-section] [data-form-section] {
+  border-top: 1px dashed var(--rb-panel-border);
+  padding-block: 0.75rem;
+}
+.inbound-form-modal [data-form-section][data-active="true"],
+.inbound-form-modal [data-form-section][data-next-active="true"],
+.inbound-form-modal [data-form-section] [data-form-section][data-active="true"],
+.inbound-form-modal [data-form-section] [data-form-section][data-next-active="true"] {
+  border-top: 2px solid var(--rb-panel-text-muted);
+}
+.inbound-form-modal [data-form-section]:first-child,
+.inbound-form-modal [data-form-section] [data-form-section]:first-child {
+  border-top: 0;
+}
+
+[data-sonner-toaster].toaster {
+  --width: 380px;
+}
+
+[data-sonner-toaster].toaster [data-sonner-toast] {
+  transition: transform 360ms cubic-bezier(0.23, 1, 0.32, 1), opacity 320ms cubic-bezier(0.23, 1, 0.32, 1), height 360ms cubic-bezier(0.23, 1, 0.32, 1), scale 150ms cubic-bezier(0.23, 1, 0.32, 1), border-color 180ms ease, box-shadow 200ms ease;
+}
+
+[data-sonner-toaster].toaster [data-sonner-toast][data-swiping="true"] {
+  transition: none;
+}
+
+[data-sonner-toaster].toaster [data-sonner-toast][data-expanded="false"][data-front="false"] > * {
+  opacity: 0;
+}
+
+@media (max-width: 600px) {
+  [data-sonner-toaster].toaster[data-x-position="center"] {
+    left: 12px !important;
+    right: 12px !important;
+    width: auto !important;
+    transform: none !important;
+  }
+
+  [data-sonner-toaster].toaster [data-sonner-toast] {
+    left: 0 !important;
+    right: 0 !important;
+    width: 100% !important;
+  }
+}
+
+.rb-stat-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
+  border: 1px solid var(--rb-panel-border);
+  background-color: var(--rb-panel-surface);
+  box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.08);
+  transition: border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.rb-theme-light .rb-stat-card,
+.chakra-ui-light .rb-stat-card {
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), inset 0 1px 0 0 rgba(255, 255, 255, 0.8);
+}
+
+.rb-stat-spotlight {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  border-radius: 20px;
+  opacity: var(--mouse-opacity, 0);
+  transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  background: radial-gradient(
+    var(--rb-spotlight-size, 420px) circle at var(--mouse-x, -999px) var(--mouse-y, -999px),
+    rgba(255, 255, 255, 0.075),
+    transparent 75%
+  );
+}
+
+.rb-theme-light .rb-stat-spotlight,
+.chakra-ui-light .rb-stat-spotlight {
+  background: radial-gradient(
+    var(--rb-spotlight-size, 420px) circle at var(--mouse-x, -999px) var(--mouse-y, -999px),
+    rgba(0, 0, 0, 0.065),
+    transparent 75%
+  );
+}
+
+@media (hover: hover) and (pointer: fine) and (min-width: 769px) {
+  .rb-stat-card:hover {
+    border-color: var(--rb-panel-border-strong);
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.12);
+  }
+
+  .rb-theme-light .rb-stat-card:hover,
+  .chakra-ui-light .rb-stat-card:hover {
+    box-shadow: 0 6px 20px -4px rgba(0, 0, 0, 0.08), 0 2px 6px -1px rgba(0, 0, 0, 0.04), inset 0 1px 0 0 rgba(255, 255, 255, 0.9);
+  }
+
+  .rb-stat-card [data-rb-icon],
+  .rb-stat-card [data-rb-swap] {
+    transition: border-color 0.16s ease, box-shadow 0.16s ease;
+  }
+
+  .rb-stat-card [data-rb-icon] {
+    background-color: color-mix(in srgb, var(--rb-panel-surface) calc(var(--proximity, 0) * 100%), var(--rb-panel-elevated)) !important;
+    color: color-mix(in srgb, var(--rb-panel-text) calc(var(--proximity, 0) * 100%), var(--rb-panel-text-secondary)) !important;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rb-panel-border) calc(var(--proximity, 0) * 100%), transparent) !important;
+  }
+
+  .rb-theme-light .rb-stat-card [data-rb-icon],
+  .chakra-ui-light .rb-stat-card [data-rb-icon] {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04), inset 0 0 0 1px color-mix(in srgb, var(--rb-panel-border) calc(var(--proximity, 0) * 100%), transparent) !important;
+  }
+
+  .rb-stat-card [data-rb-icon]:focus-visible,
+  .rb-stat-card [data-rb-swap]:focus-visible {
+    --proximity: 1;
+  }
+
+  .rb-stat-card [data-rb-icon] svg,
+  .rb-stat-card [data-rb-icon] * {
+    color: currentColor !important;
+    stroke: currentColor;
+  }
+
+  .rb-stat-card [data-rb-swap] {
+    background-color: color-mix(in srgb, var(--rb-panel-surface) calc(var(--proximity, 0) * 100%), var(--rb-panel-elevated)) !important;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rb-panel-border) calc(var(--proximity, 0) * 100%), transparent) !important;
+  }
+
+  .rb-theme-light .rb-stat-card [data-rb-swap],
+  .chakra-ui-light .rb-stat-card [data-rb-swap] {
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), inset 0 0 0 1px color-mix(in srgb, var(--rb-panel-border) calc(var(--proximity, 0) * 100%), transparent) !important;
+  }
+
+  .rb-stat-card [data-rb-swap][data-rb-swap-text] {
+    color: color-mix(in srgb, var(--rb-panel-text) calc(var(--proximity, 0) * 100%), var(--rb-panel-text-secondary)) !important;
+  }
+
+  .rb-stat-card [data-rb-progress] {
+    background-color: color-mix(in srgb, var(--rb-panel-surface) calc(var(--proximity, 0) * 100%), var(--rb-panel-elevated)) !important;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--rb-panel-border) calc(var(--proximity, 0) * 100%), transparent) !important;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .rb-theme-light .rb-stat-card [data-rb-progress],
+  .chakra-ui-light .rb-stat-card [data-rb-progress] {
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), inset 0 0 0 1px color-mix(in srgb, var(--rb-panel-border) calc(var(--proximity, 0) * 100%), transparent) !important;
+  }
+
+  .rb-stat-card [data-rb-progress] > div {
+    filter: saturate(calc(1 + var(--proximity, 0) * 0.35)) brightness(calc(1 + var(--proximity, 0) * 0.16));
+    box-shadow: 0 0 calc(var(--proximity, 0) * 8px) currentColor;
+    transition: filter 0.2s ease, box-shadow 0.2s ease, width 0.6s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.3s ease;
+  }
+}
+
+@media screen and (min-width: 769px) and (max-width: 960px) {
+  body:not([data-sidebar-collapsed='true']):not(:has([data-sidebar-collapsed='true'])) .rb-dashboard-grid-guard {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+@keyframes rb-boot-logo {
+  0%, 100% {
+    opacity: 0.72;
+    transform: scale(0.97);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.rb-boot-logo {
+  animation: rb-boot-logo 2.1s ease-in-out infinite;
+}
+
+@keyframes rb-boot-bar {
+  0% {
+    transform: translate3d(-90%, 0, 0);
+  }
+  50% {
+    transform: translate3d(125%, 0, 0);
+  }
+  100% {
+    transform: translate3d(240%, 0, 0);
+  }
+}
+
+.rb-boot-bar {
+  animation: rb-boot-bar 1.25s ease-in-out infinite;
+}
+
+@keyframes rb-skeleton-sweep {
+  from {
+    transform: translate3d(-100%, 0, 0);
+  }
+  to {
+    transform: translate3d(100%, 0, 0);
+  }
+}
+
+.rb-skeleton-sweep {
+  position: relative;
+  overflow: hidden;
+}
+
+.rb-skeleton-sweep::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(
+    105deg,
+    transparent 18%,
+    rgba(255, 255, 255, 0.085) 50%,
+    transparent 82%
+  );
+  animation: rb-skeleton-sweep 1.55s cubic-bezier(0.23, 1, 0.32, 1) infinite;
+}
+
+.rb-theme-light .rb-skeleton-sweep::after,
+.chakra-ui-light .rb-skeleton-sweep::after {
+  background: linear-gradient(
+    105deg,
+    transparent 18%,
+    rgba(255, 255, 255, 0.65) 50%,
+    transparent 82%
+  );
+}
+
+.rb-skeleton-glass {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.032) 0%,
+    rgba(255, 255, 255, 0.01) 100%
+  ), var(--rb-panel-surface);
+}
+
+.rb-theme-light .rb-skeleton-glass,
+.chakra-ui-light .rb-skeleton-glass {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.9) 0%,
+    rgba(241, 245, 249, 0.65) 100%
+  ), var(--rb-panel-surface);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rb-boot-logo {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+
+  .rb-boot-bar {
+    animation: none;
+    transform: translate3d(75%, 0, 0);
+  }
+
+  .rb-skeleton-sweep::after {
+    animation: none;
+    display: none;
+  }
+}
+
+[data-radix-popper-content-wrapper]:has([data-dock-settings-popover]) {
+  pointer-events: none !important;
 }

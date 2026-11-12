@@ -1,18 +1,21 @@
 import { $fetch } from "ofetch";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("ofetch", () => ({ $fetch: { create: vi.fn(() => vi.fn()) } }));
+// The request mock is hoisted so the tests never depend on call history:
+// vitest 5 clears mock state between tests, which emptied mock.results.
+const { requestMock } = vi.hoisted(() => ({ requestMock: vi.fn() }));
+vi.mock("ofetch", () => ({ $fetch: { create: vi.fn(() => requestMock) } }));
 
 import { fetch, reportAPIError, getAPIErrorMessage, useAPIRequestErrors } from "./http";
 
 describe("shared request error reporting", () => {
 	beforeEach(() => useAPIRequestErrors.getState().clear());
 	it("keeps backend details even when a caller swallows the error and clears a recovered request", async () => {
-		const request = vi.mocked($fetch.create).mock.results[0].value;
-		request.mockRejectedValueOnce({ message: "FetchError", response: { status: 502, _data: { detail: "node configuration failed" } } });
+		requestMock.mockReset();
+		requestMock.mockRejectedValueOnce({ message: "FetchError", response: { status: 502, _data: { detail: "node configuration failed" } } });
 		await fetch("/inbounds").catch(() => undefined);
 		expect(useAPIRequestErrors.getState().errors).toEqual([{ key: "GET /inbounds", message: "node configuration failed" }]);
-		request.mockResolvedValueOnce([]);
+		requestMock.mockResolvedValueOnce([]);
 		await fetch("/inbounds");
 		expect(useAPIRequestErrors.getState().errors).toEqual([]);
 	});
@@ -31,8 +34,8 @@ describe("shared request error reporting", () => {
 		expect(getAPIErrorMessage({ response: { _data: '{"detail":"PHP runtime failed"}' } })).toBe("PHP runtime failed");
 	});
 	it("reports backend details for failed file downloads", async () => {
-		const request = vi.mocked($fetch.create).mock.results[0].value;
-		request.mockRejectedValueOnce({ response: { status: 500, _data: new Blob(['{"detail":"database backup failed"}'], { type: "application/json" }) } });
+		requestMock.mockReset();
+		requestMock.mockRejectedValueOnce({ response: { status: 500, _data: new Blob(['{"detail":"database backup failed"}'], { type: "application/json" }) } });
 		await fetch("/settings/backup/export", { responseType: "blob" } as any).catch(() => undefined);
 		expect(useAPIRequestErrors.getState().errors[0].message).toBe("database backup failed");
 	});

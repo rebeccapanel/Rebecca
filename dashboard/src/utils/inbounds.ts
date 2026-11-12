@@ -1,4 +1,6 @@
 import { ALPN_OPTION, UTLS_FINGERPRINT } from "utils/outbound";
+import { sniffingDestinationsFor, supportsSniffing } from "./inboundCapabilities";
+import { generateWireguardKeypair } from "./wireguard";
 
 export type Protocol =
 	| "vmess"
@@ -6,6 +8,7 @@ export type Protocol =
 	| "trojan"
 	| "shadowsocks"
 	| "hysteria"
+	| "masque"
 	| "ssh"
 	| "mtproto"
 	| "web"
@@ -19,7 +22,10 @@ export type Protocol =
 	| "ikev2"
 	| "anyconnect"
 	| "http"
-	| "socks";
+	| "mixed"
+	| "tunnel"
+	| "tun"
+	| "wireguard-xray";
 export type StreamNetwork =
 	| "tcp"
 	| "ws"
@@ -30,7 +36,9 @@ export type StreamNetwork =
 	| "httpupgrade"
 	| "splithttp"
 	| "xhttp"
-	| "hysteria";
+	| "hysteria"
+	| "masque"
+	| "xdrive";
 export type StreamSecurity = "none" | "tls" | "reality";
 
 export type RawInbound = {
@@ -47,6 +55,7 @@ export type RawInbound = {
 	downlink?: number;
 	usage_coefficient?: number;
 	validation_error?: string;
+	compatibility_warning?: string;
 };
 
 export const getInboundTraffic = (inbound: RawInbound) => {
@@ -81,6 +90,15 @@ export type TlsCertificateForm = {
 	oneTimeLoading: boolean;
 	usage: string;
 	buildChain: boolean;
+};
+
+export type WireguardPeerForm = {
+	publicKey: string;
+	privateKey: string;
+	preSharedKey: string;
+	allowedIPs: string;
+	keepAlive: string;
+	comment: string;
 };
 
 export type ProxyAccountForm = {
@@ -142,6 +160,8 @@ export type SockoptFormValues = {
 
 export type InboundFormValues = {
 	tag: string;
+	note?: string;
+	tags?: string[];
 	listen: string;
 	port: string;
 	protocol: Protocol;
@@ -363,11 +383,42 @@ export type InboundFormValues = {
 	httpAccounts: ProxyAccountForm[];
 	httpAllowTransparent: boolean;
 
-	// SOCKS inbound
+	// Mixed (SOCKS/HTTP) inbound
 	socksAuth: "password" | "noauth";
 	socksAccounts: ProxyAccountForm[];
 	socksUdpEnabled: boolean;
 	socksUdpIp: string;
+
+	// MASQUE inbound
+	masqueAddress: string;
+	masqueMtu: string;
+	masquePath: string;
+
+	// Tunnel inbound
+	tunnelRewriteAddress: string;
+	tunnelRewritePort: string;
+	tunnelPortMap: string;
+	tunnelAllowedNetwork: "tcp" | "udp" | "tcp,udp";
+	tunnelFollowRedirect: boolean;
+
+	// TUN inbound
+	tunName: string;
+	tunDesc: string;
+	tunMtu: string;
+	tunGateway: string;
+	tunDns: string;
+	tunUserLevel: string;
+	tunAutoRoutingTable: string;
+	tunAutoOutboundsInterface: string;
+	tunAutoSystemDnsToGateway: "" | "true" | "false";
+	tunWfpBlockLeak: string;
+
+	// WireGuard (Xray) inbound
+	wgxSecretKey: string;
+	wgxMtu: string;
+	wgxNoKernelTun: boolean;
+	wgxDns: string;
+	wgxPeers: WireguardPeerForm[];
 
 	// OpenVPN virtual inbound
 	ovTransport: "udp" | "tcp";
@@ -544,6 +595,7 @@ export const protocolOptions: Protocol[] = [
 	"trojan",
 	"shadowsocks",
 	"hysteria",
+	"masque",
 	"ssh",
 	"mtproto",
 	"web",
@@ -557,8 +609,27 @@ export const protocolOptions: Protocol[] = [
 	"ikev2",
 	"anyconnect",
 	"http",
-	"socks",
+	"mixed",
+	"tunnel",
+	"tun",
+	"wireguard-xray",
 ];
+
+export const protocolLabel = (protocol: string): string =>
+	protocol === "wireguard-xray" ? "WIREGUARD(XRAY)" : protocol.toUpperCase();
+
+export const HOSTLESS_PROTOCOLS: Protocol[] = [
+	"http",
+	"mixed",
+	"tunnel",
+	"tun",
+	"wireguard-xray",
+];
+
+export const protocolSupportsHosts = (protocol: string): boolean =>
+	!HOSTLESS_PROTOCOLS.includes(protocol as Protocol) &&
+	protocol !== "mtproto" &&
+	protocol !== "web";
 export const shadowsocksNetworkOptions: InboundFormValues["shadowsocksNetwork"][] =
 	["tcp,udp", "tcp", "udp"];
 export const streamNetworks: StreamNetwork[] = [
@@ -714,11 +785,16 @@ const createDefaultSockopt = (): SockoptFormValues => ({
 
 const parsePort = (value: string): number | string => {
 	if (!value) return 0;
-	const numeric = Number(value);
+	const normalized = value
+		.split(",")
+		.map((part) => part.trim())
+		.filter(Boolean)
+		.join(",");
+	const numeric = Number(normalized);
 	if (!Number.isNaN(numeric) && numeric > 0) {
 		return numeric;
 	}
-	return value.trim();
+	return normalized;
 };
 
 const isValidPortText = (value: string): boolean => {
@@ -727,6 +803,48 @@ const isValidPortText = (value: string): boolean => {
 	const port = Number(cleaned);
 	return Number.isInteger(port) && port >= 1 && port <= 65535;
 };
+
+const MULTI_PORT_PROTOCOLS = new Set([
+	"vmess",
+	"vless",
+	"trojan",
+	"shadowsocks",
+	"hysteria",
+]);
+
+export const supportsMultiplePorts = (protocol: string): boolean =>
+	MULTI_PORT_PROTOCOLS.has(protocol);
+
+const ASCII_TAG_PROTOCOLS = new Set([
+	"ssh",
+	"mtproto",
+	"web",
+	"openvpn",
+	"wireguard",
+	"amneziawg",
+	"sstp",
+	"gre",
+	"l2tp",
+	"pptp",
+	"ikev2",
+	"anyconnect",
+]);
+
+export const inboundTagAllowsEmoji = (protocol: string): boolean =>
+	!ASCII_TAG_PROTOCOLS.has(protocol);
+
+const isValidPortList = (value: string): boolean => {
+	const parts = value.split(",").map((part) => part.trim());
+	if (!parts.every((part) => isValidPortText(part))) return false;
+	const ports = parts.map(Number);
+	return new Set(ports).size === ports.length;
+};
+
+export const inboundPortNumbers = (value: string): number[] =>
+	value
+		.split(",")
+		.map((part) => Number(part.trim()))
+		.filter((port) => Number.isInteger(port) && port > 0);
 
 const isHostPortTarget = (value: string): boolean => {
 	const cleaned = value.trim();
@@ -875,7 +993,15 @@ export const validateInboundFormFields = (
 	if (!values.tag?.trim()) {
 		errors.tag = "Inbound tag is required.";
 	}
-	if (!isValidPortText(values.port ?? "")) {
+	const portText = values.port ?? "";
+	if (values.protocol === "tun") {
+		// TUN has no listener, so there is no port to validate.
+	} else if (supportsMultiplePorts(values.protocol)) {
+		if (!isValidPortList(portText)) {
+			errors.port =
+				"Enter one port, or several separated by commas such as 443,8443. Each must be between 1 and 65535, without repeats.";
+		}
+	} else if (!isValidPortText(portText)) {
 		errors.port = "Port must be a number between 1 and 65535.";
 	}
 	const usageCoefficient = Number(values.usageCoefficient);
@@ -885,6 +1011,68 @@ export const validateInboundFormFields = (
 		usageCoefficient > 100
 	) {
 		errors.usageCoefficient = "Usage coefficient must be between 0.01 and 100.";
+	}
+	if (values.protocol === "http" || values.protocol === "mixed") {
+		const accounts =
+			values.protocol === "http" ? values.httpAccounts : values.socksAccounts;
+		const needsAccounts =
+			values.protocol === "mixed" && values.socksAuth === "password";
+		const incomplete = accounts.some(
+			(account) => !!account.user.trim() !== !!account.pass.trim(),
+		);
+		const filled = accounts.filter(
+			(account) => account.user.trim() && account.pass.trim(),
+		);
+		if (incomplete) {
+			errors[values.protocol === "http" ? "httpAccounts" : "socksAccounts"] =
+				"Every account needs a user and a password.";
+		} else if (needsAccounts && !filled.length) {
+			errors.socksAccounts = "Password authentication needs at least one account.";
+		}
+	}
+	if (values.protocol === "tunnel") {
+		const hasPortMap = Object.keys(textToPortMap(values.tunnelPortMap)).length > 0;
+		if (
+			!values.tunnelRewriteAddress.trim() &&
+			!hasPortMap &&
+			!values.tunnelFollowRedirect
+		) {
+			errors.tunnelRewriteAddress =
+				"Set a target address, a port map entry or follow redirect.";
+		}
+		if (
+			values.tunnelRewritePort.trim() &&
+			!isValidPortText(values.tunnelRewritePort)
+		) {
+			errors.tunnelRewritePort = "Port must be a number between 1 and 65535.";
+		}
+	}
+	if (values.protocol === "masque") {
+		const mtu = values.masqueMtu.trim();
+		if (mtu && (!/^\d+$/.test(mtu) || Number(mtu) < 1280 || Number(mtu) > 65535)) {
+			errors.masqueMtu = "MTU must be between 1280 and 65535.";
+		}
+		const prefixes = splitLines(values.masqueAddress);
+		const isPrefix = (entry: string) => /^[0-9a-fA-F:.]+\/\d{1,3}$/.test(entry);
+		const v6 = prefixes.filter((entry) => entry.includes(":")).length;
+		if (!prefixes.every(isPrefix) || prefixes.length - v6 > 1 || v6 > 1) {
+			errors.masqueAddress =
+				"Use at most one IPv4 and one IPv6 prefix, such as 10.14.0.1/24.";
+		}
+	}
+	if (values.protocol === "tun") {
+		const mtu = Number(values.tunMtu);
+		if (!Number.isInteger(mtu) || mtu < 0) {
+			errors.tunMtu = "MTU must be a non-negative integer.";
+		}
+	}
+	if (values.protocol === "wireguard-xray") {
+		if (!isWireguardKeyText(values.wgxSecretKey)) {
+			errors.wgxSecretKey = "Secret key must be a 32-byte WireGuard key.";
+		}
+		if (values.wgxPeers.some((peer) => !isWireguardKeyText(peer.publicKey))) {
+			errors.wgxPeers = "Every peer needs a 32-byte public key.";
+		}
 	}
 	if (values.protocol === "pptp" && values.port.trim() !== "1723") {
 		errors.port = "PPTP port must be 1723.";
@@ -1748,6 +1936,53 @@ const createDefaultHeader = (): HeaderForm => ({
 	value: "",
 });
 
+export const createDefaultWireguardPeer = (): WireguardPeerForm => {
+	const keys = generateWireguardKeypair();
+	return {
+		publicKey: keys.publicKey,
+		privateKey: keys.privateKey,
+		preSharedKey: "",
+		allowedIPs: "",
+		keepAlive: "",
+		comment: "",
+	};
+};
+
+const createRandomProxyAccount = (): ProxyAccountForm => ({
+	user: randomLowerAndNum(8),
+	pass: randomLowerAndNum(12),
+});
+
+const portMapToText = (value: unknown): string =>
+	value && typeof value === "object" && !Array.isArray(value)
+		? Object.entries(value as Record<string, unknown>)
+				.map(([port, target]) => `${port}=${target}`)
+				.join("\n")
+		: "";
+
+const textToPortMap = (value: string): Record<string, string> => {
+	const map: Record<string, string> = {};
+	for (const line of value.split("\n")) {
+		const index = line.indexOf("=");
+		if (index < 1) continue;
+		const port = line.slice(0, index).trim();
+		const target = line.slice(index + 1).trim();
+		if (port && target) map[port] = target;
+	}
+	return map;
+};
+
+const isWireguardKeyText = (value: string): boolean => {
+	const text = value.trim();
+	if (/^[0-9a-fA-F]{64}$/.test(text)) return true;
+	try {
+		const normalized = text.replace(/-/g, "+").replace(/_/g, "/");
+		return atob(normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=")).length === 32;
+	} catch {
+		return false;
+	}
+};
+
 const accountToForm = (
 	account: Record<string, any> | undefined,
 ): ProxyAccountForm => ({
@@ -1899,16 +2134,7 @@ export const createDefaultInboundForm = (
 	webACMEEmail: "",
 	webSecret: randomHex(),
 	webSiteUpstream: "",
-	sniffingEnabled:
-		protocol !== "openvpn" &&
-		protocol !== "wireguard" &&
-		protocol !== "l2tp" &&
-		protocol !== "pptp" &&
-		protocol !== "ikev2" &&
-		protocol !== "anyconnect" &&
-		protocol !== "ssh" &&
-		protocol !== "mtproto" &&
-		protocol !== "web",
+	sniffingEnabled: supportsSniffing(protocol),
 	sniffingDestinations: ["http", "tls"],
 	sniffingRouteOnly: false,
 	sniffingMetadataOnly: false,
@@ -2043,12 +2269,36 @@ export const createDefaultInboundForm = (
 	sockoptEnabled: false,
 	sockopt: createDefaultSockopt(),
 	sockoptRawSettings: {},
-	httpAccounts: [createDefaultProxyAccount()],
+	httpAccounts: [createRandomProxyAccount()],
 	httpAllowTransparent: false,
-	socksAuth: "noauth",
-	socksAccounts: [createDefaultProxyAccount()],
+	socksAuth: protocol === "mixed" ? "password" : "noauth",
+	socksAccounts: [createRandomProxyAccount()],
 	socksUdpEnabled: false,
-	socksUdpIp: "",
+	socksUdpIp: "127.0.0.1",
+	masqueAddress: "10.14.0.1/24\nfd14::1/64",
+	masqueMtu: "",
+	masquePath: "/.well-known/masque/ip/*/*/",
+	tunnelRewriteAddress: "",
+	tunnelRewritePort: "",
+	tunnelPortMap: "",
+	tunnelAllowedNetwork: "tcp,udp",
+	tunnelFollowRedirect: false,
+	tunName: "xray0",
+	tunDesc: "",
+	tunMtu: "1500",
+	tunGateway: "",
+	tunDns: "",
+	tunUserLevel: "0",
+	tunAutoRoutingTable: "",
+	tunAutoOutboundsInterface: "auto",
+	tunAutoSystemDnsToGateway: "",
+	tunWfpBlockLeak: "",
+	wgxSecretKey:
+		protocol === "wireguard-xray" ? generateWireguardKeypair().privateKey : "",
+	wgxMtu: "1420",
+	wgxNoKernelTun: false,
+	wgxDns: "",
+	wgxPeers: [],
 	ovTransport: "udp",
 	ovTunnelPort: "",
 	ovIPv4Pool: "10.66.0.0/16",
@@ -2606,7 +2856,7 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			stream?.tcpSettings?.header?.request?.headers?.Host,
 		),
 		tcpHttpPath: Array.isArray(stream?.tcpSettings?.header?.request?.path)
-			? stream.tcpSettings.header.request.path[0]
+			? (stream.tcpSettings.header.request.path[0] ?? "")
 			: base.tcpHttpPath,
 		grpcServiceName: stream?.grpcSettings?.serviceName ?? base.grpcServiceName,
 		grpcAuthority: stream?.grpcSettings?.authority ?? base.grpcAuthority,
@@ -2812,23 +3062,83 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 				? settings.allowTransparent
 				: base.httpAllowTransparent,
 		socksAuth:
-			protocol === "socks" && settings.auth === "password"
+			protocol === "mixed" && settings.auth === "password"
 				? "password"
-				: base.socksAuth,
+				: protocol === "mixed" && settings.auth === "noauth"
+					? "noauth"
+					: base.socksAuth,
 		socksAccounts:
-			protocol === "socks" && Array.isArray(settings.accounts)
+			protocol === "mixed" && Array.isArray(settings.accounts)
 				? settings.accounts.map((item: Record<string, any>) =>
 						accountToForm(item),
 					)
 				: base.socksAccounts,
 		socksUdpEnabled:
-			protocol === "socks" && typeof settings.udp === "boolean"
+			protocol === "mixed" && typeof settings.udp === "boolean"
 				? settings.udp
 				: base.socksUdpEnabled,
 		socksUdpIp:
-			protocol === "socks" && settings.ip !== undefined && settings.ip !== null
+			protocol === "mixed" && settings.ip !== undefined && settings.ip !== null
 				? String(settings.ip)
 				: base.socksUdpIp,
+		masqueAddress:
+			protocol === "masque" && parseStringList(settings.address).length
+				? joinLines(parseStringList(settings.address))
+				: base.masqueAddress,
+		masqueMtu: protocol === "masque" ? toInputValue(settings.mtu) : base.masqueMtu,
+		masquePath:
+			protocol === "masque" && stream.masqueSettings?.path
+				? String(stream.masqueSettings.path)
+				: base.masquePath,
+		tunnelRewriteAddress:
+			protocol === "tunnel" ? String(settings.rewriteAddress ?? "") : base.tunnelRewriteAddress,
+		tunnelRewritePort:
+			protocol === "tunnel" ? toInputValue(settings.rewritePort) : base.tunnelRewritePort,
+		tunnelPortMap:
+			protocol === "tunnel" ? portMapToText(settings.portMap) : base.tunnelPortMap,
+		tunnelAllowedNetwork:
+			protocol === "tunnel" && ["tcp", "udp", "tcp,udp"].includes(settings.allowedNetwork)
+				? settings.allowedNetwork
+				: base.tunnelAllowedNetwork,
+		tunnelFollowRedirect:
+			protocol === "tunnel" ? Boolean(settings.followRedirect) : base.tunnelFollowRedirect,
+		tunName: protocol === "tun" ? String(settings.name ?? base.tunName) : base.tunName,
+		tunDesc: protocol === "tun" ? String(settings.desc ?? "") : base.tunDesc,
+		tunMtu: protocol === "tun" ? toInputValue(settings.mtu) || base.tunMtu : base.tunMtu,
+		tunGateway: protocol === "tun" ? joinLines(parseStringList(settings.gateway)) : base.tunGateway,
+		tunDns: protocol === "tun" ? joinLines(parseStringList(settings.dns)) : base.tunDns,
+		tunUserLevel: protocol === "tun" ? toInputValue(settings.userLevel) || base.tunUserLevel : base.tunUserLevel,
+		tunAutoRoutingTable:
+			protocol === "tun" ? joinLines(parseStringList(settings.autoSystemRoutingTable)) : base.tunAutoRoutingTable,
+		tunAutoOutboundsInterface:
+			protocol === "tun"
+				? String(settings.autoOutboundsInterface ?? base.tunAutoOutboundsInterface)
+				: base.tunAutoOutboundsInterface,
+		tunAutoSystemDnsToGateway:
+			protocol === "tun" && typeof settings.autoSystemDnsToGateway === "boolean"
+				? settings.autoSystemDnsToGateway
+					? "true"
+					: "false"
+				: base.tunAutoSystemDnsToGateway,
+		tunWfpBlockLeak:
+			protocol === "tun" ? joinLines(parseStringList(settings.autoSystemWfpBlockLeak)) : base.tunWfpBlockLeak,
+		wgxSecretKey:
+			protocol === "wireguard-xray" ? String(settings.secretKey ?? "") : base.wgxSecretKey,
+		wgxMtu: protocol === "wireguard-xray" ? toInputValue(settings.mtu) || base.wgxMtu : base.wgxMtu,
+		wgxNoKernelTun:
+			protocol === "wireguard-xray" ? Boolean(settings.noKernelTun) : base.wgxNoKernelTun,
+		wgxDns: protocol === "wireguard-xray" ? String(settings.dns ?? "") : base.wgxDns,
+		wgxPeers:
+			protocol === "wireguard-xray" && Array.isArray(settings.peers)
+				? settings.peers.map((peer: Record<string, any>) => ({
+						publicKey: String(peer.publicKey ?? ""),
+						privateKey: String(peer.privateKey ?? ""),
+						preSharedKey: String(peer.preSharedKey ?? ""),
+						allowedIPs: joinLines(parseStringList(peer.allowedIPs)),
+						keepAlive: toInputValue(peer.keepAlive),
+						comment: String(peer.comment ?? ""),
+					}))
+				: base.wgxPeers,
 		ovTransport:
 			protocol === "openvpn" && settings.transport === "tcp"
 				? "tcp"
@@ -3409,6 +3719,18 @@ const headersFromFormSingleValue = (
 	return Object.keys(record).length ? record : undefined;
 };
 
+export const parseHeaderPairs = (text: string): HeaderForm[] | undefined => {
+	const input = text.trim();
+	const pair = /([^\s=]+)=(?:"([^"]*)"|(\S+))\s*/y;
+	const headers: HeaderForm[] = [];
+	while (pair.lastIndex < input.length) {
+		const match = pair.exec(input);
+		if (!match) return undefined;
+		headers.push({ name: match[1], value: match[2] ?? match[3] });
+	}
+	return headers.length ? headers : undefined;
+};
+
 const getHeaderValue = (
 	headers: Record<string, string | string[]> | undefined,
 	headerName: string,
@@ -3434,6 +3756,58 @@ const omitHeader = (
 		next[name] = value;
 	}
 	return Object.keys(next).length ? next : undefined;
+};
+
+const XHTTP_FORM_KEYS = new Set([
+	"path", "host", "headers", "mode", "xmux",
+	"scMaxBufferedPosts", "scMaxEachPostBytes", "scMinPostsIntervalMs", "scStreamUpServerSecs",
+	"xPaddingBytes", "xPaddingObfsMode", "xPaddingKey", "xPaddingHeader", "xPaddingPlacement", "xPaddingMethod",
+	"noSSEHeader", "noGRPCHeader", "uplinkHTTPMethod", "uplinkChunkSize", "serverMaxHeaderBytes",
+	"sessionIDPlacement", "sessionIDKey", "sessionIDTable", "sessionIDLength", "sessionPlacement", "sessionKey",
+	"seqPlacement", "seqKey", "uplinkDataPlacement", "uplinkDataKey",
+]);
+
+const HYSTERIA_QUIC_KEYS = new Set([
+	"congestion", "bbrProfile", "debug", "brutalUp", "brutalDown", "udpHop",
+	"maxIdleTimeout", "keepAlivePeriod", "disablePathMTUDiscovery", "maxIncomingStreams",
+	"initStreamReceiveWindow", "maxStreamReceiveWindow", "initConnectionReceiveWindow", "maxConnectionReceiveWindow",
+]);
+
+const PASSTHROUGH_NETWORKS = ["xdrive"];
+
+const mergeFinalmask = (
+	built: Record<string, any> | undefined,
+	original: any,
+	managed: boolean,
+	quicEnabled: boolean,
+): Record<string, any> | undefined => {
+	if (!original || typeof original !== "object") return built;
+	if (!managed) return original;
+	const merged: Record<string, any> = { ...(built ?? {}) };
+	for (const [key, value] of Object.entries(original)) {
+		if (key !== "udp" && key !== "quicParams" && !(key in merged)) merged[key] = value;
+	}
+	const originalUdp: any[] = Array.isArray(original.udp) ? original.udp : [];
+	if (originalUdp.some((mask) => mask?.type !== "salamander")) {
+		const formMasks: any[] = [...(built?.udp ?? [])];
+		const udp: any[] = [];
+		for (const mask of originalUdp) {
+			if (mask?.type !== "salamander") udp.push(mask);
+			else if (formMasks.length) udp.push(formMasks.shift());
+		}
+		udp.push(...formMasks);
+		merged.udp = udp;
+	}
+	const quic = original.quicParams;
+	if (quicEnabled && quic && typeof quic === "object") {
+		const extras = Object.fromEntries(
+			Object.entries(quic).filter(([key]) => !HYSTERIA_QUIC_KEYS.has(key)),
+		);
+		if (Object.keys(extras).length) {
+			merged.quicParams = { ...(built?.quicParams ?? {}), ...extras };
+		}
+	}
+	return merged;
 };
 
 const buildStreamSettings = (
@@ -3549,12 +3923,12 @@ const buildStreamSettings = (
 			acceptProxyProtocol: values.httpupgradeAcceptProxyProtocol || undefined,
 			path: values.httpupgradePath,
 			host: values.httpupgradeHost,
-			headers: headersFromForm(values.httpupgradeHeaders),
+			headers: headersFromFormSingleValue(values.httpupgradeHeaders),
 		});
 	}
 
 	if (values.streamNetwork === "splithttp") {
-		const headers = headersFromForm(values.splithttpHeaders);
+		const headers = headersFromFormSingleValue(values.splithttpHeaders);
 		const splithttpSettings = cleanObject({
 			path: shouldIncludeValue(
 				values.splithttpPath,
@@ -3669,9 +4043,17 @@ const buildStreamSettings = (
 		}
 	}
 
+	if (values.streamNetwork === "masque") {
+		stream.masqueSettings = {
+			...(initial?.streamSettings?.masqueSettings ?? {}),
+			path: values.masquePath.trim() || "/.well-known/masque/ip/*/*/",
+		};
+	}
+
 	if (values.streamNetwork === "xhttp") {
 		const mode = values.xhttpMode;
-		const headers = headersFromForm(values.xhttpHeaders);
+		const sendsPackets = mode === "packet-up" || mode === "auto";
+		const headers = headersFromFormSingleValue(values.xhttpHeaders);
 		const xhttpSettings = cleanObject({
 			path: shouldIncludeValue(values.xhttpPath, defaults.xhttpPath, initial, [
 				"streamSettings",
@@ -3689,7 +4071,7 @@ const buildStreamSettings = (
 				: undefined,
 			headers: headers || undefined,
 			scMaxBufferedPosts:
-				mode === "packet-up" &&
+				(sendsPackets || mode === "stream-up") &&
 				shouldIncludeValue(
 					values.xhttpScMaxBufferedPosts,
 					defaults.xhttpScMaxBufferedPosts,
@@ -3699,7 +4081,7 @@ const buildStreamSettings = (
 					? parseOptionalNumber(values.xhttpScMaxBufferedPosts)
 					: undefined,
 			scMaxEachPostBytes:
-				mode === "packet-up" &&
+				sendsPackets &&
 				shouldIncludeValue(
 					values.xhttpScMaxEachPostBytes,
 					defaults.xhttpScMaxEachPostBytes,
@@ -3709,7 +4091,7 @@ const buildStreamSettings = (
 					? values.xhttpScMaxEachPostBytes?.trim() || undefined
 					: undefined,
 			scMinPostsIntervalMs:
-				mode === "packet-up" &&
+				sendsPackets &&
 				shouldIncludeValue(
 					values.xhttpScMinPostsIntervalMs,
 					defaults.xhttpScMinPostsIntervalMs,
@@ -3896,6 +4278,14 @@ const buildStreamSettings = (
 				hKeepAlivePeriod: parseOptionalNumber(values.xhttpXmuxHKeepAlivePeriod),
 			}),
 		});
+		const initialXhttp = initial?.streamSettings?.xhttpSettings;
+		if (initialXhttp && typeof initialXhttp === "object") {
+			for (const [key, value] of Object.entries(initialXhttp)) {
+				if (!XHTTP_FORM_KEYS.has(key) && value !== undefined) {
+					xhttpSettings[key] = value;
+				}
+			}
+		}
 		if (Object.keys(xhttpSettings).length) {
 			stream.xhttpSettings = xhttpSettings;
 		}
@@ -4013,7 +4403,7 @@ const buildStreamSettings = (
 		tlsPayload.minVersion = values.tlsMinVersion || undefined;
 		tlsPayload.maxVersion = values.tlsMaxVersion || undefined;
 		tlsPayload.cipherSuites =
-			values.protocol === "hysteria"
+			values.protocol === "hysteria" || values.protocol === "masque"
 				? undefined
 				: values.tlsCipherSuites || undefined;
 		tlsPayload.rejectUnknownSni = values.tlsRejectUnknownSni;
@@ -4104,6 +4494,23 @@ const buildStreamSettings = (
 		stream.sockopt = sockoptPayload;
 	}
 
+	const finalmask = mergeFinalmask(
+		stream.finalmask,
+		initial?.streamSettings?.finalmask,
+		values.streamNetwork === "hysteria",
+		Boolean(values.hysteriaQuicParams?.enabled),
+	);
+	if (finalmask && Object.keys(finalmask).length) {
+		stream.finalmask = finalmask;
+	}
+
+	if (PASSTHROUGH_NETWORKS.includes(values.streamNetwork)) {
+		for (const key of [`${values.streamNetwork}Settings`, "address", "port"]) {
+			const original = initial?.streamSettings?.[key];
+			if (original !== undefined && original !== null) stream[key] = original;
+		}
+	}
+
 	return cleanObject(stream);
 };
 
@@ -4111,7 +4518,7 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 	const base: Record<string, any> = {};
 
 	if (
-		["vmess", "vless", "trojan", "shadowsocks", "hysteria"].includes(
+		["vmess", "vless", "trojan", "shadowsocks", "hysteria", "masque"].includes(
 			values.protocol,
 		)
 	) {
@@ -4185,7 +4592,7 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 			}
 			break;
 		}
-		case "socks": {
+		case "mixed": {
 			base.auth = values.socksAuth;
 			if (values.socksAuth === "password") {
 				const accounts = values.socksAccounts
@@ -4196,9 +4603,53 @@ const buildSettings = (values: InboundFormValues): Record<string, any> => {
 				}
 			}
 			base.udp = values.socksUdpEnabled;
-			if (values.socksUdpEnabled && values.socksUdpIp.trim()) {
-				base.ip = values.socksUdpIp.trim();
-			}
+			base.ip = values.socksUdpIp.trim() || "127.0.0.1";
+			break;
+		}
+		case "masque":
+			base.address = splitLines(values.masqueAddress);
+			base.mtu = parseOptionalNumber(values.masqueMtu);
+			break;
+		case "tunnel": {
+			base.rewriteAddress = values.tunnelRewriteAddress.trim() || undefined;
+			base.rewritePort = parseOptionalNumber(values.tunnelRewritePort);
+			base.portMap = textToPortMap(values.tunnelPortMap);
+			base.allowedNetwork = values.tunnelAllowedNetwork;
+			base.followRedirect = values.tunnelFollowRedirect;
+			break;
+		}
+		case "tun": {
+			base.name = values.tunName.trim() || "xray0";
+			base.desc = values.tunDesc.trim() || undefined;
+			base.mtu = parseOptionalNumber(values.tunMtu) ?? 1500;
+			base.gateway = splitLines(values.tunGateway);
+			base.dns = splitLines(values.tunDns);
+			base.userLevel = parseOptionalNumber(values.tunUserLevel) ?? 0;
+			base.autoSystemRoutingTable = splitLines(values.tunAutoRoutingTable);
+			base.autoOutboundsInterface =
+				values.tunAutoOutboundsInterface.trim() || "auto";
+			base.autoSystemDnsToGateway =
+				values.tunAutoSystemDnsToGateway === ""
+					? undefined
+					: values.tunAutoSystemDnsToGateway === "true";
+			base.autoSystemWfpBlockLeak = splitLines(values.tunWfpBlockLeak);
+			break;
+		}
+		case "wireguard-xray": {
+			base.mtu = parseOptionalNumber(values.wgxMtu);
+			base.secretKey = values.wgxSecretKey.trim();
+			base.peers = values.wgxPeers.map((peer) =>
+				cleanObject({
+					privateKey: peer.privateKey.trim(),
+					publicKey: peer.publicKey.trim(),
+					preSharedKey: peer.preSharedKey.trim(),
+					allowedIPs: splitLines(peer.allowedIPs),
+					keepAlive: parseOptionalNumber(peer.keepAlive),
+					comment: peer.comment.trim(),
+				}),
+			);
+			base.noKernelTun = values.wgxNoKernelTun;
+			base.dns = values.wgxDns.trim() || undefined;
 			break;
 		}
 		case "openvpn":
@@ -4411,8 +4862,7 @@ export const buildInboundPayload = (
 	options?: BuildInboundOptions,
 ): RawInbound => {
 	const supportsStream =
-		values.protocol !== "http" &&
-		values.protocol !== "socks" &&
+		!HOSTLESS_PROTOCOLS.includes(values.protocol) &&
 		values.protocol !== "openvpn" &&
 		values.protocol !== "wireguard" &&
 		values.protocol !== "amneziawg" &&
@@ -4446,27 +4896,26 @@ export const buildInboundPayload = (
 	if (streamSettings) {
 		payload.streamSettings = streamSettings;
 	}
+	if (values.protocol === "tun") {
+		payload.port = 0;
+		payload.listen = undefined;
+	}
+	if (values.protocol === "tunnel" || values.protocol === "wireguard-xray") {
+		const sockopt = options?.initial?.streamSettings?.sockopt;
+		if (sockopt && typeof sockopt === "object") {
+			payload.streamSettings = { sockopt };
+		}
+	}
 
-	if (
-		values.protocol === "openvpn" ||
-		values.protocol === "wireguard" ||
-		values.protocol === "amneziawg" ||
-		values.protocol === "sstp" ||
-		values.protocol === "gre" ||
-		values.protocol === "l2tp" ||
-		values.protocol === "pptp" ||
-		values.protocol === "ikev2" ||
-		values.protocol === "anyconnect" ||
-		values.protocol === "ssh" ||
-		values.protocol === "mtproto" ||
-		values.protocol === "web"
-	) {
+	if (!supportsSniffing(values.protocol)) {
 		delete payload.sniffing;
 	} else if (values.sniffingEnabled) {
 		const initial = options?.initial ?? null;
 		const sniffing = cleanObject({
 			enabled: true,
-			destOverride: values.sniffingDestinations,
+			destOverride: values.sniffingDestinations.filter((destination) =>
+				sniffingDestinationsFor(values).includes(destination),
+			),
 			ipsExcluded: splitLines(values.sniffingIpsExcluded),
 			domainsExcluded: splitLines(values.sniffingDomainsExcluded),
 			routeOnly:

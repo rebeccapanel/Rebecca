@@ -90,10 +90,10 @@ func TestGatewayServesEmbeddedDashboardAndStatics(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	redirect := httptest.NewRecorder()
-	server.server.Handler.ServeHTTP(redirect, httptest.NewRequest(http.MethodGet, "/dashboard", nil))
-	if redirect.Code != http.StatusTemporaryRedirect || redirect.Header().Get("Location") != "/dashboard/login" {
-		t.Fatalf("dashboard redirect status=%d location=%q", redirect.Code, redirect.Header().Get("Location"))
+	root := httptest.NewRecorder()
+	server.server.Handler.ServeHTTP(root, httptest.NewRequest(http.MethodGet, "/dashboard", nil))
+	if root.Code != http.StatusOK || !strings.Contains(strings.ToLower(root.Body.String()), "<!doctype html>") {
+		t.Fatalf("dashboard root status=%d body=%s", root.Code, root.Body.String())
 	}
 
 	spa := httptest.NewRecorder()

@@ -10,6 +10,8 @@ import (
 	backupapp "github.com/rebeccapanel/rebecca/internal/app/backup"
 )
 
+const maxBackupSendBytes int64 = 200 * 1024 * 1024
+
 type BackupExporter interface {
 	Export(ctx context.Context, scope string) (backupapp.ExportResult, error)
 }
@@ -54,7 +56,18 @@ func (d BackupDelivery) Send(ctx context.Context, exporter BackupExporter, scope
 		return BackupDeliveryResult{}, err
 	}
 	defer os.Remove(result.Path)
-	content, err := os.ReadFile(result.Path)
+	info, err := os.Stat(result.Path)
+	if err == nil && info.Size() > maxBackupSendBytes {
+		size, limit := info.Size(), maxBackupSendBytes
+		err = fmt.Errorf("backup is %s, larger than the %s limit for Telegram delivery; use the database scope or download it from the panel", formatOptionalBytes(&size), formatOptionalBytes(&limit))
+		_ = d.repo.RecordBackupError(ctx, err.Error())
+		d.SendFailureReport(ctx, scope, err)
+		return BackupDeliveryResult{}, err
+	}
+	var content []byte
+	if err == nil {
+		content, err = os.ReadFile(result.Path)
+	}
 	if err != nil {
 		_ = d.repo.RecordBackupError(ctx, err.Error())
 		d.SendFailureReport(ctx, scope, err)

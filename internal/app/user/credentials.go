@@ -15,6 +15,7 @@ var uuidProxyProtocols = map[string]struct{}{
 var passwordProxyProtocols = map[string]struct{}{
 	"trojan":      {},
 	"shadowsocks": {},
+	"masque":      {},
 	"ssh":         {},
 }
 

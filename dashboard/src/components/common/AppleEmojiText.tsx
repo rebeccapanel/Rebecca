@@ -7,6 +7,12 @@ const EMOJI_GRAPHEME =
 const EMOJI_PRESENTATION = /\p{Emoji_Presentation}/u;
 const segmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 const failedSources = new Set<string>();
+const FLAG_PAIR = /^\p{Regional_Indicator}{2}$/u;
+const flagUrls = import.meta.glob<string>("/node_modules/flag-icons/flags/4x3/*.svg", {
+	eager: true,
+	query: "?url",
+	import: "default",
+});
 const resolvedSources = new Map<string, string>();
 
 const toCodePoint = (value: string) =>
@@ -15,6 +21,13 @@ const toCodePoint = (value: string) =>
 		.filter((codePoint) => codePoint !== "fe0e");
 
 const getSources = (value: string) => {
+	if (FLAG_PAIR.test(value)) {
+		const code = Array.from(value, (character) =>
+			String.fromCharCode((character.codePointAt(0) ?? 0) - 0x1f1e6 + 0x61),
+		).join("");
+		const flag = flagUrls[`/node_modules/flag-icons/flags/4x3/${code}.svg`];
+		return flag ? [flag] : [];
+	}
 	const codePoints = toCodePoint(value);
 	const full = codePoints.join("-");
 	const withoutVariant = codePoints

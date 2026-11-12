@@ -4,356 +4,150 @@
   </a>
 </p>
 
-<h1 align="center"/>Rebecca</h1>
+<h1 align="center">Rebecca</h1>
 
 <p align="center">
-    Unified GUI Censorship Resistant Solution Powered by <a href="https://github.com/XTLS/Xray-core">Xray</a>
-</p>
-
-<br/>
-<p align="center">
-  <a href="#">
-    <img src="https://img.shields.io/github/actions/workflow/status/rebeccapanel/Rebecca/build.yml?style=flat-square" />
-  </a>
-  <a href="https://hub.docker.com/r/rebeccapanel/rebecca" target="_blank">
-    <img src="https://img.shields.io/docker/pulls/rebeccapanel/rebecca?style=flat-square&logo=docker" />
-  </a>
-  <a href="#">
-    <img src="https://img.shields.io/github/license/rebeccapanel/Rebecca?style=flat-square" />
-  </a>
-  <a href="https://t.me/rebeccapanel_rebecca" target="_blank">
-    <img src="https://img.shields.io/badge/telegram-channel-blue?style=flat-square&logo=telegram" />
-  </a>
-  <a href="#">
-    <img src="https://img.shields.io/github/stars/rebeccapanel/Rebecca?style=social" />
-  </a>
+  Unified GUI Censorship Resistant Solution Powered by <a href="https://github.com/XTLS/Xray-core">Xray</a>
 </p>
 
 <p align="center">
- <a href="./README.md">
- English
- </a>
- /
- <a href="./docs/README-fa.md">
- فارسی
- </a>
-  /
-  <a href="./docs/README-zh-cn.md">
- 简体中文
- </a>
-   /
-  <a href="./docs/README-ru.md">
- Русский
- </a>
+  <a href="https://github.com/rebeccapanel/Rebecca/actions/workflows/build.yml"><img src="https://img.shields.io/github/actions/workflow/status/rebeccapanel/Rebecca/build.yml?style=flat-square" alt="Build status"></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/github/license/rebeccapanel/Rebecca?style=flat-square" alt="License"></a>
+  <a href="https://t.me/rebeccapanel_rebecca"><img src="https://img.shields.io/badge/telegram-channel-blue?style=flat-square&logo=telegram" alt="Telegram channel"></a>
 </p>
 
-## Table of Contents
+<p align="center">
+  <a href="./README.md">English</a> /
+  <a href="./docs/README-fa.md">فارسی</a> /
+  <a href="./docs/README-zh-cn.md">简体中文</a> /
+  <a href="./docs/README-ru.md">Русский</a>
+</p>
 
-- [Overview](#overview)
-  - [Why using Rebecca?](#why-using-rebecca)
-    - [Features](#features)
-- [Installation guide](#installation-guide)
-- [Configuration](#configuration)
-- [Donation](#donation)
-- [License](#license)
-- [Contributors](#contributors)
+## Overview
 
-# Overview
+Rebecca is a proxy management panel for hundreds of accounts. It lets you create different proxies for your users without complicated configuration, and monitor, modify and limit them from a built-in web dashboard. It is powered by [Xray-core](https://github.com/XTLS/Xray-core), with a Go backend and a React dashboard.
 
-Rebecca is a proxy management tool that provides a simple and easy-to-use user interface for managing hundreds of proxy accounts powered by [Xray-core](https://github.com/XTLS/Xray-core) and built with a Go backend and React dashboard.
+- Built-in **web dashboard** and a full **REST API**
+- **Multiple nodes** to spread infrastructure and scale out
+- **VMess**, **VLESS**, **Trojan** and **Shadowsocks**, with **multi-protocol** users, **multi-user** and **multi-inbound** on a single port (fallbacks)
+- **Traffic** and **expiry** limits, including **periodic** limits (daily, weekly, ...)
+- **Subscription links** for V2Ray clients, **Clash** and **Clash Meta**, plus share links and QR codes
+- **TLS** and **REALITY**
+- Traffic statistics and system monitoring
+- Custom Xray configuration
+- Command-line interface, **multi-language** dashboard and **multi-admin** support (WIP)
 
-## Why use Rebecca?
+## Installation
 
-Rebecca is user-friendly, feature-rich and reliable. It lets you create different proxies for your users without any complicated configuration. Using its built-in web UI, you can monitor, modify and limit users.
-
-### Features
-
-- Built-in **Web UI**
-- Fully **REST API** backend
-- **Multiple Nodes** support (for infrastructure distribution & scalability)
-- Supports protocols **Vmess**, **VLESS**, **Trojan** and **Shadowsocks**
-- **Multi-protocol** for a single user
-- **Multi-user** on a single inbound
-- **Multi-inbound** on a **single port** (fallbacks support)
-- **Traffic** and **expiry date** limitations
-- **Periodic** traffic limit (e.g. daily, weekly, etc.)
-- **Subscription link** compatible with **V2ray** _(such as V2RayNG, SingBox, Nekoray, etc.)_, **Clash** and **ClashMeta**
-- Automated **Share link** and **QRcode** generator
-- System monitoring and **traffic statistics**
-- Customizable xray configuration
-- **TLS** and **REALITY** support
-- Integrated **Command Line Interface (CLI)**
-- **Multi-language**
-- **Multi-admin** support (WIP)
-
-# Installation guide
-
-Install Rebecca master with the binary installer:
+Install the panel with the binary installer. It creates a systemd service and downloads the release for your server's architecture.
 
 ```bash
 curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca-binary.sh | sudo bash -s -- install
 ```
 
-Do not run the installers with `sudo bash -c "$(curl ...)"`; the downloaded script can exceed Linux's single-argument limit and fail with `Argument list too long`. Always pipe the download into `sudo bash -s --` as shown above.
-
-For the dev channel, use:
+For the dev channel:
 
 ```bash
 curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/dev/scripts/rebecca/rebecca-binary.sh | sudo bash -s -- install --dev
 ```
 
-Install Rebecca-node on each node server with the binary node installer:
+Always pipe the script into `sudo bash -s --` as shown. Running it as `sudo bash -c "$(curl ...)"` can fail with `Argument list too long`.
 
-```bash
-curl -sL https://raw.githubusercontent.com/rebeccapanel/Rebecca/master/scripts/rebecca/rebecca-node-binary.sh | sudo bash -s -- install
-```
+The installer asks which database to use. To skip the prompt, pass `--database sqlite`, `--database mysql` or `--database mariadb`. MySQL and MariaDB are installed on the host.
 
-The binary installers create native systemd services and automatically download the matching Linux release asset for the server architecture. The master installer supports SQLite, MySQL, and MariaDB through its install options; the node installer installs only the node runtime and connects it to the master through the certificate/token flow in the panel.
+Install a node on each node server with the [node installer](https://github.com/rebeccapanel/rebecca-node).
 
-Once the installation is complete:
+### After installing
 
-- You will see the logs that you can stop watching them by closing the terminal or pressing `Ctrl+C`
-- The Rebecca files will be located at `/opt/rebecca`
-- The configuration file can be found at `/opt/rebecca/.env` (refer to [configurations](#configuration) section to see variables)
-- The data files will be placed at `/var/lib/rebecca`
-- For security reasons, the Rebecca dashboard is not accessible via IP address. Therefore, you must obtain an SSL certificate and access your Rebecca dashboard by opening a web browser and navigating to `https://YOUR_DOMAIN:8000/dashboard/` (replace YOUR_DOMAIN with your actual domain)
-- You can also use SSH port forwarding to access the Rebecca dashboard locally without a domain. Replace `user@serverip` with your actual SSH username and server IP and Run the command below:
+- The application is in `/opt/rebecca`, its settings are in `/opt/rebecca/.env`, and its data is in `/var/lib/rebecca`.
+- Create a full-access admin to sign in to the dashboard:
 
-```bash
-ssh -L 8000:localhost:8000 user@serverip
-```
+  ```bash
+  rebecca cli admin create --role full_access
+  ```
 
-Finally, you can enter the following link in your browser to access your Rebecca dashboard:
+  Full-access admins can only be created by another full-access admin or with the on-box CLI. To promote an existing admin, run `rebecca cli admin change-role --username NAME --role full_access`.
+- The dashboard is not reachable by IP address. Point a domain at the server and get an SSL certificate, then open `https://YOUR_DOMAIN:8000/dashboard/`.
+- Without a domain, open an SSH tunnel and use `http://localhost:8000/dashboard/` while it is open. Use this for testing only:
 
-http://localhost:8000/dashboard/
+  ```bash
+  ssh -L 8000:localhost:8000 user@server
+  ```
 
-You will lose access to the dashboard as soon as you close the SSH terminal. Therefore, this method is recommended only for testing purposes.
+- Run `rebecca --help` to see all commands.
 
-Next, you need to create a sudo admin for logging into the Rebecca dashboard by the following command
+<details>
+<summary>Manual install from source (advanced)</summary>
 
-```bash
-rebecca cli admin create --role full_access
-```
+1. Install Xray-core with [Xray-install](https://github.com/XTLS/Xray-install).
 
-That's it! You can login to your dashboard using these credentials
+2. Clone the project and build the dashboard and the Go binaries:
 
-> **Full access admins** can only be created by another full access admin from the dashboard or by using the on-box `rebecca cli`.  
-> If you ever need to promote an existing sudo admin, run  
-> `rebecca cli admin change-role --username YOUR_ADMIN --role full_access`
+   ```bash
+   git clone https://github.com/rebeccapanel/Rebecca.git
+   cd Rebecca/dashboard
+   npm ci
+   VITE_BASE_API=/api/ npm run build -- --outDir=build --assetsDir=statics
+   cp ./build/index.html ./build/404.html
+   cd ..
+   bash scripts/build_binary.sh
+   ```
 
-To see the help message of the Rebecca script, run the following command
+3. Create the settings file and edit it: `cp .env.example .env`.
 
-```bash
-rebecca --help
-```
+4. Run the database migrations. Downgrades are not supported, so check `./dist/rebecca-cli migrate status` before upgrading an existing database:
 
-If you are eager to run the project using the source code, check the section below
-<details markdown="1">
-<summary><h3>Manual install (advanced)</h3></summary>
+   ```bash
+   ./dist/rebecca-cli migrate up
+   ```
 
-Install xray on your machine
+5. Run the server. For a systemd service, use this unit and adjust the paths to where you cloned the project:
 
-You can install it using [Xray-install](https://github.com/XTLS/Xray-install)
+   ```ini
+   [Unit]
+   Description=Rebecca
+   After=network.target
 
-```bash
-curl -L https://github.com/XTLS/Xray-install/raw/main/install-release.sh | bash -s -- install
-```
+   [Service]
+   WorkingDirectory=/opt/rebecca
+   EnvironmentFile=/opt/rebecca/.env
+   ExecStart=/opt/rebecca/dist/rebecca-server
+   Restart=on-failure
+   RestartSec=5
 
-Clone this project and build the dashboard and Go binaries:
+   [Install]
+   WantedBy=multi-user.target
+   ```
 
-```bash
-git clone https://github.com/rebeccapanel/Rebecca.git
-cd Rebecca
-cd dashboard
-npm ci
-VITE_BASE_API=/api/ npm run build -- --outDir=build --assetsDir=statics
-cp ./build/index.html ./build/404.html
-cd ..
-bash scripts/build_binary.sh
-```
+   Then run `sudo systemctl daemon-reload && sudo systemctl enable --now rebecca`.
 
-Then run the following command to run the Go database migrations:
-
-```bash
-./dist/rebecca-cli migrate up
-```
-
-Downgrade migrations are not supported. Check the migration status with
-`./dist/rebecca-cli migrate status` before upgrading a legacy database.
-
-If you want to use the CLI globally, install the built Go CLI:
-
-```bash
-sudo install -m 755 ./dist/rebecca-cli /usr/local/bin/rebecca
-rebecca cli --help
-```
-
-Now it's time to configuration
-
-Make a copy of `.env.example` file, take a look and edit it using a text editor like `nano`.
-
-You probably like to modify the admin credentials.
-
-```bash
-cp .env.example .env
-nano .env
-```
-
-> Check [configurations](#configuration) section for more information
-
-Eventually, launch the application using command below:
-
-```bash
-./dist/rebecca-server
-```
-
-For source/manual installs, create a systemd unit that runs the Go server binary:
-
-```ini
-[Unit]
-Description=Rebecca
-After=network.target
-
-[Service]
-Type=simple
-WorkingDirectory=/opt/rebecca
-EnvironmentFile=/opt/rebecca/.env
-ExecStart=/opt/rebecca/dist/rebecca-server
-Restart=on-failure
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Then enable it:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now rebecca
-```
-
-To use with nginx
-
-```
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-    server_name  example.com;
-
-    ssl_certificate      /etc/letsencrypt/live/example.com/fullchain.pem;
-    ssl_certificate_key  /etc/letsencrypt/live/example.com/privkey.pem;
-
-    location ~* /(dashboard|statics|sub|api|docs|redoc|openapi.json) {
-        proxy_pass http://0.0.0.0:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-
-  # xray-core ws-path: /
-  # client ws-path: /rebecca/me/2087
-    #
-  # All traffic is proxied through port 443, and sent to the xray port (2087, 2088, etc.).
-  # The '/rebecca' in the location regex path can be changed to any value you like.
-    #
-  # /${path}/${username}/${xray-port}
-  location ~* /rebecca/.+/(.+)$ {
-        proxy_redirect off;
-        proxy_pass http://127.0.0.1:$1/;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $http_host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-}
-```
-
-or
-
-```
-server {
-    listen 443 ssl http2;
-    listen [::]:443 ssl http2;
-  server_name  rebecca.example.com;
-
-    ssl_certificate      /etc/letsencrypt/live/example.com/fullchain.pem;
-    ssl_certificate_key  /etc/letsencrypt/live/example.com/privkey.pem;
-
-    location / {
-        proxy_pass http://0.0.0.0:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-}
-```
-
-By default the app will be run on `http://localhost:8000/dashboard`. You can configure it by changing the `UVICORN_HOST` and `UVICORN_PORT` environment variables.
 </details>
 
-# Configuration
+## Configuration
 
-> You can set settings below using environment variables or placing them in `.env` file.
+Settings come from `/opt/rebecca/.env` or from environment variables. [`.env.example`](.env.example) lists every variable with its default. Most installs only change these:
 
-| Variable                                 | Description                                                                                                              |
-| ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| SQLALCHEMY_DATABASE_URL                  | Database URL. The legacy name is still used by the Go runtime for compatibility.                                         |
-| UVICORN_HOST                             | Public gateway bind host (default: `0.0.0.0`).                                                                           |
-| UVICORN_PORT                             | Public gateway bind port (default: `8000`).                                                                              |
-| UVICORN_SSL_CERTFILE                     | TLS certificate path for the Go gateway.                                                                                |
-| UVICORN_SSL_KEYFILE                      | TLS private key path for the Go gateway.                                                                                |
-| UVICORN_SSL_CA_TYPE                      | Certificate authority type used by install scripts (`public` or `private`).                                             |
-| REBECCA_GATEWAY_ADDR                     | Optional full gateway listen address. Overrides `UVICORN_HOST`/`UVICORN_PORT`.                                          |
-| REBECCA_NODE_OPERATIONS_POLL_INTERVAL    | Node operation queue polling interval.                                                                                   |
-| REBECCA_USER_LIFECYCLE_INTERVAL          | User lifecycle review interval.                                                                                          |
-| REBECCA_USER_USAGE_RESET_INTERVAL        | Periodic user usage reset interval.                                                                                      |
-| REBECCA_USER_AUTODELETE_INTERVAL         | Expired/limited user auto-delete job interval.                                                                            |
-| USERS_AUTODELETE_DAYS                    | Delete expired users after this many days. Negative values disable this feature.                                         |
-| USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS | Whether auto-delete includes limited accounts.                                                                            |
-| USERS_LIST_TIMEOUT_SECONDS               | Optional timeout for large user list queries. `0` disables the timeout.                                                  |
-| REBECCA_CERT_BASE                        | Base directory for managed certificates.                                                                                  |
-| REBECCA_CERTBOT_BIN                      | Optional Certbot executable override used by the SSL manager.                                                              |
-| REBECCA_CONFIG_DIR                       | Configuration root included in full backup export/import.                                                                |
+| Variable | Description |
+| --- | --- |
+| `SQLALCHEMY_DATABASE_URL` | Database URL. Required. The name is kept for compatibility. |
+| `UVICORN_HOST` | Address the panel listens on. Default `0.0.0.0`. |
+| `UVICORN_PORT` | Port the panel listens on. Default `8000`. |
+| `UVICORN_SSL_CERTFILE`, `UVICORN_SSL_KEYFILE` | TLS certificate and key for the panel. |
+| `USERS_AUTODELETE_DAYS` | Delete expired users after this many days. Default `-1` disables it. |
+| `USER_AUTODELETE_INCLUDE_LIMITED_ACCOUNTS` | Include limited accounts in auto-delete. |
 
-# Telegram integration
+## Donation
 
-Telegram bot commands, reports, settings, and backup delivery are handled by the Go services and can be configured from the panel.
+If Rebecca is useful to you, you can support its development:
 
-# Webhook notifications
+- TRON (TRC20): `TGftLESDAeRncE7yMAHrTUCsixuUwPc6qp`
+- ETH, BNB, MATIC (ERC20, BEP20): `0x413eb47C430a3eb0E4262f267C1AE020E0C7F84D`
+- TON: `UQDNpA3SlFMorlrCJJcqQjix93ijJfhAwIxnbTwZTLiHZ0Xa`
 
-Webhook notifications are handled by the Go event worker and can be configured from the panel.
+## License
 
-# Donation
+Released under the [AGPL-3.0](./LICENSE) license.
 
-If you found Rebecca useful and would like to support its development, you can make a donation in one of the following crypto networks:
+## Contributing
 
-- TRON network (TRC20): `TGftLESDAeRncE7yMAHrTUCsixuUwPc6qp`
-- ETH, BNB, MATIC network (ERC20, BEP20): `0x413eb47C430a3eb0E4262f267C1AE020E0C7F84D`
-- TON network: `UQDNpA3SlFMorlrCJJcqQjix93ijJfhAwIxnbTwZTLiHZ0Xa`
-
-Thank you for your support!
-
-# License
-
-Made in [Unknown!] and published under [AGPL-3.0](./LICENSE).
-
-# Contributors
-
-We ❤️‍🔥 contributors! If you'd like to contribute, please check out our [Contributing Guidelines](docs/CONTRIBUTING.md) and feel free to submit a pull request or open an issue.
-
-Check [open issues](https://github.com/rebeccapanel/Rebecca/issues) to help the progress of this project.
-
-<p align="center">
-Thanks to the all contributors who have helped improve Rebecca:
-</p>
-<p align="center">
-<a href="https://github.com/rebeccapanel/Rebecca/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=rebeccapanel/Rebecca" />
-</a>
-</p>
-<p align="center">
-  Made with <a rel="noopener noreferrer" target="_blank" href="https://contrib.rocks">contrib.rocks</a>
-</p>
+Pull requests and issues are welcome. Read the [contributing guide](docs/CONTRIBUTING.md) first, and check the [open issues](https://github.com/rebeccapanel/Rebecca/issues).

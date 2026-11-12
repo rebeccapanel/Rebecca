@@ -17,6 +17,7 @@ import (
 	"time"
 
 	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
+	"github.com/rebeccapanel/rebecca/internal/app/labels"
 	telegramapp "github.com/rebeccapanel/rebecca/internal/app/telegram"
 	webhookapp "github.com/rebeccapanel/rebecca/internal/app/webhook"
 	"github.com/rebeccapanel/rebecca/internal/app/xrayconfig"
@@ -140,6 +141,11 @@ func (s *Server) handleCreateAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	labelAssignment, err := adminLabelAssignment(payload.fields)
+	if err != nil {
+		writeLabelError(w, err)
+		return
+	}
 	var created adminapp.Admin
 	err = s.withTx(r.Context(), func(tx *sql.Tx) error {
 		exists, err := adminExistsTx(r.Context(), tx, payload.Username)
@@ -222,6 +228,12 @@ func (s *Server) handleCreateAdmin(w http.ResponseWriter, r *http.Request) {
 			if err := syncAdminServiceLimitsTx(r.Context(), tx, adminID, *payload.ServiceLimits, perms.Users.Delete); err != nil {
 				return err
 			}
+		}
+		if !labelAssignment.Empty() && !canManageGroups(principal.Context.Admin, labels.TypeAdmin) {
+			return statusError{status: http.StatusForbidden, detail: "You're not allowed"}
+		}
+		if err := labels.SetManyTx(r.Context(), tx, []labels.Ref{labels.AdminRef(adminID)}, labelAssignment); err != nil {
+			return labelStatusError(err)
 		}
 		created, err = adminByUsernameTx(r.Context(), tx, payload.Username)
 		if err != nil {
@@ -318,6 +330,11 @@ func (s *Server) handleUpdateAdmin(w http.ResponseWriter, r *http.Request, usern
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	labelAssignment, err := adminLabelAssignment(payload.fields)
+	if err != nil {
+		writeLabelError(w, err)
+		return
+	}
 	var previous adminapp.Admin
 	var updated adminapp.Admin
 	var limitTransition adminLimitTransition
@@ -331,6 +348,14 @@ func (s *Server) handleUpdateAdmin(w http.ResponseWriter, r *http.Request, usern
 		if !isSelf {
 			if err := ensureCanManageAdmin(principal.Context.Admin, target); err != nil {
 				return err
+			}
+		}
+		if !labelAssignment.Empty() {
+			if !canManageGroups(principal.Context.Admin, labels.TypeAdmin) {
+				return statusError{status: http.StatusForbidden, detail: "You're not allowed"}
+			}
+			if err := labels.SetManyTx(r.Context(), tx, []labels.Ref{labels.AdminRef(target.ID)}, labelAssignment); err != nil {
+				return labelStatusError(err)
 			}
 		}
 		role := target.Role
@@ -537,6 +562,12 @@ func (s *Server) handleDeleteAdmin(w http.ResponseWriter, r *http.Request, usern
 			return err
 		}
 		if _, err := tx.ExecContext(r.Context(), `DELETE FROM service_admins WHERE admin_id = ?`, target.ID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(r.Context(), `DELETE FROM entity_group_members WHERE entity_type = ? AND entity_id = ?`, labels.TypeAdmin, target.ID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(r.Context(), `DELETE FROM entity_tags WHERE entity_type = ? AND entity_id = ?`, labels.TypeAdmin, target.ID); err != nil {
 			return err
 		}
 		now := dbTimestamp(time.Now().UTC())
@@ -814,6 +845,15 @@ func (s *Server) handleAdminUsageResetPath(w http.ResponseWriter, r *http.Reques
 				return err
 			}
 		}
+		if target.UsersUsage != 0 || target.CreatedTraffic != 0 {
+			zero := int64(0)
+			if err := s.recordRecentActionEventDetailsTx(r.Context(), tx, "admin.usage_reset", "admin", target.Username, "Reset admin usage", []recentActionValueChange{
+				{Field: "users_usage", Before: telegramapp.FormatOptionalBytes(&target.UsersUsage), After: telegramapp.FormatOptionalBytes(&zero)},
+				{Field: "created_traffic", Before: telegramapp.FormatOptionalBytes(&target.CreatedTraffic), After: telegramapp.FormatOptionalBytes(&zero)},
+			}, nil); err != nil {
+				return err
+			}
+		}
 		if _, err := tx.ExecContext(r.Context(), `UPDATE admins SET users_usage = 0, created_traffic = 0 WHERE id = ?`, target.ID); err != nil {
 			return err
 		}
@@ -1017,6 +1057,9 @@ func permissionsForAdminWrite(role adminapp.AdminRole, raw *json.RawMessage, cur
 func validateAdminPermissions(perms adminapp.AdminPermissions) error {
 	if perms.Users.AllowUnlimitedData && perms.Users.MaxDataLimitPerUser != nil {
 		return errors.New("Cannot set max_data_limit_per_user when allow_unlimited_data is enabled. Disable unlimited data first to set a maximum limit.")
+	}
+	if perms.Users.MinDataLimitPerUser != nil && perms.Users.MaxDataLimitPerUser != nil && *perms.Users.MinDataLimitPerUser > *perms.Users.MaxDataLimitPerUser {
+		return errors.New("min_data_limit_per_user cannot be greater than max_data_limit_per_user.")
 	}
 	return nil
 }

@@ -2,7 +2,7 @@ import {
 	getDefaultPermissionsForRole,
 	mergePermissionsWithRoleDefaults,
 } from "constants/adminPermissions";
-import { useQuery } from "react-query";
+import { useQuery } from "@tanstack/react-query";
 import type { AuthSession } from "service/auth";
 import { fetch } from "service/http";
 import {

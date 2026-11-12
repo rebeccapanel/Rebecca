@@ -1,13 +1,18 @@
-import { Box, Text, VStack } from "@chakra-ui/react";
 import AdminsUsage from "components/AdminsUsage";
 import NodesUsageAnalytics from "components/NodesUsageAnalytics";
 import ServiceUsageAnalytics from "components/ServiceUsageAnalytics";
 import { PageLoadingSkeleton, TabSystem } from "components/ui";
+import {
+	Card,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "components/ui/card";
 import { useServicesStore } from "contexts/ServicesContext";
 import useGetUser from "hooks/useGetUser";
 import { type FC, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useQuery } from "react-query";
+import { useQuery } from "@tanstack/react-query";
 import { getRuntimeSettings } from "service/settings";
 
 export const UsagePage: FC = () => {
@@ -17,10 +22,8 @@ export const UsagePage: FC = () => {
 		getUserIsSuccess && userData.permissions?.sections.usage,
 	);
 	const { data: runtimeSettings, isLoading: isRuntimeSettingsLoading } =
-		useQuery("runtime-settings", getRuntimeSettings, {
-			refetchOnWindowFocus: false,
-			enabled: canViewUsage,
-		});
+		useQuery({ queryKey: ["runtime-settings"], queryFn: getRuntimeSettings, refetchOnWindowFocus: false,
+			enabled: canViewUsage, });
 	const recordNodeUsage = runtimeSettings?.record_node_usage ?? true;
 	const recordNodeUserUsages = runtimeSettings?.record_node_user_usages ?? true;
 
@@ -84,19 +87,19 @@ export const UsagePage: FC = () => {
 	}, [fetchServices, canViewUsage]);
 
 	if (!getUserIsSuccess) {
-		return <PageLoadingSkeleton />;
+		return <PageLoadingSkeleton variant="settings" />;
 	}
 
 	if (!canViewUsage) {
 		return (
-			<VStack spacing={4} align="stretch">
-				<Text as="h1" fontWeight="semibold" fontSize="2xl">
+			<div className="flex flex-col gap-4 items-stretch">
+				<h1 className="font-semibold text-[1.5rem]">
 					{t("usage.title")}
-				</Text>
-				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+				</h1>
+				<p className="text-[0.875rem] text-gray-500 dark:text-gray-400">
 					{t("usage.noPermission")}
-				</Text>
-			</VStack>
+				</p>
+			</div>
 		);
 	}
 
@@ -105,31 +108,24 @@ export const UsagePage: FC = () => {
 	}
 
 	if (!recordNodeUsage && !recordNodeUserUsages) {
+		// First surface on a stock shadcn block: the tokens come from the alias
+		// layer in tailwind.css, so no class here is panel-specific.
 		return (
-			<VStack spacing={4} align="stretch">
-				<Text as="h1" fontWeight="semibold" fontSize="2xl">
-					{t("usage.title")}
-				</Text>
-				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
-					{t("usage.recordingDisabled")}
-				</Text>
-			</VStack>
+			<div className="flex flex-col gap-4 items-stretch">
+				<h1 className="font-semibold text-[1.5rem]">{t("usage.title")}</h1>
+				<Card className="py-5">
+					<CardHeader>
+						<CardTitle>{t("usage.title")}</CardTitle>
+						<CardDescription>{t("usage.recordingDisabled")}</CardDescription>
+					</CardHeader>
+				</Card>
+			</div>
 		);
 	}
 
 	return (
-		<VStack spacing={4} align="stretch">
-			<TabSystem
-				overflowX="auto"
-				overflowY="hidden"
-				maxW="full"
-				sx={{
-					WebkitOverflowScrolling: "touch",
-					scrollbarWidth: "none",
-					"&::-webkit-scrollbar": { display: "none" },
-					button: { flexShrink: 0 },
-				}}
-				tabs={[
+		<div className="flex flex-col gap-4 items-stretch">
+			<TabSystem tabs={[
 					...(recordNodeUserUsages
 						? [
 								{
@@ -156,24 +152,23 @@ export const UsagePage: FC = () => {
 								},
 							]
 						: []),
-				]}
-			/>
+				]} className="overflow-x-auto overflow-y-hidden max-w-full" />
 			{activeTab === 0 && (
-				<Box mt={3}>
+				<div className="mt-3">
 					<ServiceUsageAnalytics services={services} />
-				</Box>
+				</div>
 			)}
 			{activeTab === 1 && (
-				<Box mt={3}>
+				<div className="mt-3">
 					<AdminsUsage />
-				</Box>
+				</div>
 			)}
 			{activeTab === 2 && (
-				<Box mt={3}>
+				<div className="mt-3">
 					<NodesUsageAnalytics />
-				</Box>
+				</div>
 			)}
-		</VStack>
+		</div>
 	);
 };
 

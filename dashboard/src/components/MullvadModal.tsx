@@ -1,27 +1,14 @@
-import {
-	Alert,
-	AlertDescription,
-	AlertIcon,
-	Button,
-	HStack,
-	FormControl,
-	FormErrorMessage,
-	FormHelperText,
-	FormLabel,
-	Input,
-	Modal,
-	ModalCloseButton,
-	ModalOverlay,
-	SimpleGrid,
-	Textarea,
-	useToast,
-	VStack,
-} from "@chakra-ui/react";
-import {
-	ArrowDownTrayIcon,
-	ArrowPathIcon,
-	SignalIcon,
-} from "@heroicons/react/24/outline";
+import { Alert, AlertDescription } from "components/ui/alert";
+import { Field, FieldDescription, FieldError, FieldLabel } from "components/ui/field";
+import { Input } from "components/ui/input";
+import { Textarea } from "components/ui/textarea";
+import { Button } from "components/ui/button";
+import { Dialog } from "components/ui/dialog";
+import { toast } from "components/ui/sonner";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+import { Download, Plus, RefreshCw, Signal } from "lucide-react";
+
+import { cn } from "lib/cn";
 import { FileDropzone } from "components/common/FileDropzone";
 import { PanelSelect as Select } from "components/common/PanelSelect";
 import { type FC, useMemo, useState } from "react";
@@ -49,10 +36,11 @@ import {
 type OutboundJson = Record<string, any>;
 
 type Props = {
-	isOpen: boolean;
+	open: boolean;
 	onClose: () => void;
 	initialOutbounds: OutboundJson[];
 	onSave: (outbound: OutboundJson, replaceIndex: number | null) => void;
+	onSaveMany: (outbounds: OutboundJson[]) => void;
 	onDelete: (index: number) => void;
 	// opens on this Mullvad outbound for editing; a new one when left out
 	initialTag?: string;
@@ -72,17 +60,18 @@ const pingText = (ping?: PingResult) => {
 };
 
 export const MullvadModal: FC<Props> = ({
-	isOpen,
+	open: isOpen,
 	onClose,
 	initialOutbounds,
 	onSave,
+	onSaveMany,
 	onDelete,
 	initialTag,
 	targetID,
 	canPing = false,
 }) => {
 	const { t, i18n } = useTranslation();
-	const toast = useToast();
+	
 	const [zipFile, setZipFile] = useState<File | null>(null);
 	const [servers, setServers] = useState<MullvadServer[]>([]);
 	const [country, setCountry] = useState("");
@@ -198,6 +187,11 @@ export const MullvadModal: FC<Props> = ({
 		mullvadFormFromOutbound(editingOutbound),
 	);
 
+	const countryServers = servers.filter((server) => server.country === country);
+	const addableServers = countryServers.filter(
+		(server) => !tags.some((item) => item.toLowerCase() === server.name.toLowerCase()),
+	);
+
 	const tagTaken = tags.some(
 		(item, index) =>
 			index !== editingIndex && item.toLowerCase() === tag.trim().toLowerCase(),
@@ -220,12 +214,7 @@ export const MullvadModal: FC<Props> = ({
 	const fillFromConfig = () => {
 		const parsed = parseMullvadConfig(configText);
 		if (!parsed) {
-			toast({
-				title: t("pages.xray.mullvad.parseFailed"),
-				status: "error",
-				isClosable: true,
-				position: "top",
-			});
+			toast.error(t("pages.xray.mullvad.parseFailed"));
 			return;
 		}
 		setForm(parsed);
@@ -244,12 +233,7 @@ export const MullvadModal: FC<Props> = ({
 			.catch(() => []);
 		if (found.length === 0) {
 			setZipFile(null);
-			toast({
-				title: t("pages.xray.mullvad.zipFailed"),
-				status: "error",
-				isClosable: true,
-				position: "top",
-			});
+			toast.error(t("pages.xray.mullvad.zipFailed"));
 			return;
 		}
 		setServers(found);
@@ -271,15 +255,19 @@ export const MullvadModal: FC<Props> = ({
 			buildMullvadOutbound(tag, form, editingOutbound),
 			editingIndex >= 0 ? editingIndex : null,
 		);
-		toast({
-			title:
-				editingIndex >= 0
+		toast.success(editingIndex >= 0
 					? t("pages.xray.mullvad.outboundUpdated")
-					: t("pages.xray.mullvad.outboundAdded"),
-			status: "success",
-			isClosable: true,
-			position: "top",
-		});
+					: t("pages.xray.mullvad.outboundAdded"));
+		onClose();
+	};
+
+	const addCountryServers = () => {
+		onSaveMany(addableServers.map((server) => buildMullvadOutbound(server.name, server.form)));
+		const skipped = countryServers.length - addableServers.length;
+		toast.success(t("pages.xray.mullvad.bulkAdded", { count: addableServers.length }));
+		if (skipped > 0) {
+			toast.warning(t("pages.xray.mullvad.bulkSkipped", { count: skipped }));
+		}
 		onClose();
 	};
 
@@ -294,8 +282,8 @@ export const MullvadModal: FC<Props> = ({
 	};
 
 	return (
-		<Modal isOpen={isOpen} onClose={onClose} size="3xl" isCentered>
-			<ModalOverlay />
+		<Dialog open={isOpen} onOpenChange={(open) => { if (!open) (onClose)(); }}>
+			
 			<XrayModalContent>
 				<XrayModalHeader
 					subtitle={
@@ -306,19 +294,19 @@ export const MullvadModal: FC<Props> = ({
 				>
 					Mullvad WireGuard
 				</XrayModalHeader>
-				<ModalCloseButton />
+				
 				<XrayModalBody>
-					<VStack spacing={4} align="stretch">
-						<Alert status="info" borderRadius="md">
-							<AlertIcon />
-							<AlertDescription fontSize="sm">
+					<div className="flex flex-col gap-4 items-stretch">
+						<Alert className="rounded-md">
+							<Info className="size-4" aria-hidden="true" />
+							<AlertDescription className="text-[0.875rem]">
 								{t("pages.xray.mullvad.oneKeyNote")}
 							</AlertDescription>
 						</Alert>
-						<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
+						<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
 							{mullvadTags.length > 0 && (
-								<FormControl>
-									<FormLabel>{t("pages.xray.mullvad.editing")}</FormLabel>
+								<Field>
+									<FieldLabel>{t("pages.xray.mullvad.editing")}</FieldLabel>
 									<Select
 										value={editingTag}
 										options={[
@@ -328,41 +316,24 @@ export const MullvadModal: FC<Props> = ({
 										showSearch={false}
 										onChange={(event) => edit(event.target.value)}
 									/>
-								</FormControl>
+								</Field>
 							)}
-							<FormControl isInvalid={tagTaken}>
-								<FormLabel>{t("pages.xray.mullvad.name")}</FormLabel>
-								<Input
-									dir="ltr"
-									value={tag}
-									color={tagTaken ? "gray.500" : undefined}
-									onChange={(event) => setTag(event.target.value)}
-								/>
-								<FormErrorMessage>
+							<Field data-invalid={tagTaken}>
+								<FieldLabel>{t("pages.xray.mullvad.name")}</FieldLabel>
+								<Input dir="ltr" value={tag} onChange={(event) => setTag(event.target.value)} className={cn(tagTaken ? "text-gray-500" : "")} />
+								{tagTaken && <FieldError>
 									{t("pages.xray.mullvad.nameTaken")}
-								</FormErrorMessage>
-							</FormControl>
-						</SimpleGrid>
-						<FormControl>
-							<FormLabel>{t("pages.xray.mullvad.config")}</FormLabel>
-							<Textarea
-								dir="ltr"
-								fontFamily="mono"
-								rows={5}
-								value={configText}
-								onChange={(event) => setConfigText(event.target.value)}
-								placeholder={"[Interface]\nPrivateKey = ...\nAddress = ...\n\n[Peer]\nPublicKey = ...\nEndpoint = ..."}
-							/>
-							<FormHelperText>
+								</FieldError>}
+							</Field>
+						</div>
+						<Field>
+							<FieldLabel>{t("pages.xray.mullvad.config")}</FieldLabel>
+							<Textarea dir="ltr" rows={5} value={configText} onChange={(event) => setConfigText(event.target.value)} className="font-mono" />
+							<FieldDescription>
 								{t("pages.xray.mullvad.configHelp")}
-							</FormHelperText>
-						</FormControl>
-						<Button
-							leftIcon={<ArrowDownTrayIcon width={16} />}
-							alignSelf="flex-start"
-							isDisabled={!configText.trim()}
-							onClick={fillFromConfig}
-						>
+							</FieldDescription>
+						</Field>
+						<Button disabled={!configText.trim()} onClick={fillFromConfig} className="self-start">{<Download className="w-[16px]" />}
 							{t("pages.xray.mullvad.fill")}
 						</Button>
 						<FileDropzone
@@ -374,123 +345,90 @@ export const MullvadModal: FC<Props> = ({
 							onFileSelect={(file) => void loadZip(file)}
 						/>
 						{servers.length > 0 && (
-							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-								<FormControl>
-									<FormLabel>{t("pages.xray.mullvad.country")}</FormLabel>
+							<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+								<Field>
+									<FieldLabel>{t("pages.xray.mullvad.country")}</FieldLabel>
 									<Select
 										value={country}
 										options={countryOptions}
 										placeholder={t("pages.xray.mullvad.chooseCountry")}
 										onChange={(event) => selectCountry(event.target.value)}
 									/>
-								</FormControl>
-								<FormControl isDisabled={!country}>
-									<FormLabel>{t("pages.xray.mullvad.server")}</FormLabel>
+								</Field>
+								<Field>
+									<FieldLabel>{t("pages.xray.mullvad.server")}</FieldLabel>
 									<Select
 										value={serverName}
 										options={serverOptions}
 										placeholder={t("pages.xray.mullvad.chooseServer")}
-										isDisabled={!country}
+										disabled={!country}
 										onChange={(event) => selectServer(event.target.value)}
 									/>
-									<HStack spacing={2} mt={2}>
-										<Button
-											size="xs"
-											leftIcon={<SignalIcon width={14} />}
-											isDisabled={!canPing || !serverName || pinging}
-											onClick={() => void pingServers([serverName])}
-										>
+									<div className="flex flex-row items-center gap-2 mt-2">
+										<Button disabled={!canPing || !serverName || pinging} onClick={() => void pingServers([serverName])} size="xs">{<Signal className="w-[14px]" />}
 											{t("pages.xray.mullvad.ping")}
 										</Button>
-										<Button
-											size="xs"
-											leftIcon={<SignalIcon width={14} />}
-											isDisabled={!canPing || !country || pinging}
-											isLoading={pinging}
-											onClick={() => void pingServers(countryServerNames)}
-										>
+										<Button disabled={!canPing || !country || pinging} onClick={() => void pingServers(countryServerNames)} size="xs" loading={pinging}>{<Signal className="w-[14px]" />}
 											{t("pages.xray.mullvad.pingAll")}
 										</Button>
-									</HStack>
+									</div>
 									{!canPing && (
-										<FormHelperText>
+										<FieldDescription>
 											{t("pages.xray.mullvad.pingNeedsNode")}
-										</FormHelperText>
+										</FieldDescription>
 									)}
-								</FormControl>
-							</SimpleGrid>
+								</Field>
+							</div>
 						)}
-						<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-							<FormControl>
-								<FormLabel>{t("inbounds.wireguard.privateKey")}</FormLabel>
-								<Input
-									dir="ltr"
-									fontFamily="mono"
-									value={form.privateKey}
-									onChange={(event) =>
+						{editingIndex < 0 && country && (
+							<Button disabled={addableServers.length === 0} onClick={addCountryServers} variant="outline" className="self-start">{<Plus className="w-[16px]" />}
+								{t("pages.xray.mullvad.addCountry", { count: addableServers.length, country: countryName(country, i18n.language) })}
+							</Button>
+						)}
+						<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+							<Field>
+								<FieldLabel>{t("inbounds.wireguard.privateKey")}</FieldLabel>
+								<Input dir="ltr" value={form.privateKey} onChange={(event) =>
 										updateFormField("privateKey", event.target.value)
-									}
-								/>
-							</FormControl>
-							<FormControl>
-								<FormLabel>{t("pages.xray.outbound.address")}</FormLabel>
-								<Input
-									dir="ltr"
-									fontFamily="mono"
-									value={form.address}
-									onChange={(event) =>
+									} className="font-mono" />
+							</Field>
+							<Field>
+								<FieldLabel>{t("pages.xray.outbound.address")}</FieldLabel>
+								<Input dir="ltr" value={form.address} onChange={(event) =>
 										updateFormField("address", event.target.value)
-									}
-									placeholder="10.64.0.2/32, fc00:bbbb:bbbb:bb01::1:1/128"
-								/>
-							</FormControl>
-							<FormControl>
-								<FormLabel>{t("pages.xray.mullvad.serverPublicKey")}</FormLabel>
-								<Input
-									dir="ltr"
-									fontFamily="mono"
-									value={form.publicKey}
-									onChange={(event) =>
+									} className="font-mono" />
+							</Field>
+							<Field>
+								<FieldLabel>{t("pages.xray.mullvad.serverPublicKey")}</FieldLabel>
+								<Input dir="ltr" value={form.publicKey} onChange={(event) =>
 										updateFormField("publicKey", event.target.value)
-									}
-								/>
-							</FormControl>
-							<FormControl>
-								<FormLabel>{t("pages.xray.warp.endpoint")}</FormLabel>
-								<Input
-									dir="ltr"
-									fontFamily="mono"
-									value={form.endpoint}
-									onChange={(event) =>
+									} className="font-mono" />
+							</Field>
+							<Field>
+								<FieldLabel>{t("pages.xray.warp.endpoint")}</FieldLabel>
+								<Input dir="ltr" value={form.endpoint} onChange={(event) =>
 										updateFormField("endpoint", event.target.value)
-									}
-									placeholder="192.0.2.10:51820"
-								/>
-							</FormControl>
-						</SimpleGrid>
-					</VStack>
+									} className="font-mono" />
+							</Field>
+						</div>
+					</div>
 				</XrayModalBody>
 				<XrayModalFooter>
-					<Button variant="ghost" onClick={onClose}>
+					<Button onClick={onClose} variant="ghost">
 						{t("close")}
 					</Button>
-					<Button
-						leftIcon={<ArrowPathIcon width={16} />}
-						isDisabled={!tag.trim() || tagTaken || !isMullvadFormValid(form)}
-						onClick={saveOutbound}
-						colorScheme="primary"
-					>
+					<Button disabled={!tag.trim() || tagTaken || !isMullvadFormValid(form)} onClick={saveOutbound}>{<RefreshCw className="w-[16px]" />}
 						{editingIndex >= 0
 							? t("pages.xray.nord.updateOutbound")
 							: t("pages.xray.outbound.addOutbound")}
 					</Button>
 					{editingIndex >= 0 && (
-						<Button colorScheme="red" variant="outline" onClick={deleteOutbound}>
+						<Button onClick={deleteOutbound} variant="outline" className="border border-destructive/50 bg-transparent text-destructive hover:bg-destructive/10">
 							{t("delete")}
 						</Button>
 					)}
 				</XrayModalFooter>
 			</XrayModalContent>
-		</Modal>
+		</Dialog>
 	);
 };

@@ -7,6 +7,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
+	"net/http"
 	"net/url"
 	"path"
 	"regexp"
@@ -128,6 +130,39 @@ func (r Repository) SaveHAProxyTemplate(ctx context.Context, name string, archiv
 	return HAProxyTemplate{ID: id, Name: name}, nil
 }
 
+const haproxyTemplateMoPrefix = "templatemo:"
+
+func (r Repository) MasterTemplateMoArchive(ctx context.Context, downloadURL string) (string, error) {
+	name := haproxyTemplateMoPrefix + downloadURL
+	var id string
+	if err := r.db.QueryRowContext(ctx, `SELECT id FROM haproxy_templates WHERE name = ? LIMIT 1`, name).Scan(&id); err == nil {
+		return id, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
+	if err != nil {
+		return "", err
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("TemplateMo download returned %d", response.StatusCode)
+	}
+	archive, err := io.ReadAll(io.LimitReader(response.Body, 32<<20+1))
+	if err != nil {
+		return "", err
+	}
+	template, err := r.SaveHAProxyTemplate(ctx, name, archive)
+	if err != nil {
+		return "", err
+	}
+	return template.ID, nil
+}
+
 func (r Repository) HAProxyTemplateArchive(ctx context.Context, id string) (string, []byte, error) {
 	if len(id) != 64 {
 		return "", nil, fmt.Errorf("template not found")
@@ -141,7 +176,7 @@ func (r Repository) HAProxyTemplateArchive(ctx context.Context, id string) (stri
 }
 
 func (r Repository) HAProxyUploadedTemplates(ctx context.Context) ([]HAProxyTemplate, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id, name FROM haproxy_templates ORDER BY name, id`)
+	rows, err := r.db.QueryContext(ctx, `SELECT id, name FROM haproxy_templates WHERE name NOT LIKE 'templatemo:%' ORDER BY name, id`)
 	if err != nil {
 		return nil, err
 	}

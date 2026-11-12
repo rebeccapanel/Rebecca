@@ -1,4 +1,4 @@
-import { ChakraProvider } from "@chakra-ui/react";
+import { ColorModeProvider } from "lib/color-mode";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { StaticRouter } from "react-router-dom";
@@ -15,9 +15,9 @@ vi.mock("react-i18next", () => ({
 	}),
 }));
 vi.mock("hooks/useGetUser", () => ({ default: vi.fn() }));
-vi.mock("react-query", () => ({
+vi.mock("@tanstack/react-query", () => ({
 	useQuery: vi.fn(() => ({ data: undefined })),
-	useMutation: vi.fn(() => ({ mutate: vi.fn(), isLoading: false })),
+	useMutation: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
 	useQueryClient: vi.fn(() => ({ invalidateQueries: vi.fn() })),
 }));
 
@@ -26,11 +26,11 @@ const render = (role: AdminRole) => {
 		userData: { role },
 	} as any);
 	return renderToStaticMarkup(
-		<ChakraProvider>
+		<ColorModeProvider>
 			<StaticRouter basename="/dashboard" location="/dashboard/notifications">
 				<NotificationsPage />
 			</StaticRouter>
-		</ChakraProvider>,
+		</ColorModeProvider>,
 	);
 };
 
@@ -40,6 +40,12 @@ describe("notifications page", () => {
 		expect(markup).toContain("notifications.tabs.inbox");
 		expect(markup).not.toContain("notifications.tabs.send");
 		expect(markup).not.toContain("notifications.tabs.rules");
+	});
+
+	it("offers browser notifications to every admin", () => {
+		for (const role of [AdminRole.Standard, AdminRole.Sudo, AdminRole.FullAccess]) {
+			expect(render(role)).toContain("notifications.push.title");
+		}
 	});
 
 	it("adds sending for sudo admins without automatic rules", () => {

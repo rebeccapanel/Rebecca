@@ -40,6 +40,7 @@ export type NotificationRule = {
 	body: string;
 	unit: NotificationRuleUnit;
 	recipients: "admin" | "operators";
+	mandatory: boolean;
 	default_enabled: boolean;
 	default_threshold: number;
 	default_title: string;

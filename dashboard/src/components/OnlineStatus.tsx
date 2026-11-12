@@ -1,4 +1,4 @@
-import { Box, Text } from "@chakra-ui/react";
+import { cn } from "lib/cn";
 import { ONLINE_ACTIVE_WINDOW_SECONDS } from "constants/online";
 import type { FC } from "react";
 import { useTranslation } from "react-i18next";
@@ -23,10 +23,10 @@ export const OnlineStatus: FC<UserStatusProps> = ({
 	compact = false,
 }) => {
 	const { t, i18n } = useTranslation();
-	const isRTL = i18n.language === "fa";
+	const isRTL = i18n.dir(i18n.language) === "rtl";
 	const currentTimeInSeconds = Math.floor(Date.now() / 1000);
 	const unixTime = parseServerTimeToUnix(lastOnline);
-	const marginLeft = withMargin ? "2" : undefined;
+	const marginLeft = withMargin ? "ms-2" : undefined;
 
 	const timeDifferenceInSeconds = unixTime
 		? currentTimeInSeconds - unixTime
@@ -34,39 +34,17 @@ export const OnlineStatus: FC<UserStatusProps> = ({
 
 	if (isOnline || (unixTime && timeDifferenceInSeconds !== null && timeDifferenceInSeconds <= ONLINE_ACTIVE_WINDOW_SECONDS)) {
 		return (
-			<Text
-				display="inline-flex"
-				fontSize="xs"
-				fontWeight="medium"
-				ml={marginLeft}
-				color="gray.600"
-				_dark={{ color: "gray.400" }}
-				as="span"
-				gap={1}
-				alignItems="center"
-			>
+			<span className={cn("inline-flex text-[0.75rem] font-medium text-gray-600 dark:text-gray-400 gap-1 items-center", marginLeft)}>
 				{t("onlineStatus.online")}
-			</Text>
+			</span>
 		);
 	}
 
 	if (!unixTime || timeDifferenceInSeconds === null) {
 		return (
-			<Text
-				display="inline-flex"
-				fontSize="xs"
-				fontWeight="medium"
-				ml={marginLeft}
-				color="gray.600"
-				_dark={{
-					color: "gray.400",
-				}}
-				as="span"
-				gap={1}
-				alignItems="center"
-			>
+			<span className={cn("inline-flex text-[0.75rem] font-medium text-gray-600 dark:text-gray-400 gap-1 items-center", marginLeft)}>
 				{t("onlineStatus.notConnectedYet")}
-			</Text>
+			</span>
 		);
 	}
 
@@ -78,44 +56,18 @@ export const OnlineStatus: FC<UserStatusProps> = ({
 	// sub-minute case as "Online" instead of rendering a bare "ago".
 	if (formattedParts.trim() === "") {
 		return (
-			<Text
-				display="inline-flex"
-				fontSize="xs"
-				fontWeight="medium"
-				ml={marginLeft}
-				color="gray.600"
-				_dark={{
-					color: "gray.400",
-				}}
-				as="span"
-				gap={1}
-				alignItems="center"
-			>
+			<span className={cn("inline-flex text-[0.75rem] font-medium text-gray-600 dark:text-gray-400 gap-1 items-center", marginLeft)}>
 				{t("onlineStatus.online")}
-			</Text>
+			</span>
 		);
 	}
 
 	return (
-		<Text
-			display="inline-flex"
-			flexWrap="wrap"
-			fontSize="xs"
-			fontWeight="medium"
-			ml={marginLeft}
-			color="gray.600"
-			_dark={{
-				color: "gray.400",
-			}}
-			as="span"
-			gap={1}
-			alignItems="center"
-			dir={isRTL ? "rtl" : "ltr"}
-		>
-			<Box as="span" dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+		<span dir={isRTL ? "rtl" : "ltr"} className={cn("inline-flex flex-wrap text-[0.75rem] font-medium text-gray-600 dark:text-gray-400 gap-1 items-center", marginLeft)}>
+			<span dir="ltr" className="[unicode-bidi:isolate]">
 				{formattedParts}
-			</Box>
-			<Text as="span">{t("onlineStatus.ago")}</Text>
-		</Text>
+			</span>
+			<span>{t("onlineStatus.ago")}</span>
+		</span>
 	);
 };

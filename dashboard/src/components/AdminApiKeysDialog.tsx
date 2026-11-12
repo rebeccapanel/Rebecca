@@ -1,16 +1,10 @@
-import {
-	Box,
-	Button,
-	Flex,
-	HStack,
-	IconButton,
-	Input,
-	Spinner,
-	Stack,
-	Text,
-	useToast,
-} from "@chakra-ui/react";
-import { ClipboardIcon, KeyIcon, TrashIcon } from "@heroicons/react/24/outline";
+import { Button } from "components/ui/button";
+import { Input } from "components/ui/input";
+import { Spinner } from "components/ui/spinner";
+import { toast } from "components/ui/sonner";
+import { cn } from "lib/cn";
+import { Clipboard, Key, Trash2 } from "lucide-react";
+
 import { AppDialog } from "components/dialogs/AppDialog";
 import { ConfirmDialog } from "components/dialogs/ConfirmDialog";
 import { PanelSelect as Select } from "components/common/PanelSelect";
@@ -32,13 +26,13 @@ import {
 
 type Props = {
 	admin: Admin | null;
-	isOpen: boolean;
+	open: boolean;
 	onClose: () => void;
 };
 
-export const AdminApiKeysDialog = ({ admin, isOpen, onClose }: Props) => {
+export const AdminApiKeysDialog = ({ admin, open: isOpen, onClose }: Props) => {
 	const { t } = useTranslation();
-	const toast = useToast();
+	
 	const [keys, setKeys] = useState<AdminApiKey[]>([]);
 	const [lifetime, setLifetime] = useState("1m");
 	const [generatedKey, setGeneratedKey] = useState("");
@@ -117,27 +111,22 @@ export const AdminApiKeysDialog = ({ admin, isOpen, onClose }: Props) => {
 	return (
 		<>
 			<AppDialog
-				isOpen={isOpen}
+				open={isOpen}
 				onClose={close}
-				isCentered
 				size="xl"
 				title={t("admins.apiKeys.title", { username: admin?.username ?? "" })}
 				footer={<Button onClick={close}>{t("close")}</Button>}
 			>
-				<Stack spacing={5}>
-					<Text color="panel.textSecondary" fontSize="sm">
+				<div className="flex flex-col gap-5">
+					<p className="text-panel-text-secondary text-[0.875rem]">
 						{t("admins.apiKeys.description")}
-					</Text>
+					</p>
 
-					<Flex
-						gap={2}
-						align={{ base: "stretch", sm: "end" }}
-						direction={{ base: "column", sm: "row" }}
-					>
-						<Box flex="1">
-							<Text fontSize="sm" fontWeight="semibold" mb={2}>
+					<div className="flex-col sm:flex-row flex gap-2 items-stretch sm:items-end">
+						<div className="flex-1">
+							<p className="text-[0.875rem] font-semibold mb-2">
 								{t("myaccount.apiKeyLifetime")}
-							</Text>
+							</p>
 							<Select
 								value={lifetime}
 								onChange={(event) => setLifetime(event.target.value)}
@@ -150,100 +139,53 @@ export const AdminApiKeysDialog = ({ admin, isOpen, onClose }: Props) => {
 									{t("myaccount.lifetimeForever")}
 								</option>
 							</Select>
-						</Box>
-						<Button
-							colorScheme="primary"
-							isLoading={creating}
-							isDisabled={Boolean(generatedKey)}
-							onClick={create}
-							leftIcon={<KeyIcon width={17} />}
-						>
+						</div>
+						<Button disabled={Boolean(generatedKey)} onClick={create} loading={creating}>{<Key className="w-[17px]" />}
 							{t("admins.apiKeys.create")}
 						</Button>
-					</Flex>
+					</div>
 
 					{generatedKey && (
-						<Box
-							borderWidth="1px"
-							borderColor="orange.300"
-							bg="orange.50"
-							_dark={{ bg: "orange.900", borderColor: "orange.700" }}
-							borderRadius="md"
-							p={3}
-						>
-							<Text fontWeight="semibold" fontSize="sm" mb={2}>
+						<div className="border border-orange-300! bg-orange-50 dark:bg-orange-900 dark:border-orange-700! rounded-md p-3">
+							<p className="font-semibold text-[0.875rem] mb-2">
 								{t("admins.apiKeys.generated", {
 									username: admin?.username ?? "",
 								})}
-							</Text>
-							<HStack>
-								<Input
-									bg="panel.elevated"
-									fontFamily="mono"
-									value={generatedKey}
-									isReadOnly
-								/>
-								<IconButton
-									aria-label={t("copy")}
-									icon={<ClipboardIcon width={18} />}
-									onClick={async () => {
+							</p>
+							<div className="flex flex-row items-center gap-2">
+								<Input value={generatedKey} readOnly className="bg-panel-elevated font-mono" />
+								<Button aria-label={t("copy")} onClick={async () => {
 										await copyTextToClipboard(generatedKey);
 										generateSuccessMessage(t("copied"), toast);
-									}}
-								/>
-							</HStack>
-							<Text
-								color="orange.700"
-								_dark={{ color: "orange.200" }}
-								fontSize="xs"
-								mt={2}
-							>
+									}} className="size-9 p-0">{<Clipboard className="w-[18px]" />}</Button>
+							</div>
+							<p className="text-orange-700 dark:text-orange-200 text-[0.75rem] mt-2">
 								{t("myaccount.apiKeyWarning")}
-							</Text>
-						</Box>
+							</p>
+						</div>
 					)}
 
-					<Box>
-						<Text fontWeight="semibold" mb={3}>
+					<div>
+						<p className="font-semibold mb-3">
 							{t("myaccount.apiKeys")}
-						</Text>
+						</p>
 						{loading ? (
-							<Flex justify="center" py={6}>
-								<Spinner size="sm" />
-							</Flex>
+							<div className="flex justify-center py-6">
+								<Spinner />
+							</div>
 						) : keys.length === 0 ? (
-							<Text color="panel.textMuted" fontSize="sm">
+							<p className="text-panel-text-muted text-[0.875rem]">
 								{t("myaccount.noApiKeys")}
-							</Text>
+							</p>
 						) : (
-							<Stack
-								spacing={0}
-								borderWidth="1px"
-								borderColor="panel.border"
-								borderRadius="md"
-								overflow="hidden"
-							>
+							<div className="flex flex-col gap-0 border border-panel-border! rounded-md overflow-hidden">
 								{keys.map((key) => (
-									<Flex
-										key={key.id}
-										align="center"
-										justify="space-between"
-										gap={3}
-										px={3}
-										py={2.5}
-										borderBottomWidth="1px"
-										borderColor="panel.border"
-										_last={{ borderBottomWidth: 0 }}
-									>
-										<Box minW={0}>
-											<Text
-												fontFamily="mono"
-												fontSize="sm"
-												fontWeight="semibold"
-											>
+									<div key={key.id} className="flex items-center justify-between gap-3 px-3 py-2.5 border-b border-panel-border! last:border-b-0">
+										<div className="min-w-0!">
+											<p className="font-mono text-[0.875rem] font-semibold">
 												{key.masked_key ?? "****"}
-											</Text>
-											<Text color="panel.textMuted" fontSize="xs" mt={1}>
+											</p>
+											<p className="text-panel-text-muted text-[0.75rem] mt-1">
 												{t("myaccount.apiKeyCreatedAt")}:{" "}
 												{dayjs(key.created_at).format("YYYY-MM-DD")} ·{" "}
 												{t("myaccount.apiKeyExpiresAt")}:{" "}
@@ -254,27 +196,19 @@ export const AdminApiKeysDialog = ({ admin, isOpen, onClose }: Props) => {
 												{key.last_used_at
 													? dayjs(key.last_used_at).format("YYYY-MM-DD HH:mm")
 													: t("myaccount.neverUsed")}
-											</Text>
-										</Box>
-										<IconButton
-											aria-label={`${t("delete")} ${key.masked_key ?? "API key"}`}
-											icon={<TrashIcon width={17} />}
-											colorScheme="red"
-											variant="ghost"
-											size="sm"
-											isLoading={deletingID === key.id}
-											onClick={() => setKeyToDelete(key)}
-										/>
-									</Flex>
+											</p>
+										</div>
+										<Button aria-label={`${t("delete")} ${key.masked_key ?? "API key"}`} onClick={() => setKeyToDelete(key)} variant="ghost" size="sm" loading={deletingID === key.id} className="text-destructive hover:bg-destructive/10 size-8 p-0">{<Trash2 className="w-[17px]" />}</Button>
+									</div>
 								))}
-							</Stack>
+							</div>
 						)}
-					</Box>
-				</Stack>
+					</div>
+				</div>
 			</AppDialog>
 
 			<ConfirmDialog
-				isOpen={Boolean(keyToDelete)}
+				open={Boolean(keyToDelete)}
 				onClose={() => setKeyToDelete(null)}
 				onConfirm={remove}
 				title={t("myaccount.deleteApiKey")}
@@ -284,7 +218,7 @@ export const AdminApiKeysDialog = ({ admin, isOpen, onClose }: Props) => {
 				})}
 				confirmLabel={t("delete")}
 				colorScheme="red"
-				isLoading={deletingID !== null}
+				loading={deletingID !== null}
 			/>
 		</>
 	);

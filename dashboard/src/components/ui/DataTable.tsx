@@ -1,32 +1,17 @@
-import {
-	Box,
-	Button,
-	Checkbox,
-	Flex,
-	HStack,
-	IconButton,
-	Menu,
-	MenuButton,
-	MenuItem,
-	MenuList,
-	Portal,
-	Skeleton,
-	SkeletonText,
-	Table,
-	Tbody,
-	Td,
-	Text,
-	Th,
-	Thead,
-	Tooltip,
-	Tr,
-	useBreakpointValue,
-	VStack,
-} from "@chakra-ui/react";
-import {
-	AdjustmentsHorizontalIcon,
-	DocumentDuplicateIcon,
-} from "@heroicons/react/24/outline";
+import { AppleEmojiText } from "components/common/AppleEmojiText";
+import { Button } from "components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "components/ui/tooltip";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "components/ui/dropdown-menu";
+import { Checkbox } from "components/ui/checkbox";
+import { Skeleton } from "components/ui/skeleton";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+import { SlidersHorizontal, Copy } from "lucide-react";
+
+import { useBreakpointValue } from "hooks/useBreakpointValue";
+
+import { RowActionButton } from "./row-actions";
+
+import { cn } from "lib/cn";
 import {
 	type CellContext,
 	type ColumnDef,
@@ -39,22 +24,12 @@ import {
 	type SortingState,
 	useReactTable,
 } from "@tanstack/react-table";
-import {
-	Children,
-	Fragment,
-	type KeyboardEvent as ReactKeyboardEvent,
-	type MouseEvent as ReactMouseEvent,
-	type ReactNode,
-	useCallback,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
+import { Children, Fragment, type KeyboardEvent as ReactKeyboardEvent, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { copyTextToClipboard } from "utils/clipboard";
 import { createStableCellRegistry } from "utils/stableCell";
 import { BulkActionBar } from "./BulkActionBar";
+import { buildSortOptions, DataTableSortMenu } from "./DataTableSortMenu";
 import {
 	orderRowActions,
 	RowActionsMenu,
@@ -123,17 +98,9 @@ const installSelectAllShortcut = () => {
 };
 
 const ActionsHeaderIcon = () => (
-	<Box
-		className="rb-actions-header-icon"
-		display="inline-flex"
-		alignItems="center"
-		justifyContent="flex-end"
-		w="full"
-		color="panel.textMuted"
-		aria-hidden="true"
-	>
-		<Box as={AdjustmentsHorizontalIcon} w={3.5} h={3.5} />
-	</Box>
+	<div aria-hidden="true" className="inline-flex items-center justify-end w-full text-panel-text-muted rb-actions-header-icon">
+		<SlidersHorizontal className="w-3.5 h-3.5" />
+	</div>
 );
 
 const isBelowBreakpoint = (
@@ -191,6 +158,12 @@ const alignToTextAlign = (align?: DataTableColumnAlign) => {
 	if (align === "end") return "end";
 	return "start";
 };
+
+// Chakra colour token ("red.400") to a text class. The palette is safelisted in tailwind.css.
+const toneClass = (color?: string) => (color ? `text-${color.replace(".", "-")}` : undefined);
+
+const justifyClass = (align?: DataTableColumnAlign) =>
+	alignToFlexJustify(align) === "center" ? "justify-center" : alignToFlexJustify(align) === "flex-end" ? "justify-end" : "justify-start";
 
 const alignToFlexJustify = (align?: DataTableColumnAlign) => {
 	if (align === "center") return "center";
@@ -287,60 +260,30 @@ const DataTableCellContent = <TData,>({
 	const cellAlign = getCellAlign(column);
 
 	const content = (
-		<Flex
-			className="rb-cell-content"
-			data-truncate={shouldTruncate ? "true" : undefined}
-			data-multiline={multiline ? "true" : undefined}
-			data-copyable={shouldCopy ? "true" : undefined}
-			data-align={cellAlign}
-			align="center"
-			justify={alignToFlexJustify(cellAlign)}
-			gap={1.5}
-			minW={0}
-			maxW="full"
-			overflow={multiline ? "visible" : "hidden"}
-		>
-			<Box className="rb-cell-value" minW={0} flex="1 1 auto" maxW="full">
+		<div data-truncate={shouldTruncate ? "true" : undefined} data-multiline={multiline ? "true" : undefined} data-copyable={shouldCopy ? "true" : undefined} data-align={cellAlign}  className={cn(justifyClass(cellAlign), "flex items-center gap-1.5 min-w-0! max-w-full", multiline ? "overflow-visible" : "overflow-hidden", "rb-cell-content")}>
+			<div className="min-w-0! flex-[1_1_auto] max-w-full rb-cell-value">
 				{children}
-			</Box>
+			</div>
 			{shouldCopy && (
-				<IconButton
-					aria-label={t("a11y.copyValue")}
-					icon={<Box as={DocumentDuplicateIcon} w={3.5} h={3.5} />}
-					size="xs"
-					variant="ghost"
-					className="rb-cell-copy"
-					flexShrink={0}
-					onClick={(event) => {
+				<Button aria-label={t("a11y.copyValue")} onClick={(event) => {
 						event.stopPropagation();
 						void copyTextToClipboard(fullText);
-					}}
-				/>
+					}} variant="ghost" size="xs" className={cn("size-7 p-0", "shrink-0 rb-cell-copy")}>{<Copy className="w-3.5 h-3.5" />}</Button>
 			)}
-		</Flex>
+		</div>
 	);
 
 	if (!shouldTooltip) return content;
 
 	return (
-		<Tooltip
-			hasArrow
-			openDelay={350}
-			label={
-				<Box
-					maxW="360px"
-					maxH="180px"
-					overflowY="auto"
-					whiteSpace="pre-wrap"
-					wordBreak="break-word"
-					dir="auto"
-				>
-					{fullText}
-				</Box>
-			}
-		>
-			{content}
-		</Tooltip>
+		<Tooltip>
+<TooltipTrigger asChild><span className="inline-flex max-w-full">{content}</span></TooltipTrigger>
+<TooltipContent>{
+				<div dir="auto" className="max-w-[360px] max-h-[180px] overflow-y-auto whitespace-pre-wrap [word-break:break-word]">
+					<AppleEmojiText>{fullText}</AppleEmojiText>
+				</div>
+			}</TooltipContent>
+</Tooltip>
 	);
 };
 
@@ -349,99 +292,46 @@ const getActionLabelText = (label: RowActionItem["label"]) =>
 		? String(label)
 		: "Row action";
 
+/** Inline actions show as icons up to this count; the rest move into the overflow menu. */
+const INLINE_ROW_ACTIONS = 4;
+
+const InlineRowAction = ({ action }: { action: RowActionItem }) => {
+	const label = getActionLabelText(action.label) || "Action";
+	const icon = action.icon ?? <Copy />;
+	return (
+		<RowActionButton
+			label={label}
+			icon={icon}
+			danger={action.isDanger}
+			disabled={action.disabled}
+			tooltip={action.disabled ? action.disabledReason : undefined}
+			className={toneClass(action.color)}
+			onClick={(event) => {
+				event.stopPropagation();
+				action.onClick?.();
+			}}
+		/>
+	);
+};
+
 const InlineRowActions = ({ actions }: { actions: RowActionItem[] }) => {
 	if (actions.length === 0) return null;
 	const orderedActions = orderRowActions(actions);
+	const pinnedActions = orderedActions.filter((action) => action.pinned);
+	const hasPinned = pinnedActions.length > 0;
+	const hasOverflow = hasPinned ? orderedActions.length > pinnedActions.length : orderedActions.length > INLINE_ROW_ACTIONS;
+	const inlineActions = hasPinned ? pinnedActions : hasOverflow ? orderedActions.slice(0, INLINE_ROW_ACTIONS - 1) : orderedActions;
+	const menuActions = inlineActions.length === orderedActions.length ? orderedActions : orderedActions.filter((action) => !inlineActions.includes(action));
 
 	return (
-		<HStack
-			className="rb-inline-actions"
-			spacing={1}
-			justify="flex-start"
-			onClick={(event) => event.stopPropagation()}
-		>
-			{orderedActions.map((action) => {
-				const label = getActionLabelText(action.label);
-				if (action.render) {
-					const renderAction = action.render;
-					return (
-						<Menu
-							key={action.id}
-							placement="auto-end"
-							strategy="fixed"
-							autoSelect={false}
-							isLazy
-						>
-							{({ onClose }) => (
-								<>
-									<Tooltip label={action.label}>
-										<MenuButton
-											as={IconButton}
-											aria-label={label}
-											icon={action.icon ?? <DocumentDuplicateIcon />}
-											size="sm"
-											variant="ghost"
-											className="rb-inline-action"
-											color={action.color}
-											colorScheme={action.isDanger ? "red" : undefined}
-											isDisabled={action.isDisabled}
-											onClick={(event) => event.stopPropagation()}
-										/>
-									</Tooltip>
-									<Portal>
-										<MenuList
-											minW="220px"
-											maxW="calc(100vw - 24px)"
-											maxH="min(70vh, 420px)"
-											overflowY="auto"
-											zIndex={2500}
-											borderRadius="lg"
-											boxShadow="2xl"
-										>
-											{renderAction(onClose)}
-										</MenuList>
-									</Portal>
-								</>
-							)}
-						</Menu>
-					);
-				}
-				return action.icon ? (
-					<Tooltip key={action.id} label={action.label}>
-						<IconButton
-							aria-label={label}
-							icon={action.icon}
-							size="sm"
-							variant="ghost"
-							className="rb-inline-action"
-							color={action.color}
-							colorScheme={action.isDanger ? "red" : undefined}
-							isDisabled={action.isDisabled}
-							onClick={(event) => {
-								event.stopPropagation();
-								action.onClick?.();
-							}}
-						/>
-					</Tooltip>
-				) : (
-					<Button
-						key={action.id}
-						size="sm"
-						variant="ghost"
-						className="rb-inline-action"
-						color={action.color}
-						colorScheme={action.isDanger ? "red" : undefined}
-						isDisabled={action.isDisabled}
-						onClick={(event) => {
-							event.stopPropagation();
-							action.onClick?.();
-						}}
-					>
-						{action.label}
-					</Button>
-				);
-			})}
-		</HStack>
+		// biome-ignore lint/a11y/noStaticElementInteractions: wrapper only stops row clicks, it is not a control
+		// biome-ignore lint/a11y/useKeyWithClickEvents: wrapper only stops row clicks, it is not a control
+		<div onClick={(event) => event.stopPropagation()} className="flex flex-row items-center gap-1 rb-inline-actions">
+			{inlineActions.map((action) => (
+				<InlineRowAction key={action.id} action={action} />
+			))}
+			{menuActions.length > 0 && <RowActionsMenu actions={menuActions} label="More actions" />}
+		</div>
 	);
 };
 
@@ -474,7 +364,7 @@ export function DataTable<TData>({
 	data,
 	columns,
 	getRowId,
-	isLoading = false,
+	loading: isLoading,
 	loadingRows = 5,
 	error,
 	emptyState,
@@ -501,12 +391,14 @@ export function DataTable<TData>({
 	sorting,
 	onSortingChange,
 	manualSorting = false,
+	showSortMenu = true,
 	pagination,
 	dir,
 	tableProps,
 	containerProps,
 	mobileBreakpoint = "md",
 	ariaLabel,
+	columnVisibility,
 }: DataTableProps<TData>) {
 	const { t } = useTranslation();
 	const actionsLabel = t("actions");
@@ -524,11 +416,17 @@ export function DataTable<TData>({
 		row: TData | null;
 		x: number;
 		y: number;
-	}>({ row: null, x: 0, y: 0 });
+		open: boolean;
+	}>({ row: null, x: 0, y: 0, open: false });
 	const resolvedActionsDisplay =
 		actionsDisplay ??
-		(rowActions ? "menu" : renderRowActions ? "inline" : "none");
+		(rowActions || renderRowActions ? "inline" : "none");
 	const hasActions = resolvedActionsDisplay !== "none" && Boolean(rowActions || renderRowActions);
+	// Inline icons need the column to fit them, so the column sizes to its content.
+	const resolvedActionsColumnWidth = resolvedActionsDisplay === "inline" ? "max-content" : actionsColumnWidth;
+	const resolveColumnWidth = (isSelectColumn: boolean, isActionsColumn: boolean, columnWidth: string | number | undefined) =>
+		isSelectColumn ? selectionColumnWidth : isActionsColumn ? resolvedActionsColumnWidth : columnWidth;
+	const alwaysShowActions = actionsAlwaysVisible || resolvedActionsDisplay === "inline";
 	const activeBreakpoint =
 		useBreakpointValue<DataTableBreakpoint>({
 			base: "base",
@@ -539,25 +437,35 @@ export function DataTable<TData>({
 			"2xl": "xl",
 		}) ?? "base";
 	const isMobile = isBelowBreakpoint(activeBreakpoint, mobileBreakpoint);
+	// Visibility first, then the responsive rules: a hidden column must not come
+	// back at a wider breakpoint.
+	const activeColumns = useMemo(
+		() =>
+			columnVisibility
+				? columns.filter((column) => columnVisibility[column.id] !== false)
+				: columns,
+		[columns, columnVisibility],
+	);
 	const visibleDesktopColumns = useMemo(
 		() =>
-			columns.filter((column) =>
+			activeColumns.filter((column) =>
 				shouldShowDesktopColumn(column, activeBreakpoint),
 			),
-		[activeBreakpoint, columns],
+		[activeBreakpoint, activeColumns],
 	);
 	const getResolvedRowActions = useCallback(
 		(row: TData): RowActionItem[] =>
 			rowActionsRef.current?.(row).map((action) => ({
 				...action,
 				onClick: () => action.onClick?.(row),
-				render: action.render
-					? (onClose: () => void) => action.render?.(row, onClose)
-					: undefined,
-				isDisabled:
-					typeof action.isDisabled === "function"
-						? action.isDisabled(row)
-						: action.isDisabled,
+				disabled:
+					typeof action.disabled === "function"
+						? action.disabled(row)
+						: action.disabled,
+				disabledReason:
+					typeof action.disabledReason === "function"
+						? action.disabledReason(row)
+						: action.disabledReason,
 			})) ?? [],
 		[],
 	);
@@ -565,7 +473,7 @@ export function DataTable<TData>({
 		? getResolvedRowActions(contextMenu.row)
 		: [];
 	const closeContextMenu = useCallback(() => {
-		setContextMenu({ row: null, x: 0, y: 0 });
+		setContextMenu((current) => ({ ...current, open: false }));
 	}, []);
 	const handleTableContextMenu = (
 		event: ReactMouseEvent,
@@ -575,14 +483,14 @@ export function DataTable<TData>({
 		if (!isMobile && actions.length > 0) {
 			event.preventDefault();
 			event.stopPropagation();
-			setContextMenu({ row, x: event.clientX, y: event.clientY });
+			setContextMenu({ row, x: event.clientX, y: event.clientY, open: true });
 		}
 	};
 	const isEditableTarget = (target: EventTarget | null) => {
 		return isEditableDomTarget(target);
 	};
 	useEffect(() => {
-		if (!contextMenu.row) return;
+		if (!contextMenu.open) return;
 		const handleEscape = (event: KeyboardEvent) => {
 			if (event.key === "Escape") closeContextMenu();
 		};
@@ -602,7 +510,7 @@ export function DataTable<TData>({
 			window.removeEventListener("keydown", handleEscape);
 			window.removeEventListener("scroll", handleScroll, true);
 		};
-	}, [closeContextMenu, contextMenu.row]);
+	}, [closeContextMenu, contextMenu.open]);
 	const renderConfiguredActions = useCallback(
 		(row: TData) => {
 			if (resolvedActionsDisplay === "none") return null;
@@ -610,12 +518,11 @@ export function DataTable<TData>({
 			if (resolvedActionsDisplay === "inline") {
 				if (renderRowActionsRef.current) {
 					return (
-						<Box
-							className="rb-inline-actions"
-							onClick={(event) => event.stopPropagation()}
-						>
+						// biome-ignore lint/a11y/noStaticElementInteractions: wrapper only stops row clicks, it is not a control
+						// biome-ignore lint/a11y/useKeyWithClickEvents: wrapper only stops row clicks, it is not a control
+						<div onClick={(event) => event.stopPropagation()} className="rb-inline-actions">
 							{renderRowActionsRef.current(row)}
-						</Box>
+						</div>
 					);
 				}
 
@@ -653,6 +560,7 @@ export function DataTable<TData>({
 	);
 	const rowSelection = controlledSelection ?? internalSelection;
 	const sortingState = sorting ?? internalSorting;
+	const sortOptions = useMemo(() => buildSortOptions(activeColumns, data), [activeColumns, data]);
 
 	const tableColumns = useMemo<ColumnDef<TData, unknown>[]>(() => {
 		const dataColumns = visibleDesktopColumns.map<ColumnDef<TData, unknown>>((column) => ({
@@ -664,7 +572,7 @@ export function DataTable<TData>({
 					? column.cell(row.original)
 					: renderFallbackValue(getValue()),
 			),
-			enableSorting: Boolean(column.sortable),
+			enableSorting: column.sortable ?? Boolean(column.accessor || column.sortValue),
 			meta: column,
 		}));
 
@@ -681,23 +589,10 @@ export function DataTable<TData>({
 			dataColumns.unshift({
 				id: "__select",
 				header: ({ table }) => (
-					<Checkbox
-						size="sm"
-						isChecked={table.getIsAllRowsSelected()}
-						isIndeterminate={table.getIsSomeRowsSelected()}
-						onChange={table.getToggleAllRowsSelectedHandler()}
-						aria-label={selectAllLabel}
-					/>
+					<Checkbox checked={table.getIsAllRowsSelected() || (table.getIsSomeRowsSelected() ? "indeterminate" : false)} onCheckedChange={(checked) => table.toggleAllRowsSelected(checked === true)} aria-label={selectAllLabel} />
 				),
 				cell: ({ row }) => (
-					<Checkbox
-						size="sm"
-						isChecked={row.getIsSelected()}
-						isDisabled={!row.getCanSelect()}
-						onChange={row.getToggleSelectedHandler()}
-						onClick={(event) => event.stopPropagation()}
-						aria-label={selectRowLabel}
-					/>
+					<Checkbox checked={row.getIsSelected()} disabled={!row.getCanSelect()} onCheckedChange={(checked) => row.toggleSelected(checked === true)} onClick={(event) => event.stopPropagation()} aria-label={selectRowLabel} />
 				),
 				enableSorting: false,
 			});
@@ -818,12 +713,12 @@ export function DataTable<TData>({
 			.filter(Boolean) as TData[]);
 	const selectedCount = selectedCountOverride ?? selectedRows.length;
 	const mobileVisibleColumns = useMemo(() => {
-		const mobileColumns = columns.filter(shouldShowMobileColumn);
+		const mobileColumns = activeColumns.filter(shouldShowMobileColumn);
 		const primary =
 			mobileColumns.find((column) => column.isPrimary) ??
 			mobileColumns.find((column) => column.priority === "primary") ??
 			mobileColumns[0] ??
-			columns[0];
+			activeColumns[0];
 		const rest = mobileColumns
 			.filter((column) => column.id !== primary?.id)
 			.sort((a, b) => (a.mobilePriority ?? 99) - (b.mobilePriority ?? 99));
@@ -832,7 +727,7 @@ export function DataTable<TData>({
 			rest.find((column) => column.priority === "high") ??
 			rest[0];
 		return { primary, rest, summary };
-	}, [columns]);
+	}, [activeColumns]);
 	const visibleColumnCount = table.getVisibleFlatColumns().length || 1;
 	const loadingRowKeys = useMemo(
 		() =>
@@ -852,20 +747,11 @@ export function DataTable<TData>({
 		renderBulkActions?.(selectedRows, selectedIds) ??
 		bulkActions?.map((action) => {
 			const isDisabled =
-				typeof action.isDisabled === "function"
-					? action.isDisabled(selectedRows, selectedIds)
-					: action.isDisabled;
+				typeof action.disabled === "function"
+					? action.disabled(selectedRows, selectedIds)
+					: action.disabled;
 			return (
-				<Button
-					key={action.id}
-					size="sm"
-					variant={action.variant ?? "outline"}
-					leftIcon={action.icon}
-					colorScheme={action.isDanger ? "red" : undefined}
-					isLoading={action.isLoading}
-					isDisabled={isDisabled}
-					onClick={() => action.onClick?.(selectedRows, selectedIds)}
-				>
+				<Button key={action.id} disabled={isDisabled} onClick={() => action.onClick?.(selectedRows, selectedIds)} size="sm" loading={action.loading} variant={action.isDanger ? "destructive" : "outline"}>{action.icon}
 					{action.label}
 				</Button>
 			);
@@ -894,16 +780,16 @@ export function DataTable<TData>({
 	const renderState = () => {
 		if (error) {
 			return (
-				<Box className="rb-resource-state" color="red.300">
+				<div className="text-red-300 rb-resource-state">
 					{error}
-				</Box>
+				</div>
 			);
 		}
 		if (!showLoadingState && rows.length === 0) {
 			return (
-				<Box className="rb-resource-state">
+				<div className="rb-resource-state">
 					{emptyState ?? t("noData")}
-				</Box>
+				</div>
 			);
 		}
 		return null;
@@ -912,95 +798,68 @@ export function DataTable<TData>({
 	const state = renderState();
 
 	return (
-		<Box
-			ref={rootRef}
-			w="full"
-			dir={dir}
-			tabIndex={enableSelection ? 0 : undefined}
-			_focusVisible={{ outline: "none" }}
-			onKeyDown={(event) => {
+		// biome-ignore lint/a11y/noStaticElementInteractions: table root: keyboard shortcuts and focus are handled here
+		<div ref={rootRef} dir={dir} tabIndex={enableSelection ? 0 : undefined} onKeyDown={(event) => {
 				handleSelectAllShortcut(event);
 				containerOnKeyDown?.(event);
-			}}
-			onFocus={markSelectableTableActive}
-			onMouseDown={(event) => {
+			}} onFocus={markSelectableTableActive} onMouseDown={(event) => {
 				markSelectableTableActive();
 				if (!isEditableTarget(event.target)) {
 					rootRef.current?.focus({ preventScroll: true });
 				}
 				containerOnMouseDown?.(event);
-			}}
-			className={rootClassName}
-			data-actions-display={resolvedActionsDisplay}
-			data-actions-placement={actionsPlacement}
-			data-actions-hover={showActionsOnHover && !actionsAlwaysVisible ? "true" : undefined}
-			data-actions-always={actionsAlwaysVisible ? "true" : undefined}
-			sx={
+			}} data-actions-display={resolvedActionsDisplay} data-actions-placement={actionsPlacement} data-actions-hover={showActionsOnHover && !alwaysShowActions ? "true" : undefined} data-actions-always={alwaysShowActions ? "true" : undefined} style={
 				{
 					"--rb-actions-column-width":
-						typeof actionsColumnWidth === "number"
-							? `${actionsColumnWidth}px`
-							: actionsColumnWidth,
-				} as Record<string, string>
-			}
-			pb={bulkChildren && selectedCount > 0 ? { base: 32, md: 24 } : undefined}
-			{...rootContainerProps}
-		>
+						typeof resolvedActionsColumnWidth === "number"
+							? `${resolvedActionsColumnWidth}px`
+							: resolvedActionsColumnWidth,
+				} as CSSProperties
+			} {...rootContainerProps} className={cn("w-full focus-visible:outline-none", bulkChildren && selectedCount > 0 ? "pb-32" + " " + "md:pb-24" : "", rootClassName)}>
+			{showSortMenu && sortOptions.length > 0 && (
+				<div className="flex flex-row items-center gap-2 justify-end mb-2 rb-data-table-sort">
+					<DataTableSortMenu
+						options={sortOptions}
+						sorting={sortingState}
+						onSortingChange={(next) => table.setSorting(next)}
+					/>
+				</div>
+			)}
 			{isMobile ? (
-				<VStack className="rb-resource-list" spacing={2.5} align="stretch">
+				<div className="flex flex-col gap-2.5 items-stretch rb-resource-list">
 					{!showLoadingState && (rows.length > 0 || state) && (
-						<HStack
-							className="rb-resource-mobile-head"
-							align="center"
-							spacing={2.5}
-							minW={0}
-						>
+						<div className="flex flex-row items-center gap-2.5 min-w-0! rb-resource-mobile-head">
 							{enableSelection && (
-								<Box
-									className="rb-resource-mobile-head-select"
-									display="flex"
-									alignItems="center"
-									flexShrink={0}
-								>
-									<Checkbox
-										isChecked={table.getIsAllRowsSelected()}
-										isIndeterminate={table.getIsSomeRowsSelected()}
-										onChange={table.getToggleAllRowsSelectedHandler()}
-										aria-label={selectAllLabel}
-									/>
-								</Box>
+								<div className="flex items-center shrink-0 rb-resource-mobile-head-select">
+									<Checkbox checked={table.getIsAllRowsSelected() || (table.getIsSomeRowsSelected() ? "indeterminate" : false)} onCheckedChange={(checked) => table.toggleAllRowsSelected(checked === true)} aria-label={selectAllLabel} />
+								</div>
 							)}
-							<Box minW={0} flex="1">
-								<Flex
-									align="center"
-									justify="space-between"
-									gap={2.5}
-									minW={0}
-								>
-									<Box minW={0} flex="1" className="rb-resource-mobile-head-primary">
+							<div className="min-w-0! flex-1">
+								<div className="flex items-center justify-between gap-2.5 min-w-0!">
+									<div className="min-w-0! flex-1 rb-resource-mobile-head-primary">
 										{renderHeaderLabel(mobileVisibleColumns.primary)}
-									</Box>
+									</div>
 									{mobileVisibleColumns.summary && (
-										<Box className="rb-resource-mobile-head-summary">
+										<div className="rb-resource-mobile-head-summary">
 											{renderHeaderLabel(mobileVisibleColumns.summary)}
-										</Box>
+										</div>
 									)}
 									{hasActions && (
-										<Box className="rb-resource-mobile-head-actions">
+										<div className="rb-resource-mobile-head-actions">
 											<ActionsHeaderIcon />
-										</Box>
+										</div>
 									)}
-								</Flex>
-							</Box>
-						</HStack>
+								</div>
+							</div>
+						</div>
 					)}
 					{showLoadingState
 						? loadingRowKeys.map((rowKey) => (
-								<Box className="rb-resource-card" key={rowKey.id}>
-									<SkeletonText noOfLines={1} w="50%" />
-									<Skeleton h="3" w="80%" mt={3} />
-									<Skeleton h="3" w="62%" mt={2} />
-								</Box>
+								<div key={rowKey.id} className="rb-resource-card">
+									
+									<Skeleton className="h-3 w-[80%] mt-3" />
+									<Skeleton className="h-3 w-[62%] mt-2" />
+								</div>
 							))
 						: rows.map((row) => {
 								const original = row.original;
@@ -1022,145 +881,104 @@ export function DataTable<TData>({
 									}));
 								};
 								return (
-									<Box
-										key={row.id}
-										className="rb-resource-card"
-										data-expanded={isExpanded ? "true" : undefined}
-										data-selected={row.getIsSelected() ? "true" : undefined}
-										role={canExpand ? "button" : undefined}
-										tabIndex={canExpand ? 0 : undefined}
-										cursor={canExpand ? "pointer" : "default"}
-										aria-expanded={canExpand ? isExpanded : undefined}
-										onClick={toggleExpanded}
-										onContextMenu={(event) => handleTableContextMenu(event, original)}
-										onKeyDown={(event) => {
+									// biome-ignore lint/a11y/useAriaPropsSupportedByRole: a row is a button only while it can expand, so its role is conditional
+									// biome-ignore lint/a11y/noStaticElementInteractions: a row is a button only while it can expand, so its role is conditional
+									<div key={row.id} data-expanded={isExpanded ? "true" : undefined} data-selected={row.getIsSelected() ? "true" : undefined} role={canExpand ? "button" : undefined} tabIndex={canExpand ? 0 : undefined} aria-expanded={canExpand ? isExpanded : undefined} onClick={toggleExpanded} onContextMenu={(event) => handleTableContextMenu(event, original)} onKeyDown={(event) => {
 											if (!canExpand) return;
 											if (event.key !== "Enter" && event.key !== " ") return;
 											event.preventDefault();
 											toggleExpanded();
-										}}
-									>
-										<HStack
-											align="center"
-											className="rb-resource-card-main"
-											spacing={2.5}
-											minW={0}
-										>
+										}} className={cn(canExpand ? "cursor-pointer" : "cursor-default", "rb-resource-card")}>
+										<div className="flex flex-row items-center gap-2.5 min-w-0! rb-resource-card-main">
 											{enableSelection && (
-												<Box display="flex" alignItems="center" flexShrink={0}>
-													<Checkbox
-														isChecked={row.getIsSelected()}
-														isDisabled={!row.getCanSelect()}
-														onChange={row.getToggleSelectedHandler()}
-														onClick={(event) => event.stopPropagation()}
-														aria-label={selectRowLabel}
-													/>
-												</Box>
+												<div className="flex items-center shrink-0">
+													<Checkbox checked={row.getIsSelected()} disabled={!row.getCanSelect()} onCheckedChange={(checked) => row.toggleSelected(checked === true)} onClick={(event) => event.stopPropagation()} aria-label={selectRowLabel} />
+												</div>
 											)}
-											<Box minW={0} flex="1">
-												<Flex align="center" justify="space-between" gap={2.5} minW={0}>
-													<Box minW={0} flex="1" className="rb-resource-primary">
+											<div className="min-w-0! flex-1">
+												<div className="flex items-center justify-between gap-2.5 min-w-0!">
+													<div className="min-w-0! flex-1 rb-resource-primary">
 														{primary ? (
 															<DataTableCell row={row} column={primary} />
 														) : null}
-													</Box>
+													</div>
 													{summary && (
-														<Box className="rb-resource-summary">
+														<div className="rb-resource-summary">
 															<DataTableCell row={row} column={summary} />
-														</Box>
+														</div>
 													)}
 													{hasActions && (
-														<Box flexShrink={0} className="rb-mobile-actions">
+														<div className="shrink-0 rb-mobile-actions">
 															{resolvedRowActions.length > 0 ? (
 																<RowActionsMenu
 																	actions={resolvedRowActions}
 																	label={actionsLabel}
 																/>
 															) : null}
-														</Box>
+														</div>
 													)}
-												</Flex>
-											</Box>
-										</HStack>
+												</div>
+											</div>
+										</div>
 										{(isExpanded || hasExpandedRow) && (
-											<Box className="rb-resource-expanded">
-												<Box
-													className="rb-resource-details"
-													data-density={compactDetails ? "compact" : undefined}
-												>
+											<div className="rb-resource-expanded">
+												<div data-density={compactDetails ? "compact" : undefined} className="rb-resource-details">
 													{detailColumns.map((column) => (
-														<Box
-															key={`${row.id}-${column.id}`}
-															className="rb-resource-meta"
-														>
-															<Text as="span" color="panel.textMuted" flexShrink={0}>
+														<div key={`${row.id}-${column.id}`} className="rb-resource-meta">
+															<span className="text-panel-text-muted shrink-0">
 																{column.mobileMetaLabel ?? column.mobileLabel ?? column.header}
-															</Text>
-															<Box color="panel.text" minW={0} className="rb-resource-meta-value">
+															</span>
+															<div className="text-panel-text min-w-0! rb-resource-meta-value">
 																<DataTableCell
 																	row={row}
 																	column={column}
 																	variant="mobile-detail"
 																/>
-															</Box>
-														</Box>
+															</div>
+														</div>
 													))}
-												</Box>
+												</div>
 												{(resolvedRowActions.length > 0 || renderRowActions) && (
-													<Flex
-														className="rb-resource-expanded-actions"
-														align="center"
-														justify="flex-end"
-														gap={2}
-													>
-														<Box minW={0}>
+													<div className="flex items-center justify-end gap-2 rb-resource-expanded-actions">
+														<div className="min-w-0!">
 															{resolvedRowActions.length > 0 ? (
 																<InlineRowActions actions={resolvedRowActions} />
 															) : renderRowActions ? (
-																<Box
-																	className="rb-inline-actions"
-																	onClick={(event) => event.stopPropagation()}
-																>
+																// biome-ignore lint/a11y/noStaticElementInteractions: wrapper only stops row clicks, it is not a control
+																// biome-ignore lint/a11y/useKeyWithClickEvents: wrapper only stops row clicks, it is not a control
+																<div onClick={(event) => event.stopPropagation()} className="rb-inline-actions">
 																	{renderRowActions(original)}
-																</Box>
+																</div>
 															) : null}
-														</Box>
-													</Flex>
+														</div>
+													</div>
 												)}
-											</Box>
+											</div>
 										)}
 										{hasExpandedRow && (
-											<Box
-												className="rb-resource-expanded"
-												onClick={(event) => event.stopPropagation()}
-											>
+											// biome-ignore lint/a11y/noStaticElementInteractions: wrapper only stops row clicks, it is not a control
+											// biome-ignore lint/a11y/useKeyWithClickEvents: wrapper only stops row clicks, it is not a control
+											<div onClick={(event) => event.stopPropagation()} className="rb-resource-expanded">
 												{renderExpandedRow?.(original)}
-											</Box>
+											</div>
 										)}
-									</Box>
+									</div>
 								);
 							})}
 					{state}
-				</VStack>
+				</div>
 			) : (
-				<Box className="rb-data-table-wrap">
-					<Table
-						size="sm"
-						variant="simple"
-						className={tableClassNameValue}
-						aria-label={ariaLabel}
-						{...resolvedTableProps}
-					>
-						<Thead className="rb-data-table-head">
+				<div className="rb-data-table-wrap">
+					<table aria-label={ariaLabel} {...resolvedTableProps} className={cn("w-full border-separate border-spacing-0", tableClassNameValue)}>
+						<thead className="rb-data-table-head">
 							{table.getHeaderGroups().map((headerGroup) => (
-								<Tr key={headerGroup.id}>
+								<tr key={headerGroup.id}>
 									{headerGroup.headers.map((header) => {
 										const config = header.column.columnDef.meta as
 											| DataTableColumn<TData>
 											| undefined;
 										const isSelectColumn = header.column.id === "__select";
 										const isActionsColumn = header.column.id === "__actions";
-										const canSort = header.column.getCanSort();
 										const sorted = header.column.getIsSorted();
 										const headerAlign = getHeaderAlign(config);
 										const headerInset = getHeaderInset(config);
@@ -1177,128 +995,78 @@ export function DataTable<TData>({
 											activeBreakpoint,
 										);
 										return (
-											<Th
-												key={header.id}
-												className={[
-													isSelectColumn ? "rb-select-cell" : "",
-													isActionsColumn ? "rb-actions-cell" : "",
-													config?.isPrimary ? "rb-primary-cell" : "",
-												].filter(Boolean).join(" ")}
-												w={
-													isSelectColumn
+											<th key={header.id} style={{ width: resolveColumnWidth(isSelectColumn, isActionsColumn, columnWidth), minWidth: isSelectColumn
 														? selectionColumnWidth
 														: isActionsColumn
-															? actionsColumnWidth
-															: columnWidth
-												}
-												minW={
-													isSelectColumn
+															? resolvedActionsColumnWidth
+															: columnMinWidth, maxWidth: isSelectColumn
 														? selectionColumnWidth
 														: isActionsColumn
-															? actionsColumnWidth
-															: columnMinWidth
-												}
-												maxW={
-													isSelectColumn
-														? selectionColumnWidth
-														: isActionsColumn
-															? actionsColumnWidth
-															: columnMaxWidth
-												}
-												textAlign={
-													isActionsColumn
+															? resolvedActionsColumnWidth
+															: columnMaxWidth, textAlign: isActionsColumn
 														? "end"
 														: isSelectColumn
 															? "center"
-															: alignToTextAlign(headerAlign)
-												}
-												data-actions={isActionsColumn ? "true" : undefined}
-												data-col={config?.id}
-												data-center={
+															: alignToTextAlign(headerAlign) }}     data-actions={isActionsColumn ? "true" : undefined} data-col={config?.id} data-center={
 													isSelectColumn || headerAlign === "center"
 														? "true"
 														: undefined
-												}
-												cursor={canSort ? "pointer" : undefined}
-												onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
-												{...config?.headerProps}
-											>
-												<HStack
-													spacing={1}
-													w="full"
-													pl={
-														!isSelectColumn &&
+												} {...config?.headerProps} className={cn("bg-panel-elevated px-6 py-3 text-start text-[0.75rem] font-bold uppercase leading-4 tracking-wider text-panel-text", [
+													isSelectColumn ? "rb-select-cell" : "",
+													isActionsColumn ? "rb-actions-cell" : "",
+													config?.isPrimary ? "rb-primary-cell" : "",
+												].filter(Boolean).join(" "))}>
+												<div style={{ paddingInlineStart: !isSelectColumn &&
 														!isActionsColumn &&
 														headerAlign === "start"
 															? headerInset
-															: undefined
-													}
-													pr={
-														!isSelectColumn &&
+															: undefined, paddingInlineEnd: !isSelectColumn &&
 														!isActionsColumn &&
 														headerAlign === "end"
 															? headerInset
-															: undefined
-													}
-													justify={
-														isActionsColumn
+															: undefined, justifyContent: isActionsColumn
 															? "flex-end"
 															: isSelectColumn
 																? "center"
-																: alignToFlexJustify(headerAlign)
-													}
-												>
-													<Box
-														as="span"
-														minW={0}
-														maxW="full"
-														overflow="hidden"
-														textOverflow="ellipsis"
-													>
+																: alignToFlexJustify(headerAlign) }}    className="flex flex-row items-center gap-1 w-full">
+													<span className="min-w-0! max-w-full overflow-hidden text-ellipsis">
 														{flexRender(
 															header.column.columnDef.header,
 															header.getContext(),
 														)}
-													</Box>
+													</span>
 													{sorted && (
-														<Text as="span" fontSize="10px" color="panel.textMuted">
+														<span className="text-[10px] text-panel-text-muted">
 															{sorted === "desc" ? "↓" : "↑"}
-														</Text>
+														</span>
 													)}
-												</HStack>
-											</Th>
+												</div>
+											</th>
 										);
 									})}
-								</Tr>
+								</tr>
 							))}
-						</Thead>
-						<Tbody>
+						</thead>
+						<tbody>
 							{showLoadingState
 								? loadingRowKeys.map((rowKey) => (
-										<Tr key={rowKey.id}>
+										<tr key={rowKey.id}>
 											{loadingCellKeys.map((cellKey) => (
-												<Td key={`${rowKey.id}-${cellKey.id}`}>
-													<Skeleton h="4" />
-												</Td>
+												<td key={`${rowKey.id}-${cellKey.id}`} className="px-6 py-4 text-[0.875rem] leading-5 text-panel-text">
+													<Skeleton className="h-4" />
+												</td>
 											))}
-										</Tr>
+										</tr>
 									))
 								: rows.map((row) => (
 										<Fragment key={row.id}>
-											<Tr
-											className="rb-data-table-row"
-											data-selected={row.getIsSelected() ? "true" : undefined}
-											data-expanded={
+											<tr data-selected={row.getIsSelected() ? "true" : undefined} data-expanded={
 												renderExpandedRow && isRowExpanded?.(row.original)
 													? "true"
 													: undefined
-											}
-											onClick={() => onRowClick?.(row.original)}
-											onContextMenu={(event) =>
+											} onClick={() => onRowClick?.(row.original)} onContextMenu={(event) =>
 												handleTableContextMenu(event, row.original)
-											}
-											cursor={onRowClick ? "pointer" : "default"}
-										>
+											} className={cn(onRowClick ? "cursor-pointer" : "cursor-default", "rb-data-table-row")}>
 											{row.getVisibleCells().map((cell) => {
 												const config = cell.column.columnDef.meta as
 													| DataTableColumn<TData>
@@ -1319,51 +1087,28 @@ export function DataTable<TData>({
 													activeBreakpoint,
 												);
 												return (
-													<Td
-														key={cell.id}
-														className={[
+													<td key={cell.id} style={{ textAlign: isActionsColumn
+																? "end"
+																: isSelectColumn
+																	? "center"
+																	: alignToTextAlign(cellAlign), width: resolveColumnWidth(isSelectColumn, isActionsColumn, columnWidth), minWidth: isSelectColumn
+																? selectionColumnWidth
+																: isActionsColumn
+																	? resolvedActionsColumnWidth
+																	: columnMinWidth, maxWidth: isSelectColumn
+																? selectionColumnWidth
+																: isActionsColumn
+																	? resolvedActionsColumnWidth
+																	: columnMaxWidth }}  data-actions={isActionsColumn ? "true" : undefined} data-col={config?.id} data-center={
+															isSelectColumn || cellAlign === "center"
+																? "true"
+																: undefined
+														}    {...config?.cellProps} className={cn("px-6 py-4 text-[0.875rem] leading-5 text-panel-text", [
 															isSelectColumn ? "rb-select-cell" : "",
 															isActionsColumn ? "rb-actions-cell" : "",
 															config?.isPrimary ? "rb-primary-cell" : "",
 															config?.isMeta ? "rb-meta-cell" : "",
-														].filter(Boolean).join(" ")}
-														textAlign={
-															isActionsColumn
-																? "end"
-																: isSelectColumn
-																	? "center"
-																	: alignToTextAlign(cellAlign)
-														}
-														data-actions={isActionsColumn ? "true" : undefined}
-														data-col={config?.id}
-														data-center={
-															isSelectColumn || cellAlign === "center"
-																? "true"
-																: undefined
-														}
-														w={
-															isSelectColumn
-																? selectionColumnWidth
-																: isActionsColumn
-																	? actionsColumnWidth
-																	: columnWidth
-														}
-														minW={
-															isSelectColumn
-																? selectionColumnWidth
-																: isActionsColumn
-																	? actionsColumnWidth
-																	: columnMinWidth
-														}
-														maxW={
-															isSelectColumn
-																? selectionColumnWidth
-																: isActionsColumn
-																	? actionsColumnWidth
-																	: columnMaxWidth
-														}
-														{...config?.cellProps}
-													>
+														].filter(Boolean).join(" "))}>
 														{isSelectColumn || isActionsColumn ? (
 															flexRender(
 																cell.column.columnDef.cell,
@@ -1380,31 +1125,31 @@ export function DataTable<TData>({
 																)}
 															</DataTableCellContent>
 														)}
-													</Td>
+													</td>
 												);
 											})}
-											</Tr>
+											</tr>
 											{renderExpandedRow && isRowExpanded?.(row.original) && (
-												<Tr className="rb-data-table-row-detail">
-													<Td colSpan={visibleColumnCount} p={0}>
-														<Box className="rb-data-table-expanded-content" p={4}>
+												<tr className="rb-data-table-row-detail">
+													<td colSpan={visibleColumnCount} className="text-[0.875rem] leading-5 text-panel-text p-0">
+														<div className="p-4 rb-data-table-expanded-content">
 															{renderExpandedRow(row.original)}
-														</Box>
-													</Td>
-												</Tr>
+														</div>
+													</td>
+												</tr>
 											)}
 										</Fragment>
 									))}
 							{state && !showLoadingState && (
-								<Tr>
-									<Td colSpan={visibleColumnCount}>{state}</Td>
-								</Tr>
+								<tr>
+									<td colSpan={visibleColumnCount} className="px-6 py-4 text-[0.875rem] leading-5 text-panel-text">{state}</td>
+								</tr>
 							)}
-						</Tbody>
-					</Table>
-				</Box>
+						</tbody>
+					</table>
+				</div>
 			)}
-			{pagination ? <Box mt={3} className="rb-data-table-pagination">{pagination}</Box> : null}
+			{pagination ? <div className="mt-3 rb-data-table-pagination">{pagination}</div> : null}
 			{bulkChildren && (
 				<BulkActionBar
 					selectedCount={selectedCount}
@@ -1417,67 +1162,28 @@ export function DataTable<TData>({
 				</BulkActionBar>
 			)}
 			{contextMenu.row && contextMenuActions.length > 0 && (
-				<Menu
-					isOpen
-					autoSelect={false}
-					placement="bottom-start"
-					strategy="fixed"
-					onClose={closeContextMenu}
-				>
-					<MenuButton
-						as={Box}
-						position="fixed"
-						top={`${contextMenu.y}px`}
-						left={`${contextMenu.x}px`}
-						w="1px"
-						h="1px"
-						opacity={0}
-						pointerEvents="none"
-					/>
-					<Portal>
-						<MenuList
-							data-rb-context-menu=""
-							minW="220px"
-							maxW="calc(100vw - 24px)"
-							maxH="min(70vh, 420px)"
-							overflowY="auto"
-							overflowX="hidden"
-							overscrollBehavior="contain"
-							zIndex={2500}
-							onClick={(event) => event.stopPropagation()}
-							onContextMenu={(event) => {
+				<DropdownMenu open={contextMenu.open} onOpenChange={(open) => { if (!open) closeContextMenu(); }}>
+					<DropdownMenuTrigger asChild>
+						<div style={{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }} className="fixed w-[1px] h-[1px] opacity-0 pointer-events-none" />
+					</DropdownMenuTrigger>
+					
+						<DropdownMenuContent data-rb-context-menu="" onClick={(event) => event.stopPropagation()} onContextMenu={(event) => {
 								event.preventDefault();
 								event.stopPropagation();
-							}}
-						>
-							{orderRowActions(contextMenuActions).map((action) =>
-								action.render ? (
-									<Fragment key={action.id}>
-										{action.render(closeContextMenu)}
-									</Fragment>
-								) : (
-									<MenuItem
-										key={action.id}
-										icon={action.icon}
-										isDisabled={action.isDisabled}
-										color={
-											action.color ??
-											(action.isDanger ? "red.400" : undefined)
-										}
-										onClick={(event) => {
+							}} className="min-w-[220px]! max-w-[calc(100vw_-_24px)] max-h-[min(50vh,_360px)] overflow-y-auto overflow-x-hidden overscroll-contain z-[2500]">
+							{orderRowActions(contextMenuActions).map((action) => (
+								<DropdownMenuItem key={action.id} disabled={action.disabled} onSelect={(event) => {
 											event.stopPropagation();
 											closeContextMenu();
 											action.onClick?.();
-										}}
-									>
-										{action.label}
-									</MenuItem>
-								),
-							)}
-						</MenuList>
-					</Portal>
-				</Menu>
+										}} className={toneClass(action.color ?? (action.isDanger ? "red.400" : undefined))}>
+										{action.icon}{action.label}
+									</DropdownMenuItem>
+							))}
+						</DropdownMenuContent>
+					
+				</DropdownMenu>
 			)}
-		</Box>
+		</div>
 	);
 }

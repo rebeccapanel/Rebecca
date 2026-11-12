@@ -1,48 +1,20 @@
-import {
-	Box,
-	type BoxProps,
-	Button,
-	chakra,
-	Flex,
-	HStack,
-	IconButton,
-	Menu,
-	MenuButton,
-	MenuItem,
-	MenuList,
-	Portal,
-	Spinner,
-	Stack,
-	Text,
-	Tooltip,
-	useBreakpointValue,
-	useToast,
-	VStack,
-} from "@chakra-ui/react";
-import {
-	ArrowPathIcon,
-	CalendarDaysIcon,
-	ChartBarIcon,
-	CheckIcon,
-	ChevronRightIcon,
-	CircleStackIcon,
-	ClipboardIcon,
-	ClockIcon,
-	GlobeAltIcon,
-	LinkIcon,
-	LinkSlashIcon,
-	NoSymbolIcon,
-	PencilIcon,
-	PlusCircleIcon,
-	QrCodeIcon,
-	ServerStackIcon,
-	SignalIcon,
-	TrashIcon,
-} from "@heroicons/react/24/outline";
-import { LockClosedIcon } from "@heroicons/react/24/solid";
+import { TagChips } from "components/labels/TagChips";
+import { Button } from "components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "components/ui/tooltip";
+import { Spinner } from "components/ui/spinner";
+import { toast } from "components/ui/sonner";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+import { withClass } from "lib/withClass";
+
+import { useBreakpointValue } from "hooks/useBreakpointValue";
+
+import type { ComponentPropsWithoutRef } from "react";
+import { cn } from "lib/cn";
+import { Check, Copy, Link2, Pencil, QrCode, Trash2, RefreshCw, CalendarDays, ChartColumn, Check as CheckIcon, Database, Clock, Globe, Link, Unlink, Ban, CirclePlus, Server, Signal, Lock } from "lucide-react";
 import type { SortingState } from "@tanstack/react-table";
-import { ReactComponent as AddFileIcon } from "assets/add_file.svg";
+import AddFileIcon from "assets/add_file.svg?react";
 import { useDashboard } from "contexts/DashboardContext";
+import { nextUsersFiltersForOverview, usersOverviewSelection } from "utils/usersOverview";
 import dayjs from "dayjs";
 import useGetUser from "hooks/useGetUser";
 import {
@@ -51,7 +23,6 @@ import {
 	useCallback,
 	useEffect,
 	useMemo,
-	useRef,
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
@@ -64,7 +35,11 @@ import {
 	isUserManagementLocked,
 } from "utils/adminTraffic";
 import { copyTextToClipboard } from "utils/clipboard";
+import { RowActionButton } from "components/ui/row-actions";
 import { formatBytes } from "utils/formatByte";
+import { DataTableColumnMenu } from "components/ui/DataTableColumnMenu";
+import { AddTrafficDialog } from "components/AddTrafficDialog";
+import { UsersOverviewBand } from "components/users/UsersOverviewBand";
 import { generateUserLinks } from "utils/userLinks";
 import { AppDialog } from "./dialogs/AppDialog";
 import { ConfirmDialog, DeleteConfirmDialog } from "./dialogs/ConfirmDialog";
@@ -74,8 +49,6 @@ import {
 	DataTable,
 	type DataTableColumn,
 	type DataTableRowAction,
-	ResourceListCard,
-	type ResourceSummaryItem,
 	type RowActionItem,
 	RowActionsMenu,
 } from "./ui";
@@ -87,14 +60,14 @@ import {
 	UserUsageBar,
 } from "./users";
 
-const EmptySectionIcon = chakra(AddFileIcon);
+const EmptySectionIcon = withClass(AddFileIcon, "");
 
 const USER_STATUS_TEXT_COLORS: Partial<Record<UserListItem["status"], string>> =
 	{
-		active: "green.400",
-		on_hold: "purple.400",
-		expired: "yellow.400",
-		limited: "red.400",
+		active: "var(--color-green-400)",
+		on_hold: "var(--color-purple-400)",
+		expired: "var(--color-yellow-400)",
+		limited: "var(--color-red-400)",
 	};
 
 const UserSpeed: FC<{ user: UserListItem }> = ({ user }) => {
@@ -110,17 +83,13 @@ const UserSpeed: FC<{ user: UserListItem }> = ({ user }) => {
 		user.download_speed ??
 		0;
 	if (upload === 0 && download === 0) {
-		return <Text color="panel.textMuted">—</Text>;
+		return <p className="text-panel-text-muted">—</p>;
 	}
 	return (
-		<Stack spacing={0} fontSize="xs" lineHeight="short" dir="ltr">
-			<Text aria-label={t("usersTable.uploadSpeed")}>
-				↑ {formatBytes(upload)}/s
-			</Text>
-			<Text aria-label={t("usersTable.downloadSpeed")}>
-				↓ {formatBytes(download)}/s
-			</Text>
-		</Stack>
+		<div dir="ltr" className="rb-stat-pair flex flex-col gap-0 text-[0.75rem] leading-[1.375]">
+			<p><span aria-hidden="true">↑</span> <span className="sr-only">{t("usersTable.uploadSpeed")}: </span>{formatBytes(upload)}/s</p>
+			<p><span aria-hidden="true">↓</span> <span className="sr-only">{t("usersTable.downloadSpeed")}: </span>{formatBytes(download)}/s</p>
+		</div>
 	);
 };
 
@@ -137,59 +106,26 @@ const MobileUserOnlineDot: FC<{ user: UserListItem }> = ({ user }) => {
 	);
 	const isOnline = liveIsOnline ?? user.is_online;
 	return (
-		<Box
-			as="span"
-			className="rb-user-mobile-online-dot"
-			data-online={isOnline ? "true" : "false"}
-			aria-hidden="true"
-		/>
+		<span data-online={isOnline ? "true" : "false"} aria-hidden="true" className="rb-user-mobile-online-dot" />
 	);
 };
 
-const iconProps = {
-	baseStyle: {
-		w: {
-			base: 4,
-			md: 5,
-		},
-		h: {
-			base: 4,
-			md: 5,
-		},
-	},
-};
-const CopyIcon = chakra(ClipboardIcon, iconProps);
-const SubscriptionLinkIcon = chakra(LinkIcon, iconProps);
-const QRIcon = chakra(QrCodeIcon, iconProps);
-const CopiedIcon = chakra(CheckIcon, iconProps);
-const EditIcon = chakra(PencilIcon, iconProps);
-const DeleteIcon = chakra(TrashIcon, {
-	baseStyle: {
-		width: "18px",
-		height: "18px",
-	},
-});
-const LockOverlayIcon = chakra(LockClosedIcon, {
-	baseStyle: {
-		width: {
-			base: 16,
-			md: 20,
-		},
-		height: {
-			base: 16,
-			md: 20,
-		},
-	},
-});
-const ResetIcon = chakra(ArrowPathIcon, iconProps);
-const DisableIcon = chakra(NoSymbolIcon, iconProps);
-const RevokeIcon = chakra(LinkSlashIcon, iconProps);
-const TrafficIcon = chakra(PlusCircleIcon, iconProps);
-const ExtendIcon = chakra(ClockIcon, iconProps);
-const UsageHistoryIcon = chakra(ChartBarIcon, iconProps);
-const DataLimitIcon = chakra(CircleStackIcon, iconProps);
-const ExpiryIcon = chakra(CalendarDaysIcon, iconProps);
-const IPsIcon = chakra(GlobeAltIcon, iconProps);
+const CopyIcon = () => <Copy />;
+const SubscriptionLinkIcon = () => <Link2 />;
+const QRIcon = () => <QrCode />;
+const CopiedIcon = () => <Check />;
+const EditIcon = () => <Pencil />;
+const DeleteIcon = () => <Trash2 />;
+const LockOverlayIcon = withClass(Lock, "w-16 md:w-20 h-16 md:h-20");
+const ResetIcon = withClass(RefreshCw, "w-4 md:w-5 h-4 md:h-5");
+const DisableIcon = withClass(Ban, "w-4 md:w-5 h-4 md:h-5");
+const RevokeIcon = withClass(Unlink, "w-4 md:w-5 h-4 md:h-5");
+const TrafficIcon = withClass(CirclePlus, "w-4 md:w-5 h-4 md:h-5");
+const ExtendIcon = withClass(Clock, "w-4 md:w-5 h-4 md:h-5");
+const UsageHistoryIcon = withClass(ChartColumn, "w-4 md:w-5 h-4 md:h-5");
+const DataLimitIcon = withClass(Database, "w-4 md:w-5 h-4 md:h-5");
+const ExpiryIcon = withClass(CalendarDays, "w-4 md:w-5 h-4 md:h-5");
+const IPsIcon = withClass(Globe, "w-4 md:w-5 h-4 md:h-5");
 
 type UserIPRecord = {
 	node_id: number;
@@ -287,129 +223,6 @@ const deduplicateUserIPRecords = (records: UserIPRecord[]) => {
 	);
 };
 
-const TRAFFIC_AMOUNTS = [1, 2, 3, 5, 10] as const;
-
-const TrafficSubmenu: FC<{
-	label: string;
-	isRTL: boolean;
-	activeAction: string | null;
-	onClose: () => void;
-	onSelect: (gigabytes: number) => void;
-	getOptionLabel: (gigabytes: number) => string;
-}> = ({ label, isRTL, activeAction, onClose, onSelect, getOptionLabel }) => {
-	const [isOpen, setIsOpen] = useState(false);
-	const closeTimer = useRef<number | null>(null);
-
-	const cancelClose = () => {
-		if (closeTimer.current !== null) {
-			window.clearTimeout(closeTimer.current);
-			closeTimer.current = null;
-		}
-	};
-	const openMenu = () => {
-		cancelClose();
-		setIsOpen(true);
-	};
-	const closeMenu = () => {
-		cancelClose();
-		setIsOpen(false);
-	};
-	const scheduleClose = () => {
-		cancelClose();
-		closeTimer.current = window.setTimeout(() => setIsOpen(false), 120);
-	};
-
-	useEffect(
-		() => () => {
-			if (closeTimer.current !== null) {
-				window.clearTimeout(closeTimer.current);
-			}
-		},
-		[],
-	);
-
-	return (
-		<Menu
-			isOpen={isOpen}
-			isLazy
-			onClose={closeMenu}
-			placement={isRTL ? "left-start" : "right-start"}
-			strategy="fixed"
-			autoSelect={false}
-			closeOnSelect={false}
-			gutter={4}
-		>
-			<MenuButton
-				as={MenuItem}
-				icon={<TrafficIcon />}
-				isDisabled={activeAction?.startsWith("traffic-")}
-				closeOnSelect={false}
-				onMouseEnter={openMenu}
-				onMouseLeave={scheduleClose}
-				onClick={(event) => {
-					event.preventDefault();
-					event.stopPropagation();
-					openMenu();
-				}}
-				onKeyDown={(event) => {
-					if (event.key === (isRTL ? "ArrowLeft" : "ArrowRight")) {
-						event.preventDefault();
-						event.stopPropagation();
-						openMenu();
-					}
-				}}
-			>
-				<HStack w="full" justify="space-between" spacing={3}>
-					<Text as="span" noOfLines={1}>
-						{label}
-					</Text>
-					<ChevronRightIcon
-						width={14}
-						style={{
-							flexShrink: 0,
-							transform: isRTL ? "rotate(180deg)" : undefined,
-						}}
-					/>
-				</HStack>
-			</MenuButton>
-			<Portal>
-				<MenuList
-					data-rb-context-menu=""
-					minW="152px"
-					maxH="min(70vh, 320px)"
-					overflowY="auto"
-					overflowX="hidden"
-					overscrollBehavior="contain"
-					borderRadius="lg"
-					boxShadow="2xl"
-					zIndex={2600}
-					onMouseEnter={openMenu}
-					onMouseLeave={scheduleClose}
-					onClick={(event) => event.stopPropagation()}
-				>
-					{TRAFFIC_AMOUNTS.map((gigabytes) => (
-						<MenuItem
-							key={gigabytes}
-							isDisabled={activeAction === `traffic-${gigabytes}`}
-							onClick={(event) => {
-								event.stopPropagation();
-								closeMenu();
-								onClose();
-								onSelect(gigabytes);
-							}}
-						>
-							{getOptionLabel(gigabytes)}
-						</MenuItem>
-					))}
-				</MenuList>
-			</Portal>
-		</Menu>
-	);
-};
-
-const formatCount = (value: number | null | undefined, locale: string) =>
-	new Intl.NumberFormat(locale || "en").format(value ?? 0);
-
 const formatUsernamePreview = (username: string, maxLength = 20) =>
 	username.length > maxLength
 		? `${username.slice(0, Math.max(4, maxLength - 4))}...`
@@ -418,16 +231,9 @@ const formatUsernamePreview = (username: string, maxLength = 20) =>
 const MobileLifetimeDetail: FC<{
 	totalUsedTraffic: number;
 }> = ({ totalUsedTraffic }) => (
-	<Text
-		fontSize="sm"
-		fontWeight="semibold"
-		color="panel.text"
-		dir="ltr"
-		noOfLines={1}
-		sx={{ unicodeBidi: "isolate" }}
-	>
+	<p dir="ltr" className="text-[0.875rem] font-semibold text-panel-text truncate [unicode-bidi:isolate]">
 		{formatBytes(totalUsedTraffic)}
-	</Text>
+	</p>
 );
 
 // Plain text on purpose: the expanded card sits right under the collapsed
@@ -436,16 +242,9 @@ const MobileUsageDetail: FC<{
 	used: number;
 	total: number | null;
 }> = ({ used, total }) => (
-	<Text
-		fontSize="sm"
-		fontWeight="semibold"
-		color="panel.text"
-		dir="ltr"
-		noOfLines={1}
-		sx={{ unicodeBidi: "isolate" }}
-	>
+	<p dir="ltr" className="text-[0.875rem] font-semibold text-panel-text truncate [unicode-bidi:isolate]">
 		{formatUsagePair(used, total)}
-	</Text>
+	</p>
 );
 
 // Adapts the table's row-action descriptors into the shape the shared
@@ -461,17 +260,14 @@ const toMenuItems = (
 		icon: action.icon,
 		color: action.color,
 		isDanger: action.isDanger,
-		isDisabled:
-			typeof action.isDisabled === "function"
-				? action.isDisabled(row)
-				: action.isDisabled,
+		disabled:
+			typeof action.disabled === "function"
+				? action.disabled(row)
+				: action.disabled,
 		onClick: action.onClick ? () => action.onClick?.(row) : undefined,
-		render: action.render
-			? (onClose: () => void) => action.render?.(row, onClose)
-			: undefined,
 	}));
 
-type UsersTableProps = BoxProps & {
+type UsersTableProps = ComponentPropsWithoutRef<"div"> & {
 	toolbar?: ReactNode;
 	/** Rendered in the header of the list summary card (e.g. refresh). */
 	headerActions?: ReactNode;
@@ -486,9 +282,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 		filters,
 		users: usersResponse,
 		onEditingUser,
-		onFilterChange,
 		loading,
-		isUserLimitReached,
 		deleteUser,
 		resetDataUsage,
 		revokeSubscription,
@@ -496,13 +290,13 @@ export const UsersTable: FC<UsersTableProps> = ({
 		setQRCode,
 		setSubLink,
 		linkTemplates,
+		onFilterChange,
 	} = {
 		filters: useDashboard((state) => state.filters),
+		onFilterChange: useDashboard((state) => state.onFilterChange),
 		users: useDashboard((state) => state.users),
 		onEditingUser: useDashboard((state) => state.onEditingUser),
-		onFilterChange: useDashboard((state) => state.onFilterChange),
 		loading: useDashboard((state) => state.loading),
-		isUserLimitReached: useDashboard((state) => state.isUserLimitReached),
 		deleteUser: useDashboard((state) => state.deleteUser),
 		resetDataUsage: useDashboard((state) => state.resetDataUsage),
 		revokeSubscription: useDashboard((state) => state.revokeSubscription),
@@ -516,7 +310,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 	const isDesktop = useBreakpointValue({ base: false, md: true }) ?? false;
 	const isRTL = i18n.dir(i18n.language) === "rtl";
 	const locale = i18n.language || "en";
-	const toast = useToast();
+	
 	// One toast shape for every action in this section: top entrance, closable.
 	const notify = useCallback(
 		(
@@ -524,14 +318,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 			status: "success" | "error",
 			options?: { description?: string; duration?: number },
 		) =>
-			toast({
-				title,
-				status,
-				description: options?.description,
-				duration: options?.duration ?? 2500,
-				isClosable: true,
-				position: "top",
-			}),
+			toast("", { description: options?.description, duration: options?.duration ?? 2500 }),
 		[toast],
 	);
 	const { userData } = useGetUser();
@@ -590,6 +377,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 	const [selectedUsernames, setSelectedUsernames] = useState<string[]>([]);
 	const [bulkAction, setBulkAction] = useState<string | null>(null);
 	const [isBulkResetOpen, setIsBulkResetOpen] = useState(false);
+	const [userPendingDelete, setUserPendingDelete] = useState<UserListItem | null>(null);
 	const [ipDialog, setIPDialog] = useState<{
 		username: string;
 		records: UserIPRecord[];
@@ -638,23 +426,6 @@ export const UsersTable: FC<UsersTableProps> = ({
 		return summary;
 	}, [usersResponse.status_breakdown, usersResponse.users]);
 
-	const handleSort = (column: string) => {
-		let newSort = filters.sort;
-		if (newSort.includes(column)) {
-			if (newSort.startsWith("-")) {
-				newSort = "-created_at";
-			} else {
-				newSort = `-${column}`;
-			}
-		} else {
-			newSort = column;
-		}
-		onFilterChange({
-			sort: newSort,
-			offset: 0,
-		});
-	};
-
 	const closeContextMenu = useCallback(() => undefined, []);
 
 	const handleResetUsage = (user: UserListItem) => {
@@ -675,26 +446,20 @@ export const UsersTable: FC<UsersTableProps> = ({
 		}
 	};
 
-	const handleAdjustTraffic = async (user: UserListItem, gigabytes: number) => {
-		const currentLimit = user.data_limit;
-		if (!currentLimit || currentLimit <= 0) {
-			return;
-		}
-		setContextAction(`traffic-${gigabytes}`);
+	const [trafficUser, setTrafficUser] = useState<UserListItem | null>(null);
+	const handleAddTraffic = async (user: UserListItem, deltaBytes: number) => {
+		const currentLimit = user.data_limit ?? 0;
+		if (currentLimit <= 0) return;
 		try {
-			const delta = gigabytes * 1024 * 1024 * 1024;
-			const nextLimit = currentLimit + delta;
 			await fetch(`/v2/users/${encodeURIComponent(user.username)}`, {
 				method: "PUT",
-				body: { data_limit: nextLimit },
+				body: { data_limit: currentLimit + deltaBytes },
 			});
 			notify(t("usersTable.addTrafficSuccess"), "success");
 			refetchUsers(true);
 		} catch (error: any) {
 			notify(error?.data?.detail || error?.message || t("error"), "error");
-		} finally {
-			setContextAction(null);
-			closeContextMenu();
+			throw error;
 		}
 	};
 
@@ -936,6 +701,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 		const columns: DataTableColumn<UserListItem>[] = [
 			{
 				id: "online",
+				menuLabel: t("usersTable.online"),
 				header: t("usersTable.online"),
 				priority: "high",
 				width: "76px",
@@ -950,6 +716,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 			},
 			{
 				id: "username",
+				menuLabel: t("username"),
 				header: t("username"),
 				accessor: "username",
 				sortable: true,
@@ -965,39 +732,23 @@ export const UsersTable: FC<UsersTableProps> = ({
 				mobilePriority: 0,
 				mobileMetaLabel: t("username"),
 				cell: (user) => (
-					<Stack spacing={0.5} minW={0} align="flex-start">
-						<HStack spacing={1.5} minW={0} maxW="full">
+					<div className="flex flex-col gap-0.5 min-w-0! items-start">
+						<div className="flex flex-row items-center gap-1.5 min-w-0! max-w-full">
 							<MobileUserOnlineDot user={user} />
-							<Text
-								fontWeight="semibold"
-								noOfLines={1}
-								maxW="full"
-								minW={0}
-								color="panel.text"
-								dir="ltr"
-								sx={{ unicodeBidi: "isolate" }}
-								_hover={
-									canOpenUserDialog ? { color: "panel.accent" } : undefined
-								}
-							>
+							<p dir="ltr" className={cn(canOpenUserDialog ? "hover:text-panel-accent" : "", "font-semibold truncate max-w-full min-w-0! text-panel-text [unicode-bidi:isolate]")}>
 								{formatUsernamePreview(user.username)}
-							</Text>
-						</HStack>
+							</p>
+						</div>
 						<UserAdminChip adminUsername={user.admin_username} />
-						<Text
-							className="rb-user-card-status"
-							fontSize="xs"
-							fontWeight="semibold"
-							color={USER_STATUS_TEXT_COLORS[user.status] ?? "panel.text"}
-							textTransform="capitalize"
-						>
+						<p style={{ color: USER_STATUS_TEXT_COLORS[user.status] ?? "var(--rb-panel-text)" }} className="text-[0.75rem] font-semibold capitalize rb-user-card-status">
 							{t(`status.${user.status}`)}
-						</Text>
-					</Stack>
+						</p>
+					</div>
 				),
 			},
 			{
 				id: "id",
+				menuLabel: t("usersTable.userId"),
 				header: t("usersTable.userId"),
 				accessor: (user) => user.id,
 				sortable: true,
@@ -1007,13 +758,14 @@ export const UsersTable: FC<UsersTableProps> = ({
 				cellAlign: "start",
 				mobileVisible: false,
 				cell: (user) => (
-					<Text fontSize="sm" color="panel.text" dir="ltr" fontFamily="mono">
+					<p dir="ltr" className="text-[0.875rem] text-panel-text font-mono">
 						{user.id}
-					</Text>
+					</p>
 				),
 			},
 			{
 				id: "status",
+				menuLabel: t("status"),
 				header: t("usersTable.status"),
 				priority: "high",
 				width: "112px",
@@ -1024,18 +776,14 @@ export const UsersTable: FC<UsersTableProps> = ({
 				mobilePriority: 2,
 				mobileMetaLabel: t("usersTable.status"),
 				cell: (user) => (
-					<Text
-						fontSize="sm"
-						fontWeight="semibold"
-						color={USER_STATUS_TEXT_COLORS[user.status] ?? "panel.text"}
-						textTransform="capitalize"
-					>
+					<p style={{ color: USER_STATUS_TEXT_COLORS[user.status] ?? "var(--rb-panel-text)" }} className="text-[0.875rem] font-semibold capitalize">
 						{t(`status.${user.status}`)}
-					</Text>
+					</p>
 				),
 			},
 			{
 				id: "service",
+				menuLabel: t("usersTable.service"),
 				header: t("usersTable.service"),
 				accessor: (user) => user.service_name ?? t("usersTable.defaultService"),
 				priority: "high",
@@ -1048,27 +796,56 @@ export const UsersTable: FC<UsersTableProps> = ({
 				mobileVisible: true,
 				mobileMetaLabel: t("usersTable.service"),
 				cell: (user) => (
-					<Text
-						fontSize="sm"
-						color={user.service_name ? "panel.text" : "panel.textMuted"}
-						noOfLines={1}
-						maxW="full"
-					>
+					<p className={cn("text-[0.875rem] truncate max-w-full", user.service_name ? "text-panel-text" : "text-panel-text-muted")}>
 						{user.service_name ?? t("usersTable.defaultService")}
-					</Text>
+					</p>
 				),
+			},
+			{
+				id: "group",
+				menuLabel: t("groups.group"),
+				header: t("groups.group"),
+				accessor: (user) => user.group?.name ?? "",
+				priority: "medium",
+				width: "110px",
+				minWidth: "88px",
+				maxWidth: "140px",
+				truncate: true,
+				tooltip: true,
+				mobilePriority: 4,
+				mobileVisible: true,
+				mobileMetaLabel: t("groups.group"),
+				cell: (user) => (
+					<p className={cn("text-[0.875rem] truncate max-w-full", user.group ? "text-panel-text" : "text-panel-text-muted")}>
+						{user.group?.name ?? "–"}
+					</p>
+				),
+			},
+			{
+				id: "tags",
+				menuLabel: t("tags.title"),
+				header: t("tags.title"),
+				priority: "low",
+				width: "170px",
+				minWidth: "120px",
+				maxWidth: "220px",
+				mobilePriority: 5,
+				mobileVisible: true,
+				mobileMetaLabel: t("tags.title"),
+				cell: (user) => <TagChips tags={user.tags} limit={2} />,
 			},
 		];
 
 		if (canViewTraffic) {
 			columns.push({
 				id: "used_traffic",
+				menuLabel: t("usersTable.traffic"),
 				header: t("usersTable.traffic"),
 				sortable: true,
 				priority: "high",
-				width: "clamp(204px, 18vw, 280px)",
-				minWidth: "204px",
-				maxWidth: "280px",
+				width: "clamp(188px, 15vw, 240px)",
+				minWidth: "188px",
+				maxWidth: "240px",
 				headerAlign: "start",
 				cellAlign: "start",
 				mobileVisible: true,
@@ -1088,6 +865,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 			});
 			columns.push({
 				id: "speed",
+				menuLabel: t("usersTable.speed"),
 				header: t("usersTable.speed"),
 				priority: "high",
 				width: "120px",
@@ -1102,6 +880,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 			});
 			columns.push({
 				id: "remaining_traffic",
+				menuLabel: t("usersTable.remainingTraffic"),
 				header: t("usersTable.remainingTraffic"),
 				priority: "high",
 				width: "132px",
@@ -1113,22 +892,16 @@ export const UsersTable: FC<UsersTableProps> = ({
 				mobilePriority: 6,
 				mobileMetaLabel: t("usersTable.remainingTraffic"),
 				cell: (user) => (
-					<Text
-						fontSize={!user.data_limit ? "xl" : "sm"}
-						fontWeight={!user.data_limit ? "semibold" : undefined}
-						lineHeight="1"
-						color={!user.data_limit ? "panel.textMuted" : "panel.text"}
-						dir="ltr"
-						aria-label={!user.data_limit ? t("unlimited") : undefined}
-					>
+					<p dir="ltr" className={cn("leading-[1]", !user.data_limit ? "text-[1.25rem]" : "text-[0.875rem]", !user.data_limit ? "font-semibold" : "", !user.data_limit ? "text-panel-text-muted" : "text-panel-text")}>
 						{!user.data_limit
-							? "∞"
+							? <><span aria-hidden="true">∞</span><span className="sr-only">{t("unlimited")}</span></>
 							: formatBytes(Math.max(user.data_limit - user.used_traffic, 0))}
-					</Text>
+					</p>
 				),
 			});
 			columns.push({
 				id: "lifetime_used_traffic",
+				menuLabel: t("usersTable.lifetimeUsage"),
 				header: t("usersTable.lifetimeUsage"),
 				priority: "high",
 				width: "132px",
@@ -1147,11 +920,12 @@ export const UsersTable: FC<UsersTableProps> = ({
 
 		columns.push({
 			id: "expire",
+			menuLabel: t("usersTable.expire"),
 			header: t("usersTable.expire"),
 			sortable: true,
 			priority: "high",
-			width: "132px",
-			minWidth: "114px",
+			width: "152px",
+			minWidth: "132px",
 			maxWidth: "148px",
 			headerAlign: "start",
 			cellAlign: "start",
@@ -1168,6 +942,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 		if (hasPrivilegedRole) {
 			columns.push({
 				id: "admin",
+				menuLabel: t("usersTable.admin"),
 				header: t("usersTable.admin"),
 				desktopVisible: false,
 				mobileVisible: true,
@@ -1205,12 +980,6 @@ export const UsersTable: FC<UsersTableProps> = ({
 		return [{ id, desc }];
 	}, [filters.sort]);
 
-	const handleUserTableSorting = (nextSorting: SortingState) => {
-		const next = nextSorting[0];
-		if (!next) return;
-		handleSort(next.id);
-	};
-
 	const formatUserLink = (link?: string | null) => {
 		if (!link) return "";
 		return link.startsWith("/") ? window.location.origin + link : link;
@@ -1246,14 +1015,14 @@ export const UsersTable: FC<UsersTableProps> = ({
 				id: "copy-subscription",
 				label: t("usersTable.copyLink"),
 				icon: <SubscriptionLinkIcon />,
-				isDisabled: !subscriptionLink,
+				disabled: !subscriptionLink,
 				onClick: () => copyUserText(subscriptionLink, t("copied")),
 			},
 			{
 				id: "copy-configs",
 				label: t("usersTable.copyConfigs"),
 				icon: <CopyIcon />,
-				isDisabled: configLinks.length === 0,
+				disabled: configLinks.length === 0,
 				onClick: () => copyUserText(configLinksText, t("copied")),
 			},
 			{
@@ -1269,7 +1038,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 				id: "get-ips",
 				label: t("usersTable.getIps"),
 				icon: <IPsIcon />,
-				isDisabled: contextAction === "ips",
+				disabled: contextAction === "ips",
 				onClick: () => handleGetIPs(user),
 			},
 		];
@@ -1302,7 +1071,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 				id: "disable",
 				label: t("usersTable.disableUser"),
 				icon: <DisableIcon />,
-				isDisabled: contextAction === "disable",
+				disabled: contextAction === "disable",
 				onClick: () => handleDisableUser(user),
 			});
 		}
@@ -1315,8 +1084,8 @@ export const UsersTable: FC<UsersTableProps> = ({
 			actions.push({
 				id: "enable",
 				label: t("usersTable.enableUser"),
-				icon: <CheckIcon width={16} />,
-				isDisabled: contextAction === "enable",
+				icon: <CheckIcon className="w-[16px]" />,
+				disabled: contextAction === "enable",
 				onClick: () => handleEnableUser(user),
 			});
 		}
@@ -1326,7 +1095,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 				id: "reset",
 				label: t("usersTable.resetUsage"),
 				icon: <ResetIcon />,
-				isDisabled: contextAction === "reset",
+				disabled: contextAction === "reset",
 				onClick: () => handleResetUsage(user),
 			});
 		}
@@ -1336,7 +1105,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 				id: "revoke",
 				label: t("usersTable.revokeSub"),
 				icon: <RevokeIcon />,
-				isDisabled: contextAction === "revoke",
+				disabled: contextAction === "revoke",
 				onClick: () => handleRevokeSub(user),
 			});
 		}
@@ -1346,20 +1115,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 				id: "add-traffic",
 				label: t("services.userActions.traffic.add"),
 				icon: <TrafficIcon />,
-				render: (_row, onClose) => (
-					<TrafficSubmenu
-						label={t("services.userActions.traffic.add")}
-						isRTL={isRTL}
-						activeAction={contextAction}
-						onClose={onClose}
-						onSelect={(gigabytes) => handleAdjustTraffic(user, gigabytes)}
-						getOptionLabel={(gigabytes) =>
-							t("usersTable.addGb", {
-								count: gigabytes,
-							})
-						}
-					/>
-				),
+				onClick: () => setTrafficUser(user),
 			});
 		}
 
@@ -1387,7 +1143,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 				id: "extend-expire",
 				label: t("usersTable.add30Days"),
 				icon: <ExtendIcon />,
-				isDisabled: contextAction === "expire",
+				disabled: contextAction === "expire",
 				onClick: () => handleExtendExpire(user, 30),
 			});
 		}
@@ -1411,79 +1167,20 @@ export const UsersTable: FC<UsersTableProps> = ({
 				label: t("deleteUser.title"),
 				icon: <DeleteIcon />,
 				isDanger: true,
-				render: (_row, onClose) => (
-					<DeleteConfirmDialog
-						description={t("deleteUser.prompt", { username: user.username })}
-						onConfirm={async () => {
-							onClose();
-							await handleDeleteUser(user);
-						}}
-					>
-						<MenuItem
-							icon={<DeleteIcon />}
-							color="red.400"
-							onClick={(event) => event.stopPropagation()}
-						>
-							{t("deleteUser.title")}
-						</MenuItem>
-					</DeleteConfirmDialog>
-				),
+				onClick: () => setUserPendingDelete(user),
 			});
 		}
 
 		return actions;
 	};
 
+	const [columnVisibility, setColumnVisibility] = useState<
+		Record<string, boolean>
+	>({});
 	const filteredUsageTotal = usersResponse.usage_total ?? null;
 	const activeUsersCount =
 		statusBreakdown.active ?? usersResponse.active_total ?? 0;
-	const summaryItems: ResourceSummaryItem[] = [
-		{
-			label: t("usersTable.total"),
-			value: formatCount(usersResponse.total, locale),
-			colorScheme: isUserLimitReached ? "red" : "gray",
-		},
-		{
-			label: t("status.active"),
-			value: formatCount(activeUsersCount, locale),
-			colorScheme: "green",
-		},
-		{
-			label: t("status.on_hold"),
-			value: formatCount(statusBreakdown.on_hold ?? 0, locale),
-			colorScheme: "orange",
-		},
-		{
-			label: t("status.limited"),
-			value: formatCount(statusBreakdown.limited ?? 0, locale),
-			colorScheme: "yellow",
-		},
-		{
-			label: t("status.expired"),
-			value: formatCount(statusBreakdown.expired ?? 0, locale),
-			colorScheme: "red",
-		},
-		{
-			label: t("onlineStatus.online"),
-			value: formatCount(usersResponse.online_total ?? 0, locale),
-			colorScheme: "teal",
-		},
-	];
-
 	const usageForSummary = canViewTraffic ? filteredUsageTotal : null;
-
-	if (usageForSummary !== null) {
-		summaryItems.push({
-			label: hasUsageScopeFilter
-				? t("usersTable.filteredUsage")
-				: t("usersTable.listUsage"),
-			value: formatBytes(usageForSummary),
-			colorScheme: "blue",
-			helper: hasUsageScopeFilter
-				? t("usersTable.filteredUsageHelper")
-				: t("usersTable.listUsageHelper"),
-		});
-	}
 
 	const renderExpandedUser = (user: UserListItem) => {
 		const detailColumns = userColumns.filter(
@@ -1500,63 +1197,42 @@ export const UsersTable: FC<UsersTableProps> = ({
 			return action ? [action] : [];
 		});
 		return (
-			<Box className="rb-resource-expanded">
-				<Box className="rb-resource-details" data-density="compact">
-					<Box className="rb-resource-meta">
-						<Text as="span" color="panel.textMuted">
+			<div className="rb-resource-expanded">
+				<div data-density="compact" className="rb-resource-details">
+					<div className="rb-resource-meta">
+						<span className="text-panel-text-muted">
 							{t("username")}
-						</Text>
-						<Text
-							color="panel.text"
-							minW={0}
-							className="rb-resource-meta-value"
-							dir="ltr"
-							sx={{ unicodeBidi: "isolate" }}
-						>
+						</span>
+						<p dir="ltr" className="text-panel-text min-w-0! [unicode-bidi:isolate] rb-resource-meta-value">
 							{user.username}
-						</Text>
-					</Box>
+						</p>
+					</div>
 					{detailColumns.map((column) => (
-						<Box key={column.id} className="rb-resource-meta">
-							<Text as="span" color="panel.textMuted">
+						<div key={column.id} className="rb-resource-meta">
+							<span className="text-panel-text-muted">
 								{column.mobileMetaLabel ?? column.mobileLabel ?? column.header}
-							</Text>
-							<Box
-								color="panel.text"
-								minW={0}
-								className="rb-resource-meta-value"
-							>
+							</span>
+							<div className="text-panel-text min-w-0! rb-resource-meta-value">
 								{column.mobileDetailCell?.(user) ?? column.cell?.(user)}
-							</Box>
-						</Box>
+							</div>
+						</div>
 					))}
-				</Box>
-				<Flex
-					className="rb-resource-expanded-actions"
-					align="center"
-					justify="flex-end"
-					gap={1}
-					flexWrap="wrap"
-					onClick={(event) => event.stopPropagation()}
-				>
-					<HStack className="rb-expanded-user-actions" spacing={1}>
+				</div>
+				{/* biome-ignore lint/a11y/noStaticElementInteractions: wrapper only stops row clicks, it is not a control */}
+				{/* biome-ignore lint/a11y/useKeyWithClickEvents: wrapper only stops row clicks, it is not a control */}
+				<div onClick={(event) => event.stopPropagation()} className="flex items-center justify-end gap-1 flex-wrap rb-resource-expanded-actions">
+					<div className="flex flex-row items-center gap-1 rb-expanded-user-actions">
 						{expandedActions.map((action) => (
-							<Tooltip key={action.id} label={action.label}>
+							<Tooltip key={action.id}>
+<TooltipTrigger asChild>
 								<span>
-									<IconButton
-										aria-label={String(action.label)}
-										icon={action.icon}
-										variant="ghost"
-										size="sm"
-										minW="30px"
-										h="30px"
-										isDisabled={action.isDisabled}
-										onClick={() => action.onClick?.()}
-									/>
+									<Button aria-label={String(action.label)} disabled={action.disabled} onClick={() => action.onClick?.()} variant="ghost" size="sm" className={cn("size-8 p-0", "min-w-[30px]! h-[30px]")}>{action.icon}</Button>
 								</span>
-							</Tooltip>
+							</TooltipTrigger>
+<TooltipContent>{action.label}</TooltipContent>
+</Tooltip>
 						))}
-					</HStack>
+					</div>
 					<ActionButtons
 						user={user}
 						isRTL={isRTL}
@@ -1572,42 +1248,63 @@ export const UsersTable: FC<UsersTableProps> = ({
 								: undefined
 						}
 					/>
-				</Flex>
-			</Box>
+				</div>
+			</div>
 		);
 	};
 
 	return (
-		<VStack
-			spacing={4}
-			align="stretch"
-			dir={isRTL ? "rtl" : "ltr"}
-			data-dir={isRTL ? "rtl" : "ltr"}
-			pb={selectedUsers.length > 0 ? { base: 32, md: 24 } : 0}
-			{...props}
-		>
-			{/* One unified header card: stats on top, search + quick filters below. */}
-			<ResourceListCard
-				title={t("usersTable.listHeader")}
-				summaryItems={summaryItems}
-				actions={headerActions}
-			>
-				{toolbar}
-			</ResourceListCard>
+		<div dir={isRTL ? "rtl" : "ltr"} data-dir={isRTL ? "rtl" : "ltr"} {...props} className={cn("flex flex-col gap-4 items-stretch", selectedUsers.length > 0 ? "pb-32" + " " + "md:pb-24" : "pb-0")}>
+			<AddTrafficDialog
+				target={trafficUser ? { kind: "user", name: trafficUser.username } : null}
+				onClose={() => setTrafficUser(null)}
+				onApply={(deltaBytes) => (trafficUser ? handleAddTraffic(trafficUser, deltaBytes) : Promise.resolve())}
+			/>
+			{/* One header card: the overview band, then the toolbar row. */}
+			<div className="border border-panel-border! bg-panel-surface rounded-xl overflow-hidden rb-users-header-card">
+				<UsersOverviewBand
+					bare
+					selection={usersOverviewSelection(filters)}
+					onSelect={(target) => onFilterChange(nextUsersFiltersForOverview(filters, target))}
+					total={usersResponse.total}
+					usersLimit={usersResponse.users_limit ?? null}
+					active={activeUsersCount}
+					online={usersResponse.online_total ?? 0}
+					usage={usageForSummary}
+					usageLabel={
+						hasUsageScopeFilter
+							? t("usersTable.filteredUsage")
+							: t("usersTable.listUsage")
+					}
+					breakdown={statusBreakdown as Partial<Record<"active" | "expired" | "limited" | "on_hold" | "disabled", number>>}
+					locale={locale}
+				/>
 
-			<Box position="relative">
-				<Stack
-					spacing={3}
-					filter={isAdminDisabled ? "blur(4px)" : undefined}
-					pointerEvents={isAdminDisabled ? "none" : undefined}
-					aria-hidden={isAdminDisabled ? true : undefined}
-				>
+				<div className="border-t border-panel-border! p-3 rb-users-toolbar">
+					<div className="flex-wrap flex items-center gap-2">
+						<div className="max-sm:contents sm:flex-[1_1_240px] min-w-0!">
+							{toolbar}
+						</div>
+						<div className="flex flex-row items-center gap-1 shrink-0">
+							<DataTableColumnMenu
+								columns={userColumns}
+								visibility={columnVisibility}
+								onChange={setColumnVisibility}
+							/>
+							{headerActions}
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<div className="relative">
+				<div aria-hidden={isAdminDisabled ? true : undefined} className={cn("flex flex-col gap-3", isAdminDisabled ? "[filter:blur(4px)]" : "", isAdminDisabled ? "pointer-events-none" : "")}>
 					<DataTable
 						ariaLabel={t("users")}
 						data={usersResponse.users}
 						columns={userColumns}
 						getRowId={(user) => user.username}
-						isLoading={loading}
+						loading={loading}
 						loadingRows={rowsToRender}
 						emptyState={
 							<EmptySection
@@ -1618,6 +1315,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 							/>
 						}
 						enableSelection
+						columnVisibility={columnVisibility}
 						selectedRowIds={selectedUsernames}
 						selectedRows={selectedUsers}
 						selectedCount={selectedUsers.length}
@@ -1644,7 +1342,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 						)}
 						actionsDisplay={compactRowActions ? "menu" : "inline"}
 						actionsPlacement="end"
-						actionsColumnWidth={compactRowActions ? "64px" : "210px"}
+						actionsColumnWidth={compactRowActions ? "64px" : "max-content"}
 						actionsAlwaysVisible
 						onRowClick={
 							isDesktop
@@ -1661,8 +1359,8 @@ export const UsersTable: FC<UsersTableProps> = ({
 						}
 						renderExpandedRow={isDesktop ? renderExpandedUser : undefined}
 						sorting={userSorting}
-						onSortingChange={handleUserTableSorting}
 						manualSorting
+						showSortMenu={false}
 						dir={isRTL ? "rtl" : "ltr"}
 						selectedLabel={t("usersTable.selectedCount", {
 							count: selectedUsers.length,
@@ -1670,66 +1368,38 @@ export const UsersTable: FC<UsersTableProps> = ({
 						renderBulkActions={() => (
 							<>
 								{canToggleUserStatus && (
-									<Button
-										size="sm"
-										variant="outline"
-										leftIcon={<DisableIcon />}
-										onClick={handleBulkDisable}
-										isLoading={bulkAction === "disable"}
-										isDisabled={
+									<Button onClick={handleBulkDisable} disabled={
 											Boolean(bulkAction) ||
 											selectedUsersManagementLocked ||
 											bulkDisableTargets.length === 0
-										}
-									>
+										} variant="outline" size="sm" loading={bulkAction === "disable"}>{<DisableIcon />}
 										{t("usersTable.disableUser")}
 									</Button>
 								)}
 								{canToggleUserStatus && (
-									<Button
-										size="sm"
-										variant="outline"
-										leftIcon={<CheckIcon width={16} />}
-										onClick={handleBulkEnable}
-										isLoading={bulkAction === "enable"}
-										isDisabled={
+									<Button onClick={handleBulkEnable} disabled={
 											Boolean(bulkAction) ||
 											selectedUsersManagementLocked ||
 											bulkEnableTargets.length === 0
-										}
-									>
+										} variant="outline" size="sm" loading={bulkAction === "enable"}>{<CheckIcon className="w-[16px]" />}
 										{t("usersTable.enableUser")}
 									</Button>
 								)}
 								{canResetUsageActions && (
-									<Button
-										size="sm"
-										variant="outline"
-										leftIcon={<ResetIcon />}
-										onClick={() => setIsBulkResetOpen(true)}
-										isLoading={bulkAction === "reset"}
-										isDisabled={
+									<Button onClick={() => setIsBulkResetOpen(true)} disabled={
 											Boolean(bulkAction) ||
 											selectedUsersManagementLocked ||
 											selectedUsers.length === 0
-										}
-									>
+										} variant="outline" size="sm" loading={bulkAction === "reset"}>{<ResetIcon />}
 										{t("usersTable.resetUsage")}
 									</Button>
 								)}
 								{canRevokeSubActions && (
-									<Button
-										size="sm"
-										variant="outline"
-										leftIcon={<RevokeIcon />}
-										onClick={handleBulkRevoke}
-										isLoading={bulkAction === "revoke"}
-										isDisabled={
+									<Button onClick={handleBulkRevoke} disabled={
 											Boolean(bulkAction) ||
 											selectedUsersManagementLocked ||
 											selectedUsers.length === 0
-										}
-									>
+										} variant="outline" size="sm" loading={bulkAction === "revoke"}>{<RevokeIcon />}
 										{t("usersTable.revokeSub")}
 									</Button>
 								)}
@@ -1738,150 +1408,82 @@ export const UsersTable: FC<UsersTableProps> = ({
 										description={t("usersTable.bulkDeletePrompt")}
 										onConfirm={handleBulkDelete}
 									>
-										<Button
-											size="sm"
-											colorScheme="red"
-											variant="outline"
-											leftIcon={<DeleteIcon />}
-											isLoading={bulkAction === "delete"}
-											isDisabled={
+										<Button disabled={
 												Boolean(bulkAction) || bulkDeleteTargets.length === 0
-											}
-										>
+											} variant="outline" size="sm" loading={bulkAction === "delete"} className="border border-destructive/50 bg-transparent text-destructive hover:bg-destructive/10">{<DeleteIcon />}
 											{t("delete")}
 										</Button>
 									</DeleteConfirmDialog>
 								)}
 							</>
 						)}
-						tableProps={{
-							w: "full",
-							sx: {
-								"& th, & td": {
-									px: { base: 2, xl: 3 },
-									py: { base: 2.5, xl: 2.5 },
-									verticalAlign: "middle",
-								},
-							},
-						}}
+						tableProps={{ className: "w-full [table-layout:fixed] [&_th]:px-2 [&_td]:px-2 [&_th]:py-2.5 [&_td]:py-2.5 [&_th]:align-middle [&_td]:align-middle xl:[&_th]:px-2.5 xl:[&_td]:px-2.5" }}
 					/>
-				</Stack>
+				</div>
 				{isAdminDisabled && (
-					<Flex
-						position="absolute"
-						inset={0}
-						align="center"
-						justify="center"
-						direction="column"
-						textAlign="center"
-						px={6}
-						py={8}
-						bg="rgba(255, 255, 255, 0.85)"
-						_dark={{ bg: "rgba(15, 23, 42, 0.9)" }}
-						zIndex="overlay"
-					>
-						<LockOverlayIcon color="red.400" mb={6} />
-						<Text fontSize="xl" fontWeight="bold" mb={3}>
+					<div className="flex-col flex absolute inset-0 items-center justify-center text-center px-6 py-8 bg-[rgba(255,_255,_255,_0.85)] dark:bg-[rgba(15,_23,_42,_0.9)] z-[overlay]">
+						<LockOverlayIcon className="text-red-400 mb-6" />
+						<p className="text-[1.25rem] font-bold mb-3">
 							{t("usersTable.adminDisabledTitle")}
-						</Text>
-						<Text maxW="480px" color="gray.600" _dark={{ color: "gray.200" }}>
+						</p>
+						<p className="max-w-[480px] text-gray-600 dark:text-gray-200">
 							{disabledReason || t("usersTable.adminDisabledDescription")}
-						</Text>
-					</Flex>
+						</p>
+					</div>
 				)}
-			</Box>
-			<AppDialog
-				isOpen={ipDialog !== null}
-				onClose={() => setIPDialog(null)}
-				title={t("usersTable.ipsDialogTitle")}
-				isCentered
-				size="lg"
-				scrollBehavior="inside"
-				contentProps={{
-					bg: "panel.surface",
-					borderColor: "panel.border",
-					borderWidth: "1px",
-					borderRadius: "lg",
-					overflow: "hidden",
-				}}
-				bodyProps={{ pb: 5 }}
-				footer={
-					<HStack w="full" justify="flex-end" spacing={2}>
-						<Button size="sm" onClick={() => setIPDialog(null)}>
+			</div>
+			<AppDialog open={ipDialog !== null} onClose={() => setIPDialog(null)} title={t("usersTable.ipsDialogTitle")} size="lg" contentProps={{ className: "bg-panel-surface border-panel-border! border rounded-lg overflow-hidden" }} bodyProps={{ className: "pb-5" }} footer={
+					<div className="flex flex-row items-center w-full justify-end gap-2">
+						<Button onClick={() => setIPDialog(null)} size="sm">
 							{t("close")}
 						</Button>
-						<Button
-							size="sm"
-							colorScheme="primary"
-							leftIcon={<CopyIcon />}
-							onClick={handleCopyIPs}
-							isDisabled={
+						<Button onClick={handleCopyIPs} disabled={
 								contextAction === "ips" ||
 								Boolean(ipDialog?.error) ||
 								!ipDialog?.records.length
-							}
-						>
+							} size="sm">{<CopyIcon />}
 							{t("usersTable.copyIps")}
 						</Button>
-					</HStack>
-				}
-			>
-				<Stack spacing={4}>
-					<Box>
-						<HStack justify="space-between" align="baseline" spacing={3}>
-							<Text fontWeight="700" dir="ltr" noOfLines={1}>
+					</div>
+				}>
+				<div className="flex flex-col gap-4">
+					<div>
+						<div className="flex flex-row justify-between items-baseline gap-3">
+							<p dir="ltr" className="font-bold truncate">
 								{ipDialog?.username}
-							</Text>
+							</p>
 							{contextAction !== "ips" && !ipDialog?.error && (
-								<Text fontSize="xs" color="panel.textMuted" flexShrink={0}>
+								<p className="text-[0.75rem] text-panel-text-muted shrink-0">
 									{t("usersTable.ipsDialogCount", {
 										count: ipDialog?.records.length ?? 0,
 									})}
-								</Text>
+								</p>
 							)}
-						</HStack>
-						<Text mt={1} fontSize="sm" color="panel.textMuted">
+						</div>
+						<p className="mt-1 text-[0.875rem] text-panel-text-muted">
 							{t("usersTable.ipsDialogDescription")}
-						</Text>
-					</Box>
+						</p>
+					</div>
 
 					{contextAction === "ips" ? (
-						<Flex align="center" justify="center" gap={3} py={8}>
-							<Spinner size="sm" color="panel.accent" />
-							<Text fontSize="sm" color="panel.textMuted">
+						<div className="flex items-center justify-center gap-3 py-8">
+							<Spinner className="text-panel-accent" />
+							<p className="text-[0.875rem] text-panel-text-muted">
 								{t("usersTable.ipsDialogLoading")}
-							</Text>
-						</Flex>
+							</p>
+						</div>
 					) : ipDialog?.error ? (
-						<Box
-							role="alert"
-							borderWidth="1px"
-							borderColor="red.400"
-							borderRadius="md"
-							bg="red.50"
-							color="red.700"
-							_dark={{ bg: "rgba(127, 29, 29, 0.22)", color: "red.200" }}
-							px={3}
-							py={2.5}
-							fontSize="sm"
-						>
+						<div role="alert" className="border border-red-400! rounded-md bg-red-50 text-red-700 dark:bg-[rgba(127,_29,_29,_0.22)] dark:text-red-200 px-3 py-2.5 text-[0.875rem]">
 							{ipDialog.error}
-						</Box>
+						</div>
 					) : !ipDialog?.records.length ? (
-						<Box
-							borderWidth="1px"
-							borderColor="panel.border"
-							borderRadius="md"
-							px={4}
-							py={8}
-							textAlign="center"
-						>
-							<Text fontSize="sm" color="panel.textMuted">
+						<div className="border border-panel-border! rounded-md px-4 py-8 text-center">
+							<p className="text-[0.875rem] text-panel-text-muted">
 								{t("usersTable.ipsDialogEmpty")}
-							</Text>
-						</Box>
+							</p>
+						</div>
 					) : (
-						<Stack spacing={3}>
+						<div className="flex flex-col gap-3">
 							{ipDialog.records.map((record, index) => {
 								const nodes = uniqueIPValues([
 									...(record.node_names || []),
@@ -1910,109 +1512,87 @@ export const UsersTable: FC<UsersTableProps> = ({
 								const connections = Math.max(record.connections || 1, 1);
 
 								return (
-									<Box
-										as="article"
-										key={ip === "-" ? `${metadata}-${index}` : ip}
-										p={3}
-										borderWidth="1px"
-										borderColor="panel.border"
-										borderRadius="6px"
-									>
-										<Flex
-											justify="space-between"
-											direction={{ base: "column", sm: "row" }}
-											align={{ base: "stretch", sm: "flex-start" }}
-											gap={3}
-										>
+									<article key={ip === "-" ? `${metadata}-${index}` : ip} className="p-3 border border-panel-border! rounded-[6px]">
+										<div className="flex-col sm:flex-row flex justify-between items-stretch sm:items-start gap-3">
 											<OperatorIdentity
 												shortName={record.operator_short_name}
 												owner={record.operator_owner}
 											/>
-											<Box minW={0} textAlign={{ base: "start", sm: "end" }}>
-												<Text
-													dir="ltr"
-													fontFamily="mono"
-													fontWeight="700"
-													fontSize="sm"
-													overflowWrap="anywhere"
-												>
+											<div className="min-w-0! text-start sm:text-end">
+												<p dir="ltr" className="font-mono font-bold text-[0.875rem] [overflow-wrap:anywhere]">
 													{ip}
-												</Text>
-												<HStack
-													mt={0.5}
-													spacing={1}
-													justify={{ base: "flex-start", sm: "flex-end" }}
-													color="panel.textSecondary"
-													fontSize="xs"
-												>
-													<SignalIcon width={14} aria-hidden="true" />
-													<Text>
+												</p>
+												<div className="flex flex-row items-center mt-0.5 gap-1 justify-start sm:justify-end text-panel-text-secondary text-[0.75rem]">
+													<Signal aria-hidden="true" className="w-[14px]" />
+													<p>
 														{t("usersTable.ipConnections_other", {
 															count: connections,
 														})}
-													</Text>
-												</HStack>
-											</Box>
-										</Flex>
+													</p>
+												</div>
+											</div>
+										</div>
 
-										<HStack
-											mt={3}
-											spacing={3}
-											flexWrap="wrap"
-											color="panel.textMuted"
-											fontSize="xs"
-										>
+										<div className="flex flex-row items-center mt-3 gap-3 flex-wrap text-panel-text-muted text-[0.75rem]">
 											{protocols.length > 0 && (
-												<HStack spacing={1}>
-													<GlobeAltIcon width={14} aria-hidden="true" />
-													<Text>{protocols.join(", ")}</Text>
-												</HStack>
+												<div className="flex flex-row items-center gap-1">
+													<Globe aria-hidden="true" className="w-[14px]" />
+													<p>{protocols.join(", ")}</p>
+												</div>
 											)}
 											{inbounds.length > 0 && (
-												<HStack spacing={1}>
-													<LinkIcon width={14} aria-hidden="true" />
-													<Text>{inbounds.join(", ")}</Text>
-												</HStack>
+												<div className="flex flex-row items-center gap-1">
+													<Link aria-hidden="true" className="w-[14px]" />
+													<p>{inbounds.join(", ")}</p>
+												</div>
 											)}
 											{nodes.length > 0 && (
-												<HStack spacing={1}>
-													<ServerStackIcon width={14} aria-hidden="true" />
-													<Text>{nodes.join(", ")}</Text>
-												</HStack>
+												<div className="flex flex-row items-center gap-1">
+													<Server aria-hidden="true" className="w-[14px]" />
+													<p>{nodes.join(", ")}</p>
+												</div>
 											)}
 											{record.last_seen_at && (
-												<HStack spacing={1}>
-													<ClockIcon width={14} aria-hidden="true" />
-													<Text dir="ltr">
+												<div className="flex flex-row items-center gap-1">
+													<Clock aria-hidden="true" className="w-[14px]" />
+													<p dir="ltr">
 														{dayjs(record.last_seen_at).format(
 															"YYYY-MM-DD HH:mm",
 														)}
-													</Text>
-												</HStack>
+													</p>
+												</div>
 											)}
-										</HStack>
+										</div>
 										{assignedIPs.length > 0 && (
-											<Text
-												mt={1}
-												fontSize="xs"
-												color="panel.textSecondary"
-												overflowWrap="anywhere"
-											>
+											<p className="mt-1 text-[0.75rem] text-panel-text-secondary [overflow-wrap:anywhere]">
 												{t("usersTable.assignedIp")}:{" "}
-												<chakra.span dir="ltr" display="inline-block">
+												<span dir="ltr" className="inline-block">
 													{assignedIPs.join(", ")}
-												</chakra.span>
-											</Text>
+												</span>
+											</p>
 										)}
-									</Box>
+									</article>
 								);
 							})}
-						</Stack>
+						</div>
 					)}
-				</Stack>
+				</div>
 			</AppDialog>
 			<ConfirmDialog
-				isOpen={isBulkResetOpen}
+				open={Boolean(userPendingDelete)}
+				onClose={() => setUserPendingDelete(null)}
+				onConfirm={async () => {
+					if (!userPendingDelete) return;
+					await handleDeleteUser(userPendingDelete);
+					setUserPendingDelete(null);
+				}}
+				title={t("common.confirmAction")}
+				description={t("deleteUser.prompt", { username: userPendingDelete?.username ?? "" })}
+				confirmLabel={t("delete")}
+				colorScheme="red"
+			/>
+			<ConfirmDialog
+				open={isBulkResetOpen}
 				onClose={() => setIsBulkResetOpen(false)}
 				onConfirm={handleBulkReset}
 				title={t("usersTable.resetUsage")}
@@ -2020,10 +1600,10 @@ export const UsersTable: FC<UsersTableProps> = ({
 					count: selectedUsers.length,
 				})}
 				confirmLabel={t("reset")}
-				isLoading={bulkAction === "reset"}
+				loading={bulkAction === "reset"}
 				isConfirmDisabled={selectedUsers.length === 0}
 			/>
-		</VStack>
+		</div>
 	);
 };
 
@@ -2077,105 +1657,56 @@ const ActionButtons: FC<ActionButtonsProps> = ({
 	}, [copiedConfigs]);
 
 	return (
-		<HStack
-			dir={isRTL ? "rtl" : "ltr"}
-			justifyContent={isRTL ? "flex-start" : "flex-end"}
-			spacing={1}
-			flexWrap="nowrap"
-			onClick={(e) => {
+		// biome-ignore lint/a11y/noStaticElementInteractions: row click target, unchanged from HEAD, where the Chakra box had no keyboard handler
+		// biome-ignore lint/a11y/useKeyWithClickEvents: row click target, unchanged from HEAD, where the Chakra box had no keyboard handler
+		<div dir={isRTL ? "rtl" : "ltr"} onClick={(e) => {
 				e.preventDefault();
 				e.stopPropagation();
-			}}
-		>
-			<Tooltip label={copied ? t("copied") : t("usersTable.copyLink")}>
-				<span>
-					<IconButton
-						aria-label={t("usersTable.copyLink")}
-						icon={copied ? <CopiedIcon /> : <SubscriptionLinkIcon />}
-						variant="ghost"
-						size="sm"
-						minW="30px"
-						h="30px"
-						isDisabled={!subscriptionLink}
-						onClick={() => {
-							void copyTextToClipboard(subscriptionLink)
-								.then(() => {
-									setCopied(true);
-								})
-								.catch(() => undefined);
-						}}
-					/>
-				</span>
-			</Tooltip>
-			<Tooltip
+			}} className={cn("flex flex-row items-center gap-1 flex-nowrap", isRTL ? "justify-start" : "justify-end")}>
+			<RowActionButton
+				label={copied ? t("copied") : t("usersTable.copyLink")}
+				icon={copied ? <CopiedIcon /> : <SubscriptionLinkIcon />}
+				disabled={!subscriptionLink}
+				onClick={() => {
+					void copyTextToClipboard(subscriptionLink)
+						.then(() => {
+							setCopied(true);
+						})
+						.catch(() => undefined);
+				}}
+			/>
+			<RowActionButton
 				label={copiedConfigs ? t("copied") : t("usersTable.copyConfigs")}
-			>
-				<span>
-					<IconButton
-						aria-label={t("usersTable.copyConfigs")}
-						icon={copiedConfigs ? <CopiedIcon /> : <CopyIcon />}
-						variant="ghost"
-						size="sm"
-						minW="30px"
-						h="30px"
-						isDisabled={!hasConfigLinks}
-						onClick={() => {
-							void copyTextToClipboard(configLinksText)
-								.then(() => setCopiedConfigs(true))
-								.catch(() => undefined);
-						}}
-					/>
-				</span>
-			</Tooltip>
-			<Tooltip label={t("usersTable.qrCode")}>
-				<IconButton
-					aria-label={t("usersTable.qrCode")}
-					icon={<QRIcon />}
-					variant="ghost"
-					size="sm"
-					minW="30px"
-					h="30px"
-					onClick={() => {
-						const links = generateUserLinks(user, linkTemplates);
-						setQRCode(links, user.username);
-						setSubLink(subscriptionLink);
-					}}
-				/>
-			</Tooltip>
-			{onEdit && (
-				<Tooltip label={t("userDialog.editUser")}>
-					<IconButton
-						aria-label={t("userDialog.editUser")}
-						icon={<EditIcon />}
-						variant="ghost"
-						size="sm"
-						minW="30px"
-						h="30px"
-						onClick={onEdit}
-					/>
-				</Tooltip>
-			)}
+				icon={copiedConfigs ? <CopiedIcon /> : <CopyIcon />}
+				disabled={!hasConfigLinks}
+				onClick={() => {
+					void copyTextToClipboard(configLinksText)
+						.then(() => setCopiedConfigs(true))
+						.catch(() => undefined);
+				}}
+			/>
+			<RowActionButton
+				label={t("usersTable.qrCode")}
+				icon={<QRIcon />}
+				onClick={() => {
+					const links = generateUserLinks(user, linkTemplates);
+					setQRCode(links, user.username);
+					setSubLink(subscriptionLink);
+				}}
+			/>
+			{onEdit && <RowActionButton label={t("userDialog.editUser")} icon={<EditIcon />} onClick={onEdit} />}
 			{onDelete && (
 				<DeleteConfirmDialog
 					description={t("deleteUser.prompt", { username: user.username })}
 					onConfirm={onDelete}
 				>
-					<IconButton
-						aria-label={t("deleteUser.title")}
-						icon={<DeleteIcon />}
-						variant="ghost"
-						size="sm"
-						minW="30px"
-						h="30px"
-						color="red.400"
-						_hover={{ color: "red.300", bg: "whiteAlpha.100" }}
-					/>
+					<RowActionButton label={t("deleteUser.title")} icon={<DeleteIcon />} danger />
 				</DeleteConfirmDialog>
 			)}
 			{menuActions && menuActions.length > 0 && (
 				<RowActionsMenu actions={menuActions} label={t("actions")} />
 			)}
-		</HStack>
+		</div>
 	);
 };
 
@@ -2197,51 +1728,16 @@ const EmptySection: FC<EmptySectionProps> = ({
 		onCreateUser(true);
 	};
 	return (
-		<Box
-			padding="5"
-			py="8"
-			display="flex"
-			alignItems="center"
-			flexDirection="column"
-			gap={4}
-			w="full"
-			borderWidth="1px"
-			borderColor="light-border"
-			borderRadius="lg"
-			bg="surface.light"
-			_dark={{ bg: "surface.dark", borderColor: "whiteAlpha.200" }}
-		>
-			<EmptySectionIcon
-				maxHeight="200px"
-				maxWidth="200px"
-				_dark={{
-					'path[fill="#fff"]': {
-						fill: "gray.800",
-					},
-					'path[fill="#f2f2f2"], path[fill="#e6e6e6"], path[fill="#ccc"]': {
-						fill: "gray.700",
-					},
-					'circle[fill="#3182CE"]': {
-						fill: "primary.300",
-					},
-				}}
-				_light={{
-					'path[fill="#f2f2f2"], path[fill="#e6e6e6"], path[fill="#ccc"]': {
-						fill: "gray.300",
-					},
-					'circle[fill="#3182CE"]': {
-						fill: "primary.500",
-					},
-				}}
-			/>
-			<Text fontWeight="medium" color="gray.600" _dark={{ color: "gray.400" }}>
+		<div className="p-5 py-8 flex items-center flex-col gap-4 w-full border border-light-border! rounded-lg bg-surface-light dark:bg-surface-dark dark:border-whiteAlpha-200!">
+			<EmptySectionIcon className={"dark:[&_path[fill='#fff']]:[fill:var(--color-gray-800)] dark:[&_path[fill='#f2f2f2']]:[fill:var(--color-gray-700)] dark:[&_path[fill='#e6e6e6']]:[fill:var(--color-gray-700)] dark:[&_path[fill='#ccc']]:[fill:var(--color-gray-700)] dark:[&_circle[fill='#3182CE']]:[fill:var(--color-primary-300)] light:[&_path[fill='#f2f2f2']]:[fill:var(--color-gray-300)] light:[&_path[fill='#e6e6e6']]:[fill:var(--color-gray-300)] light:[&_path[fill='#ccc']]:[fill:var(--color-gray-300)] light:[&_circle[fill='#3182CE']]:[fill:var(--color-primary-500)] max-h-[200px] max-w-[200px]"} />
+			<p className="font-medium text-gray-600 dark:text-gray-400">
 				{isFiltered ? t("usersTable.noUserMatched") : t("usersTable.noUser")}
-			</Text>
+			</p>
 			{!isFiltered && !isCreateDisabled && (
-				<Button size="sm" colorScheme="primary" onClick={handleCreate}>
+				<Button onClick={handleCreate} size="sm">
 					{t("createUser")}
 				</Button>
 			)}
-		</Box>
+		</div>
 	);
 };

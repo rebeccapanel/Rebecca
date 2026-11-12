@@ -1,6 +1,5 @@
-import { chakra } from "@chakra-ui/react";
-import { InformationCircleIcon } from "@heroicons/react/24/outline";
+import { CircleAlert, CircleCheck, TriangleAlert } from "lucide-react";
+import { withClass } from "lib/withClass";
+import { Info } from "lucide-react";
 
-export const InfoIcon = chakra(InformationCircleIcon, {
-	baseStyle: { w: 4, h: 4 },
-});
+export const InfoIcon = withClass(Info, "w-4 h-4");

@@ -341,7 +341,8 @@ func (r Repository) existingUserTx(ctx context.Context, tx *sql.Tx, username str
 		ctx,
 		`SELECT id, username, status, COALESCE(used_traffic, 0), data_limit, expire, service_id, admin_id, credential_key, on_hold_expire_duration,
 (SELECT up.online_at FROM user_presence up WHERE up.user_id = users.id),
-COALESCE(speed_limit_kbps, 0)
+COALESCE(speed_limit_kbps, 0),
+COALESCE(ip_limit, 0)
 FROM users WHERE LOWER(username) = LOWER(?) AND status != ? LIMIT 1`,
 		username,
 		string(UserStatusDeleted),
@@ -358,6 +359,7 @@ FROM users WHERE LOWER(username) = LOWER(?) AND status != ? LIMIT 1`,
 		&holdDuration,
 		&onlineAt,
 		&row.SpeedLimitKbps,
+		&row.IPLimit,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -406,6 +408,11 @@ func (r Repository) mutationContextTx(ctx context.Context, tx *sql.Tx, admin adm
 		Services:           map[int64]ServiceInfo{},
 		Inbounds:           map[string]InboundInfo{},
 	}
+	speedEnabled, err := r.userSpeedLimitEnabledTx(ctx, tx)
+	if err != nil {
+		return ctxData, err
+	}
+	ctxData.UserSpeedLimitEnabled = speedEnabled
 	activeArgs := []any{admin.ID, string(UserStatusActive), string(UserStatusOnHold)}
 	activeSQL := `SELECT COUNT(*) FROM users WHERE admin_id = ? AND status IN (?, ?)`
 	if excludeUserID != nil {
@@ -903,7 +910,7 @@ func (r Repository) activeNodeIDsTx(ctx context.Context, tx *sql.Tx) ([]int64, e
 	if cached, ok := r.cachedActiveNodeIDs(); ok {
 		return cached, nil
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id FROM nodes WHERE LOWER(COALESCE(status, '')) = 'connected' ORDER BY id`)
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM nodes WHERE LOWER(COALESCE(status, '')) NOT IN ('disabled', 'limited', 'deleted') ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
@@ -1057,4 +1064,16 @@ WHERE id = ?`,
 
 	_, err := tx.ExecContext(ctx, `INSERT INTO admin_created_traffic_logs (admin_id, service_id, amount, action, created_at) VALUES (?, ?, ?, ?, ?)`, admin.ID, nullableInt64Ptr(user.ServiceID), -amount, "user_delete_credit", dbTime(now))
 	return err
+}
+
+func (r Repository) userSpeedLimitEnabledTx(ctx context.Context, tx *sql.Tx) (bool, error) {
+	var enabled int64
+	err := tx.QueryRowContext(ctx, `SELECT COALESCE(user_speed_limit_enabled, 1) FROM settings WHERE id = 1 LIMIT 1`).Scan(&enabled)
+	if err != nil {
+		if stderrors.Is(err, sql.ErrNoRows) || strings.Contains(strings.ToLower(err.Error()), "no such table") {
+			return true, nil
+		}
+		return false, err
+	}
+	return enabled != 0, nil
 }

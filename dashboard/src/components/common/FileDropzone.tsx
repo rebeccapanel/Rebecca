@@ -1,12 +1,5 @@
-import {
-	Box,
-	HStack,
-	Icon,
-	Text,
-	useColorModeValue,
-	VStack,
-} from "@chakra-ui/react";
-import { ArrowUpTrayIcon, DocumentTextIcon } from "@heroicons/react/24/outline";
+import { cn } from "lib/cn";
+import { FileText, Upload } from "lucide-react";
 import {
 	type ChangeEvent,
 	type DragEvent,
@@ -21,7 +14,7 @@ type FileDropzoneProps = {
 	accept?: string;
 	description?: ReactNode;
 	emptyText: ReactNode;
-	isDisabled?: boolean;
+	disabled?: boolean;
 	multiple?: boolean;
 	onFileSelect?: (file: File | null) => void;
 	onFilesSelect?: (files: File[]) => void;
@@ -48,7 +41,7 @@ export const FileDropzone = ({
 	accept,
 	description,
 	emptyText,
-	isDisabled = false,
+	disabled: isDisabled,
 	multiple = false,
 	onFileSelect,
 	onFilesSelect,
@@ -58,12 +51,6 @@ export const FileDropzone = ({
 }: FileDropzoneProps) => {
 	const inputRef = useRef<HTMLInputElement | null>(null);
 	const [isDragging, setIsDragging] = useState(false);
-	const borderColor = useColorModeValue("blackAlpha.300", "whiteAlpha.300");
-	const activeBorderColor = useColorModeValue("primary.500", "primary.300");
-	const bg = useColorModeValue("blackAlpha.50", "whiteAlpha.50");
-	const activeBg = useColorModeValue("primary.50", "whiteAlpha.100");
-	const iconBg = useColorModeValue("white", "whiteAlpha.100");
-	const mutedColor = useColorModeValue("gray.500", "gray.400");
 
 	const hasSelection = selectedFiles
 		? selectedFiles.length > 0
@@ -91,23 +78,21 @@ export const FileDropzone = ({
 		selectFile(event.target.files);
 	};
 
-	const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+	const handleDrop = (event: DragEvent<HTMLButtonElement>) => {
 		event.preventDefault();
 		setIsDragging(false);
-		if (isDisabled) {
-			return;
-		}
+		if (isDisabled) return;
 		selectFile(event.dataTransfer.files);
 	};
 
-	const handleDragOver = (event: DragEvent<HTMLDivElement>) => {
+	const handleDragOver = (event: DragEvent<HTMLButtonElement>) => {
 		event.preventDefault();
 		if (!isDisabled) {
 			setIsDragging(true);
 		}
 	};
 
-	const handleDragLeave = (event: DragEvent<HTMLDivElement>) => {
+	const handleDragLeave = (event: DragEvent<HTMLButtonElement>) => {
 		if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
 			return;
 		}
@@ -120,7 +105,7 @@ export const FileDropzone = ({
 		}
 	};
 
-	const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+	const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
 		if (event.key === "Enter" || event.key === " ") {
 			event.preventDefault();
 			openFileDialog();
@@ -128,33 +113,23 @@ export const FileDropzone = ({
 	};
 
 	return (
-		<Box
-			role="button"
-			tabIndex={isDisabled ? -1 : 0}
-			aria-disabled={isDisabled}
-			borderWidth="1px"
-			borderStyle="dashed"
-			borderColor={isDragging ? activeBorderColor : borderColor}
-			borderRadius="md"
-			bg={isDragging ? activeBg : bg}
-			cursor={isDisabled ? "not-allowed" : "pointer"}
-			opacity={isDisabled ? 0.55 : 1}
-			px={4}
-			py={4}
-			transition="background-color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease"
+		<button
+			type="button"
+			disabled={isDisabled}
 			onClick={openFileDialog}
 			onDragLeave={handleDragLeave}
 			onDragOver={handleDragOver}
 			onDrop={handleDrop}
 			onKeyDown={handleKeyDown}
-			_hover={
-				isDisabled
-					? undefined
-					: {
-							borderColor: activeBorderColor,
-							bg: activeBg,
-						}
-			}
+			className={cn(
+				"w-full rounded-[14px] border border-dashed px-4 py-4 text-start transition-[background-color,border-color,opacity] duration-150 focus-visible:outline-2 focus-visible:outline-panel-accent",
+				isDragging
+					? "border-panel-accent bg-panel-accent/10"
+					: "border-panel-border bg-panel-elevated/45",
+				!isDisabled &&
+					"min-[769px]:hover:border-panel-accent/70 min-[769px]:hover:bg-panel-elevated/80 cursor-pointer",
+				isDisabled && "cursor-not-allowed opacity-55",
+			)}
 		>
 			<input
 				ref={inputRef}
@@ -163,41 +138,44 @@ export const FileDropzone = ({
 				multiple={multiple}
 				disabled={isDisabled}
 				onChange={handleInputChange}
-				style={{ display: "none" }}
+				className="hidden"
 			/>
-			<HStack spacing={4} align="center">
-				<Box
-					borderWidth="1px"
-					borderColor={isDragging ? activeBorderColor : borderColor}
-					borderRadius="md"
-					bg={iconBg}
-					p={2.5}
+			<div className="flex flex-row items-center gap-3.5">
+				<span
+					className={cn(
+						"flex size-10 shrink-0 items-center justify-center rounded-[10px] border",
+						hasSelection || isDragging
+							? "border-panel-accent/40 bg-panel-accent/12 text-panel-accent"
+							: "border-panel-border bg-panel-surface text-panel-text-muted",
+					)}
 				>
-					<Icon
-						as={hasSelection ? DocumentTextIcon : ArrowUpTrayIcon}
-						boxSize={5}
-						color={hasSelection ? "primary.400" : mutedColor}
-					/>
-				</Box>
-				<VStack align="stretch" spacing={1} minW={0} flex="1">
-					<Text fontSize="sm" fontWeight="semibold" noOfLines={1}>
+					{hasSelection ? (
+						<FileText className="size-5" aria-hidden="true" />
+					) : (
+						<Upload className="size-5" aria-hidden="true" />
+					)}
+				</span>
+				<div className="flex min-w-0 flex-1 flex-col gap-0.5">
+					<p className="truncate text-[13px] font-semibold text-panel-text">
 						{selectedFile?.name || title}
-					</Text>
-					<Text fontSize="xs" color={mutedColor} noOfLines={2}>
+					</p>
+					<p className="line-clamp-2 text-[11px] text-panel-text-muted">
 						{selectedFile
 							? formatFileSize(selectedFile.size)
 							: description || emptyText}
-					</Text>
-				</VStack>
-				<Text
-					fontSize="xs"
-					fontWeight="semibold"
-					color={isDisabled ? mutedColor : "primary.300"}
-					whiteSpace="nowrap"
+					</p>
+				</div>
+				<span
+					className={cn(
+						"shrink-0 whitespace-nowrap rounded-[8px] border px-2.5 py-1 text-[11px] font-semibold",
+						isDisabled
+							? "border-panel-border text-panel-text-muted"
+							: "border-panel-border bg-panel-surface text-panel-accent",
+					)}
 				>
 					{emptyText}
-				</Text>
-			</HStack>
-		</Box>
+				</span>
+			</div>
+		</button>
 	);
 };

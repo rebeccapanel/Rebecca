@@ -16,6 +16,9 @@ downloads/
 eggs/
 .eggs/
 lib/
+# Frontend source folders named lib/ are app code, not Python build output.
+!dashboard/src/lib/
+!dashboard-next/src/lib/
 lib64/
 parts/
 sdist/

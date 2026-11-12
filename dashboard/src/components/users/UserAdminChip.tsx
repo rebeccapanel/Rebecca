@@ -1,4 +1,3 @@
-import { chakra } from "@chakra-ui/react";
 import type { FC } from "react";
 import { useTranslation } from "react-i18next";
 
@@ -21,13 +20,9 @@ export const UserAdminChip: FC<UserAdminChipProps> = ({
 	if (!show || !adminUsername) return null;
 
 	return (
-		<chakra.span
-			className="rb-user-admin-chip"
-			dir="ltr"
-			sx={{ unicodeBidi: "isolate" }}
-		>
+		<span dir="ltr" className="[unicode-bidi:isolate] rb-user-admin-chip">
 			{t("usersTable.by")}{" "}
-			<chakra.span fontWeight="semibold">{adminUsername}</chakra.span>
-		</chakra.span>
+			<span className="font-semibold">{adminUsername}</span>
+		</span>
 	);
 };

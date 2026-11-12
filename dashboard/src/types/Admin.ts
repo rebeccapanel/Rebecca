@@ -29,6 +29,8 @@ export enum UserPermissionToggle {
 	AdvancedActions = "advanced_actions",
 	SetFlow = "set_flow",
 	AllowCustomKey = "allow_custom_key",
+	ManageSpeedLimit = "manage_speed_limit",
+	ManageIPLimit = "manage_ip_limit",
 }
 
 export enum AdminManagementPermission {
@@ -66,10 +68,14 @@ export enum AdminSudoScope {
 	Backups = "backups",
 	Maintenance = "maintenance",
 	PHPMyAdmin = "phpmyadmin",
+	Notes = "notes",
 }
 
 export type UserPermissionSettings = Record<UserPermissionToggle, boolean> & {
 	max_data_limit_per_user: number | null;
+	min_data_limit_per_user: number | null;
+	max_speed_limit_per_user: number | null;
+	max_ip_limit_per_user: number | null;
 };
 
 export type AdminManagementPermissions = Record<
@@ -122,6 +128,8 @@ export type AdminServiceTrafficLimitPayload = {
 
 export type Admin = {
 	id: number;
+	group?: { id: number; name: string } | null;
+	tags?: string[];
 	username: string;
 	role: AdminRole;
 	permissions: AdminPermissions;
@@ -156,11 +164,9 @@ export type Admin = {
 	totp_enabled?: boolean;
 };
 
-export type AdminCreatePayload = {
-	username: string;
-	password: string;
-	role: AdminRole;
-	permissions: AdminPermissions;
+type AdminSettingsPayload = {
+	group_id?: number | null;
+	tags?: string[];
 	services?: number[];
 	telegram_id?: number | null;
 	data_limit?: number | null;
@@ -176,23 +182,17 @@ export type AdminCreatePayload = {
 	require_2fa?: boolean;
 };
 
-export type AdminUpdatePayload = {
+export type AdminCreatePayload = AdminSettingsPayload & {
+	username: string;
+	password: string;
+	role: AdminRole;
+	permissions: AdminPermissions;
+};
+
+export type AdminUpdatePayload = AdminSettingsPayload & {
 	password?: string;
 	role?: AdminRole;
 	permissions?: AdminPermissions;
-	services?: number[];
-	telegram_id?: number | null;
-	data_limit?: number | null;
-	created_traffic?: number | null;
-	traffic_limit_mode?: AdminTrafficLimitMode;
-	use_service_traffic_limits?: boolean;
-	show_user_traffic?: boolean;
-	delete_user_usage_limit_enabled?: boolean;
-	delete_user_usage_limit?: number | null;
-	expire?: number | null;
-	users_limit?: number | null;
-	service_limits?: AdminServiceTrafficLimitPayload[];
-	require_2fa?: boolean;
 };
 
 export type StandardAdminPermissionsBulkPayload = {

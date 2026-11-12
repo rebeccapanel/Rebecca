@@ -1186,7 +1186,7 @@ func (s Service) renderSubscriptionHTML(ctx context.Context, user UserDetail, re
 			content = templateContent.Content
 		}
 	}
-	return renderSubscriptionPageTemplate(content, user, rawLinks, path+"/usage", strings.TrimSpace(settings.SubscriptionSupportURL), req.Identifier, vpnInfo)
+	return renderSubscriptionPageTemplate(content, user, rawLinks, path+"/usage", strings.TrimSpace(settings.SubscriptionSupportURL), strings.TrimSpace(settings.SubscriptionProfileTitle), req.Identifier, vpnInfo)
 }
 
 func renderClashLikeYAML(username string, links []string, meta bool) (string, error) {
@@ -2495,9 +2495,44 @@ func v2rayOutboundFromShareLinkForDialect(link string, current bool) (string, ma
 		return v2rayVMessOutbound(link, current)
 	case "hysteria", "hysteria2", "hy2":
 		return v2rayHysteriaOutbound(parsed)
+	case "masque":
+		return v2rayMasqueOutbound(parsed)
 	default:
 		return "", nil, false
 	}
+}
+
+func v2rayMasqueOutbound(parsed *url.URL) (string, map[string]any, bool) {
+	port, ok := parseURLPort(parsed)
+	if !ok || parsed.User == nil {
+		return "", nil, false
+	}
+	user := parsed.User.Username()
+	pass, _ := parsed.User.Password()
+	if user == "" || pass == "" {
+		return "", nil, false
+	}
+	query := parsed.Query()
+	query.Set("security", "tls")
+	masqueSettings := map[string]any{"user": user, "pass": pass}
+	if path := query.Get("path"); path != "" {
+		masqueSettings["path"] = path
+	}
+	outbound := map[string]any{
+		"tag":      "proxy",
+		"protocol": "masque",
+		"settings": map[string]any{
+			"address": parsed.Hostname(),
+			"port":    port,
+		},
+		"streamSettings": map[string]any{
+			"network":        "masque",
+			"security":       "tls",
+			"masqueSettings": masqueSettings,
+			"tlsSettings":    v2rayTLSSettings(query),
+		},
+	}
+	return v2rayLinkRemark(parsed), outbound, true
 }
 
 func v2rayVLESSOutbound(parsed *url.URL, current bool) (string, map[string]any, bool) {
@@ -3667,7 +3702,7 @@ var (
 	subscriptionDirectUserLinksPattern     = regexp.MustCompile(`\{\{\s*user\.links\s*\}\}`)
 )
 
-func renderSubscriptionPageTemplate(content string, user UserDetail, links []string, usageURL string, supportURL string, token string, vpnInfo ...map[string]any) (string, error) {
+func renderSubscriptionPageTemplate(content string, user UserDetail, links []string, usageURL string, supportURL string, profileTitle string, token string, vpnInfo ...map[string]any) (string, error) {
 	if err := registerSubscriptionTemplateFilters(); err != nil {
 		return "", err
 	}
@@ -3678,7 +3713,7 @@ func renderSubscriptionPageTemplate(content string, user UserDetail, links []str
 	if err != nil {
 		return "", err
 	}
-	rendered, err := tpl.Execute(subscriptionTemplateContext(user, links, usageURL, supportURL, token, vpnInfo...))
+	rendered, err := tpl.Execute(subscriptionTemplateContext(user, links, usageURL, supportURL, profileTitle, token, vpnInfo...))
 	if err != nil {
 		return "", err
 	}
@@ -3722,7 +3757,7 @@ func normalizeLegacySubscriptionTemplate(content string) string {
 	return normalized
 }
 
-func subscriptionTemplateContext(user UserDetail, links []string, usageURL string, supportURL string, token string, vpnInfo ...map[string]any) pongo2.Context {
+func subscriptionTemplateContext(user UserDetail, links []string, usageURL string, supportURL string, profileTitle string, token string, vpnInfo ...map[string]any) pongo2.Context {
 	var dataLimit any
 	if user.DataLimit != nil && *user.DataLimit > 0 {
 		dataLimit = *user.DataLimit
@@ -3742,29 +3777,35 @@ func subscriptionTemplateContext(user UserDetail, links []string, usageURL strin
 	placeholder, _ := vpn["placeholder"].(bool)
 	context := pongo2.Context{
 		"user": map[string]any{
-			"username":                  user.Username,
-			"status":                    user.Status,
-			"status_class":              subscriptionStatusClass(user.Status),
-			"data_limit":                dataLimit,
-			"used_traffic":              user.UsedTraffic,
-			"data_limit_reset_strategy": resetStrategy,
-			"expire":                    expire,
-			"created_at":                user.CreatedAt,
-			"online_at":                 user.OnlineAt,
-			"links":                     links,
-			"subscription_url":          user.SubscriptionURL,
-			"subscription_urls":         user.SubscriptionURLs,
-			"service_id":                user.ServiceID,
-			"service_name":              user.ServiceName,
-			"placeholder":               placeholder,
+			"username":                   user.Username,
+			"status":                     user.Status,
+			"status_class":               subscriptionStatusClass(user.Status),
+			"data_limit":                 dataLimit,
+			"used_traffic":               user.UsedTraffic,
+			"data_limit_reset_strategy":  resetStrategy,
+			"expire":                     expire,
+			"created_at":                 user.CreatedAt,
+			"online_at":                  user.OnlineAt,
+			"links":                      links,
+			"subscription_url":           user.SubscriptionURL,
+			"subscription_urls":          user.SubscriptionURLs,
+			"service_id":                 user.ServiceID,
+			"service_name":               user.ServiceName,
+			"placeholder":                placeholder,
+			"subscription_profile_title": profileTitle,
+			"profile_title":              profileTitle,
+			"brand_name":                 profileTitle,
 		},
-		"links":             links,
-		"links_text":        legacyTemplateStringList(links),
-		"usage_url":         usageURL,
-		"support_url":       supportURL,
-		"token":             token,
-		"current_timestamp": time.Now().UTC().Unix(),
-		"remaining_days":    subscriptionRemainingDaysInt(user.Expire),
+		"links":                      links,
+		"links_text":                 legacyTemplateStringList(links),
+		"usage_url":                  usageURL,
+		"support_url":                supportURL,
+		"subscription_profile_title": profileTitle,
+		"profile_title":              profileTitle,
+		"brand_name":                 profileTitle,
+		"token":                      token,
+		"current_timestamp":          time.Now().UTC().Unix(),
+		"remaining_days":             subscriptionRemainingDaysInt(user.Expire),
 	}
 	for _, key := range []string{"openvpn", "wireguard", "amneziawg", "l2tp", "pptp", "ikev2", "anyconnect", "sstp", "gre"} {
 		if value, ok := vpn[key]; ok {

@@ -10,7 +10,7 @@ export type MultiValueAutocompleteOption = PanelSelectOption;
 type MultiValueAutocompleteProps = {
 	allowCustom?: boolean;
 	emptyText?: string;
-	isDisabled?: boolean;
+	disabled?: boolean;
 	maxValues?: number;
 	options?: MultiValueAutocompleteOption[];
 	placeholder?: string;
@@ -24,7 +24,7 @@ export const splitMultiValueText = splitPanelSelectText;
 export const MultiValueAutocomplete: FC<MultiValueAutocompleteProps> = ({
 	allowCustom = true,
 	emptyText,
-	isDisabled = false,
+	disabled: isDisabled,
 	maxValues,
 	options = [],
 	placeholder,
@@ -35,7 +35,7 @@ export const MultiValueAutocomplete: FC<MultiValueAutocompleteProps> = ({
 	<PanelSelect
 		mode="multiple"
 		allowCustom={allowCustom}
-		isDisabled={isDisabled}
+		disabled={isDisabled}
 		emptyText={emptyText}
 		options={options}
 		placeholder={placeholder}

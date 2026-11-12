@@ -1,21 +1,12 @@
-import {
-	Button,
-	FormControl,
-	FormHelperText,
-	FormLabel,
-	HStack,
-	Input,
-	Modal,
-	ModalCloseButton,
-	ModalOverlay,
-	Spinner,
-	Tag,
-	Text,
-	VStack,
-	Wrap,
-	WrapItem,
-} from "@chakra-ui/react";
-import { BoltIcon } from "@heroicons/react/24/outline";
+import { Field, FieldDescription, FieldLabel } from "components/ui/field";
+import { Input } from "components/ui/input";
+import { Badge } from "components/ui/badge";
+import { Button } from "components/ui/button";
+import { Dialog } from "components/ui/dialog";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+import { Zap } from "lucide-react";
+
+import { cn } from "lib/cn";
 import { type FC, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { fetch as apiFetch } from "service/http";
@@ -46,7 +37,7 @@ type RouteTestResult = {
 };
 
 type RouteTestModalProps = {
-	isOpen: boolean;
+	open: boolean;
 	onClose: () => void;
 	rule: RoutingRule | null;
 	target: string;
@@ -73,7 +64,7 @@ const formatBytes = (value: number) => {
 };
 
 export const RouteTestModal: FC<RouteTestModalProps> = ({
-	isOpen,
+	open: isOpen,
 	onClose,
 	rule,
 	target,
@@ -128,78 +119,69 @@ export const RouteTestModal: FC<RouteTestModalProps> = ({
 	};
 
 	return (
-		<Modal isOpen={isOpen} onClose={onClose} isCentered size="lg">
-			<ModalOverlay />
+		<Dialog open={isOpen} onOpenChange={(open) => { if (!open) (onClose)(); }}>
+			
 			<XrayModalContent>
 				<XrayModalHeader>{t("pages.xray.routeTest.title")}</XrayModalHeader>
-				<ModalCloseButton />
+				
 				<XrayModalBody>
-					<VStack align="stretch" spacing={3}>
+					<div className="flex flex-col items-stretch gap-3">
 						<XrayDialogSection>
-							<Text fontSize="sm" color="panel.textMuted">
+							<p className="text-[0.875rem] text-panel-text-muted">
 								{isMasterTarget
 									? t("pages.xray.routeTester.nodeTargetRequired")
 									: t("pages.xray.routeTest.description", { target: targetName })}
-							</Text>
+							</p>
 						</XrayDialogSection>
-						<FormControl isRequired>
-							<FormLabel>{t("pages.xray.routeTest.url")}</FormLabel>
-							<Input
-								value={testURL}
-								placeholder="https://example.com/"
-								onChange={(event) => setTestURL(event.target.value)}
-							/>
-							<FormHelperText>{t("pages.xray.routeTest.urlHint")}</FormHelperText>
-						</FormControl>
-						<FormControl>
-							<FormLabel>{t("pages.xray.routeTest.inboundTag")}</FormLabel>
+						<Field>
+							<FieldLabel>{t("pages.xray.routeTest.url")}</FieldLabel>
+							<Input value={testURL} onChange={(event) => setTestURL(event.target.value)} />
+							<FieldDescription>{t("pages.xray.routeTest.urlHint")}</FieldDescription>
+						</Field>
+						<Field>
+							<FieldLabel>{t("pages.xray.routeTest.inboundTag")}</FieldLabel>
 							<Input value={inboundTag} onChange={(event) => setInboundTag(event.target.value)} />
-							<FormHelperText>{t("pages.xray.routeTest.inboundHint")}</FormHelperText>
-						</FormControl>
+							<FieldDescription>{t("pages.xray.routeTest.inboundHint")}</FieldDescription>
+						</Field>
 						{result && (
 							<XrayDialogSection>
-								<VStack align="stretch" spacing={2}>
-									<Text color={result.success ? "green.300" : "red.300"} fontWeight="semibold" fontSize="sm">
+								<div className="flex flex-col items-stretch gap-2">
+									<p className={cn("font-semibold text-[0.875rem]", result.success ? "text-green-300" : "text-red-300")}>
 										{result.success
 											? t("pages.xray.routeTest.success")
 											: result.error || t("pages.xray.routeTest.failed")}
-									</Text>
+									</p>
 									{result.success && (
-										<HStack spacing={2} flexWrap="wrap">
-											<Tag size="sm">{result.delay ?? 0} ms</Tag>
-											{result.statusCode ? <Tag size="sm">HTTP {result.statusCode}</Tag> : null}
-											{result.outboundTag ? <Tag size="sm" colorScheme="blue">{result.outboundTag}</Tag> : null}
-											{result.groupTags?.map((tag) => <Tag key={tag} size="sm" colorScheme="orange">{tag}</Tag>)}
-										</HStack>
+										<div className="flex flex-row items-center gap-2 flex-wrap">
+											<Badge>{result.delay ?? 0} ms</Badge>
+											{result.statusCode ? <Badge>HTTP {result.statusCode}</Badge> : null}
+											{result.outboundTag ? <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200 dark:bg-blue-500/20 dark:text-blue-200">{result.outboundTag}</Badge> : null}
+											{result.groupTags?.map((tag) => <Badge key={tag} className="bg-orange-100 text-orange-800 hover:bg-orange-200 dark:bg-orange-500/20 dark:text-orange-200">{tag}</Badge>)}
+										</div>
 									)}
 									{result.outboundTraffic?.length ? (
-										<Wrap spacing={2}>
+										<div className="flex flex-wrap gap-2">
 											{result.outboundTraffic.map((traffic) => (
-												<WrapItem key={traffic.tag}>
-													<Tag size="sm" colorScheme="green">
+												<div key={traffic.tag}>
+													<Badge className="bg-green-600 text-white">
 														{traffic.tag}: {formatBytes(traffic.up + traffic.down)}
-													</Tag>
-												</WrapItem>
+													</Badge>
+												</div>
 											))}
-										</Wrap>
+										</div>
 									) : null}
-								</VStack>
+								</div>
 							</XrayDialogSection>
 						)}
-					</VStack>
+					</div>
 				</XrayModalBody>
 				<XrayModalFooter>
-					<Button variant="ghost" onClick={onClose}>{t("close")}</Button>
-					<Button
-						leftIcon={isTesting ? <Spinner size="xs" /> : <BoltIcon />}
-						colorScheme="primary"
-						onClick={runTest}
-						isDisabled={isTesting || isMasterTarget || !testURL.trim()}
-					>
+					<Button onClick={onClose} variant="ghost">{t("close")}</Button>
+					<Button onClick={runTest} disabled={isMasterTarget || !testURL.trim()} loading={isTesting}><Zap />
 						{t("pages.xray.routeTester.test")}
 					</Button>
 				</XrayModalFooter>
 			</XrayModalContent>
-		</Modal>
+		</Dialog>
 	);
 };

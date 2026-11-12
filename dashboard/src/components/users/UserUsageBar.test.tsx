@@ -1,4 +1,4 @@
-import { ChakraProvider } from "@chakra-ui/react";
+import { ColorModeProvider } from "lib/color-mode";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -10,9 +10,9 @@ const GB = 1024 ** 3;
 
 const render = (used: number, total: number | null) =>
 	renderToStaticMarkup(
-		<ChakraProvider>
+		<ColorModeProvider>
 			<UserUsageBar variant="stacked" used={used} total={total} />
-		</ChakraProvider>,
+		</ColorModeProvider>,
 	);
 
 describe("UserUsageBar stacked variant", () => {

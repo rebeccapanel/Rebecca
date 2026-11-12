@@ -1,16 +1,9 @@
-import {
-	Button,
-	FormControl,
-	FormErrorMessage,
-	FormHelperText,
-	FormLabel,
-	HStack,
-	SimpleGrid,
-	Stack,
-	Switch,
-	Text,
-	Tooltip,
-} from "@chakra-ui/react";
+import { Button } from "components/ui/button";
+import { Switch } from "components/ui/switch";
+import { Field, FieldDescription, FieldError, FieldLabel } from "components/ui/field";
+import { Tooltip, TooltipContent, TooltipTrigger } from "components/ui/tooltip";
+import { cn } from "lib/cn";
+
 import { useTranslation } from "react-i18next";
 import {
 	AdminManagementPermission,
@@ -28,10 +21,19 @@ type AdminPermissionsEditorProps = {
 	maxDataLimitValue?: string;
 	onMaxDataLimitChange?: (value: string) => void;
 	maxDataLimitError?: string;
+	minDataLimitValue?: string;
+	onMinDataLimitChange?: (value: string) => void;
+	minDataLimitError?: string;
+	maxSpeedLimitValue?: string;
+	onMaxSpeedLimitChange?: (value: string) => void;
+	maxSpeedLimitError?: string;
+	maxIPLimitValue?: string;
+	onMaxIPLimitChange?: (value: string) => void;
+	maxIPLimitError?: string;
 	showReset?: boolean;
 	onReset?: () => void;
 	hideExtendedSections?: boolean;
-	isReadOnly?: boolean;
+	readOnly?: boolean;
 	forceDesktopLayout?: boolean;
 };
 
@@ -81,6 +83,14 @@ const userPermissionKeys: Array<{ key: UserPermissionToggle; label: string }> =
 		{
 			key: UserPermissionToggle.AllowCustomKey,
 			label: "admins.permissions.customKey",
+		},
+		{
+			key: UserPermissionToggle.ManageSpeedLimit,
+			label: "admins.permissions.manageSpeedLimit",
+		},
+		{
+			key: UserPermissionToggle.ManageIPLimit,
+			label: "admins.permissions.manageIPLimit",
 		},
 	];
 
@@ -144,6 +154,7 @@ const sudoPermissionKeys: Array<{ key: AdminSudoScope; label: string }> = [
 	{ key: AdminSudoScope.Backups, label: "admins.sudo.backups" },
 	{ key: AdminSudoScope.Maintenance, label: "admins.sudo.maintenance" },
 	{ key: AdminSudoScope.PHPMyAdmin, label: "admins.sudo.phpmyadmin" },
+	{ key: AdminSudoScope.Notes, label: "admins.sudo.notes" },
 ];
 
 type PermissionKeyMap = {
@@ -160,14 +171,23 @@ export const AdminPermissionsEditor = ({
 	maxDataLimitValue,
 	onMaxDataLimitChange,
 	maxDataLimitError,
+	minDataLimitValue,
+	onMinDataLimitChange,
+	minDataLimitError,
+	maxSpeedLimitValue,
+	onMaxSpeedLimitChange,
+	maxSpeedLimitError,
+	maxIPLimitValue,
+	onMaxIPLimitChange,
+	maxIPLimitError,
 	showReset = false,
 	onReset,
 	hideExtendedSections = false,
-	isReadOnly = false,
+	readOnly: isReadOnly,
 	forceDesktopLayout = false,
 }: AdminPermissionsEditorProps) => {
 	const { t } = useTranslation();
-	const gridColumns = forceDesktopLayout ? 2 : { base: 1, md: 2 };
+	const gridColumns = forceDesktopLayout ? "grid-cols-2" : "grid-cols-1 md:grid-cols-2";
 
 	const updatePermissions = <T extends keyof PermissionKeyMap>(
 		section: T,
@@ -201,213 +221,173 @@ export const AdminPermissionsEditor = ({
 		onMaxDataLimitChange?.(value);
 	};
 
+	const handleMinDataLimitChange = (value: string) => {
+		onMinDataLimitChange?.(value);
+	};
+
 	return (
-		<Stack spacing={6}>
-			<HStack justify="space-between" align="center">
-				<Text fontWeight="semibold">
+		<div className="flex flex-col gap-6">
+			<div className="flex flex-row gap-2 justify-between items-center">
+				<p className="font-semibold">
 					{t("admins.permissions.userCapabilities")}
-				</Text>
+				</p>
 				{showReset && onReset && (
-					<Button
-						size="xs"
-						variant="ghost"
-						onClick={onReset}
-						isDisabled={isReadOnly}
-					>
+					<Button onClick={onReset} disabled={isReadOnly} variant="ghost" size="xs">
 						{t("admins.permissions.resetToDefaults")}
 					</Button>
 				)}
-			</HStack>
-			<SimpleGrid columns={gridColumns} spacing={3}>
+			</div>
+			<div className={cn("grid gap-3", gridColumns)}>
 				{userPermissionKeys.map(({ key, label }) => (
-					<HStack
-						key={key}
-						justify="space-between"
-						align="center"
-						borderWidth="1px"
-						borderRadius="md"
-						px={3}
-						py={2}
-						minW={0}
-					>
-						<Text fontSize="sm" flex="1" minW={0} lineHeight="short">
+					<div key={key} className="flex flex-row gap-2 justify-between items-center border rounded-md px-3 py-2 min-w-0!">
+						<p className="text-[0.875rem] flex-1 min-w-0! leading-[1.375]">
 							{t(label)}
-						</Text>
-						<Switch
-							flexShrink={0}
-							isChecked={Boolean(value.users[key])}
-							isDisabled={isReadOnly}
-							onChange={(event) =>
-								updatePermissions("users", key, event.target.checked)
-							}
-						/>
-					</HStack>
+						</p>
+						<Switch checked={Boolean(value.users[key])} disabled={isReadOnly} onCheckedChange={(checked: boolean) => updatePermissions("users", key, checked)} className="shrink-0" />
+					</div>
 				))}
-			</SimpleGrid>
-			<FormControl isInvalid={Boolean(maxDataLimitError)}>
-				<FormLabel>{t("admins.permissions.maxDataPerUser")}</FormLabel>
-				<Tooltip
-					label={t("admins.permissions.unlimitedEnabledHint")}
-					isDisabled={!value.users.allow_unlimited_data}
-					hasArrow
-					openDelay={200}
-					placement="top"
-					gutter={6}
-					shouldWrapChildren
-				>
+			</div>
+			<Field data-invalid={Boolean(maxDataLimitError)}>
+				<FieldLabel>{t("admins.permissions.maxDataPerUser")}</FieldLabel>
+				<Tooltip>
+<TooltipTrigger asChild>
 					<NumericInput
 						min={0}
 						step={1}
-						placeholder={t("admins.permissions.maxDataHint")}
 						value={maxDataLimitValue}
 						onChange={handleMaxDataLimitChange}
-						isDisabled={value.users.allow_unlimited_data || isReadOnly}
+						disabled={value.users.allow_unlimited_data || isReadOnly}
 					/>
-				</Tooltip>
+				</TooltipTrigger>
+<TooltipContent>{t("admins.permissions.unlimitedEnabledHint")}</TooltipContent>
+</Tooltip>
 				{maxDataLimitError ? (
-					<FormErrorMessage>{maxDataLimitError}</FormErrorMessage>
+					<FieldError>{maxDataLimitError}</FieldError>
 				) : (
-					<FormHelperText>
+					<FieldDescription>
 						{value.users.allow_unlimited_data
 							? t("admins.permissions.unlimitedEnabledHint")
 							: t("admins.permissions.maxDataDescription")}
-					</FormHelperText>
+					</FieldDescription>
 				)}
-			</FormControl>
-			{!hideExtendedSections && (
-				<Stack spacing={3}>
-					<Text fontWeight="semibold">{t("admins.sudo.title")}</Text>
-					<SimpleGrid columns={gridColumns} spacing={3}>
+			</Field>
+							<Field data-invalid={Boolean(maxSpeedLimitError)}>
+					<FieldLabel>{t("admins.permissions.maxSpeedPerUser")}</FieldLabel>
+			<Field data-invalid={Boolean(minDataLimitError)}>
+				<FieldLabel>{t("admins.permissions.minDataPerUser")}</FieldLabel>
+				<NumericInput
+					min={0}
+					step={1}
+					placeholder={t("admins.permissions.minDataHint")}
+					value={minDataLimitValue ?? ""}
+					onChange={handleMinDataLimitChange}
+					disabled={isReadOnly}
+				/>
+				{minDataLimitError ? (
+					<FieldError>{minDataLimitError}</FieldError>
+				) : (
+					<FieldDescription>{t("admins.permissions.minDataDescription")}</FieldDescription>
+				)}
+			</Field>
+					<NumericInput
+						min={0}
+						step={1}
+						value={maxSpeedLimitValue ?? ""}
+						onChange={(nextValue) => onMaxSpeedLimitChange?.(nextValue)}
+						disabled={!value.users.manage_speed_limit || isReadOnly}
+					/>
+					{maxSpeedLimitError ? (
+						<FieldError>{maxSpeedLimitError}</FieldError>
+					) : (
+						<FieldDescription>{t("admins.permissions.maxSpeedDescription")}</FieldDescription>
+					)}
+				</Field>
+				<Field data-invalid={Boolean(maxIPLimitError)}>
+					<FieldLabel>{t("admins.permissions.maxIPPerUser")}</FieldLabel>
+					<NumericInput
+						min={0}
+						step={1}
+						value={maxIPLimitValue ?? ""}
+						onChange={(nextValue) => onMaxIPLimitChange?.(nextValue)}
+						disabled={!value.users.manage_ip_limit || isReadOnly}
+					/>
+					{maxIPLimitError ? (
+						<FieldError>{maxIPLimitError}</FieldError>
+					) : (
+						<FieldDescription>{t("admins.permissions.maxIPDescription")}</FieldDescription>
+					)}
+				</Field>
+{!hideExtendedSections && (
+				<div className="flex flex-col gap-3">
+					<p className="font-semibold">{t("admins.sudo.title")}</p>
+					<div className={cn("grid gap-3", gridColumns)}>
 						{sudoPermissionKeys.map(({ key, label }) => (
-							<HStack
-								key={key}
-								justify="space-between"
-								align="center"
-								borderWidth="1px"
-								borderRadius="md"
-								px={3}
-								py={2}
-								minW={0}
-							>
-								<Text fontSize="sm" flex="1" minW={0}>
+							<div key={key} className="flex flex-row gap-2 justify-between items-center border rounded-md px-3 py-2 min-w-0!">
+								<p className="text-[0.875rem] flex-1 min-w-0!">
 									{t(label)}
-								</Text>
-								<Switch
-									isChecked={Boolean(value.sudo?.[key])}
-									isDisabled={isReadOnly}
-									onChange={(event) =>
-										updatePermissions("sudo", key, event.target.checked)
-									}
-								/>
-							</HStack>
+								</p>
+								<Switch checked={Boolean(value.sudo?.[key])} disabled={isReadOnly} onCheckedChange={(checked: boolean) => updatePermissions("sudo", key, checked)} />
+							</div>
 						))}
-					</SimpleGrid>
-				</Stack>
+					</div>
+				</div>
 			)}
 			{!hideExtendedSections && (
-				<Stack spacing={3}>
-					<Text fontWeight="semibold">
+				<div className="flex flex-col gap-3">
+					<p className="font-semibold">
 						{t("admins.permissions.manageAdminsTitle")}
-					</Text>
-					<SimpleGrid columns={gridColumns} spacing={3}>
+					</p>
+					<div className={cn("grid gap-3", gridColumns)}>
 						{adminManagementKeys.map(({ key, label }) => (
-							<HStack
-								key={key}
-								justify="space-between"
-								align="center"
-								borderWidth="1px"
-								borderRadius="md"
-								px={3}
-								py={2}
-								minW={0}
-							>
-								<Text fontSize="sm" flex="1" minW={0} lineHeight="short">
+							<div key={key} className="flex flex-row gap-2 justify-between items-center border rounded-md px-3 py-2 min-w-0!">
+								<p className="text-[0.875rem] flex-1 min-w-0! leading-[1.375]">
 									{t(label)}
-								</Text>
-								<Switch
-									flexShrink={0}
-									isChecked={Boolean(value.admin_management[key])}
-									isDisabled={isReadOnly}
-									onChange={(event) =>
-										updatePermissions(
+								</p>
+								<Switch checked={Boolean(value.admin_management[key])} disabled={isReadOnly} onCheckedChange={(checked: boolean) => updatePermissions(
 											"admin_management",
 											key,
-											event.target.checked,
-										)
-									}
-								/>
-							</HStack>
+											checked,
+										)} className="shrink-0" />
+							</div>
 						))}
-					</SimpleGrid>
-				</Stack>
+					</div>
+				</div>
 			)}
 			{!hideExtendedSections && (
-				<Stack spacing={3}>
-					<Text fontWeight="semibold">
+				<div className="flex flex-col gap-3">
+					<p className="font-semibold">
 						{t("admins.permissions.sectionAccess")}
-					</Text>
-					<SimpleGrid columns={gridColumns} spacing={3}>
+					</p>
+					<div className={cn("grid gap-3", gridColumns)}>
 						{sectionPermissionKeys.map(({ key, label }) => (
-							<HStack
-								key={key}
-								justify="space-between"
-								align="center"
-								borderWidth="1px"
-								borderRadius="md"
-								px={3}
-								py={2}
-								minW={0}
-							>
-								<Text fontSize="sm" flex="1" minW={0} lineHeight="short">
+							<div key={key} className="flex flex-row gap-2 justify-between items-center border rounded-md px-3 py-2 min-w-0!">
+								<p className="text-[0.875rem] flex-1 min-w-0! leading-[1.375]">
 									{t(label)}
-								</Text>
-								<Switch
-									flexShrink={0}
-									isChecked={Boolean(value.sections[key])}
-									isDisabled={isReadOnly}
-									onChange={(event) =>
-										updatePermissions("sections", key, event.target.checked)
-									}
-								/>
-							</HStack>
+								</p>
+								<Switch checked={Boolean(value.sections[key])} disabled={isReadOnly} onCheckedChange={(checked: boolean) => updatePermissions("sections", key, checked)} className="shrink-0" />
+							</div>
 						))}
-					</SimpleGrid>
-				</Stack>
+					</div>
+				</div>
 			)}
-			<Stack spacing={3}>
-				<Text fontWeight="semibold">{t("admins.permissions.self.title")}</Text>
-				<SimpleGrid columns={gridColumns} spacing={3}>
+			<div className="flex flex-col gap-3">
+				<p className="font-semibold">{t("admins.permissions.self.title")}</p>
+				<div className={cn("grid gap-3", gridColumns)}>
 					{selfPermissionKeys.map(({ key, label }) => (
-						<HStack
-							key={key}
-							justify="space-between"
-							align="center"
-							borderWidth="1px"
-							borderRadius="md"
-							px={3}
-							py={2}
-							minW={0}
-						>
-							<Text fontSize="sm" flex="1" minW={0} lineHeight="short">
+						<div key={key} className="flex flex-row gap-2 justify-between items-center border rounded-md px-3 py-2 min-w-0!">
+							<p className="text-[0.875rem] flex-1 min-w-0! leading-[1.375]">
 								{t(label)}
-							</Text>
-							<Switch
-								flexShrink={0}
-								isChecked={Boolean(value.self_permissions?.[key])}
-								isDisabled={isReadOnly}
-								onChange={(event) =>
-									updatePermissions(
+							</p>
+							<Switch checked={Boolean(value.self_permissions?.[key])} disabled={isReadOnly} onCheckedChange={(checked: boolean) => updatePermissions(
 										"self_permissions",
 										key,
-										event.target.checked,
-									)
-								}
-							/>
-						</HStack>
+										checked,
+									)} className="shrink-0" />
+						</div>
 					))}
-				</SimpleGrid>
-			</Stack>
-		</Stack>
+				</div>
+			</div>
+		</div>
 	);
 };
 

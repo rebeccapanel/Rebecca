@@ -1,4 +1,8 @@
-import { Badge, Text } from "@chakra-ui/react";
+import { toneClass } from "lib/tone";
+import { Badge } from "components/ui/badge";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+
+import { cn } from "lib/cn";
 import { statusColors } from "constants/UserSettings";
 import type { FC } from "react";
 import { useTranslation } from "react-i18next";
@@ -24,52 +28,19 @@ export const NodeModalStatusBadge: FC<UserStatusProps> = ({
 	const Icon = statusColors[userStatus].icon;
 	return (
 		<>
-			<Badge
-				className="rb-status-badge"
-				colorScheme={statusColors[userStatus].statusColor}
-				rounded="full"
-				display="inline-flex"
-				px={3}
-				py={1}
-				columnGap={compact ? 1 : 2}
-				alignItems="center"
-				justifyContent="center"
-				flexWrap="nowrap"
-				lineHeight="1"
-				whiteSpace="nowrap"
-				minW={compact ? "64px" : "72px"}
-				maxW="full"
-			>
-				<Icon w={compact ? 3 : 4} flexShrink={0} />
+			<Badge className={cn(toneClass(statusColors[userStatus].statusColor), cn("rounded-full inline-flex px-3 py-1 items-center justify-center flex-nowrap leading-[1] whitespace-nowrap max-w-full", compact ? "gap-x-1" : "gap-x-2", compact ? "min-w-[64px]!" : "min-w-[72px]!", "rb-status-badge"))}>
+				<Icon className={cn("shrink-0", compact ? "w-3" : "w-4")} />
 				{showDetail && (
-					<Text
-						className="rb-status-badge-text"
-						textTransform="capitalize"
-						fontSize={compact ? ".7rem" : ".875rem"}
-						lineHeight={compact ? "1rem" : "1.25rem"}
-						fontWeight="medium"
-						letterSpacing="0"
-						whiteSpace="nowrap"
-						textAlign="center"
-					>
+					<p className={cn("capitalize font-medium tracking-[0] whitespace-nowrap text-center", compact ? "text-[.7rem]" : "text-[.875rem]", compact ? "leading-[1rem]" : "leading-[1.25rem]", "rb-status-badge-text")}>
 						{userStatus && t(`nodeModal.status.${userStatus}`)}
 						{extraText && `: ${extraText}`}
-					</Text>
+					</p>
 				)}
 			</Badge>
 			{showDetail && expiryDate && (
-				<Text
-					display="inline-block"
-					fontSize="xs"
-					fontWeight="medium"
-					ml="2"
-					color="gray.600"
-					_dark={{
-						color: "gray.400",
-					}}
-				>
+				<p className="inline-block text-[0.75rem] font-medium ms-2 text-gray-600 dark:text-gray-400">
 					{t(dateInfo.status, { time: dateInfo.time })}
-				</Text>
+				</p>
 			)}
 		</>
 	);

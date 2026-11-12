@@ -369,3 +369,27 @@ func waitForHit(t *testing.T, hit <-chan struct{}, kind string) {
 		t.Fatalf("%s traffic did not reach its backend", kind)
 	}
 }
+
+func TestHAProxyInboundMatchersReadXHTTPPathFromEitherSettingsKey(t *testing.T) {
+	for _, tc := range []struct{ network, key string }{
+		{"xhttp", "xhttpSettings"},
+		{"xhttp", "splithttpSettings"},
+		{"splithttp", "xhttpSettings"},
+		{"splithttp", "splithttpSettings"},
+	} {
+		stream := map[string]any{"network": tc.network, "security": "none", tc.key: map[string]any{"path": "/xh?ed=1"}}
+		matchers := haproxyInboundMatchers(stream, tc.network, "none")
+		if len(matchers) != 1 || matchers[0].Type != "http_path" || matchers[0].Value != "/xh" {
+			t.Fatalf("%s/%s: unexpected matchers %v", tc.network, tc.key, matchers)
+		}
+	}
+}
+
+func TestHAProxyTLSInboundWithoutSNIAcceptsUserSuppliedSNI(t *testing.T) {
+	stream := map[string]any{"network": "xhttp", "security": "tls", "xhttpSettings": map[string]any{"path": "/x"}}
+	matchers := haproxyInboundMatchers(stream, "xhttp", "tls")
+	candidate := HAProxyCandidate{Tag: "cf", Matchers: matchers}
+	if !candidateHasMatcher(candidate, "sni", "www.example.com") || candidateHasMatcher(candidate, "http_host", "www.example.com") {
+		t.Fatalf("unexpected matchers %v", matchers)
+	}
+}

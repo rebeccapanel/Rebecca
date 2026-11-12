@@ -1,4 +1,4 @@
-import { ChakraProvider } from "@chakra-ui/react";
+import { ColorModeProvider } from "lib/color-mode";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { StaticRouter } from "react-router-dom";
@@ -26,11 +26,11 @@ vi.mock("components/SystemDiagnostics", async () => ({
 
 const render = () =>
 	renderToStaticMarkup(
-		<ChakraProvider>
+		<ColorModeProvider>
 			<StaticRouter basename="/dashboard" location="/dashboard/errors">
 				<ErrorsPage />
 			</StaticRouter>
-		</ChakraProvider>,
+		</ColorModeProvider>,
 	);
 
 describe("errors page", () => {
@@ -77,7 +77,7 @@ describe("errors page", () => {
 		});
 		const html = render();
 		for (const text of [
-			"errors",
+			"diagnostics.menu",
 			"stopped-core-detail",
 			"backup-detail",
 			"warning-detail",

@@ -1,4 +1,4 @@
-import { ChakraProvider } from "@chakra-ui/react";
+import { ColorModeProvider } from "lib/color-mode";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -9,23 +9,23 @@ Object.assign(globalThis, { React });
 describe("ResourceSummaryPills", () => {
 	it("renders each label with its value and nothing for an empty list", () => {
 		const markup = renderToStaticMarkup(
-			<ChakraProvider>
+			<ColorModeProvider>
 				<ResourceSummaryPills
 					items={[
 						{ label: "Usage", value: "1.5 GB", colorScheme: "blue" },
 						{ label: "Speed", value: "↑ 1 MB/s · ↓ 2 MB/s" },
 					]}
 				/>
-			</ChakraProvider>,
+			</ColorModeProvider>,
 		);
 		expect(markup).toContain("Usage");
 		expect(markup).toContain("1.5 GB");
 		expect(markup).toContain("↑ 1 MB/s · ↓ 2 MB/s");
 
 		const empty = renderToStaticMarkup(
-			<ChakraProvider>
+			<ColorModeProvider>
 				<ResourceSummaryPills items={[]} />
-			</ChakraProvider>,
+			</ColorModeProvider>,
 		);
 		expect(empty).not.toContain("Usage");
 	});

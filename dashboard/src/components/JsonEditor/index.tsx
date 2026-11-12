@@ -1,17 +1,13 @@
-import {
-	Badge,
-	Box,
-	Button,
-	HStack,
-	Text,
-	Tooltip,
-	useColorMode,
-	useColorModeValue,
-	useToast,
-	VStack,
-} from "@chakra-ui/react";
-import JSONEditor, { type JSONEditorMode } from "jsoneditor";
-import "jsoneditor/dist/jsoneditor.css";
+import { toneClass } from "lib/tone";
+import { Badge } from "components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "components/ui/tooltip";
+import { Button } from "components/ui/button";
+import { toast } from "components/ui/sonner";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+import { useColorMode } from "lib/color-mode";
+
+import { cn } from "lib/cn";
+import AceEditor from "react-ace";
 import "ace-builds/src-noconflict/ace";
 import "ace-builds/src-noconflict/mode-json";
 import "ace-builds/src-noconflict/ext-searchbox";
@@ -20,12 +16,13 @@ import "ace-builds/src-noconflict/theme-one_dark";
 import "ace-builds/src-noconflict/theme-github";
 import {
 	forwardRef,
+	type ReactNode,
 	useCallback,
 	useEffect,
+	useId,
 	useMemo,
 	useRef,
 	useState,
-	type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
 import { copyTextToClipboard } from "../../utils/clipboard";
@@ -38,7 +35,6 @@ import "./styles.css";
 export type JSONEditorProps = {
 	onChange: (value: string) => void;
 	json: unknown;
-	mode?: JSONEditorMode;
 	label?: string;
 	description?: string;
 	minHeight?: string | number;
@@ -123,7 +119,6 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 		{
 			json,
 			onChange,
-			mode = "code",
 			label,
 			description,
 			minHeight = "320px",
@@ -140,20 +135,19 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 	) => {
 		const { t } = useTranslation();
 		const { colorMode } = useColorMode();
-		const toast = useToast();
+		
+		const editorId = useId();
 
-		const jsonEditorContainer = useRef<HTMLDivElement>(null);
-		const jsonEditorRef = useRef<JSONEditor | null>(null);
+		const aceRef = useRef<AceEditor>(null);
+		const isTouch = typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches;
+		const [text, setText] = useState(() => getJsonText(json));
+		const lastTextRef = useRef(text);
 		const latestOnChangeRef = useRef(onChange);
 		const latestOnValidityChangeRef = useRef(onValidityChange);
-		const pendingPropTextRef = useRef<string | null>(null);
-		const lastEmittedTextRef = useRef<string>("");
 		const errorMarkerRef = useRef<number | null>(null);
 		const highlightMarkerRefs = useRef<number[]>([]);
-		const validationTimerRef = useRef<number | null>(null);
-		const [validation, setValidation] = useState<JsonValidation>(() =>
-			validateJsonText(getJsonText(json)),
-		);
+
+		const validation = useMemo(() => validateJsonText(text), [text]);
 
 		useEffect(() => {
 			latestOnChangeRef.current = onChange;
@@ -163,109 +157,46 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 			latestOnValidityChangeRef.current = onValidityChange;
 		}, [onValidityChange]);
 
-		const emitValidation = useCallback((next: JsonValidation) => {
-			setValidation(next);
-			latestOnValidityChangeRef.current?.(next.valid, next.error);
+		useEffect(() => {
+			latestOnValidityChangeRef.current?.(validation.valid, validation.error);
+		}, [validation]);
+
+		useEffect(() => {
+			const next = getJsonText(json);
+			if (next === lastTextRef.current) {
+				return;
+			}
+			lastTextRef.current = next;
+			setText(next);
+		}, [json]);
+
+		const applyText = useCallback((value: string) => {
+			lastTextRef.current = value;
+			setText(value);
+			latestOnChangeRef.current(value);
 		}, []);
 
-		const scheduleValidation = useCallback(
-			(value: string, immediate = false) => {
-				if (validationTimerRef.current !== null) {
-					window.clearTimeout(validationTimerRef.current);
-					validationTimerRef.current = null;
-				}
-				const run = () => {
-					validationTimerRef.current = null;
-					emitValidation(validateJsonText(value));
-				};
-				if (immediate) {
-					run();
-					return;
-				}
-				validationTimerRef.current = window.setTimeout(run, 140);
-			},
-			[emitValidation],
-		);
-
-		const handleChangeText = useCallback(
-			(value: string) => {
-				pendingPropTextRef.current = value;
-				lastEmittedTextRef.current = value;
-				scheduleValidation(value);
-				latestOnChangeRef.current(value);
-			},
-			[scheduleValidation],
-		);
-
-		const themeName = colorMode === "dark" ? "ace/theme/one_dark" : "ace/theme/github";
-		const runWithEditorText = useCallback(
-			(handler: (text: string, editor: JSONEditor) => void) => {
-				const editor = jsonEditorRef.current;
-				if (!editor) {
-					return;
-				}
-				let text = "";
-				try {
-					text = editor.getText();
-				} catch {
-					text = lastEmittedTextRef.current;
-				}
-				handler(text, editor);
-			},
-			[],
-		);
-
-		const setEditorText = useCallback(
-			(editor: JSONEditor, value: string) => {
-				try {
-					editor.updateText(value);
-				} catch {
-					editor.setText(value);
-				}
-				pendingPropTextRef.current = value;
-				lastEmittedTextRef.current = value;
-				scheduleValidation(value, true);
-				latestOnChangeRef.current(value);
-			},
-			[scheduleValidation],
-		);
-
 		const formatJson = useCallback(() => {
-			runWithEditorText((text, editor) => {
-				const nextValidation = validateJsonText(text);
-				if (!nextValidation.valid) {
-					emitValidation(nextValidation);
-					return;
-				}
-				const parsed = text.trim() ? JSON.parse(text) : {};
-				setEditorText(editor, stringifyRebeccaJson(parsed, 2, canonicalContext));
-			});
-		}, [canonicalContext, emitValidation, runWithEditorText, setEditorText]);
+			if (!validateJsonText(text).valid) {
+				return;
+			}
+			const parsed = text.trim() ? JSON.parse(text) : {};
+			applyText(stringifyRebeccaJson(parsed, 2, canonicalContext));
+		}, [applyText, canonicalContext, text]);
 
 		const compactJson = useCallback(() => {
-			runWithEditorText((text, editor) => {
-				const nextValidation = validateJsonText(text);
-				if (!nextValidation.valid) {
-					emitValidation(nextValidation);
-					return;
-				}
-				const parsed = text.trim() ? JSON.parse(text) : {};
-				setEditorText(editor, stringifyRebeccaJson(parsed, 0, canonicalContext));
-			});
-		}, [canonicalContext, emitValidation, runWithEditorText, setEditorText]);
+			if (!validateJsonText(text).valid) {
+				return;
+			}
+			const parsed = text.trim() ? JSON.parse(text) : {};
+			applyText(stringifyRebeccaJson(parsed, 0, canonicalContext));
+		}, [applyText, canonicalContext, text]);
 
-		const copyJson = useCallback(async () => {
-			runWithEditorText((text) => {
-				void copyTextToClipboard(text).then(() => {
-					toast({
-						status: "success",
-						title: t("copied"),
-						duration: 1400,
-						isClosable: true,
-					});
-				});
+		const copyJson = useCallback(() => {
+			void copyTextToClipboard(text).then(() => {
+				toast.success(t("copied"), { duration: 1400 });
 			});
-		}, [runWithEditorText, t, toast]);
+		}, [t, text, toast]);
 
 		const validationLabel = useMemo(() => {
 			if (validation.valid) {
@@ -277,84 +208,28 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 			return t("jsonEditor.invalid");
 		}, [t, validation]);
 
-		// biome-ignore lint/correctness/useExhaustiveDependencies: create editor once
 		useEffect(() => {
-			if (!jsonEditorContainer.current) {
+			aceRef.current?.editor?.setOption("scrollPastEnd", 0.2);
+			aceRef.current?.editor?.session.setUseWorker(false);
+		}, []);
+
+		useEffect(() => {
+			const container = aceRef.current?.editor?.container;
+			if (!container) {
 				return;
 			}
-
-			const editor = new JSONEditor(jsonEditorContainer.current, {
-				mode,
-				onChangeText: handleChangeText,
-				statusBar: false,
-				mainMenuBar: false,
-				theme: themeName,
-			});
-
-			jsonEditorRef.current = editor;
-
-			const aceEditor = editor.aceEditor;
-			if (aceEditor) {
-				aceEditor.setOptions({
-					enableBasicAutocompletion: true,
-					enableLiveAutocompletion: false,
-					enableSnippets: false,
-					fontSize: "13px",
-					highlightActiveLine: true,
-					highlightSelectedWord: true,
-					readOnly,
-					scrollPastEnd: 0.2,
-					showPrintMargin: false,
-					tabSize: 2,
-					useSoftTabs: true,
-					wrap: false,
-				});
-				aceEditor.session?.setMode?.("ace/mode/json");
-				aceEditor.setTheme(themeName);
-			}
-
-			try {
-				if (typeof json === "string") {
-					editor.setText(json);
-					lastEmittedTextRef.current = json;
-					scheduleValidation(json, true);
-				} else if (json !== undefined) {
-					editor.set(json);
-					try {
-						lastEmittedTextRef.current = editor.getText();
-					} catch {
-						lastEmittedTextRef.current = "";
-					}
-					scheduleValidation(lastEmittedTextRef.current, true);
-				}
-			} catch {
-				if (typeof json === "string") {
-					editor.updateText(json);
-					lastEmittedTextRef.current = json;
-					scheduleValidation(json, true);
-				}
-			}
-
 			const containWheelScroll = (event: WheelEvent) => {
 				event.stopPropagation();
-				const ace = editor.aceEditor as any;
-				const session = ace?.session;
-				const renderer = ace?.renderer;
+				const session = aceRef.current?.editor?.session;
+				const renderer = aceRef.current?.editor?.renderer as any;
 				if (!session || !renderer) {
 					return;
 				}
-				const scrollTop =
-					typeof session.getScrollTop === "function"
-						? session.getScrollTop()
-						: 0;
+				const scrollTop = session.getScrollTop();
 				const lineHeight = Number(renderer.lineHeight) || 16;
-				const rowCount =
-					typeof session.getLength === "function" ? session.getLength() : 0;
-				const contentHeight = rowCount * lineHeight;
+				const contentHeight = session.getLength() * lineHeight;
 				const viewportHeight =
-					renderer.scroller?.clientHeight ||
-					renderer.$size?.scrollerHeight ||
-					0;
+					renderer.scroller?.clientHeight || renderer.$size?.scrollerHeight || 0;
 				const maxScrollTop = Math.max(0, contentHeight - viewportHeight);
 				const atTop = scrollTop <= 0;
 				const atBottom = scrollTop >= maxScrollTop - 1;
@@ -362,150 +237,27 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 					event.preventDefault();
 				}
 			};
-			editor.aceEditor?.container?.addEventListener(
-				"wheel",
-				containWheelScroll,
-				{ passive: false },
-			);
-
-			return () => {
-				if (validationTimerRef.current !== null) {
-					window.clearTimeout(validationTimerRef.current);
-					validationTimerRef.current = null;
-				}
-				editor.aceEditor?.container?.removeEventListener(
-					"wheel",
-					containWheelScroll,
-				);
-				editor.destroy();
-				jsonEditorRef.current = null;
-			};
+			container.addEventListener("wheel", containWheelScroll, { passive: false });
+			return () => container.removeEventListener("wheel", containWheelScroll);
 		}, []);
 
 		useEffect(() => {
-			const editor = jsonEditorRef.current;
-			if (!editor) {
-				return;
-			}
-
-			const nextText = getJsonText(json);
-
-			if (nextText === lastEmittedTextRef.current) {
-				pendingPropTextRef.current = null;
-				scheduleValidation(nextText, true);
-				return;
-			}
-
-			if (pendingPropTextRef.current !== null) {
-				let normalizedPending = pendingPropTextRef.current;
-				try {
-					normalizedPending = JSON.stringify(
-						JSON.parse(pendingPropTextRef.current),
-						null,
-						2,
-					);
-				} catch {
-					// pending text is not valid JSON yet; use raw value
-				}
-
-				pendingPropTextRef.current = null;
-				if (normalizedPending === nextText) {
-					lastEmittedTextRef.current = nextText;
-					return;
-				}
-			}
-
-			let currentText: string | null = null;
-			try {
-				currentText = editor.getText();
-			} catch {
-				currentText = null;
-			}
-
-			if (currentText === nextText) {
-				return;
-			}
-
-			if (typeof json === "string") {
-				try {
-					editor.updateText(nextText);
-				} catch {
-					editor.setText(nextText);
-				}
-				lastEmittedTextRef.current = nextText;
-				scheduleValidation(nextText, true);
-			} else {
-				const safeValue =
-					json === undefined || json === null
-						? {}
-						: (json as Record<string, unknown>);
-				try {
-					editor.update(safeValue);
-				} catch {
-					editor.set(safeValue);
-				}
-				try {
-					lastEmittedTextRef.current = editor.getText();
-				} catch {
-					lastEmittedTextRef.current = nextText;
-				}
-				scheduleValidation(lastEmittedTextRef.current, true);
-			}
-		}, [json, scheduleValidation]);
-
-		useEffect(() => {
-			const editor = jsonEditorRef.current;
-			if (!editor) {
-				return;
-			}
-			try {
-				if (editor.getMode && editor.getMode() !== mode) {
-					editor.setMode(mode);
-				} else if (!editor.getMode) {
-					editor.setMode(mode);
-				}
-			} catch {
-				editor.setMode(mode);
-			}
-		}, [mode]);
-
-		useEffect(() => {
-			const ace = jsonEditorRef.current?.aceEditor;
-			if (!ace) {
-				return;
-			}
-			ace.setTheme(themeName);
-		}, [themeName]);
-
-		useEffect(() => {
-			const ace = jsonEditorRef.current?.aceEditor;
-			if (!ace) {
-				return;
-			}
-			ace.setOptions({ readOnly });
-		}, [readOnly]);
-
-		useEffect(() => {
-			const ace = jsonEditorRef.current?.aceEditor as any;
-			const session = ace?.session;
-			if (!session) {
+			const editor = aceRef.current?.editor;
+			const session = editor?.session;
+			if (!editor || !session) {
 				return;
 			}
 			for (const marker of highlightMarkerRefs.current) {
-				session.removeMarker?.(marker);
+				session.removeMarker(marker);
 			}
 			highlightMarkerRefs.current = [];
 			if (
 				!highlightVariant ||
-				(!highlightLines?.length && !highlightRanges?.length) ||
-				!session.addMarker
+				(!highlightLines?.length && !highlightRanges?.length)
 			) {
 				return;
 			}
-			const Range = ace?.getSelectionRange?.()?.constructor;
-			if (!Range) {
-				return;
-			}
+			const Range = editor.getSelectionRange().constructor as any;
 			for (const line of highlightLines ?? []) {
 				const row = Math.max(0, line - 1);
 				highlightMarkerRefs.current.push(
@@ -533,12 +285,12 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 		}, [highlightLines, highlightRanges, highlightVariant]);
 
 		useEffect(() => {
-			const ace = jsonEditorRef.current?.aceEditor as any;
-			const session = ace?.session;
-			if (!session?.setAnnotations) {
+			const editor = aceRef.current?.editor;
+			const session = editor?.session;
+			if (!editor || !session) {
 				return;
 			}
-			if (errorMarkerRef.current !== null && session.removeMarker) {
+			if (errorMarkerRef.current !== null) {
 				session.removeMarker(errorMarkerRef.current);
 				errorMarkerRef.current = null;
 			}
@@ -555,109 +307,84 @@ export const JsonEditor = forwardRef<HTMLDivElement, JSONEditorProps>(
 					type: "error",
 				},
 			]);
-			const Range = ace?.getSelectionRange?.()?.constructor;
-			if (Range && session.addMarker) {
-				errorMarkerRef.current = session.addMarker(
-					new Range(row, 0, row, 1),
-					"rebecca-json-error-line",
-					"fullLine",
-					true,
-				);
-			}
+			const Range = editor.getSelectionRange().constructor as any;
+			errorMarkerRef.current = session.addMarker(
+				new Range(row, 0, row, 1),
+				"rebecca-json-error-line",
+				"fullLine",
+				true,
+			);
 		}, [validation, validationLabel]);
 
-		const borderColor = useColorModeValue(
-			"var(--rb-panel-border)",
-			"var(--rb-panel-border)",
-		);
-		const bg = useColorModeValue(
-			"var(--rb-panel-surface)",
-			"var(--rb-panel-surface)",
-		);
-		const elevatedBg = useColorModeValue(
-			"var(--rb-panel-elevated)",
-			"var(--rb-panel-elevated)",
-		);
-		const textColor = useColorModeValue(
-			"var(--rb-panel-text)",
-			"var(--rb-panel-text)",
-		);
-		const mutedColor = useColorModeValue(
-			"var(--rb-panel-text-muted)",
-			"var(--rb-panel-text-muted)",
-		);
+		const borderColor = "border-[var(--rb-panel-border)]!";
+		const bg = "bg-[var(--rb-panel-surface)]";
+		const elevatedBg = "bg-[var(--rb-panel-elevated)]";
+		const textColor = "text-[var(--rb-panel-text)]";
+		const mutedColor = "text-[var(--rb-panel-text-muted)]";
 
 		return (
-			<VStack
-				ref={ref}
-				align="stretch"
-				bg={bg}
-				border="1px solid"
-				borderColor={borderColor}
-				borderRadius="10px"
-				className="rebecca-json-editor"
-				color={textColor}
-				h="full"
-				minH={minHeight}
-				overflow="hidden"
-				spacing={0}
-			>
+			<div ref={ref} style={{ minHeight: minHeight }} className={cn(cn("flex flex-col items-stretch border rounded-[10px] h-full overflow-hidden gap-0", bg, borderColor, textColor, "rebecca-json-editor"))}>
 				{showToolbar && (
-					<HStack
-						bg={elevatedBg}
-						borderBottom="1px solid"
-						borderColor={borderColor}
-						flexWrap="wrap"
-						justify="space-between"
-						minH="44px"
-						px={3}
-						py={2}
-						spacing={3}
-					>
-						<Box flex="1" minW="180px">
+					<div className={cn("flex flex-row items-center border-b flex-wrap justify-between min-h-[44px] px-3 py-2 gap-3", elevatedBg, borderColor)}>
+						<div className="flex-1 min-w-[180px]!">
 							{label ? (
-								<Text fontSize="sm" fontWeight="800" noOfLines={1}>
+								<p className="text-[0.875rem] font-extrabold truncate">
 									{label}
-								</Text>
+								</p>
 							) : null}
 							{description ? (
-								<Text color={mutedColor} fontSize="xs" noOfLines={2}>
+								<p className={cn("text-[0.75rem] line-clamp-2", mutedColor)}>
 									{description}
-								</Text>
+								</p>
 							) : null}
-						</Box>
-						<HStack
-							flexShrink={0}
-							flexWrap="wrap"
-							justify="flex-end"
-							maxW="100%"
-							spacing={2}
-						>
-							<Tooltip label={validation.error || validationLabel} hasArrow>
-								<Badge
-									borderRadius="full"
-									colorScheme={validation.valid ? "green" : "red"}
-									px={2}
-									py={1}
-								>
+						</div>
+						<div className="flex flex-row items-center shrink-0 flex-wrap justify-end max-w-[100%] gap-2">
+							<Tooltip>
+<TooltipTrigger asChild>
+								<Badge className={cn(toneClass(validation.valid ? "green" : "red"), "rounded-full px-2 py-1")}>
 									{validationLabel}
 								</Badge>
-							</Tooltip>
-							<Button flexShrink={0} size="xs" variant="outline" onClick={formatJson}>
+							</TooltipTrigger>
+<TooltipContent>{validation.error || validationLabel}</TooltipContent>
+</Tooltip>
+							<Button onClick={formatJson} variant="outline" size="xs" className="shrink-0">
 								{t("jsonEditor.format")}
 							</Button>
-							<Button flexShrink={0} size="xs" variant="outline" onClick={compactJson}>
+							<Button onClick={compactJson} variant="outline" size="xs" className="shrink-0">
 								{t("jsonEditor.compact")}
 							</Button>
-							<Button flexShrink={0} size="xs" variant="ghost" onClick={copyJson}>
+							<Button onClick={copyJson} variant="ghost" size="xs" className="shrink-0">
 								{t("copy")}
 							</Button>
 							{toolbarActions}
-						</HStack>
-					</HStack>
+						</div>
+					</div>
 				)}
-				<Box flex="1" minH={0} position="relative" ref={jsonEditorContainer} />
-			</VStack>
+				<div className="flex-1 min-h-[260px] md:min-h-0 relative">
+					<div className="absolute inset-0">
+						<AceEditor
+							ref={aceRef}
+							name={`json-editor-${editorId}`}
+							mode="json"
+							theme={colorMode === "dark" ? "one_dark" : "github"}
+							value={text}
+							onChange={applyText}
+							readOnly={readOnly}
+							width="100%"
+							height="100%"
+							fontSize={isTouch ? 12 : 13}
+							tabSize={2}
+							wrapEnabled={isTouch}
+							showPrintMargin={false}
+							highlightActiveLine
+							enableBasicAutocompletion={!isTouch}
+							enableLiveAutocompletion={false}
+							enableSnippets={false}
+							setOptions={{ highlightSelectedWord: true, useSoftTabs: true }}
+						/>
+					</div>
+				</div>
+			</div>
 		);
 	},
 );

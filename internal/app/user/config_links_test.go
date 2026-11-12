@@ -334,6 +334,7 @@ func TestBuildConfigLinksKeepsXHTTPPaddingJSONCompact(t *testing.T) {
 				"scMaxBufferedPosts":   int64(30),
 				"scStreamUpServerSecs": "20-80",
 				"noSSEHeader":          true,
+				"h2Params":             map[string]any{"MaxConcurrentStreams": int64(512)},
 			},
 		},
 		[]string{"VLESS XHTTP"},
@@ -387,7 +388,7 @@ func TestBuildConfigLinksKeepsXHTTPPaddingJSONCompact(t *testing.T) {
 			t.Fatalf("unexpected %s: got %#v want %#v extra=%#v", key, got, want, extra)
 		}
 	}
-	for _, serverOnly := range []string{"serverMaxHeaderBytes", "scMaxBufferedPosts", "scStreamUpServerSecs", "noSSEHeader"} {
+	for _, serverOnly := range []string{"serverMaxHeaderBytes", "scMaxBufferedPosts", "scStreamUpServerSecs", "noSSEHeader", "h2Params"} {
 		if _, ok := extra[serverOnly]; ok {
 			t.Fatalf("server-only %s leaked into client link: %#v", serverOnly, extra)
 		}
@@ -1749,5 +1750,22 @@ func TestSSHShareLink(t *testing.T) {
 	password, _ := parsed.User.Password()
 	if err != nil || parsed.Scheme != "ssh" || parsed.User.Username() != "alice" || password != "secret" {
 		t.Fatalf("unexpected SSH link %q: %v", ssh, err)
+	}
+}
+
+func TestPairedHostRotationValueFollowsTheSelectedSNI(t *testing.T) {
+	options := []string{"b.example.com", "c.example.com"}
+	for range 20 {
+		sni := selectHostRotationValue(1, "sni", "a.example.com", options, "random", nil)
+		host := pairedHostRotationValue(sni, "A.example.com", options)
+		if !strings.EqualFold(host, sni) {
+			t.Fatalf("host %q does not follow sni %q", host, sni)
+		}
+	}
+	if got := pairedHostRotationValue("other.example.com", "a.example.com", options); got != "" {
+		t.Fatalf("unrelated sni must not pair, got %q", got)
+	}
+	if got := pairedHostRotationValue("", "a.example.com", options); got != "" {
+		t.Fatalf("empty sni must not pair, got %q", got)
 	}
 }

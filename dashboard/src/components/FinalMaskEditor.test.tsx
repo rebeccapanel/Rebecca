@@ -1,4 +1,4 @@
-import { ChakraProvider } from "@chakra-ui/react";
+import { ColorModeProvider } from "lib/color-mode";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { getFinalMaskCapabilities } from "utils/finalmask";
@@ -18,7 +18,7 @@ describe("FinalMaskEditor", () => {
 	it("shows layer controls before a host has FinalMask settings", () => {
 		const html = renderToStaticMarkup(
 			React.createElement(
-				ChakraProvider,
+				ColorModeProvider,
 				null,
 				React.createElement(FinalMaskEditor, {
 					value: null,

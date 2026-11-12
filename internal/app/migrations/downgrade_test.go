@@ -12,7 +12,7 @@ func TestRunMigrationsRefusesDatabaseNewerThanBuild(t *testing.T) {
 	if err := RunMigrations(ctx, db, "sqlite"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.ExecContext(ctx, `INSERT INTO goose_db_version (version_id, is_applied, tstamp) VALUES (66, 1, CURRENT_TIMESTAMP)`); err != nil {
+	if _, err := db.ExecContext(ctx, `INSERT INTO goose_db_version (version_id, is_applied, tstamp) VALUES (69, 1, CURRENT_TIMESTAMP)`); err != nil {
 		t.Fatal(err)
 	}
 	err := RunMigrations(ctx, db, "sqlite")

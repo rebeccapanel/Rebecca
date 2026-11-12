@@ -4,6 +4,10 @@ import {
 	buildInboundPayload,
 	createDefaultInboundForm,
 	getInboundTraffic,
+	inboundTagAllowsEmoji,
+	parseHeaderPairs,
+	protocolLabel,
+	protocolSupportsHosts,
 	rawInboundToFormValues,
 	type RawInbound,
 	validateInboundFormFields,
@@ -312,6 +316,39 @@ describe("XHTTP inbound settings", () => {
 		expect(settings).not.toHaveProperty("sessionKey");
 	});
 
+	it.each(["auto", "packet-up", "stream-up"])(
+		"keeps the server buffer limit and unmanaged keys in %s mode",
+		(mode) => {
+			const h2Params = { MaxConcurrentStreams: 512 };
+			const raw: RawInbound = {
+				tag: "xhttp",
+				port: 80,
+				protocol: "vless",
+				settings: { decryption: "none" },
+				streamSettings: {
+					network: "xhttp",
+					security: "none",
+					xhttpSettings: {
+						path: "/",
+						mode,
+						scMaxBufferedPosts: 30,
+						h2Params,
+						futureKey: "kept",
+					},
+				},
+			};
+
+			const payload = buildInboundPayload(rawInboundToFormValues(raw), {
+				initial: raw,
+			});
+			expect(payload.streamSettings?.xhttpSettings).toMatchObject({
+				scMaxBufferedPosts: 30,
+				h2Params,
+				futureKey: "kept",
+			});
+		},
+	);
+
 	it("round-trips WebSocket heartbeat and current mKCP tuning", () => {
 		const ws = rawInboundToFormValues({
 			tag: "ws",
@@ -495,5 +532,329 @@ describe("XHTTP inbound settings", () => {
 		const corrected = validateInboundFormFields(values);
 		expect(corrected.xhttpXmuxMaxConnections).toBeUndefined();
 		expect(corrected.xhttpXmuxHKeepAlivePeriod).toBeUndefined();
+	});
+});
+
+describe("unmodeled stream settings", () => {
+	const roundTrip = (raw: RawInbound) =>
+		buildInboundPayload(rawInboundToFormValues(raw), { initial: raw });
+
+	it("keeps finalmask masks on networks whose form cannot edit them", () => {
+		const finalmask = {
+			tcp: [{ type: "fragment", settings: { packets: "tlshello", length: "100-200", delay: "10-20" } }],
+			udp: [{ type: "header-custom", settings: { client: [{ type: "str", packet: "x" }] } }],
+		};
+		const raw: RawInbound = {
+			tag: "vless-ws",
+			port: 443,
+			protocol: "vless",
+			settings: { decryption: "none", clients: [] },
+			streamSettings: { network: "ws", security: "none", wsSettings: { path: "/" }, finalmask },
+		};
+		expect(roundTrip(raw).streamSettings?.finalmask).toEqual(finalmask);
+	});
+
+	it("keeps Hysteria masks and QUIC flags the form does not model, in place", () => {
+		const finalmask = {
+			tcp: [{ type: "fragment", settings: { packets: "tlshello" } }],
+			udp: [
+				{ type: "realm", settings: { url: "https://realm.example.test" } },
+				{ type: "salamander", settings: { password: "secret" } },
+			],
+			quicParams: { congestion: "bbr", disableGSO: true, disableChromeParrot: true },
+		};
+		const raw: RawInbound = {
+			tag: "hy",
+			port: 443,
+			protocol: "hysteria",
+			settings: { version: 2, clients: [] },
+			streamSettings: {
+				network: "hysteria",
+				security: "tls",
+				hysteriaSettings: { version: 2 },
+				tlsSettings: { serverName: "x.test", certificates: [{ certificateFile: "/a", keyFile: "/b" }] },
+				finalmask,
+			},
+		};
+		const out = roundTrip(raw).streamSettings?.finalmask;
+		expect(out?.tcp).toEqual(finalmask.tcp);
+		expect(out?.udp).toEqual(finalmask.udp);
+		expect(out?.quicParams).toMatchObject({ congestion: "bbr", disableGSO: true, disableChromeParrot: true });
+	});
+
+	it("keeps XDRIVE settings and its stream address", () => {
+		const raw: RawInbound = {
+			tag: "xd",
+			port: 8443,
+			protocol: "vless",
+			settings: { decryption: "mlkem768x25519plus.native.600s.test", clients: [] },
+			streamSettings: {
+				network: "xdrive",
+				security: "none",
+				address: "www.googleapis.com",
+				port: 443,
+				xdriveSettings: { service: "google-drive", remoteFolder: "rb", secrets: ["a", "b", "c"], segmentBytes: 524288 },
+			},
+		};
+		const stream = roundTrip(raw).streamSettings;
+		expect(stream?.xdriveSettings).toEqual(raw.streamSettings?.xdriveSettings);
+		expect(stream).toMatchObject({ address: "www.googleapis.com", port: 443 });
+	});
+});
+
+describe("inbound port lists", () => {
+	it("accepts several ports for Xray proxy inbounds and writes them as one value", () => {
+		const vless = createDefaultInboundForm("vless");
+		Object.assign(vless, { tag: "multi", port: "443, 8443" });
+		expect(validateInboundFormFields(vless)).toEqual({});
+		expect(buildInboundPayload(vless).port).toBe("443,8443");
+
+		const single = createDefaultInboundForm("vless");
+		Object.assign(single, { tag: "single", port: "443" });
+		expect(buildInboundPayload(single).port).toBe(443);
+	});
+
+	it("rejects repeated, out-of-range or malformed lists", () => {
+		const vless = createDefaultInboundForm("vless");
+		Object.assign(vless, { tag: "bad" });
+		for (const port of ["443,443", "443,70000", "443,", "443,abc"]) {
+			vless.port = port;
+			expect(validateInboundFormFields(vless).port).toBeTruthy();
+		}
+	});
+
+	it("keeps single-port protocols to one port", () => {
+		const openvpn = createDefaultInboundForm("openvpn");
+		Object.assign(openvpn, { tag: "ov", port: "1194,1195" });
+		expect(validateInboundFormFields(openvpn).port).toBeTruthy();
+	});
+});
+
+describe("inbound tags", () => {
+	it("allows emoji on Xray inbounds and keeps native VPN names ASCII", () => {
+		expect(inboundTagAllowsEmoji("vless")).toBe(true);
+		expect(inboundTagAllowsEmoji("socks")).toBe(true);
+		expect(inboundTagAllowsEmoji("wireguard")).toBe(false);
+		expect(inboundTagAllowsEmoji("openvpn")).toBe(false);
+	});
+});
+
+describe("TCP header inbound settings", () => {
+	it("opens and saves an HTTP header that was created with an empty path", () => {
+		const raw: RawInbound = {
+			tag: "tcp-empty-header",
+			port: 443,
+			protocol: "vless",
+			settings: { decryption: "none" },
+			streamSettings: {
+				network: "tcp",
+				security: "none",
+				tcpSettings: {
+					header: {
+						type: "http",
+						request: { version: "1.1", method: "GET", path: [], headers: {} },
+					},
+				},
+			},
+		};
+
+		const values = rawInboundToFormValues(raw);
+		expect(values.tcpHttpPath).toBe("");
+		expect(
+			buildInboundPayload(values, { initial: raw }).streamSettings?.tcpSettings,
+		).toMatchObject({
+			header: { type: "http", request: { path: [] } },
+		});
+	});
+});
+
+describe("xhttp custom headers", () => {
+	it("keeps a comma-separated value as one header", () => {
+		const values = createDefaultInboundForm();
+		values.streamNetwork = "xhttp";
+		values.xhttpHeaders = [
+			{ name: "Accept-Language", value: "en-US,en;q=0.9,fa;q=0.8" },
+		];
+		expect(buildInboundPayload(values).streamSettings).toMatchObject({
+			xhttpSettings: {
+				headers: { "Accept-Language": "en-US,en;q=0.9,fa;q=0.8" },
+			},
+		});
+	});
+
+	it("parses pasted name=value pairs with quoted values", () => {
+		expect(
+			parseHeaderPairs(
+				'Accept-Language="en-US,en;q=0.9,fa;q=0.8" Origin="https://offline.example.org" Sec-Fetch-Site="same-origin"',
+			),
+		).toEqual([
+			{ name: "Accept-Language", value: "en-US,en;q=0.9,fa;q=0.8" },
+			{ name: "Origin", value: "https://offline.example.org" },
+			{ name: "Sec-Fetch-Site", value: "same-origin" },
+		]);
+		expect(parseHeaderPairs("X-Token=abc")).toEqual([
+			{ name: "X-Token", value: "abc" },
+		]);
+		expect(parseHeaderPairs("Accept-Language")).toBeUndefined();
+		expect(parseHeaderPairs("   ")).toBeUndefined();
+	});
+});
+
+describe("Xray service inbounds", () => {
+	const roundTrip = (raw: RawInbound) =>
+		buildInboundPayload(rawInboundToFormValues(raw), { initial: raw });
+	const WG_SECRET = "iJ2cBkrSGqRwIfYIDIxk7hr5RXfdR93MfJUL7yqkkH8=";
+	const WG_PEER = "DGSYIcEKAUkA7HhzGSjxLZuV67BR3LeyU0BMLJzNVHQ=";
+
+	it("emits the 3x-ui settings for http, mixed and tunnel", () => {
+		const http = roundTrip({
+			tag: "h",
+			port: 8080,
+			protocol: "http",
+			settings: { accounts: [{ user: "proxyuser", pass: "proxypass" }], allowTransparent: false },
+		});
+		expect(http.settings.accounts).toEqual([{ user: "proxyuser", pass: "proxypass" }]);
+		expect(http.streamSettings).toBeUndefined();
+
+		const mixed = roundTrip({
+			tag: "m",
+			port: 1080,
+			protocol: "mixed",
+			settings: { auth: "password", accounts: [{ user: "socksuser", pass: "sockspass" }], udp: true, ip: "127.0.0.1" },
+		});
+		expect(mixed.settings).toEqual({
+			auth: "password",
+			accounts: [{ user: "socksuser", pass: "sockspass" }],
+			udp: true,
+			ip: "127.0.0.1",
+		});
+
+		const tunnel = roundTrip({
+			tag: "t",
+			port: 8443,
+			protocol: "tunnel",
+			settings: {
+				rewriteAddress: "1.1.1.1",
+				rewritePort: 53,
+				portMap: { "8080": "10.0.0.5:80", "8443": "10.0.0.5:443" },
+				allowedNetwork: "tcp,udp",
+				followRedirect: false,
+			},
+		});
+		expect(tunnel.settings).toMatchObject({
+			rewriteAddress: "1.1.1.1",
+			rewritePort: 53,
+			portMap: { "8080": "10.0.0.5:80", "8443": "10.0.0.5:443" },
+			allowedNetwork: "tcp,udp",
+			followRedirect: false,
+		});
+	});
+
+	it("round-trips a WireGuard (Xray) inbound with its peers and keeps tunnel sockopt", () => {
+		const out = roundTrip({
+			tag: "w",
+			port: 51820,
+			protocol: "wireguard-xray",
+			settings: {
+				mtu: 1420,
+				secretKey: WG_SECRET,
+				peers: [{ privateKey: WG_SECRET, publicKey: WG_PEER, allowedIPs: ["10.0.0.2/32"], keepAlive: 25 }],
+				noKernelTun: false,
+			},
+			streamSettings: { sockopt: { tcpFastOpen: true } },
+		});
+		expect(out.settings).toMatchObject({
+			mtu: 1420,
+			secretKey: WG_SECRET,
+			peers: [{ publicKey: WG_PEER, privateKey: WG_SECRET, allowedIPs: ["10.0.0.2/32"], keepAlive: 25 }],
+			noKernelTun: false,
+		});
+		expect(out.streamSettings).toEqual({ sockopt: { tcpFastOpen: true } });
+	});
+
+	it("gives TUN no listener and the 3x-ui defaults", () => {
+		const out = buildInboundPayload(createDefaultInboundForm("tun"));
+		expect(out.port).toBe(0);
+		expect(out.streamSettings).toBeUndefined();
+		expect(out.settings).toMatchObject({ name: "xray0", mtu: 1500, userLevel: 0, autoOutboundsInterface: "auto" });
+		expect(validateInboundFormFields({ ...createDefaultInboundForm("tun"), tag: "tun-1", port: "" }).port).toBeUndefined();
+	});
+
+	it("seeds new inbounds with random accounts and a fresh WireGuard key", () => {
+		const http = createDefaultInboundForm("http");
+		expect(http.httpAccounts[0].user).toHaveLength(8);
+		expect(http.httpAccounts[0].pass).toHaveLength(12);
+		const mixed = createDefaultInboundForm("mixed");
+		expect(mixed.socksAuth).toBe("password");
+		expect(mixed.socksUdpIp).toBe("127.0.0.1");
+		const wg = createDefaultInboundForm("wireguard-xray");
+		expect(atob(wg.wgxSecretKey)).toHaveLength(32);
+		expect(createDefaultInboundForm("wireguard-xray").wgxSecretKey).not.toBe(wg.wgxSecretKey);
+	});
+
+	it("rejects incomplete service inbounds before they reach the server", () => {
+		const base = { tag: "x", port: "8443" };
+		expect(
+			validateInboundFormFields({ ...createDefaultInboundForm("tunnel"), ...base }).tunnelRewriteAddress,
+		).toBeDefined();
+		expect(
+			validateInboundFormFields({
+				...createDefaultInboundForm("mixed"),
+				...base,
+				socksAuth: "password",
+				socksAccounts: [{ user: "", pass: "" }],
+			}).socksAccounts,
+		).toBeDefined();
+		expect(
+			validateInboundFormFields({ ...createDefaultInboundForm("wireguard-xray"), ...base, wgxSecretKey: "short" }).wgxSecretKey,
+		).toBeDefined();
+	});
+
+	it("round-trips the 3x-ui MASQUE inbound with its pool, path and TLS", () => {
+		const raw: RawInbound = {
+			tag: "mq",
+			port: 8443,
+			protocol: "masque",
+			settings: { clients: [], address: ["10.14.0.1/24", "fd14::1/64"], mtu: 1400 },
+			streamSettings: {
+				network: "masque",
+				masqueSettings: { path: "/.well-known/masque/ip/*/*/" },
+				security: "tls",
+				tlsSettings: {
+					serverName: "masque.example.test",
+					certificates: [{ certificateFile: "/etc/ssl/certs/masque.crt", keyFile: "/etc/ssl/private/masque.key" }],
+					alpn: ["h3", "h2"],
+				},
+			},
+		};
+		const out = roundTrip(raw);
+		expect(out.settings).toMatchObject({ address: ["10.14.0.1/24", "fd14::1/64"], mtu: 1400 });
+		expect(out.streamSettings).toMatchObject({
+			network: "masque",
+			security: "tls",
+			masqueSettings: { path: "/.well-known/masque/ip/*/*/" },
+			tlsSettings: { serverName: "masque.example.test", alpn: ["h3", "h2"] },
+		});
+		expect(out.streamSettings?.tlsSettings).not.toHaveProperty("cipherSuites");
+	});
+
+	it("seeds MASQUE with the 3x-ui address pool and rejects an unusable one", () => {
+		const form = createDefaultInboundForm("masque");
+		expect(form.masqueAddress).toBe("10.14.0.1/24\nfd14::1/64");
+		const base = { ...form, tag: "mq", port: "8443" };
+		expect(validateInboundFormFields(base).masqueAddress).toBeUndefined();
+		expect(validateInboundFormFields({ ...base, masqueAddress: "10.0.0.1/24\n10.1.0.1/24" }).masqueAddress).toBeDefined();
+		expect(validateInboundFormFields({ ...base, masqueAddress: "10.0.0.1" }).masqueAddress).toBeDefined();
+		expect(validateInboundFormFields({ ...base, masqueMtu: "1000" }).masqueMtu).toBeDefined();
+	});
+
+	it("labels the Xray WireGuard apart from Rebecca's and blocks hosts for service inbounds", () => {
+		expect(protocolLabel("wireguard-xray")).toBe("WIREGUARD(XRAY)");
+		expect(protocolLabel("wireguard")).toBe("WIREGUARD");
+		for (const protocol of ["http", "mixed", "tunnel", "tun", "wireguard-xray"]) {
+			expect(protocolSupportsHosts(protocol)).toBe(false);
+		}
+		expect(protocolSupportsHosts("wireguard")).toBe(true);
+		expect(protocolSupportsHosts("vless")).toBe(true);
 	});
 });

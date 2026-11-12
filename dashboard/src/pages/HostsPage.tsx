@@ -1,8 +1,9 @@
-import { HStack, Icon, Text, VStack } from "@chakra-ui/react";
-import { LinkIcon, Squares2X2Icon } from "@heroicons/react/24/outline";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+import { Link, LayoutGrid } from "lucide-react";
+
 import { HostsManager } from "components/HostsManager";
 import { InboundsManager } from "components/InboundsManager";
-import { PageHeader, TabSystem } from "components/ui";
+import { PageHeader, PageLoadingSkeleton, TabSystem } from "components/ui";
 import { fetchInbounds } from "contexts/DashboardContext";
 import { useHosts } from "contexts/HostsContext";
 import useGetUser from "hooks/useGetUser";
@@ -13,7 +14,7 @@ import { useLocation } from "react-router-dom";
 export const HostsPage: FC = () => {
 	const location = useLocation();
 	const { t } = useTranslation();
-	const { userData, getUserIsSuccess } = useGetUser();
+	const { userData, getUserIsPending, getUserIsSuccess } = useGetUser();
 	const fetchHosts = useHosts((state) => state.fetchHosts);
 	const [activeTab, setActiveTab] = useState<number>(0);
 	const tabKeys = useMemo(() => ["inbounds", "hosts"], []);
@@ -61,19 +62,22 @@ export const HostsPage: FC = () => {
 		const key = tabKeys[index] || "";
 		if (readHashTab() !== key) window.location.hash = key;
 	};
+	if (getUserIsPending) {
+		return <PageLoadingSkeleton variant="settings" />;
+	}
 	if (!canManageHosts) {
 		return (
-			<VStack spacing={4} align="stretch">
+			<div className="flex flex-col gap-4 items-stretch">
 				<PageHeader title={t("header.hostSettings")} />
-				<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+				<p className="text-[0.875rem] text-gray-500 dark:text-gray-400">
 					{t("hostsPage.noPermission")}
-				</Text>
-			</VStack>
+				</p>
+			</div>
 		);
 	}
 
 	return (
-		<VStack spacing={4} align="stretch">
+		<div className="flex flex-col gap-4 items-stretch">
 			<TabSystem
 				tabs={[
 					{
@@ -81,10 +85,10 @@ export const HostsPage: FC = () => {
 						isActive: activeTab === 0,
 						onClick: () => handleTabChange(0),
 						label: (
-							<HStack spacing={2}>
-								<Icon as={LinkIcon} w={4} h={4} />
+							<div className="flex flex-row items-center gap-2">
+								<Link className="w-4 h-4" />
 								<span>{t("hostsPage.tabInbounds")}</span>
-							</HStack>
+							</div>
 						),
 					},
 					{
@@ -92,24 +96,24 @@ export const HostsPage: FC = () => {
 						isActive: activeTab === 1,
 						onClick: () => handleTabChange(1),
 						label: (
-							<HStack spacing={2}>
-								<Icon as={Squares2X2Icon} w={4} h={4} />
+							<div className="flex flex-row items-center gap-2">
+								<LayoutGrid className="w-4 h-4" />
 								<span>{t("hostsPage.tabHosts")}</span>
-							</HStack>
+							</div>
 						),
 					},
 				]}
 			/>
 			{activeTab === 0 ? (
-				<VStack mt={3} spacing={4} align="stretch">
+				<div className="flex flex-col mt-3 gap-4 items-stretch">
 					<InboundsManager />
-				</VStack>
+				</div>
 			) : (
-				<VStack mt={3} spacing={4} align="stretch">
+				<div className="flex flex-col mt-3 gap-4 items-stretch">
 					<HostsManager />
-				</VStack>
+				</div>
 			)}
-		</VStack>
+		</div>
 	);
 };
 

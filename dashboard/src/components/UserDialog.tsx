@@ -1,93 +1,39 @@
-import {
-	Alert,
-	AlertDescription,
-	AlertIcon,
-	Badge,
-	Box,
-	Button,
-	Input as ChakraInput,
-	Collapse,
-	chakra,
-	Flex,
-	FormControl,
-	FormErrorMessage,
-	FormHelperText,
-	FormLabel,
-	Grid,
-	GridItem,
-	HStack,
-	IconButton,
-	InputGroup,
-	InputRightAddon,
-	InputRightElement,
-	Modal,
-	ModalCloseButton,
-	ModalHeader,
-	ModalOverlay,
-	SlideFade,
-	Spinner,
-	Stack,
-	Switch,
-	Tab,
-	TabList,
-	TabPanel,
-	TabPanels,
-	Tabs,
-	Text,
-	Textarea,
-	Tooltip,
-	useBreakpointValue,
-	useColorMode,
-	useColorModeValue,
-	useToast,
-	VStack,
-} from "@chakra-ui/react";
-import { PanelSelect as Select } from "components/common/PanelSelect";
-import { keyframes } from "@emotion/react";
-import {
-	CheckIcon,
-	ClipboardIcon,
-	ChevronDownIcon as HeroChevronDownIcon,
-	LinkIcon,
-	LockClosedIcon,
-	PencilIcon,
-	QrCodeIcon,
-	QuestionMarkCircleIcon,
-	SparklesIcon,
-	UserPlusIcon,
-} from "@heroicons/react/24/outline";
+import { toast } from "components/ui/sonner";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { type SubmitStatus, useSubmitTimers } from "hooks/useSubmitTimers";
+import dayjs from "dayjs";
+import { Ban, Check, ChevronDown, Copy, LoaderCircle, Pencil, Plus, QrCode, RotateCcw, Sparkles, Trash2, UserPlus } from "lucide-react";
+import { type FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Controller, type Resolver, useForm, useWatch } from "react-hook-form";
+import ReactApexChart from "react-apexcharts";
+import { useTranslation } from "react-i18next";
+import { z } from "zod";
+
+import { buttonVariants } from "components/ui/button";
+import { Alert, AlertDescription } from "components/ui/alert";
+import { Badge } from "components/ui/badge";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "components/ui/collapsible";
+import { DateTimeField } from "components/ui/date-time-field";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "components/ui/dialog";
+import { userEntityPage } from "components/entityPage/EntityOverviews";
+import { FormField } from "components/ui/form-field";
+import { Input } from "components/ui/input";
+import { DataSizeField } from "components/ui/data-size-field";
+import { NumberField } from "components/ui/number-field";
+import { Label } from "components/ui/label";
+import { Select, SelectContent, SelectItem, SelectItemText, SelectTrigger, SelectValue } from "components/ui/select";
+import { Switch } from "components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "components/ui/tabs";
+import { Textarea } from "components/ui/textarea";
 import { resetStrategy } from "constants/UserSettings";
 import { type FilterUsageType, useDashboard } from "contexts/DashboardContext";
 import { useServicesStore } from "contexts/ServicesContext";
-import dayjs from "dayjs";
 import useGetUser from "hooks/useGetUser";
-import {
-	type ChangeEvent,
-	type FC,
-	type HTMLAttributes,
-	useCallback,
-	useEffect,
-	useMemo,
-	useRef,
-	useState,
-} from "react";
-import ReactApexChart from "react-apexcharts";
-import { Controller, FormProvider, useForm, useWatch } from "react-hook-form";
-import { useTranslation } from "react-i18next";
-
+import { useColorMode } from "lib/color-mode";
+import { cn } from "lib/cn";
 import { fetch as apiFetch } from "service/http";
-import {
-	AdminRole,
-	AdminTrafficLimitMode,
-	UserPermissionToggle,
-} from "types/Admin";
-import type {
-	User,
-	UserCreate,
-	UserCreateWithService,
-	UserListItem,
-} from "types/User";
+import { AdminRole, AdminTrafficLimitMode, UserPermissionToggle } from "types/Admin";
+import type { User, UserCreate, UserCreateWithService, UserListItem } from "types/User";
 import {
 	canDeleteUserByTrafficCap,
 	canViewUserTraffic,
@@ -97,97 +43,17 @@ import {
 import { copyTextToClipboard } from "utils/clipboard";
 import { getConfigLabelFromLink } from "utils/configLabel";
 import { relativeExpiryDate } from "utils/dateFormatter";
+import { addQuickExpiry } from "utils/expiry";
 import { formatBytes } from "utils/formatByte";
 import { generateUserLinks } from "utils/userLinks";
-
-import { z } from "zod";
-import { NumericInput } from "./common/NumericInput";
-import { AnimatedSubmitButton } from "./common/AnimatedSubmitButton";
-import { DeleteIcon } from "./common/DeleteIcon";
-import { DateTimePicker } from "./DateTimePicker";
-import { addQuickExpiry } from "utils/expiry";
 import { DeleteConfirmDialog } from "./dialogs/ConfirmDialog";
-import { Icon } from "./Icon";
+import { GroupSelect } from "components/labels/GroupSelect";
+import { TagsSelect } from "components/labels/TagsSelect";
+import { useInvalidateLabels, useTags } from "service/labels";
 import { createUsageConfig, UsageFilter } from "./UsageFilter";
-import {
-	XrayModalBody,
-	XrayModalContent,
-	XrayModalFooter,
-} from "./xray/XrayDialog";
-
-const AddUserIcon = chakra(UserPlusIcon, {
-	baseStyle: {
-		w: 4,
-
-		h: 4,
-	},
-});
-
-const EditUserIcon = chakra(PencilIcon, {
-	baseStyle: {
-		w: 4,
-
-		h: 4,
-	},
-});
-
-const actionIconProps = {
-	baseStyle: {
-		w: 4,
-		h: 4,
-	},
-};
-
-const CopyActionIcon = chakra(ClipboardIcon, actionIconProps);
-const CopiedActionIcon = chakra(CheckIcon, actionIconProps);
-const QRActionIcon = chakra(QrCodeIcon, actionIconProps);
-const SubscriptionActionIcon = chakra(LinkIcon, actionIconProps);
-
-const LimitLockIcon = chakra(LockClosedIcon, {
-	baseStyle: {
-		w: {
-			base: 16,
-
-			md: 20,
-		},
-
-		h: {
-			base: 16,
-
-			md: 20,
-		},
-	},
-});
-
-const SectionChevronIcon = chakra(HeroChevronDownIcon, {
-	baseStyle: {
-		w: 4,
-
-		h: 4,
-	},
-});
 
 export type UserDialogProps = {};
-type SubmitStatus = "idle" | "loading" | "success" | "error";
-
-const SERVICE_NOTICE_DURATION_MS = 10000;
-const serviceNoticeProgress = keyframes`
-	from {
-		transform: scaleX(1);
-	}
-	to {
-		transform: scaleX(0);
-	}
-`;
-
-const createAutoRenewId = () => {
-	if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-		return crypto.randomUUID();
-	}
-	return Math.random().toString(36).slice(2);
-};
-
-type BaseFormFields = Pick<
+export type FormType = Pick<
 	UserCreate,
 	| "username"
 	| "status"
@@ -201,128 +67,102 @@ type BaseFormFields = Pick<
 	| "contact_number"
 	| "flow"
 	| "credential_key"
->;
-
-export type FormType = BaseFormFields & {
+> & {
 	credential_key: string | null;
-
 	manual_key_entry: boolean;
-
 	service_id: number | null;
-
 	next_plan_enabled: boolean;
-
 	next_plan_data_limit: number | null;
-
 	next_plan_expire: number | null;
-
 	next_plan_add_remaining_traffic: boolean;
-
 	next_plan_fire_on_either: boolean;
-
 	speed_limit: number | null;
+	group_id: number | null;
+	tags: string[];
 };
+
+type TabValue = "details" | "usage" | "links";
+type AutoRenewRule = {
+	id: string;
+	dataLimit: number | null;
+	expire: number | null;
+	addRemaining: boolean;
+	fireOnEither: boolean;
+};
+type RuleDraft = {
+	/** Index of the rule being edited, or null when adding one. */
+	index: number | null;
+	data: string;
+	days: string;
+	addRemaining: boolean;
+	fireOnEither: boolean;
+};
+
+const BYTES_PER_GB = 1073741824;
+const SUCCESS_CLOSE_DELAY_MS = 1000;
+const COPY_FEEDBACK_MS = 1200;
+const CREDENTIAL_KEY_REGEX =
+	/^(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/;
+const allowedFlows = ["", "xtls-rprx-vision", "xtls-rprx-vision-udp443"];
+const usernameRegex = /^[A-Za-z0-9._@-]{3,32}$/;
+const PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
+const ARABIC_DIGITS = "٠١٢٣٤٥٦٧٨٩";
+const ON_HOLD_QUICK_DAYS = [7, 30, 60, 90, 180, 365];
+
+const createId = () =>
+	typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : Math.random().toString(36).slice(2);
 
 const formatUser = (user: User): FormType => {
 	const nextPlan = user.next_plans?.[0] ?? null;
-
 	return {
 		...user,
 		flow: user.flow ?? "",
-
-		data_limit: user.data_limit
-			? Number((user.data_limit / BYTES_PER_GB).toFixed(5))
-			: user.data_limit,
-
+		data_limit: user.data_limit ? Number((user.data_limit / BYTES_PER_GB).toFixed(5)) : user.data_limit,
 		ip_limit: user.ip_limit && user.ip_limit > 0 ? user.ip_limit : null,
-
 		speed_limit:
-			user.speed_limit_kbps && user.speed_limit_kbps > 0
-				? Number((user.speed_limit_kbps / 1000).toFixed(2))
-				: null,
-
+			user.speed_limit_kbps && user.speed_limit_kbps > 0 ? Number((user.speed_limit_kbps / 1000).toFixed(2)) : null,
 		on_hold_expire_duration: user.on_hold_expire_duration
 			? Number(user.on_hold_expire_duration / (24 * 60 * 60))
 			: user.on_hold_expire_duration,
-
 		service_id: user.service_id ?? null,
-
 		credential_key: user.credential_key ?? null,
-
 		manual_key_entry: false,
-
 		next_plan_enabled: Boolean(nextPlan),
-
-		next_plan_data_limit: nextPlan?.data_limit
-			? Number((nextPlan.data_limit / BYTES_PER_GB).toFixed(5))
-			: null,
-
+		next_plan_data_limit: nextPlan?.data_limit ? Number((nextPlan.data_limit / BYTES_PER_GB).toFixed(5)) : null,
 		next_plan_expire: nextPlan?.expire ?? null,
-
 		next_plan_add_remaining_traffic: nextPlan?.add_remaining_traffic ?? false,
-
 		next_plan_fire_on_either: nextPlan?.fire_on_either ?? true,
-
 		telegram_id: user.telegram_id ?? "",
 		contact_number: user.contact_number ?? "",
+		group_id: user.group?.id ?? null,
+		tags: user.tags ?? [],
 	};
 };
 
-const getDefaultValues = (): FormType => {
-	return {
-		data_limit: null,
-
-		ip_limit: null,
-
-		speed_limit: null,
-
-		expire: null,
-
-		credential_key: null,
-
-		manual_key_entry: false,
-
-		flow: "",
-
-		username: "",
-
-		data_limit_reset_strategy: "no_reset",
-
-		status: "active",
-
-		on_hold_expire_duration: null,
-
-		note: "",
-
-		service_id: null,
-
-		next_plan_enabled: false,
-
-		next_plan_data_limit: null,
-
-		next_plan_expire: null,
-
-		next_plan_add_remaining_traffic: false,
-
-		next_plan_fire_on_either: true,
-
-		telegram_id: "",
-		contact_number: "",
-	};
-};
-
-const CREDENTIAL_KEY_REGEX =
-	/^(?:[0-9a-fA-F]{32}|[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})$/;
-
-const allowedFlows = ["", "xtls-rprx-vision", "xtls-rprx-vision-udp443"];
-
-const usernameRegex = /^[A-Za-z0-9._@-]{3,32}$/;
-const BYTES_PER_GB = 1073741824;
-const PERSIAN_DIGITS = "۰۱۲۳۴۵۶۷۸۹";
-const ARABIC_DIGITS = "٠١٢٣٤٥٦٧٨٩";
-const alwaysVisibleStepper = {
-	".rb-number-stepper": { opacity: 1, pointerEvents: "auto" },
-};
+const getDefaultValues = (): FormType => ({
+	data_limit: null,
+	ip_limit: null,
+	speed_limit: null,
+	expire: null,
+	credential_key: null,
+	manual_key_entry: false,
+	flow: "",
+	username: "",
+	data_limit_reset_strategy: "no_reset",
+	status: "active",
+	on_hold_expire_duration: null,
+	note: "",
+	service_id: null,
+	next_plan_enabled: false,
+	next_plan_data_limit: null,
+	next_plan_expire: null,
+	next_plan_add_remaining_traffic: false,
+	next_plan_fire_on_either: true,
+	telegram_id: "",
+	contact_number: "",
+	group_id: null,
+	tags: [],
+});
 
 const normalizeDecimalText = (value: string) =>
 	value
@@ -331,24 +171,18 @@ const normalizeDecimalText = (value: string) =>
 		.replace(/[٫٬,]/g, ".")
 		.trim();
 
+/** `null` for empty input, `NaN` for anything that is not a plain decimal. */
 const parseDecimalInput = (value: unknown): number | null => {
-	if (value === null || typeof value === "undefined") {
-		return null;
-	}
+	if (value === null || typeof value === "undefined") return null;
 	const raw = String(value).trim();
-	if (!raw) {
-		return null;
-	}
+	if (!raw) return null;
 	const normalized = normalizeDecimalText(raw);
-	if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) {
-		return Number.NaN;
-	}
+	if (!/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(normalized)) return Number.NaN;
 	const parsed = Number(normalized);
 	return Number.isFinite(parsed) ? parsed : Number.NaN;
 };
 
-const gigabytesToBytes = (gigabytes: number) =>
-	Math.round(gigabytes * BYTES_PER_GB);
+const gigabytesToBytes = (gigabytes: number) => Math.round(gigabytes * BYTES_PER_GB);
 
 const buildSchema = (isEditing: boolean) => {
 	const baseSchema = {
@@ -358,148 +192,72 @@ const buildSchema = (isEditing: boolean) => {
 					message:
 						"Username only can be 3 to 32 characters and contain a-z, A-Z, 0-9, underscores, hyphens, dots, or @.",
 				}),
-
 		flow: z
 			.string()
 			.optional()
-			.transform((val) =>
-				val === "" || typeof val === "undefined" ? null : val,
-			)
-			.refine(
-				(val) => val === null || allowedFlows.includes(val),
-				"Unsupported flow",
-			),
-
+			.transform((val) => (val === "" || typeof val === "undefined" ? null : val))
+			.refine((val) => val === null || allowedFlows.includes(val), "Unsupported flow"),
 		service_id: z
-
 			.union([z.string(), z.number()])
-
 			.nullable()
-
 			.transform((value) => {
-				if (value === "" || value === null || typeof value === "undefined") {
-					return null;
-				}
-
+				if (value === "" || value === null || typeof value === "undefined") return null;
 				const parsed = Number(value);
-
 				return Number.isNaN(parsed) ? null : parsed;
 			}),
-
 		data_limit: z
-
 			.union([z.string(), z.number(), z.null()])
-
 			.transform((value, ctx) => {
 				const parsed = parseDecimalInput(value);
-				if (parsed === null) {
-					return 0;
-				}
+				if (parsed === null) return 0;
 				if (!Number.isFinite(parsed) || parsed < 0) {
-					ctx.addIssue({
-						code: z.ZodIssueCode.custom,
-						message: "Enter a valid non-negative data limit.",
-					});
+					ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Enter a valid non-negative data limit." });
 					return z.NEVER;
 				}
-
 				return gigabytesToBytes(parsed);
 			}),
-
 		expire: z.number().nullable(),
-
 		data_limit_reset_strategy: z.string(),
-
-		note: z.union([z.string(), z.null(), z.undefined()]).transform((value) => {
-			if (typeof value !== "string") return "";
-			return value;
-		}),
-
-		telegram_id: z
-			.union([z.string(), z.null(), z.undefined()])
-			.transform((value) => {
-				if (typeof value !== "string") return "";
-				return value;
-			}),
-
-		contact_number: z
-			.union([z.string(), z.null(), z.undefined()])
-			.transform((value) => {
-				if (typeof value !== "string") return "";
-				return value;
-			}),
-
+		note: z.union([z.string(), z.null(), z.undefined()]).transform((value) => (typeof value === "string" ? value : "")),
+		group_id: z.number().nullable().optional().transform((value) => value ?? null),
+		tags: z.array(z.string()).optional().transform((value) => value ?? []),
+		telegram_id: z.union([z.string(), z.null(), z.undefined()]).transform((value) => (typeof value === "string" ? value : "")),
+		contact_number: z.union([z.string(), z.null(), z.undefined()]).transform((value) => (typeof value === "string" ? value : "")),
 		next_plan_enabled: z.boolean().default(false),
-
 		next_plan_data_limit: z
-
 			.union([z.string(), z.number(), z.null()])
-
 			.transform((value, ctx) => {
 				const parsed = parseDecimalInput(value);
-				if (parsed === null) {
-					return null;
-				}
+				if (parsed === null) return null;
 				if (!Number.isFinite(parsed) || parsed < 0) {
-					ctx.addIssue({
-						code: z.ZodIssueCode.custom,
-						message: "Enter a valid non-negative data limit.",
-					});
+					ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Enter a valid non-negative data limit." });
 					return z.NEVER;
 				}
-
 				return parsed;
 			}),
-
-		next_plan_expire: z
-
-			.union([z.number(), z.string(), z.null()])
-
-			.transform((value) => {
-				if (value === "" || value === null || typeof value === "undefined") {
-					return null;
-				}
-
-				const parsed = Number(value);
-
-				return Number.isNaN(parsed) ? null : parsed;
-			}),
-
+		next_plan_expire: z.union([z.number(), z.string(), z.null()]).transform((value) => {
+			if (value === "" || value === null || typeof value === "undefined") return null;
+			const parsed = Number(value);
+			return Number.isNaN(parsed) ? null : parsed;
+		}),
 		next_plan_add_remaining_traffic: z.boolean().default(false),
-
 		next_plan_fire_on_either: z.boolean().default(true),
-
 		speed_limit: z
 			.union([z.number().min(0), z.null()])
 			.optional()
 			.transform((value) => {
-				if (
-					typeof value !== "number" ||
-					!Number.isFinite(value) ||
-					value <= 0
-				) {
-					return null;
-				}
+				if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
 				return Math.round(value * 100) / 100;
 			}),
 		ip_limit: z
 			.union([z.number().min(0), z.null()])
 			.optional()
-			.transform((value) => {
-				if (typeof value !== "number") {
-					return null;
-				}
-				return Number.isFinite(value) ? value : null;
-			}),
-
+			.transform((value) => (typeof value === "number" && Number.isFinite(value) ? value : null)),
 		manual_key_entry: z.boolean().default(false),
-
 		credential_key: z
 			.union([z.string(), z.null(), z.undefined()])
 			.transform((value) => {
-				if (!value || typeof value !== "string") {
-					return null;
-				}
+				if (!value || typeof value !== "string") return null;
 				const trimmed = value.trim();
 				return trimmed === "" ? null : trimmed;
 			})
@@ -508,50 +266,21 @@ const buildSchema = (isEditing: boolean) => {
 
 	return z
 		.discriminatedUnion("status", [
-			z.object({
-				status: z.literal("active"),
-
-				...baseSchema,
-			}),
-
-			z.object({
-				status: z.literal("disabled"),
-
-				...baseSchema,
-			}),
-
-			z.object({
-				status: z.literal("limited"),
-
-				...baseSchema,
-			}),
-
-			z.object({
-				status: z.literal("expired"),
-
-				...baseSchema,
-			}),
-
+			z.object({ status: z.literal("active"), ...baseSchema }),
+			z.object({ status: z.literal("disabled"), ...baseSchema }),
+			z.object({ status: z.literal("limited"), ...baseSchema }),
+			z.object({ status: z.literal("expired"), ...baseSchema }),
 			z.object({
 				status: z.literal("on_hold"),
-
 				on_hold_expire_duration: z.coerce
-
 					.number()
-
 					.min(0.1, "Required")
-
-					.transform((d) => {
-						return d * (24 * 60 * 60);
-					}),
-
+					.transform((d) => d * (24 * 60 * 60)),
 				...baseSchema,
 			}),
 		])
 		.superRefine((values, ctx) => {
-			if (!values.manual_key_entry) {
-				return;
-			}
+			if (!values.manual_key_entry) return;
 			const key = values.credential_key;
 			if (!key) {
 				ctx.addIssue({
@@ -565,532 +294,197 @@ const buildSchema = (isEditing: boolean) => {
 				ctx.addIssue({
 					code: z.ZodIssueCode.custom,
 					path: ["credential_key"],
-					message:
-						"Credential key must be a 32-character hexadecimal string or UUID.",
+					message: "Credential key must be a 32-character hexadecimal string or UUID.",
 				});
 			}
 		});
 };
 
+const deriveDaysFromSeconds = (value: unknown): number | null => {
+	if (typeof value !== "number" || value <= 0) return null;
+	const diff = dayjs.unix(value).utc().local().diff(dayjs(), "day", true);
+	return Number.isFinite(diff) ? Math.max(0, Math.round(diff)) : null;
+};
+
+const convertDaysToSecondsFromNow = (days: number) => dayjs().add(days, "day").endOf("day").utc().unix();
+
+/** Digits with an optional decimal point, the only shape a numeric input may hold while typing. */
+const isDecimalDraft = (raw: string) => /^[0-9]*\.?[0-9]*$/.test(raw);
+
+/** A numeric input with a unit suffix, for GB, Mbps and days. */
+const UnitInput = ({
+	id,
+	value,
+	onChange,
+	unit,
+	disabled,
+	invalid,
+	integer,
+}: {
+	id?: string;
+	value: string;
+	onChange: (raw: string) => void;
+	unit: string;
+	disabled?: boolean;
+	invalid?: boolean;
+	integer?: boolean;
+}) => (
+	<NumberField
+		id={id}
+		value={value}
+		onChange={onChange}
+		unit={unit}
+		disabled={disabled}
+		invalid={invalid}
+		inputMode={integer ? "numeric" : "decimal"}
+	/>
+);
+
 export const UserDialog: FC<UserDialogProps> = () => {
 	const editingUser = useDashboard((state) => state.editingUser);
-	const isCreatingNewUser = useDashboard(
-		(state) => state.isCreatingNewUser,
-	);
+	const isCreatingNewUser = useDashboard((state) => state.isCreatingNewUser);
 	const onCreateUser = useDashboard((state) => state.onCreateUser);
 	const editUser = useDashboard((state) => state.editUser);
 	const fetchUserUsage = useDashboard((state) => state.fetchUserUsage);
 	const deleteUser = useDashboard((state) => state.deleteUser);
 	const onEditingUser = useDashboard((state) => state.onEditingUser);
-	const createUserWithService = useDashboard(
-		(state) => state.createUserWithService,
-	);
+	const createUserWithService = useDashboard((state) => state.createUserWithService);
 	const usersLimit = useDashboard((state) => state.users.users_limit ?? null);
-	const activeUsersCount = useDashboard(
-		(state) => state.users.active_total ?? null,
-	);
-	const isUserLimitReached = useDashboard(
-		(state) => state.isUserLimitReached,
-	);
+	const activeUsersCount = useDashboard((state) => state.users.active_total ?? null);
+	const isUserLimitReached = useDashboard((state) => state.isUserLimitReached);
 	const linkTemplates = useDashboard((state) => state.linkTemplates);
 	const setQRCode = useDashboard((state) => state.setQRCode);
 	const setSubLink = useDashboard((state) => state.setSubLink);
-	const editingUserInitialTab = useDashboard(
-		(state) => state.editingUserInitialTab,
-	);
-
-	const isEditing = !!editingUser;
-
-	const isOpen = isCreatingNewUser || isEditing;
-
-	const limitReached = isUserLimitReached && !isEditing;
-
-	const [loading, setLoading] = useState(false);
-	const [submitStatus, setSubmitStatus] = useState<SubmitStatus>("idle");
-	const [deleteLoading, setDeleteLoading] = useState(false);
-	const submitResetTimerRef = useRef<number | null>(null);
-	const successCloseTimerRef = useRef<number | null>(null);
-
-	const [error, setError] = useState<string | null>("");
-
-	const toast = useToast();
+	const editingUserInitialTab = useDashboard((state) => state.editingUserInitialTab);
 
 	const { t, i18n } = useTranslation();
 	const isRTL = i18n.dir(i18n.language) === "rtl";
-	const isMobileDialog = useBreakpointValue({ base: true, md: false }) ?? false;
+	
+	const { colorMode } = useColorMode();
+	const { userData, getUserIsSuccess } = useGetUser();
+
+	const isEditing = !!editingUser;
+	const isOpen = isCreatingNewUser || isEditing;
+	const limitReached = isUserLimitReached && !isEditing;
 	const DATA_UNIT = "GB";
 	const SPEED_UNIT = "Mbps";
 	const DAYS_UNIT = t("userDialog.days");
-	const basePad = "0.75rem";
-	const endPadding = isRTL
-		? { paddingInlineStart: "2.75rem", paddingInlineEnd: basePad }
-		: { paddingInlineEnd: "2.75rem", paddingInlineStart: basePad };
-	const endAdornmentProps = isRTL
-		? {
-				insetInlineStart: "0.5rem",
-				insetInlineEnd: "auto",
-				right: "auto",
-				left: "0.5rem",
-			}
-		: {
-				insetInlineEnd: "0.5rem",
-				insetInlineStart: "auto",
-				right: "0.5rem",
-				left: "auto",
-			};
 
-	const { colorMode } = useColorMode();
-	const footerBg = useColorModeValue("white", "gray.900");
-	const footerBorderColor = useColorModeValue("gray.200", "whiteAlpha.300");
-
-	const UNIT_RADIUS = "6px";
-
-	const renderUnitInput = (args: {
-		value: string;
-		onChange: (e: ChangeEvent<HTMLInputElement>) => void;
-		unit: string;
-		disabled?: boolean;
-		placeholder?: string;
-		type?: string;
-		inputMode?: HTMLAttributes<HTMLInputElement>["inputMode"];
-	}) => {
-		const addonBg = colorMode === "dark" ? "whiteAlpha.100" : "blackAlpha.50";
-		const addonBorder = colorMode === "dark" ? "gray.700" : "gray.200";
-		const addonColor = colorMode === "dark" ? "gray.200" : "gray.600";
-
-		return (
-			<InputGroup size="sm" dir="ltr" w="full" minW={0}>
-				<Box flex="1" minW={0}>
-					<NumericInput
-						sx={alwaysVisibleStepper}
-						value={args.value}
-						isDisabled={args.disabled}
-						min={0}
-						step={1}
-						onChange={(valueAsString) => {
-							args.onChange({
-								target: { value: valueAsString },
-							} as ChangeEvent<HTMLInputElement>);
-						}}
-						fieldProps={{
-							placeholder: args.placeholder,
-							inputMode: args.inputMode ?? "decimal",
-							borderRadius: UNIT_RADIUS,
-							borderEndRadius: "0",
-							h: "32px",
-							minH: "32px",
-							dir: "ltr",
-							textAlign: isRTL ? "right" : "left",
-						}}
-					/>
-				</Box>
-
-				<InputRightAddon
-					bg={addonBg}
-					borderColor={addonBorder}
-					color={addonColor}
-					borderStartRadius="0"
-					borderEndRadius={UNIT_RADIUS}
-					px={3}
-					fontSize="sm"
-					h="32px"
-					minH="32px"
-					userSelect="none"
-				>
-					{args.unit}
-				</InputRightAddon>
-			</InputGroup>
-		);
-	};
+	const [initialValues] = useState<FormType>(() => (editingUser ? formatUser(editingUser) : getDefaultValues()));
+	const [submitStatus, setSubmitStatus] = useState<SubmitStatus>("idle");
+	const [loading, setLoading] = useState(false);
+	const [deleteLoading, setDeleteLoading] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	const [tab, setTab] = useState<TabValue>("details");
+	const [copiedKey, setCopiedKey] = useState<string | null>(null);
+	const [usageFilter, setUsageFilter] = useState("1m");
+	const [usageFetched, setUsageFetched] = useState(false);
+	const [usage, setUsage] = useState(() => createUsageConfig(colorMode, t("userDialog.total")));
+	const [randomUsernameLoading, setRandomUsernameLoading] = useState(false);
+	const [otherInfoOpen, setOtherInfoOpen] = useState(false);
+	const [autoRenewOpen, setAutoRenewOpen] = useState(false);
+	const usageFetchSequence = useRef(0);
+	const { closeTimerRef: successCloseTimerRef, clearSubmitTimers, showSubmitError } = useSubmitTimers(setSubmitStatus);
+	const syncedUserRef = useRef(editingUser);
+	const bodyRef = useRef<HTMLDivElement>(null);
+	const scrollBodyToEnd = () =>
+		window.requestAnimationFrame(() => bodyRef.current?.scrollTo({ top: bodyRef.current.scrollHeight, behavior: "smooth" }));
 
 	const formSchema = useMemo(() => buildSchema(isEditing), [isEditing]);
-
+	const { data: knownUserTags = [] } = useTags("user");
+	const invalidateLabels = useInvalidateLabels();
 	const form = useForm<FormType>({
-		defaultValues: getDefaultValues(),
-
-		resolver: zodResolver(formSchema),
+		defaultValues: initialValues,
+		resolver: zodResolver(formSchema as unknown as Parameters<typeof zodResolver>[0]) as unknown as Resolver<FormType>,
 		mode: "onChange",
 		reValidateMode: "onChange",
 	});
+	const { errors } = form.formState;
 
-	const manualKeyEntryEnabled = useWatch({
+	const manualKeyEntryEnabled = useWatch({ control: form.control, name: "manual_key_entry" });
+	const usernameValue = useWatch({ control: form.control, name: "username" });
+	const [dataLimit, userStatus, expireValue] = useWatch({
 		control: form.control,
-		name: "manual_key_entry",
+		name: ["data_limit", "status", "expire"],
 	});
-	const usernameValue = useWatch({
-		control: form.control,
-		name: "username",
-	});
+	const isOnHold = userStatus === "on_hold";
 	const hasExistingKey = Boolean(editingUser?.credential_key);
 
-	const expireInitialValue = form.getValues("expire");
-
-	const deriveDaysFromSeconds = useCallback((value: unknown): number | null => {
-		if (typeof value !== "number" || value <= 0) {
-			return null;
-		}
-		const target = dayjs.unix(value).utc().local();
-		const now = dayjs();
-		const diff = target.diff(now, "day", true);
-		if (!Number.isFinite(diff)) {
-			return null;
-		}
-		return Math.max(0, Math.round(diff));
-	}, []);
-
-	function convertDaysToSecondsFromNow(days: number): number {
-		return dayjs().add(days, "day").endOf("day").utc().unix();
-	}
-
-	const [_expireDays, setExpireDays] = useState<number | null>(() =>
-		deriveDaysFromSeconds(expireInitialValue),
+	// Permissions, mirrored from the admin's role and grants.
+	const hasPrivilegedRole = Boolean(
+		getUserIsSuccess && (userData.role === AdminRole.Sudo || userData.role === AdminRole.FullAccess),
 	);
-	const [autoRenewOpen, setAutoRenewOpen] = useState(false);
+	const hasFullAccess = Boolean(getUserIsSuccess && userData.role === AdminRole.FullAccess);
+	const canSetCustomKey =
+		hasPrivilegedRole || Boolean(userData.permissions?.users?.[UserPermissionToggle.AllowCustomKey]);
+	const canDeleteUsers = hasFullAccess || Boolean(userData.permissions?.users?.[UserPermissionToggle.Delete]);
+	const canResetUsage = hasFullAccess || Boolean(userData.permissions?.users?.[UserPermissionToggle.ResetUsage]);
+	const canConfigurePeriodicUsageReset =
+		hasFullAccess || Boolean(userData.permissions?.users?.[UserPermissionToggle.PeriodicUsageReset]);
+	const canRevokeSubscription = hasFullAccess || Boolean(userData.permissions?.users?.[UserPermissionToggle.Revoke]);
+	const speedLimitEditable =
+		userData.user_speed_limit_enabled !== false &&
+		(userData.role === AdminRole.FullAccess ||
+			Boolean(userData.permissions?.users?.[UserPermissionToggle.ManageSpeedLimit]));
+	const ipLimitEditable =
+		userData.role === AdminRole.FullAccess ||
+		Boolean(userData.permissions?.users?.[UserPermissionToggle.ManageIPLimit]);
+	const canViewTraffic = canViewUserTraffic(userData, editingUser?.service_id ?? null);
 
-	type AutoRenewRule = {
-		id: string;
-		dataLimit: number | null;
-		expire: number | null;
-		addRemaining: boolean;
-		fireOnEither: boolean;
-		localOnly?: boolean;
-	};
-
-	const initialRule: AutoRenewRule | null = form.getValues("next_plan_enabled")
-		? {
-				id: createAutoRenewId(),
-				dataLimit: form.getValues("next_plan_data_limit"),
-				expire: form.getValues("next_plan_expire"),
-				addRemaining: form.getValues("next_plan_add_remaining_traffic"),
-				fireOnEither: form.getValues("next_plan_fire_on_either"),
-				localOnly: false,
-			}
-		: null;
-
-	const [autoRenewRules, setAutoRenewRules] = useState<AutoRenewRule[]>(
-		initialRule ? [initialRule] : [],
-	);
-	const [editingRuleIndex, setEditingRuleIndex] = useState<number | null>(null);
-	const [autoRenewFormMode, setAutoRenewFormMode] = useState<
-		"add" | "edit" | null
-	>(null);
-	const [autoRenewDataValue, setAutoRenewDataValue] = useState<string>("");
-	const [autoRenewExpireDaysValue, setAutoRenewExpireDaysValue] =
-		useState<string>("");
-	const [autoRenewAddRemainingValue, setAutoRenewAddRemainingValue] =
-		useState(false);
-	const [autoRenewFireOnEitherValue, setAutoRenewFireOnEitherValue] =
-		useState(true);
-
-	const resetAutoRenewFormValues = useCallback(
-		(rule?: AutoRenewRule | null) => {
-			if (rule) {
-				setAutoRenewDataValue(
-					typeof rule.dataLimit === "number" && Number.isFinite(rule.dataLimit)
-						? String(rule.dataLimit)
-						: "",
-				);
-				const derivedDays = deriveDaysFromSeconds(rule.expire);
-				setAutoRenewExpireDaysValue(
-					derivedDays !== null && typeof derivedDays !== "undefined"
-						? String(derivedDays)
-						: "",
-				);
-				setAutoRenewAddRemainingValue(Boolean(rule.addRemaining));
-				setAutoRenewFireOnEitherValue(Boolean(rule.fireOnEither));
-			} else {
-				setAutoRenewDataValue("");
-				setAutoRenewExpireDaysValue("");
-				setAutoRenewAddRemainingValue(false);
-				setAutoRenewFireOnEitherValue(true);
-			}
-		},
-		[deriveDaysFromSeconds],
-	);
-
-	const startAddAutoRenew = () => {
-		setAutoRenewOpen(true);
-		setAutoRenewFormMode("add");
-		setEditingRuleIndex(null);
-		resetAutoRenewFormValues(null);
-	};
-
-	const startEditAutoRenew = (index: number) => {
-		const rule = autoRenewRules[index];
-		if (!rule) return;
-		setAutoRenewOpen(true);
-		setAutoRenewFormMode("edit");
-		setEditingRuleIndex(index);
-		resetAutoRenewFormValues(rule);
-	};
-
-	const handleCancelAutoRenewForm = () => {
-		setAutoRenewFormMode(null);
-		setEditingRuleIndex(null);
-	};
-
-	const handleSaveAutoRenewRule = () => {
-		setError(null);
-		const parsedLimit =
-			autoRenewDataValue.trim() === ""
-				? null
-				: parseDecimalInput(autoRenewDataValue.trim());
-		if (
-			parsedLimit !== null &&
-			(!Number.isFinite(parsedLimit) ||
-				Number.isNaN(parsedLimit) ||
-				parsedLimit < 0)
-		) {
-			setError(t("userDialog.autoRenewInvalidLimit"));
-			return;
-		}
-
-		const parsedDays =
-			autoRenewExpireDaysValue.trim() === ""
-				? null
-				: Number.parseFloat(autoRenewExpireDaysValue.trim());
-		if (
-			parsedDays !== null &&
-			(!Number.isFinite(parsedDays) ||
-				Number.isNaN(parsedDays) ||
-				parsedDays < 0)
-		) {
-			setError(t("userDialog.autoRenewInvalidDays"));
-			return;
-		}
-
-		const expireSeconds =
-			parsedDays !== null
-				? convertDaysToSecondsFromNow(Math.round(parsedDays))
-				: null;
-
-		const existingId =
-			autoRenewFormMode === "edit" && editingRuleIndex !== null
-				? autoRenewRules[editingRuleIndex]?.id
-				: null;
-		const newRule: AutoRenewRule = {
-			id: existingId ?? createAutoRenewId(),
-			dataLimit: parsedLimit === null ? null : parsedLimit,
-			expire: expireSeconds,
-			addRemaining: autoRenewAddRemainingValue,
-			fireOnEither: autoRenewFireOnEitherValue,
-		};
-
-		setAutoRenewRules((prev) => {
-			const next = [...prev];
-			if (autoRenewFormMode === "edit" && editingRuleIndex !== null) {
-				next[editingRuleIndex] = newRule;
-			} else {
-				next.push(newRule);
-			}
-			return next;
-		});
-		setAutoRenewFormMode(null);
-		setEditingRuleIndex(null);
-	};
-
-	const handleDeleteAutoRenewRule = (index: number) => {
-		setAutoRenewRules((prev) => prev.filter((_, i) => i !== index));
-		if (editingRuleIndex === index) {
-			setAutoRenewFormMode(null);
-			setEditingRuleIndex(null);
-		}
-	};
-
-	const quickExpiryOptions = [
-		{
-			label: t("userDialog.quickSelectOneMonth"),
-			amount: 1,
-			unit: "month",
-		},
-		{
-			label: t("userDialog.quickSelectThreeMonths"),
-			amount: 3,
-			unit: "month",
-		},
-		{
-			label: t("userDialog.quickSelectOneYear"),
-			amount: 1,
-			unit: "year",
-		},
-	] as const;
-
+	// Services: a non-privileged admin with one service is always scoped to it.
 	const rawServices = useServicesStore((state) => state.serviceOptions);
 	const services = Array.isArray(rawServices) ? rawServices : [];
 	const servicesLoading = useServicesStore((state) => state.isOptionsLoading);
-	const { userData, getUserIsSuccess } = useGetUser();
-	const hasPrivilegedRole = Boolean(
-		getUserIsSuccess &&
-			(userData.role === AdminRole.Sudo ||
-				userData.role === AdminRole.FullAccess),
-	);
-	const hasFullAccess = Boolean(
-		getUserIsSuccess && userData.role === AdminRole.FullAccess,
-	);
-	const [selectedServiceId, setSelectedServiceId] = useState<number | null>(
-		null,
-	);
 	const hasServices = services.length > 0;
-	const selectedService = selectedServiceId
-		? (services.find((service) => service.id === selectedServiceId) ?? null)
-		: null;
+	const [selectedServiceId, setSelectedServiceId] = useState<number | null>(editingUser?.service_id ?? null);
+	const selectedService = services.find((service) => service.id === selectedServiceId) ?? null;
 	const nonSudoSingleService = !hasPrivilegedRole && services.length === 1;
 	const effectiveServiceId = isEditing
 		? (editingUser?.service_id ?? null)
-		: (selectedServiceId ??
-			(!hasPrivilegedRole && nonSudoSingleService
-				? (services[0]?.id ?? null)
-				: null));
-	const userManagementLocked = isUserManagementLocked(
-		userData,
-		effectiveServiceId,
-	);
-	const canViewTraffic = canViewUserTraffic(
-		userData,
-		editingUser?.service_id ?? null,
-	);
-	const canSetFlow =
-		hasPrivilegedRole ||
-		Boolean(userData.permissions?.users?.[UserPermissionToggle.SetFlow]);
-	const canSetCustomKey =
-		hasPrivilegedRole ||
-		Boolean(userData.permissions?.users?.[UserPermissionToggle.AllowCustomKey]);
-	const canDeleteUsers =
-		hasFullAccess ||
-		Boolean(userData.permissions?.users?.[UserPermissionToggle.Delete]);
-	const canResetUsage =
-		hasFullAccess ||
-		Boolean(userData.permissions?.users?.[UserPermissionToggle.ResetUsage]);
-	const canConfigurePeriodicUsageReset =
-		hasFullAccess ||
-		Boolean(
-			userData.permissions?.users?.[UserPermissionToggle.PeriodicUsageReset],
-		);
-	const canRevokeSubscription =
-		hasFullAccess ||
-		Boolean(userData.permissions?.users?.[UserPermissionToggle.Revoke]);
-	const requiresServiceScope = Boolean(
-		userData.use_service_traffic_limits && !hasPrivilegedRole,
-	);
-	const canDeleteUsersVisible =
-		canDeleteUsers && canDeleteUserByTrafficCap(userData, editingUser);
-	const canResetUsageVisible =
-		canResetUsage && canViewTraffic && !userManagementLocked;
-	const canRevokeSubscriptionVisible =
-		canRevokeSubscription && !userManagementLocked;
-	const currentTrafficScope = getAdminTrafficScope(
-		userData,
-		effectiveServiceId,
-	);
+		: (selectedServiceId ?? (nonSudoSingleService ? (services[0]?.id ?? null) : null));
+	const userManagementLocked = isUserManagementLocked(userData, effectiveServiceId);
+	const requiresServiceScope = Boolean(userData.use_service_traffic_limits && !hasPrivilegedRole);
+	const canDeleteUsersVisible = canDeleteUsers && canDeleteUserByTrafficCap(userData, editingUser);
+	const canResetUsageVisible = canResetUsage && canViewTraffic && !userManagementLocked;
+	const canRevokeSubscriptionVisible = canRevokeSubscription && !userManagementLocked;
+	const currentTrafficScope = getAdminTrafficScope(userData, effectiveServiceId);
 	const isCreatedTrafficScope = Boolean(
-		currentTrafficScope?.traffic_limit_mode ===
-			AdminTrafficLimitMode.CreatedTraffic && !hasPrivilegedRole,
+		currentTrafficScope?.traffic_limit_mode === AdminTrafficLimitMode.CreatedTraffic && !hasPrivilegedRole,
 	);
 	const isServiceManagedUser = Boolean(editingUser?.service_id);
 	const showServiceSelector = hasPrivilegedRole || services.length !== 1;
-	const useTwoColumns = showServiceSelector && services.length > 0;
-	const shouldCenterForm = !useTwoColumns;
-	const shouldCompactModal = !hasPrivilegedRole && services.length === 0;
-	const [activeTab, setActiveTab] = useState(0);
-	const [usageFetched, setUsageFetched] = useState(false);
 
-	const [serviceNoticeVisible, setServiceNoticeVisible] = useState(false);
-	const [serviceNoticeSeed, setServiceNoticeSeed] = useState(0);
-	const [statusNoticeVisible, setStatusNoticeVisible] = useState(false);
-	const [statusNoticeSeed, setStatusNoticeSeed] = useState(0);
-	const [copiedSubscriptionKey, setCopiedSubscriptionKey] = useState<
-		string | null
-	>(null);
-	const [copiedAllConfigs, setCopiedAllConfigs] = useState(false);
-	const [copiedConfigIndex, setCopiedConfigIndex] = useState<number | null>(
-		null,
+	// Auto-renew rules. Only the first rule is sent with the user; the rest are queued locally.
+	const [autoRenewRules, setAutoRenewRules] = useState<AutoRenewRule[]>(() =>
+		initialValues.next_plan_enabled
+			? [
+					{
+						id: createId(),
+						dataLimit: initialValues.next_plan_data_limit,
+						expire: initialValues.next_plan_expire,
+						addRemaining: initialValues.next_plan_add_remaining_traffic,
+						fireOnEither: initialValues.next_plan_fire_on_either,
+					},
+				]
+			: [],
 	);
+	const [ruleDraft, setRuleDraft] = useState<RuleDraft | null>(null);
 
-	const autoRenewTitle = t("autoRenew.title");
+	const expireHelperText = useMemo(() => {
+		if (!expireValue) return null;
+		const { status, time } = relativeExpiryDate(expireValue);
+		return t(status, { time });
+	}, [expireValue, t]);
 
-	useEffect(() => {
-		if (!isOpen || !isEditing || !isServiceManagedUser) {
-			setServiceNoticeVisible(false);
-			return;
+	const remainingDataInfo = useMemo(() => {
+		if (!isEditing || !editingUser || !canViewTraffic) return null;
+		const parsedLimit = parseDecimalInput(dataLimit);
+		if (!parsedLimit || !Number.isFinite(parsedLimit) || parsedLimit <= 0) {
+			return t("userDialog.remainingDataUnlimited");
 		}
-		setServiceNoticeSeed((prev) => prev + 1);
-		setServiceNoticeVisible(true);
-		const timer = window.setTimeout(() => {
-			setServiceNoticeVisible(false);
-		}, SERVICE_NOTICE_DURATION_MS);
-		return () => window.clearTimeout(timer);
-	}, [isOpen, isEditing, isServiceManagedUser]);
-
-	useEffect(() => {
-		if (isOpen) {
-			useServicesStore.getState().fetchServiceOptions({ limit: 1000 });
-		}
-	}, [isOpen]);
-
-	useEffect(() => {
-		if (isEditing) {
-			if (editingUser?.service_id) {
-				setSelectedServiceId(editingUser.service_id);
-			} else if (services.length) {
-				setSelectedServiceId(services[0]?.id ?? null);
-			} else {
-				setSelectedServiceId(null);
-			}
-		} else if (!isOpen) {
-			setSelectedServiceId(null);
-		}
-	}, [isEditing, editingUser, isOpen, services]);
-
-	useEffect(() => {
-		if (!isEditing && isOpen && hasServices && !hasPrivilegedRole) {
-			setSelectedServiceId((current) => current ?? services[0]?.id ?? null);
-		}
-	}, [services, isEditing, isOpen, hasServices, hasPrivilegedRole]);
-
-	useEffect(() => {
-		if (!isEditing && isOpen && !hasServices) {
-			setSelectedServiceId(null);
-		}
-	}, [hasServices, isEditing, isOpen]);
-
-	useEffect(() => {
-		if (nonSudoSingleService && services[0]) {
-			setSelectedServiceId((current) => current ?? services[0].id);
-		}
-	}, [nonSudoSingleService, services]);
-
-	useEffect(() => {
-		const firstRule = autoRenewRules[0];
-		if (firstRule) {
-			form.setValue("next_plan_enabled", true, { shouldDirty: false });
-			form.setValue("next_plan_data_limit", firstRule.dataLimit, {
-				shouldDirty: false,
-			});
-			form.setValue("next_plan_expire", firstRule.expire, {
-				shouldDirty: false,
-			});
-			form.setValue("next_plan_add_remaining_traffic", firstRule.addRemaining, {
-				shouldDirty: false,
-			});
-			form.setValue("next_plan_fire_on_either", firstRule.fireOnEither, {
-				shouldDirty: false,
-			});
-		} else {
-			form.setValue("next_plan_enabled", false, { shouldDirty: false });
-			form.setValue("next_plan_data_limit", null, { shouldDirty: false });
-			form.setValue("next_plan_expire", null, { shouldDirty: false });
-			form.setValue("next_plan_add_remaining_traffic", false, {
-				shouldDirty: false,
-			});
-			form.setValue("next_plan_fire_on_either", true, { shouldDirty: false });
-		}
-	}, [autoRenewRules, form]);
-
-	const [dataLimit, userStatus] = useWatch({
-		control: form.control,
-
-		name: ["data_limit", "status"],
-	});
+		const remainingBytes = Math.max(parsedLimit * BYTES_PER_GB - (editingUser.used_traffic ?? 0), 0);
+		return remainingBytes <= 0 ? t("userDialog.remainingDataLimited") : formatBytes(remainingBytes, 2);
+	}, [canViewTraffic, isEditing, editingUser, dataLimit, t]);
 
 	const statusNotice = useMemo(() => {
 		if (!isEditing) return null;
@@ -1108,133 +502,19 @@ export const UserDialog: FC<UserDialogProps> = () => {
 		}
 	}, [isEditing, userStatus, t]);
 
-	useEffect(() => {
-		if (!isOpen || !isEditing || !statusNotice) {
-			setStatusNoticeVisible(false);
-			return;
-		}
-		setStatusNoticeSeed((prev) => prev + 1);
-		setStatusNoticeVisible(true);
-		const timer = window.setTimeout(() => {
-			setStatusNoticeVisible(false);
-		}, SERVICE_NOTICE_DURATION_MS);
-		return () => window.clearTimeout(timer);
-	}, [isOpen, isEditing, statusNotice]);
-
-	useEffect(() => {
-		if (copiedSubscriptionKey) {
-			const timer = window.setTimeout(
-				() => setCopiedSubscriptionKey(null),
-				1000,
-			);
-			return () => window.clearTimeout(timer);
-		}
-		return undefined;
-	}, [copiedSubscriptionKey]);
-
-	useEffect(() => {
-		if (copiedAllConfigs) {
-			const timer = window.setTimeout(() => setCopiedAllConfigs(false), 1000);
-			return () => window.clearTimeout(timer);
-		}
-		return undefined;
-	}, [copiedAllConfigs]);
-
-	useEffect(() => {
-		if (copiedConfigIndex !== null) {
-			const timer = window.setTimeout(() => setCopiedConfigIndex(null), 1000);
-			return () => window.clearTimeout(timer);
-		}
-		return undefined;
-	}, [copiedConfigIndex]);
-
-	const remainingDataInfo = useMemo(() => {
-		if (!isEditing || !editingUser || !canViewTraffic) return null;
-		const rawLimit = dataLimit;
-		const parsedLimit = parseDecimalInput(rawLimit);
-		if (!parsedLimit || !Number.isFinite(parsedLimit) || parsedLimit <= 0) {
-			return {
-				label: t("userDialog.remainingDataLabel"),
-				value: t("userDialog.remainingDataUnlimited"),
-			};
-		}
-		const limitBytes = parsedLimit * BYTES_PER_GB;
-		const usedBytes = editingUser.used_traffic ?? 0;
-		const remainingBytes = Math.max(limitBytes - usedBytes, 0);
-		return {
-			label: t("userDialog.remainingDataLabel"),
-			value:
-				remainingBytes <= 0
-					? t("userDialog.remainingDataLimited")
-					: formatBytes(remainingBytes, 2),
-		};
-	}, [canViewTraffic, isEditing, editingUser, dataLimit, t]);
+	const quickExpiryOptions = [
+		{ label: t("userDialog.quickSelectOneMonth"), amount: 1, unit: "month" },
+		{ label: t("userDialog.quickSelectThreeMonths"), amount: 3, unit: "month" },
+		{ label: t("userDialog.quickSelectOneYear"), amount: 1, unit: "year" },
+	] as const;
 
 	const formatLink = useCallback((link?: string | null) => {
 		if (!link) return "";
 		return link.startsWith("/") ? window.location.origin + link : link;
 	}, []);
 
-	const clearSubmitTimers = useCallback(() => {
-		if (submitResetTimerRef.current !== null) {
-			window.clearTimeout(submitResetTimerRef.current);
-			submitResetTimerRef.current = null;
-		}
-		if (successCloseTimerRef.current !== null) {
-			window.clearTimeout(successCloseTimerRef.current);
-			successCloseTimerRef.current = null;
-		}
-	}, []);
-
-	useEffect(() => clearSubmitTimers, [clearSubmitTimers]);
-
-	const showSubmitError = useCallback(() => {
-		if (successCloseTimerRef.current !== null) {
-			window.clearTimeout(successCloseTimerRef.current);
-			successCloseTimerRef.current = null;
-		}
-		if (submitResetTimerRef.current !== null) {
-			window.clearTimeout(submitResetTimerRef.current);
-		}
-		setSubmitStatus("error");
-		submitResetTimerRef.current = window.setTimeout(() => {
-			setSubmitStatus("idle");
-			submitResetTimerRef.current = null;
-		}, 900);
-	}, []);
-
-	const openUserQrDialog = useCallback(
-		(user: User | UserListItem | null | undefined) => {
-			if (!user) return;
-			const currentLinkTemplates =
-				useDashboard.getState().linkTemplates ?? linkTemplates;
-			const configLinks = generateUserLinks(user, currentLinkTemplates, {
-				includeInactive: true,
-			});
-			const subscriptionLink =
-				formatLink((user as User).subscription_url) ||
-				formatLink((user as User).key_subscription_url) ||
-				formatLink(Object.values((user as User).subscription_urls ?? {})[0]);
-
-			if (!configLinks.length && !subscriptionLink) return;
-			setQRCode(configLinks, user.username);
-			setSubLink(subscriptionLink || null);
-		},
-		[formatLink, linkTemplates, setQRCode, setSubLink],
-	);
-
-	const fetchUserForQr = useCallback(async (username: string) => {
-		try {
-			return await apiFetch<User>(`/user/${encodeURIComponent(username)}`);
-		} catch (_error) {
-			return null;
-		}
-	}, []);
-
 	const subscriptionLinks = useMemo(() => {
-		if (!editingUser) {
-			return [];
-		}
+		if (!editingUser) return [];
 		const urls = editingUser.subscription_urls ?? {};
 		const order = ["username-key", "key", "key-username", "token"] as const;
 		const labels: Record<(typeof order)[number], string> = {
@@ -1244,22 +524,16 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			token: t("userDialog.links.subscriptionToken"),
 		};
 		const orderIndex = new Map(order.map((key, index) => [key, index]));
-
 		const results = Object.entries(urls)
 			.map(([key, value]) => {
 				const url = formatLink(value);
-				if (!url) {
-					return null;
-				}
-
+				if (!url) return null;
 				const [baseKeyRaw, variant] = key.split("@", 2);
 				const baseKey = baseKeyRaw as (typeof order)[number];
 				const baseLabel = labels[baseKey] ?? baseKeyRaw;
-				const label = variant ? `${baseLabel} (${variant})` : baseLabel;
-
 				return {
 					key,
-					label,
+					label: variant ? `${baseLabel} (${variant})` : baseLabel,
 					url,
 					order: orderIndex.get(baseKey) ?? order.length,
 					variant: variant ?? "",
@@ -1267,2922 +541,1293 @@ export const UserDialog: FC<UserDialogProps> = () => {
 			})
 			.filter((entry): entry is NonNullable<typeof entry> => Boolean(entry))
 			.sort((a, b) => {
-				if (a.order !== b.order) {
-					return a.order - b.order;
-				}
+				if (a.order !== b.order) return a.order - b.order;
 				const aHasVariant = a.variant !== "";
 				const bHasVariant = b.variant !== "";
-				if (aHasVariant !== bHasVariant) {
-					return aHasVariant ? 1 : -1;
-				}
-				return a.variant.localeCompare(b.variant, undefined, {
-					numeric: true,
-				});
+				if (aHasVariant !== bHasVariant) return aHasVariant ? 1 : -1;
+				return a.variant.localeCompare(b.variant, undefined, { numeric: true });
 			})
 			.map(({ key, label, url }) => ({ key, label, url }));
 
 		if (results.length === 0 && editingUser.subscription_url) {
 			const fallback = formatLink(editingUser.subscription_url);
-			if (fallback) {
-				results.push({
-					key: "primary",
-					label: t("userDialog.links.subscription"),
-					url: fallback,
-				});
-			}
+			if (fallback) results.push({ key: "primary", label: t("userDialog.links.subscription"), url: fallback });
 		}
-
 		return results;
 	}, [editingUser, formatLink, t]);
 
 	const userLinks = useMemo(
-		() =>
-			editingUser
-				? generateUserLinks(editingUser, linkTemplates, {
-						includeInactive: true,
-					})
-				: [],
+		() => (editingUser ? generateUserLinks(editingUser, linkTemplates, { includeInactive: true }) : []),
 		[editingUser, linkTemplates],
 	);
-
 	const configLinksText = useMemo(() => userLinks.join("\n"), [userLinks]);
-
-	const configItems = useMemo(() => {
-		return userLinks.map((link, index) => {
-			const label =
-				getConfigLabelFromLink(link) ||
-				t("userDialog.links.configFallback", {
-					index: index + 1,
-				});
-			return { link, label };
-		});
-	}, [userLinks, t]);
-
-	const handleTabChange = (index: number) => {
-		setActiveTab(index);
-		const usageTabIndex = isEditing && canViewTraffic ? 1 : -1;
-		if (index === usageTabIndex && !usageFetched && editingUser) {
-			fetchUsageWithFilter({
-				start: dayjs().utc().subtract(30, "day").format("YYYY-MM-DDTHH:00:00"),
-			});
-			setUsageFetched(true);
-		}
-	};
-
-	const expireValue = useWatch({
-		control: form.control,
-
-		name: "expire",
-	});
-
-	const expireHelperText = useMemo(() => {
-		if (!expireValue) {
-			return null;
-		}
-		const { status, time } = relativeExpiryDate(expireValue);
-		return t(status, { time });
-	}, [expireValue, t]);
-
-	useEffect(() => {
-		const derivedDays = deriveDaysFromSeconds(expireValue);
-		setExpireDays((prev) => (prev === derivedDays ? prev : derivedDays));
-	}, [expireValue, deriveDaysFromSeconds]);
+	const configItems = useMemo(
+		() =>
+			userLinks.map((link, index) => ({
+				link,
+				label: getConfigLabelFromLink(link) || t("userDialog.links.configFallback", { index: index + 1 }),
+			})),
+		[userLinks, t],
+	);
 
 	const usageTitle = t("userDialog.total");
-
-	const [usage, setUsage] = useState(createUsageConfig(colorMode, usageTitle));
-
-	const [usageFilter, setUsageFilter] = useState("1m");
-	const usageFetchSequence = useRef(0);
-
 	const fetchUsageWithFilter = useCallback(
 		(query: FilterUsageType) => {
 			if (!editingUser) return;
 			const requestId = ++usageFetchSequence.current;
 			fetchUserUsage(editingUser as unknown as UserListItem, query)
-				.then((data: any) => {
+				.then((data) => {
 					if (requestId !== usageFetchSequence.current) return;
-					const labels = [];
-
-					const series = [];
-
-					for (const key in data.usages) {
-						series.push(data.usages[key].used_traffic);
-
-						labels.push(data.usages[key].node_name);
+					const usages = (data as unknown as { usages: Record<string, { used_traffic: number; node_name: string }> })
+						.usages;
+					const series: number[] = [];
+					const labels: string[] = [];
+					for (const key in usages) {
+						const usedTraffic = Number(usages[key]?.used_traffic ?? 0);
+						if (!usedTraffic || usedTraffic <= 0) {
+							continue;
+						}
+						series.push(usedTraffic);
+						labels.push(usages[key].node_name);
 					}
-
 					setUsage(createUsageConfig(colorMode, usageTitle, series, labels));
 				})
-				.catch((error) => {
-					if (requestId === usageFetchSequence.current) {
-						console.error("Failed to fetch user usage:", error);
-					}
+				.catch((fetchError) => {
+					if (requestId === usageFetchSequence.current) console.error("Failed to fetch user usage:", fetchError);
 				});
 		},
 		[editingUser, colorMode, usageTitle, fetchUserUsage],
 	);
 
+	// Deep links open the usage tab directly.
 	useEffect(() => {
-		usageFetchSequence.current += 1;
-		if (editingUser) {
-			const formatted = formatUser(editingUser);
-			form.reset(formatted);
-			setExpireDays(deriveDaysFromSeconds(formatted.expire));
-			setUsage(createUsageConfig(colorMode, usageTitle));
-			setUsageFilter("1m");
-			// Deep-link support: open directly on the Usage tab (index 1) when
-			// requested via onEditingUser(user, 1), otherwise the Edit tab.
-			const wantsUsageTab = editingUserInitialTab === 1 && canViewTraffic;
-			if (wantsUsageTab) {
-				setUsageFetched(true);
-				fetchUsageWithFilter({
-					start: dayjs()
-						.utc()
-						.subtract(30, "day")
-						.format("YYYY-MM-DDTHH:00:00"),
-				});
-			} else {
-				setUsageFetched(false);
-			}
-			setActiveTab(wantsUsageTab ? 1 : 0);
-			setCopiedSubscriptionKey(null);
-			setCopiedAllConfigs(false);
-			setCopiedConfigIndex(null);
-			if (formatted.next_plan_enabled) {
-				const rule: AutoRenewRule = {
-					id: createAutoRenewId(),
-					dataLimit: formatted.next_plan_data_limit,
-					expire: formatted.next_plan_expire,
-					addRemaining: formatted.next_plan_add_remaining_traffic,
-					fireOnEither: formatted.next_plan_fire_on_either,
-				};
-				setAutoRenewRules([rule]);
-				resetAutoRenewFormValues(rule);
-			} else {
-				setAutoRenewRules([]);
-				resetAutoRenewFormValues(null);
-			}
-		} else {
-			const defaults = getDefaultValues();
-			form.reset(defaults);
-			setExpireDays(deriveDaysFromSeconds(defaults.expire));
-			setUsage(createUsageConfig(colorMode, usageTitle));
-			setUsageFilter("1m");
-			setUsageFetched(false);
-			setActiveTab(0);
-			setCopiedSubscriptionKey(null);
-			setCopiedAllConfigs(false);
-			setCopiedConfigIndex(null);
-			if (defaults.next_plan_enabled) {
-				const rule: AutoRenewRule = {
-					id: createAutoRenewId(),
-					dataLimit: defaults.next_plan_data_limit,
-					expire: defaults.next_plan_expire,
-					addRemaining: defaults.next_plan_add_remaining_traffic,
-					fireOnEither: defaults.next_plan_fire_on_either,
-				};
-				setAutoRenewRules([rule]);
-				resetAutoRenewFormValues(rule);
-			} else {
-				setAutoRenewRules([]);
-				resetAutoRenewFormValues(null);
-			}
+		if (!isEditing || !canViewTraffic || editingUserInitialTab !== 1 || usageFetched) return;
+		setUsageFetched(true);
+		setTab("usage");
+		fetchUsageWithFilter({ start: dayjs().utc().subtract(30, "day").format("YYYY-MM-DDTHH:00:00") });
+	}, [isEditing, canViewTraffic, editingUserInitialTab, usageFetched, fetchUsageWithFilter]);
+
+	const handleTabChange = (value: string) => {
+		const next = value as TabValue;
+		setTab(next);
+		if (next === "usage" && isEditing && !usageFetched) {
+			setUsageFetched(true);
+			fetchUsageWithFilter({ start: dayjs().utc().subtract(30, "day").format("YYYY-MM-DDTHH:00:00") });
 		}
-	}, [
-		editingUser,
-		editingUserInitialTab,
-		canViewTraffic,
-		fetchUsageWithFilter,
-		deriveDaysFromSeconds,
-		form.reset,
-		resetAutoRenewFormValues,
-		colorMode,
-		usageTitle,
-	]);
+	};
+
+	useEffect(() => {
+		if (isOpen) useServicesStore.getState().fetchServiceOptions({ limit: 1000 });
+	}, [isOpen]);
+
+	useEffect(() => {
+		if (isEditing) {
+			setSelectedServiceId(editingUser?.service_id ?? services[0]?.id ?? null);
+			return;
+		}
+		if (!hasPrivilegedRole && services[0]) {
+			setSelectedServiceId((current) => current ?? services[0].id);
+		}
+	}, [isEditing, editingUser, services, hasPrivilegedRole]);
+
+	// The first auto-renew rule is the one the form sends.
+	useEffect(() => {
+		const firstRule = autoRenewRules[0];
+		form.setValue("next_plan_enabled", Boolean(firstRule), { shouldDirty: false });
+		form.setValue("next_plan_data_limit", firstRule?.dataLimit ?? null, { shouldDirty: false });
+		form.setValue("next_plan_expire", firstRule?.expire ?? null, { shouldDirty: false });
+		form.setValue("next_plan_add_remaining_traffic", firstRule?.addRemaining ?? false, { shouldDirty: false });
+		form.setValue("next_plan_fire_on_either", firstRule?.fireOnEither ?? true, { shouldDirty: false });
+	}, [autoRenewRules, form]);
+
+	// The list row opens the dialog first and the full user record arrives after it. Re-sync the form when it does.
+	useEffect(() => {
+		if (!editingUser || editingUser === syncedUserRef.current || typeof editingUser.username !== "string") return;
+		syncedUserRef.current = editingUser;
+		const next = formatUser(editingUser);
+		form.reset(next);
+		setAutoRenewRules(
+			next.next_plan_enabled
+				? [
+						{
+							id: createId(),
+							dataLimit: next.next_plan_data_limit,
+							expire: next.next_plan_expire,
+							addRemaining: next.next_plan_add_remaining_traffic,
+							fireOnEither: next.next_plan_fire_on_either,
+						},
+					]
+				: [],
+		);
+		setRuleDraft(null);
+		setSelectedServiceId(editingUser.service_id ?? null);
+	}, [editingUser, form]);
 
 	useEffect(() => {
 		if (!canSetCustomKey) {
 			form.setValue("manual_key_entry", false, { shouldDirty: true });
 			form.setValue("credential_key", null, { shouldDirty: true });
 		}
-		if (!canSetFlow) {
-			form.setValue("flow", "", { shouldDirty: false });
+	}, [canSetCustomKey, form]);
+
+	useEffect(() => {
+		if (!copiedKey) return undefined;
+		const timer = window.setTimeout(() => setCopiedKey(null), COPY_FEEDBACK_MS);
+		return () => window.clearTimeout(timer);
+	}, [copiedKey]);
+
+	const copyValue = (key: string, value: string) => {
+		void copyTextToClipboard(value)
+			.then(() => setCopiedKey(key))
+			.catch(() => undefined);
+	};
+
+	const fetchUserForQr = useCallback(async (username: string) => {
+		try {
+			return await apiFetch<User>(`/user/${encodeURIComponent(username)}`);
+		} catch (_error) {
+			return null;
 		}
-	}, [canSetCustomKey, canSetFlow, form]);
+	}, []);
+
+	const openUserQrDialog = useCallback(
+		(user: User | UserListItem | null | undefined) => {
+			if (!user) return;
+			const currentLinkTemplates = useDashboard.getState().linkTemplates ?? linkTemplates;
+			const configLinks = generateUserLinks(user, currentLinkTemplates, { includeInactive: true });
+			const subscriptionLink =
+				formatLink((user as User).subscription_url) ||
+				formatLink((user as User).key_subscription_url) ||
+				formatLink(Object.values((user as User).subscription_urls ?? {})[0]);
+			if (!configLinks.length && !subscriptionLink) return;
+			setQRCode(configLinks, user.username);
+			setSubLink(subscriptionLink || null);
+		},
+		[formatLink, linkTemplates, setQRCode, setSubLink],
+	);
+
+	const onClose = () => {
+		clearSubmitTimers();
+		onCreateUser(false);
+		onEditingUser(null);
+	};
+
+	// Auto-renew rule editor.
+	const startRuleDraft = (index: number | null) => {
+		const rule = index === null ? null : (autoRenewRules[index] ?? null);
+		setAutoRenewOpen(true);
+		scrollBodyToEnd();
+		setRuleDraft({
+			index,
+			data: rule?.dataLimit != null ? String(rule.dataLimit) : "",
+			days: rule ? String(deriveDaysFromSeconds(rule.expire) ?? "") : "",
+			addRemaining: rule?.addRemaining ?? false,
+			fireOnEither: rule?.fireOnEither ?? true,
+		});
+	};
+
+	const saveRuleDraft = () => {
+		if (!ruleDraft) return;
+		setError(null);
+		const parsedLimit = ruleDraft.data.trim() === "" ? null : parseDecimalInput(ruleDraft.data.trim());
+		if (parsedLimit !== null && (!Number.isFinite(parsedLimit) || Number.isNaN(parsedLimit) || parsedLimit < 0)) {
+			setError(t("userDialog.autoRenewInvalidLimit"));
+			return;
+		}
+		const parsedDays = ruleDraft.days.trim() === "" ? null : Number.parseFloat(ruleDraft.days.trim());
+		if (parsedDays !== null && (!Number.isFinite(parsedDays) || Number.isNaN(parsedDays) || parsedDays < 0)) {
+			setError(t("userDialog.autoRenewInvalidDays"));
+			return;
+		}
+		const rule: AutoRenewRule = {
+			id: (ruleDraft.index !== null ? autoRenewRules[ruleDraft.index]?.id : null) ?? createId(),
+			dataLimit: parsedLimit,
+			expire: parsedDays !== null ? convertDaysToSecondsFromNow(Math.round(parsedDays)) : null,
+			addRemaining: ruleDraft.addRemaining,
+			fireOnEither: ruleDraft.fireOnEither,
+		};
+		setAutoRenewRules((previous) => {
+			const next = [...previous];
+			if (ruleDraft.index !== null) next[ruleDraft.index] = rule;
+			else next.push(rule);
+			return next;
+		});
+		setRuleDraft(null);
+	};
+
+	const deleteRule = (index: number) => {
+		setAutoRenewRules((previous) => previous.filter((_, i) => i !== index));
+		if (ruleDraft?.index === index) setRuleDraft(null);
+	};
+
+	const applyApiError = (err: unknown) => {
+		const response = (err as { response?: { status?: number; _data?: { detail?: unknown } } })?.response;
+		if (response?.status === 409 || response?.status === 400) {
+			setError(response._data?.detail as string);
+		}
+		if (response?.status === 422 && response._data?.detail && typeof response._data.detail === "object") {
+			Object.entries(response._data.detail as Record<string, string>).forEach(([key, message]) => {
+				setError(message);
+				form.setError(key as "username" | "data_limit" | "expire" | "service_id", { type: "custom", message });
+			});
+		}
+		setLoading(false);
+		showSubmitError();
+	};
 
 	const submit = (values: FormType) => {
 		if (submitStatus !== "idle") return;
-		clearSubmitTimers();
 		setLoading(true);
 		setSubmitStatus("loading");
 		setError(null);
 
-		// Check user limit before submitting (even if status is not active)
-		// This prevents creating users that would exceed the limit
-		if (
-			usersLimit !== null &&
-			usersLimit !== undefined &&
-			usersLimit > 0 &&
-			activeUsersCount !== null
-		) {
-			if (activeUsersCount >= usersLimit) {
-				const errorMessage = t("userDialog.usersLimitReached", {
-					active: activeUsersCount,
-					limit: usersLimit,
-				});
-				setError(errorMessage);
-				setLoading(false);
-				showSubmitError();
-				return;
-			}
-		}
-
-		if (limitReached) {
+		const failSubmit = (message?: string) => {
+			if (message) setError(message);
 			setLoading(false);
 			showSubmitError();
+		};
+
+		if (usersLimit && usersLimit > 0 && activeUsersCount !== null && activeUsersCount >= usersLimit) {
+			failSubmit(t("userDialog.usersLimitReached", { active: activeUsersCount, limit: usersLimit }));
 			return;
 		}
-		if (userManagementLocked) {
-			setLoading(false);
-			showSubmitError();
+		if (limitReached || userManagementLocked) {
+			failSubmit();
 			return;
 		}
 
+		// Flow is not sent: the backend reads it from the inbound, and an absent field leaves the stored value alone.
 		const {
 			service_id: _serviceId,
-
 			next_plan_enabled,
-
 			next_plan_data_limit,
-
 			next_plan_expire,
-
 			next_plan_add_remaining_traffic,
-
 			next_plan_fire_on_either,
-
 			flow,
-
 			status,
-
 			data_limit,
-
 			data_limit_reset_strategy,
-
 			on_hold_expire_duration,
-
 			ip_limit,
-
 			speed_limit,
-
 			credential_key,
-
 			manual_key_entry,
-
 			...rest
 		} = values;
 
-		// Validate data_limit based on admin permissions (don't auto-normalize, show error instead)
-		const maxDataLimitPerUser =
-			userData?.permissions?.users?.max_data_limit_per_user;
+		const maxDataLimitPerUser = userData?.permissions?.users?.max_data_limit_per_user;
 		const allowUnlimitedData =
-			hasFullAccess ||
-			Boolean(
-				userData?.permissions?.users?.[UserPermissionToggle.AllowUnlimitedData],
-			);
-
-		// data_limit from schema is already in bytes
+			hasFullAccess || Boolean(userData?.permissions?.users?.[UserPermissionToggle.AllowUnlimitedData]);
 		const dataLimitBytes = data_limit || 0;
 		const setDataLimitError = (message: string) => {
-			setError(message);
-			setLoading(false);
-			showSubmitError();
-			form.setError("data_limit", {
-				type: "manual",
-				message,
-			});
+			form.setError("data_limit", { type: "manual", message });
+			failSubmit(message);
 		};
 
 		if (isCreatedTrafficScope && dataLimitBytes <= 0) {
 			setDataLimitError(t("userDialog.createdTrafficUnlimitedNotAllowed"));
 			return;
 		}
-
 		if (isCreatedTrafficScope && isEditing && editingUser) {
 			const usedTraffic = Math.max(0, editingUser.used_traffic ?? 0);
 			if (dataLimitBytes > 0 && dataLimitBytes < usedTraffic) {
+				setDataLimitError(t("userDialog.dataLimitBelowUsedTraffic", { used: formatBytes(usedTraffic, 2) }));
+				return;
+			}
+		}
+		if (maxDataLimitPerUser !== null && maxDataLimitPerUser !== undefined) {
+			if (dataLimitBytes === 0 && !allowUnlimitedData) {
+				setDataLimitError(t("userDialog.unlimitedNotAllowed", { max: (maxDataLimitPerUser / BYTES_PER_GB).toFixed(2) }));
+				return;
+			}
+			if (dataLimitBytes > 0 && dataLimitBytes > maxDataLimitPerUser) {
 				setDataLimitError(
-					t("userDialog.dataLimitBelowUsedTraffic", {
-						used: formatBytes(usedTraffic, 2),
+					t("userDialog.dataLimitExceedsMax", {
+						original: (dataLimitBytes / BYTES_PER_GB).toFixed(2),
+						max: (maxDataLimitPerUser / BYTES_PER_GB).toFixed(2),
 					}),
 				);
 				return;
 			}
 		}
 
-		if (maxDataLimitPerUser !== null && maxDataLimitPerUser !== undefined) {
-			// If unlimited (0) is requested but not allowed, show error
-			if (dataLimitBytes === 0 && !allowUnlimitedData) {
-				const maxGb = (maxDataLimitPerUser / BYTES_PER_GB).toFixed(2);
-				const errorMessage = t("userDialog.unlimitedNotAllowed", {
-					max: maxGb,
-				});
-				setDataLimitError(errorMessage);
-				return;
-			}
-			// If exceeds max limit, show error
-			if (dataLimitBytes > 0 && dataLimitBytes > maxDataLimitPerUser) {
-				const originalGb = (dataLimitBytes / BYTES_PER_GB).toFixed(2);
-				const maxGb = (maxDataLimitPerUser / BYTES_PER_GB).toFixed(2);
-				const errorMessage = t("userDialog.dataLimitExceedsMax", {
-					original: originalGb,
-					max: maxGb,
-				});
-				setDataLimitError(errorMessage);
-				return;
-			}
+		const minDataLimitPerUser =
+			userData?.permissions?.users?.min_data_limit_per_user;
+		const dataLimitUnchanged =
+			isEditing && (editingUser?.data_limit ?? 0) === dataLimitBytes;
+		if (
+			minDataLimitPerUser &&
+			dataLimitBytes > 0 &&
+			dataLimitBytes < minDataLimitPerUser &&
+			!dataLimitUnchanged
+		) {
+			setDataLimitError(
+				t("userDialog.dataLimitBelowMin", {
+					min: (minDataLimitPerUser / BYTES_PER_GB).toFixed(2),
+				}),
+			);
+			return;
 		}
 
-		// Validate next_plan data_limit (don't auto-normalize, show error instead)
 		const normalizedNextPlanDataLimit =
 			next_plan_enabled && next_plan_data_limit && next_plan_data_limit > 0
 				? gigabytesToBytes(Number(next_plan_data_limit))
 				: 0;
-
-		if (
-			maxDataLimitPerUser !== null &&
-			maxDataLimitPerUser !== undefined &&
-			normalizedNextPlanDataLimit > 0
-		) {
-			if (normalizedNextPlanDataLimit > maxDataLimitPerUser) {
-				const originalGb = (normalizedNextPlanDataLimit / BYTES_PER_GB).toFixed(
-					2,
+		const setNextPlanError = (message: string) => {
+			form.setError("next_plan_data_limit", { type: "manual", message });
+			failSubmit(message);
+		};
+		if (maxDataLimitPerUser !== null && maxDataLimitPerUser !== undefined) {
+			if (normalizedNextPlanDataLimit > 0 && normalizedNextPlanDataLimit > maxDataLimitPerUser) {
+				setNextPlanError(
+					t("userDialog.nextPlanDataLimitExceedsMax", {
+						original: (normalizedNextPlanDataLimit / BYTES_PER_GB).toFixed(2),
+						max: (maxDataLimitPerUser / BYTES_PER_GB).toFixed(2),
+					}),
 				);
-				const maxGb = (maxDataLimitPerUser / BYTES_PER_GB).toFixed(2);
-				const errorMessage = t("userDialog.nextPlanDataLimitExceedsMax", {
-					original: originalGb,
-					max: maxGb,
-				});
-				setError(errorMessage);
-				setLoading(false);
-				showSubmitError();
-				form.setError("next_plan_data_limit", {
-					type: "manual",
-					message: errorMessage,
-				});
+				return;
+			}
+			if (normalizedNextPlanDataLimit === 0 && next_plan_enabled && !allowUnlimitedData) {
+				setNextPlanError(
+					t("userDialog.nextPlanUnlimitedNotAllowed", { max: (maxDataLimitPerUser / BYTES_PER_GB).toFixed(2) }),
+				);
 				return;
 			}
 		}
-		// If unlimited (0) is requested but not allowed, show error
+
 		if (
-			normalizedNextPlanDataLimit === 0 &&
-			next_plan_enabled &&
-			!allowUnlimitedData &&
-			maxDataLimitPerUser !== null &&
-			maxDataLimitPerUser !== undefined
+			minDataLimitPerUser &&
+			normalizedNextPlanDataLimit > 0 &&
+			normalizedNextPlanDataLimit < minDataLimitPerUser
 		) {
-			const maxGb = (maxDataLimitPerUser / BYTES_PER_GB).toFixed(2);
-			const errorMessage = t("userDialog.nextPlanUnlimitedNotAllowed", {
-				max: maxGb,
-			});
-			setError(errorMessage);
-			setLoading(false);
-			showSubmitError();
-			form.setError("next_plan_data_limit", {
-				type: "manual",
-				message: errorMessage,
-			});
+			setNextPlanError(
+				t("userDialog.nextPlanDataLimitBelowMin", {
+					min: (minDataLimitPerUser / BYTES_PER_GB).toFixed(2),
+				}),
+			);
 			return;
 		}
-
 		const nextPlanPayload = next_plan_enabled
 			? {
 					data_limit: normalizedNextPlanDataLimit,
-
 					expire: next_plan_expire ?? 0,
-
 					add_remaining_traffic: next_plan_add_remaining_traffic,
-
 					fire_on_either: next_plan_fire_on_either,
 				}
 			: null;
-
 		const normalizedSpeedLimitKbps =
-			typeof speed_limit === "number" &&
-			Number.isFinite(speed_limit) &&
-			speed_limit > 0
-				? Math.round(speed_limit * 1000)
-				: 0;
-
+			typeof speed_limit === "number" && Number.isFinite(speed_limit) && speed_limit > 0 ? Math.round(speed_limit * 1000) : 0;
 		const normalizedIpLimit =
-			typeof ip_limit === "number" && Number.isFinite(ip_limit) && ip_limit > 0
-				? Math.floor(ip_limit)
-				: 0;
+			typeof ip_limit === "number" && Number.isFinite(ip_limit) && ip_limit > 0 ? Math.floor(ip_limit) : 0;
+		const normalizedStatus = status === "active" || status === "disabled" || status === "on_hold" ? status : "active";
 
 		if (!isEditing) {
-			const effectiveServiceId = hasPrivilegedRole
+			const createServiceId = hasPrivilegedRole
 				? selectedServiceId
-				: (selectedServiceId ??
-					(nonSudoSingleService ? (services[0]?.id ?? null) : null));
-
-			if (!effectiveServiceId) {
-				setError(t("userDialog.selectService"));
-				setLoading(false);
-				showSubmitError();
+				: (selectedServiceId ?? (nonSudoSingleService ? (services[0]?.id ?? null) : null));
+			if (!createServiceId) {
+				failSubmit(t("userDialog.selectService"));
 				return;
 			}
 
 			const serviceBody: UserCreateWithService = {
 				username: values.username,
-
-				service_id: effectiveServiceId,
-
+				service_id: createServiceId,
 				note: values.note,
-
 				telegram_id: values.telegram_id,
-
 				contact_number: values.contact_number,
-
-				status:
-					values.status === "active" ||
-					values.status === "disabled" ||
-					values.status === "on_hold"
-						? values.status
-						: "active",
-
+				group_id: values.group_id,
+				tags: values.tags,
+				status: normalizedStatus,
 				expire: values.expire,
-
 				data_limit: values.data_limit,
-
 				ip_limit: normalizedIpLimit,
-
 				speed_limit_kbps: normalizedSpeedLimitKbps,
-
-				data_limit_reset_strategy:
-					data_limit && data_limit > 0 ? data_limit_reset_strategy : "no_reset",
-
-				on_hold_expire_duration:
-					status === "on_hold" ? on_hold_expire_duration : null,
-
-				flow: canSetFlow ? flow || null : null,
+				data_limit_reset_strategy: data_limit && data_limit > 0 ? data_limit_reset_strategy : "no_reset",
+				on_hold_expire_duration: status === "on_hold" ? on_hold_expire_duration : null,
 			};
-
-			if (canSetCustomKey && manual_key_entry && credential_key) {
-				serviceBody.credential_key = credential_key;
-			}
-
-			if (nextPlanPayload) {
-				serviceBody.next_plans = [nextPlanPayload];
-			}
+			if (canSetCustomKey && manual_key_entry && credential_key) serviceBody.credential_key = credential_key;
+			if (nextPlanPayload) serviceBody.next_plans = [nextPlanPayload];
 
 			createUserWithService(serviceBody)
-
 				.then(() => {
+					void invalidateLabels();
 					setSubmitStatus("success");
 					const qrUserPromise = fetchUserForQr(values.username);
-					toast({
-						title: t("userDialog.userCreated", { username: values.username }),
-
-						status: "success",
-
-						isClosable: true,
-
-						position: "top",
-
-						duration: 3000,
-					});
-
+					toast.success(t("userDialog.userCreated", { username: values.username }), { duration: 3000 });
 					successCloseTimerRef.current = window.setTimeout(() => {
 						onClose();
 						successCloseTimerRef.current = null;
 						qrUserPromise.then((qrUser) => {
 							window.setTimeout(() => openUserQrDialog(qrUser), 0);
 						});
-					}, 1000);
+					}, SUCCESS_CLOSE_DELAY_MS);
 				})
+				.catch(applyApiError);
+			return;
+		}
 
-				.catch((err) => {
-					if (err?.response?.status === 409 || err?.response?.status === 400) {
-						setError(err?.response?._data?.detail);
-					}
-
-					if (err?.response?.status === 422) {
-						Object.keys(err.response._data.detail).forEach((key) => {
-							setError(err?.response._data.detail[key] as string);
-
-							form.setError(
-								key as "username" | "data_limit" | "expire" | "service_id",
-
-								{
-									type: "custom",
-
-									message: err.response._data.detail[key],
-								},
-							);
-						});
-					}
-					setLoading(false);
-					showSubmitError();
-				});
-
+		if (!selectedServiceId) {
+			failSubmit(t("userDialog.selectService"));
 			return;
 		}
 
 		const body: Record<string, unknown> = {
 			...rest,
-
-			data_limit: data_limit,
-
+			data_limit,
 			ip_limit: normalizedIpLimit,
-
 			speed_limit_kbps: normalizedSpeedLimitKbps,
-
-			status:
-				status === "active" || status === "disabled" || status === "on_hold"
-					? status
-					: "active",
-
-			on_hold_expire_duration:
-				status === "on_hold" ? on_hold_expire_duration : null,
-
-			flow: canSetFlow ? flow || null : null,
+			status: normalizedStatus,
+			on_hold_expire_duration: status === "on_hold" ? on_hold_expire_duration : null,
 		};
 		if (canConfigurePeriodicUsageReset) {
-			body.data_limit_reset_strategy =
-				data_limit && data_limit > 0 ? data_limit_reset_strategy : "no_reset";
+			body.data_limit_reset_strategy = data_limit && data_limit > 0 ? data_limit_reset_strategy : "no_reset";
 		}
-
-		if (canSetCustomKey && manual_key_entry && credential_key) {
-			body.credential_key = credential_key;
-		}
-
+		if (canSetCustomKey && manual_key_entry && credential_key) body.credential_key = credential_key;
 		if (nextPlanPayload) {
 			body.next_plans = [nextPlanPayload];
-		} else if (
-			!next_plan_enabled &&
-			(editingUser?.next_plans?.length ?? 0) > 0
-		) {
+		} else if (!next_plan_enabled && (editingUser?.next_plans?.length ?? 0) > 0) {
 			body.next_plans = [];
 		}
-
-		if (!selectedServiceId) {
-			setError(t("userDialog.selectService"));
-			setLoading(false);
-			showSubmitError();
-			return;
-		}
-
-		if (
-			selectedServiceId !== editingUser?.service_id &&
-			(!requiresServiceScope || !editingUser?.service_id)
-		) {
+		if (selectedServiceId !== editingUser?.service_id && (!requiresServiceScope || !editingUser?.service_id)) {
 			body.service_id = selectedServiceId;
 		}
 
 		editUser(editingUser?.username, body as UserCreate)
-
 			.then(() => {
+				void invalidateLabels();
 				setSubmitStatus("success");
-				toast({
-					title: t("userDialog.userEdited", { username: values.username }),
-
-					status: "success",
-
-					isClosable: true,
-
-					position: "top",
-
-					duration: 3000,
-				});
-
+				toast.success(t("userDialog.userEdited", { username: values.username }), { duration: 3000 });
 				successCloseTimerRef.current = window.setTimeout(() => {
 					onClose();
 					successCloseTimerRef.current = null;
-				}, 1000);
+				}, SUCCESS_CLOSE_DELAY_MS);
 			})
-
-			.catch((err) => {
-				if (err?.response?.status === 409 || err?.response?.status === 400) {
-					setError(err?.response?._data?.detail);
-				}
-
-				if (err?.response?.status === 422) {
-					Object.keys(err.response._data.detail).forEach((key) => {
-						setError(err?.response._data.detail[key] as string);
-
-						form.setError(
-							key as "username" | "data_limit" | "expire" | "service_id",
-
-							{
-								type: "custom",
-
-								message: err.response._data.detail[key],
-							},
-						);
-					});
-				}
-				setLoading(false);
-				showSubmitError();
-			});
+			.catch(applyApiError);
 	};
 
-	function onClose() {
-		clearSubmitTimers();
-		form.reset(getDefaultValues());
-		setExpireDays(null);
-
-		onCreateUser(false);
-
-		onEditingUser(null);
-
-		setError(null);
-
-		setUsageFilter("1m");
-		setUsageFetched(false);
-		setActiveTab(0);
-		setCopiedSubscriptionKey(null);
-		setCopiedAllConfigs(false);
-		setCopiedConfigIndex(null);
-
-		setSelectedServiceId(null);
-
-		setAutoRenewRules([]);
-		resetAutoRenewFormValues(null);
-		setAutoRenewFormMode(null);
-		setEditingRuleIndex(null);
-		setAutoRenewOpen(false);
-		setLoading(false);
-		setSubmitStatus("idle");
-	}
-
 	const handleResetUsage = () => {
-		if (!canResetUsageVisible) {
-			return;
-		}
-		useDashboard.setState({
-			resetUsageUser: (editingUser as unknown as UserListItem) ?? null,
-		});
+		if (!canResetUsageVisible) return;
+		useDashboard.setState({ resetUsageUser: (editingUser as unknown as UserListItem) ?? null });
 	};
 
 	const handleRevokeSubscription = () => {
-		if (!canRevokeSubscriptionVisible) {
-			return;
-		}
-		useDashboard.setState({
-			revokeSubscriptionUser: (editingUser as unknown as UserListItem) ?? null,
-		});
+		if (!canRevokeSubscriptionVisible) return;
+		useDashboard.setState({ revokeSubscriptionUser: (editingUser as unknown as UserListItem) ?? null });
 	};
 
 	const handleDeleteUser = async () => {
-		if (!canDeleteUsersVisible || !editingUser) {
-			return;
-		}
+		if (!canDeleteUsersVisible || !editingUser) return;
 		setDeleteLoading(true);
 		try {
 			await deleteUser(editingUser as unknown as UserListItem);
-			toast({
-				title: t("deleteUser.deleteSuccess", {
-					username: editingUser.username,
-				}),
-				status: "success",
-				isClosable: true,
-				position: "top",
-				duration: 3000,
-			});
+			toast.success(t("deleteUser.deleteSuccess", { username: editingUser.username }), { duration: 3000 });
 			onClose();
 		} finally {
 			setDeleteLoading(false);
 		}
 	};
 
-	const disabled = loading || limitReached || userManagementLocked;
-	const serviceSelectionDisabled =
-		disabled || (isEditing && requiresServiceScope);
-	const submitDisabled = disabled || !form.formState.isValid;
-
-	const isOnHold = userStatus === "on_hold";
-
-	const [randomUsernameLoading, setrandomUsernameLoading] = useState(false);
-
-	const [otherInfoOpen, setOtherInfoOpen] = useState(false);
-
-	const createRandomUsername = (): string => {
-		setrandomUsernameLoading(true);
-
+	const createRandomUsername = () => {
+		setRandomUsernameLoading(true);
+		const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 		let result = "";
-
-		const characters =
-			"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-
-		const charactersLength = characters.length;
-
-		let counter = 0;
-
-		while (counter < 6) {
-			result += characters.charAt(Math.floor(Math.random() * charactersLength));
-
-			counter += 1;
+		for (let counter = 0; counter < 6; counter += 1) {
+			result += characters.charAt(Math.floor(Math.random() * characters.length));
 		}
-
-		return result;
+		form.setValue("username", result, { shouldDirty: true, shouldValidate: true });
+		form.trigger("username");
+		window.setTimeout(() => setRandomUsernameLoading(false), 350);
 	};
 
-	return (
-		<Modal
-			isOpen={isOpen}
-			onClose={onClose}
-			size={isMobileDialog ? "full" : shouldCompactModal ? "lg" : "2xl"}
-			scrollBehavior="inside"
-		>
-			<ModalOverlay bg="blackAlpha.300" />
+	const disabled = loading || limitReached || userManagementLocked;
+	const serviceSelectionDisabled = disabled || (isEditing && requiresServiceScope);
+	const submitDisabled = disabled || !form.formState.isValid;
+	const title = isEditing
+		? `${t("userDialog.editUserTitle")}${editingUser?.username ? ` ${editingUser.username}` : ""}`
+		: t("createNewUser");
 
-			<FormProvider {...form}>
-				<XrayModalContent
-					mx={{ base: 0, md: 3 }}
-					my={{ base: 0, md: "3.75rem" }}
-					position="relative"
-					overflow="hidden"
-					borderRadius={{ base: 0, md: "md" }}
-					display="flex"
-					flexDirection="column"
-					dir={isRTL ? "rtl" : "ltr"}
-				>
-					<ModalCloseButton
-						disabled={loading}
-						insetInlineEnd={4}
-						insetInlineStart="auto"
-						top={3}
-						position="absolute"
-						zIndex={2}
-						_rtl={{
-							insetInlineEnd: "auto",
-							insetInlineStart: 4,
-						}}
+	const dataLimitSet = Boolean(dataLimit && Number(dataLimit) > 0);
+	const toggleOnHold = () => {
+		if (isOnHold) {
+			form.setValue("status", "active", { shouldDirty: true });
+			form.setValue("on_hold_expire_duration", null, { shouldDirty: true });
+		} else {
+			form.setValue("status", "on_hold", { shouldDirty: true });
+			form.setValue("expire", null, { shouldDirty: true });
+		}
+	};
+
+	const detailsTab = (
+		<div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-2">
+			{statusNotice ? (
+				<Alert className="sm:col-span-2">
+					<AlertDescription>{statusNotice}</AlertDescription>
+				</Alert>
+			) : null}
+			{isEditing && isServiceManagedUser ? (
+				<Alert className="sm:col-span-2">
+					<AlertDescription>
+						{t("userDialog.serviceManagedNotice", { service: editingUser?.service_name ?? "" })}
+					</AlertDescription>
+				</Alert>
+			) : null}
+			{userManagementLocked ? (
+				<Alert variant="destructive" className="sm:col-span-2">
+					<AlertDescription>{t("userDialog.managementLocked")}</AlertDescription>
+				</Alert>
+			) : null}
+			{showServiceSelector && !servicesLoading && !hasServices ? (
+				<Alert variant="destructive" className="sm:col-span-2">
+					<AlertDescription>
+						{`${t("userDialog.noServicesAvailable")} ${t("userDialog.createServiceToManage")}`}
+					</AlertDescription>
+				</Alert>
+			) : null}
+
+			<FormField
+				label={t("username")}
+				htmlFor="user-username"
+				error={errors.username?.message}
+				description={`${usernameValue?.length ?? 0}/32`}
+				className={cn(!isEditing && "sm:col-span-2")}
+			>
+				<div className="relative">
+					<Input
+						id="user-username"
+						dir={isRTL ? "rtl" : "ltr"}
+						disabled={disabled || isEditing}
+						aria-invalid={!!errors.username || undefined}
+						className={cn(!isEditing && "pe-10")}
+						{...form.register("username")}
 					/>
+					{!isEditing ? (
+						<button
+							type="button"
+							aria-label={t("userDialog.generateUsername")}
+							title={t("userDialog.generateUsername")}
+							disabled={disabled || randomUsernameLoading}
+							onClick={createRandomUsername}
+							className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }), "absolute inset-y-0.5 end-0.5")}
+						>
+							{randomUsernameLoading ? (
+								<LoaderCircle className="size-4 animate-spin" />
+							) : (
+								<Sparkles className="size-4" />
+							)}
+						</button>
+					) : null}
+				</div>
+			</FormField>
 
-					<Box
-						pointerEvents={limitReached ? "none" : "auto"}
-						filter={limitReached ? "blur(6px)" : "none"}
-						transition="filter 0.2s ease"
-						minH={0}
-						flex="1"
-						display="flex"
-						flexDirection="column"
+			{isEditing ? (
+				<FormField label={t("status")}>
+					<div className="flex h-9 items-center justify-between rounded-md border px-3">
+						<Badge variant="outline">{t(`status.${userStatus}`)}</Badge>
+						<Controller
+							name="status"
+							control={form.control}
+							render={({ field }) => (
+								<Switch
+									aria-label={t("status")}
+									checked={field.value === "active"}
+									disabled={disabled}
+									onCheckedChange={(checked) => field.onChange(checked ? "active" : "disabled")}
+								/>
+							)}
+						/>
+					</div>
+				</FormField>
+			) : null}
+
+			<Controller
+				control={form.control}
+				name="data_limit"
+				render={({ field }) => (
+					<FormField
+						label={t("userDialog.dataLimit")}
+						className={cn(!ipLimitEditable && "sm:col-span-2")}
+						description={remainingDataInfo ? `${t("userDialog.remainingDataLabel")}: ${remainingDataInfo}` : undefined}
+						error={errors.data_limit?.message}
 					>
-						<form
-							onSubmit={form.handleSubmit(submit)}
-							style={{
-								minHeight: 0,
-								flex: 1,
-								display: "flex",
-								flexDirection: "column",
-							}}
-						>
-							<ModalHeader
-								px={{ base: 4, md: 5 }}
-								py={3}
-								pe={12}
-								position="relative"
-								display="flex"
-								alignItems="center"
-								justifyContent="flex-start"
-								gap={2}
-							>
-								<Box flexShrink={0}>
-									<Icon color="primary" size={30}>
-										{isEditing ? (
-											<EditUserIcon color="white" />
-										) : (
-											<AddUserIcon color="white" />
-										)}
-									</Icon>
-								</Box>
+						<DataSizeField
+							id="user-data-limit"
+							valueGb={field.value ? String(field.value) : ""}
+							onChangeGb={(raw) => field.onChange(raw)}
+							disabled={disabled}
+							invalid={!!errors.data_limit}
+						/>
+					</FormField>
+				)}
+			/>
 
-								<Text fontWeight="semibold" fontSize="lg">
-									{isEditing
-										? `${t("userDialog.editUserTitle")}${
-												editingUser?.username ? ` ${editingUser.username}` : ""
-											}`
-										: t("createNewUser")}
-								</Text>
-							</ModalHeader>
-
-							<XrayModalBody
-								flex="1"
-								minH={0}
-								overflowY="auto"
-								overflowX="hidden"
-								px={{ base: 3, sm: 4, md: 5 }}
-								py={{ base: 3, md: 4 }}
-								sx={{
-									WebkitOverflowScrolling: "touch",
-									overscrollBehavior: "contain",
+			{ipLimitEditable ? (
+				<Controller
+					control={form.control}
+					name="ip_limit"
+					rules={{
+						validate: (value) => {
+							if (value === null || value === undefined) return true;
+							if (typeof value !== "number" || Number.isNaN(value)) return t("userDialog.ipLimitValidation");
+							return value >= 0 ? true : t("userDialog.ipLimitValidation");
+						},
+					}}
+					render={({ field }) => (
+						<FormField label={t("userDialog.ipLimitLabel")} error={errors.ip_limit?.message}>
+							<NumberField
+								id="user-ip-limit" inputMode="numeric"
+								placeholder={t("userDialog.remainingDataUnlimited")}
+								value={typeof field.value === "number" && field.value > 0 ? String(field.value) : ""}
+								disabled={disabled}
+								invalid={!!errors.ip_limit}
+								onChange={(raw) => {
+									const trimmed = raw.trim();
+									if (!trimmed || trimmed === "-") {
+										field.onChange(null);
+										return;
+									}
+									const parsed = Number(trimmed);
+									if (Number.isNaN(parsed)) return;
+									field.onChange(parsed < 0 ? 0 : Math.floor(parsed));
 								}}
-							>
-								{isEditing && isServiceManagedUser && (
-									<SlideFade
-										in={serviceNoticeVisible}
-										offsetY="-8px"
-										unmountOnExit
-									>
-										<Alert
-											status="info"
-											mb={statusNotice ? 3 : 4}
-											borderRadius="md"
-											alignItems="flex-start"
-											overflow="hidden"
-											position="relative"
-										>
-											<AlertIcon />
-											<Box flex="1" minW={0}>
-												<AlertDescription>
-													{t("userDialog.serviceManagedNotice", {
-														service: editingUser?.service_name ?? "",
-													})}
-												</AlertDescription>
-											</Box>
-											<Box
-												position="absolute"
-												insetInlineStart={0}
-												insetInlineEnd={0}
-												bottom={0}
-												h="2px"
-												bg="whiteAlpha.400"
-												borderRadius="full"
-												overflow="hidden"
-												pointerEvents="none"
-											>
-												<Box
-													key={serviceNoticeSeed}
-													h="full"
-													bg="whiteAlpha.800"
-													transformOrigin={
-														isRTL ? "right center" : "left center"
-													}
-													animation={`${serviceNoticeProgress} ${SERVICE_NOTICE_DURATION_MS}ms linear forwards`}
-												/>
-											</Box>
-										</Alert>
-									</SlideFade>
-								)}
-
-								{isEditing && statusNotice && (
-									<SlideFade
-										in={statusNoticeVisible}
-										offsetY="-8px"
-										unmountOnExit
-									>
-										<Alert
-											status="info"
-											mb={4}
-											borderRadius="md"
-											alignItems="flex-start"
-											overflow="hidden"
-											position="relative"
-										>
-											<AlertIcon />
-											<Box flex="1" minW={0}>
-												<AlertDescription>{statusNotice}</AlertDescription>
-											</Box>
-											<Box
-												position="absolute"
-												insetInlineStart={0}
-												insetInlineEnd={0}
-												bottom={0}
-												h="2px"
-												bg="whiteAlpha.400"
-												borderRadius="full"
-												overflow="hidden"
-												pointerEvents="none"
-											>
-												<Box
-													key={statusNoticeSeed}
-													h="full"
-													bg="whiteAlpha.800"
-													transformOrigin={
-														isRTL ? "right center" : "left center"
-													}
-													animation={`${serviceNoticeProgress} ${SERVICE_NOTICE_DURATION_MS}ms linear forwards`}
-												/>
-											</Box>
-										</Alert>
-									</SlideFade>
-								)}
-
-								{showServiceSelector && !servicesLoading && !hasServices && (
-									<Alert
-										status="warning"
-										variant="subtle"
-										mb={4}
-										borderRadius="md"
-										w="full"
-									>
-										<AlertIcon />
-										<AlertDescription>
-											{`${t("userDialog.noServicesAvailable")} ${t("userDialog.createServiceToManage")}`}
-										</AlertDescription>
-									</Alert>
-								)}
-
-								{userManagementLocked && (
-									<Alert status="warning" mb={4} borderRadius="md">
-										<AlertIcon />
-										<AlertDescription>
-											{t("userDialog.managementLocked")}
-										</AlertDescription>
-									</Alert>
-								)}
-
-								<Tabs
-									index={activeTab}
-									onChange={handleTabChange}
-									className="xray-dialog-auto-sections"
-									variant="unstyled"
-									isLazy
-									w="full"
-								>
-									<TabList
-										overflowX="auto"
-										overflowY="hidden"
-										whiteSpace="nowrap"
-										sx={{
-											scrollbarWidth: "none",
-											"&::-webkit-scrollbar": { display: "none" },
-										}}
-									>
-										<Tab flexShrink={0}>{t("form")}</Tab>
-										{isEditing && canViewTraffic && (
-											<Tab flexShrink={0}>{t("userDialog.tabs.usage")}</Tab>
-										)}
-										{isEditing && (
-											<Tab flexShrink={0}>{t("userDialog.tabs.links")}</Tab>
-										)}
-									</TabList>
-									<TabPanels>
-										<TabPanel px={0} pt={4}>
-											<Grid
-												className="xray-dialog-section user-dialog-edit-grid"
-												templateColumns={{
-													base: "repeat(1, 1fr)",
-													md: useTwoColumns
-														? "repeat(2, 1fr)"
-														: "minmax(0, 1fr)",
-												}}
-												gap={3}
-												{...(shouldCenterForm
-													? { maxW: "720px", mx: "auto", w: "full" }
-													: {})}
-											>
-												<GridItem>
-													<VStack justifyContent="space-between">
-														<Flex
-															flexDirection="column"
-															gridAutoRows="min-content"
-															w="full"
-														>
-															<Flex flexDirection="row" w="full" gap={2}>
-																<FormControl
-																	mb={"10px"}
-																	isInvalid={
-																		!!form.formState.errors.username?.message
-																	}
-																>
-																	<FormLabel
-																		display="flex"
-																		alignItems="center"
-																		gap={2}
-																		justifyContent={
-																			isRTL ? "flex-end" : "flex-start"
-																		}
-																		flexDirection={
-																			isRTL ? "row-reverse" : "row"
-																		}
-																	>
-																		<Text>{t("username")}</Text>
-																		<Tooltip
-																			hasArrow
-																			placement="top"
-																			label={t("userDialog.usernameHint")}
-																		>
-																			<chakra.span
-																				display="inline-flex"
-																				color="gray.400"
-																				cursor="help"
-																			>
-																				<QuestionMarkCircleIcon
-																					width={16}
-																					height={16}
-																				/>
-																			</chakra.span>
-																		</Tooltip>
-																	</FormLabel>
-																	<HStack align="center">
-																		<Box flex="1" minW="0">
-																			<InputGroup
-																				size="sm"
-																				dir={isRTL ? "rtl" : "ltr"}
-																			>
-																				<ChakraInput
-																					type="text"
-																					borderRadius="6px"
-																					
-																					isDisabled={disabled || isEditing}
-																					{...(!isEditing ? endPadding : {})}
-																					{...form.register("username")}
-																				/>
-																				{!isEditing && (
-																					<InputRightElement
-														h="full"
-																						width="auto"
-																						insetInlineEnd={
-																							endAdornmentProps.insetInlineEnd
-																						}
-																						insetInlineStart={
-																							endAdornmentProps.insetInlineStart
-																						}
-																						right={endAdornmentProps.right}
-																						left={endAdornmentProps.left}
-																					>
-																						<IconButton
-																							aria-label={t(
-																								"userDialog.generateUsername",
-																							)}
-																							size="sm"
-																							variant="ghost"
-																							h="32px"
-																																																																																																						minW="32px"
-																																																																																																																																			w="32px"
-																																																																																																																										icon={<SparklesIcon width={18} />}
-																							onClick={() => {
-																								const randomUsername =
-																									createRandomUsername();
-																								form.setValue(
-																									"username",
-																									randomUsername,
-																									{
-																										shouldDirty: true,
-																										shouldValidate: true,
-																									},
-																								);
-																								form.trigger("username");
-																								setTimeout(() => {
-																									setrandomUsernameLoading(
-																										false,
-																									);
-																								}, 350);
-																							}}
-																							isLoading={randomUsernameLoading}
-																							isDisabled={disabled}
-																						/>
-																					</InputRightElement>
-																				)}
-																			</InputGroup>
-																		</Box>
-																		{isEditing && (
-																			<HStack px={1}>
-																				<Controller
-																					name="status"
-																					control={form.control}
-																					render={({ field }) => {
-																						return (
-																							<Tooltip
-																								placement="top"
-																								label={
-																									"status: " +
-																									t(`status.${field.value}`)
-																								}
-																								textTransform="capitalize"
-																							>
-																								<Box>
-																									<Switch
-																										colorScheme="primary"
-																										isChecked={
-																											field.value === "active"
-																										}
-																										onChange={(e) => {
-																											if (e.target.checked) {
-																												field.onChange(
-																													"active",
-																												);
-																											} else {
-																												field.onChange(
-																													"disabled",
-																												);
-																											}
-																										}}
-																									/>
-																								</Box>
-																							</Tooltip>
-																						);
-																					}}
-																				/>
-																			</HStack>
-																		)}
-																	</HStack>
-
-																	<FormHelperText
-																		fontSize="xs"
-																		color="gray.500"
-																		textAlign={isRTL ? "start" : "end"}
-																	>
-																		{`${usernameValue?.length ?? 0}/32`}
-																	</FormHelperText>
-																	{isEditing &&
-																		hasPrivilegedRole &&
-																		editingUser?.admin_username && (
-																			<FormHelperText
-																				fontSize="xs"
-																				color="gray.500"
-																				mt={1}
-																				textAlign={isRTL ? "end" : "start"}
-																			>
-																				{t("userDialog.createdBy")}:{" "}
-																				{editingUser.admin_username}
-																			</FormHelperText>
-																		)}
-
-																	<FormErrorMessage>
-																		{form.formState.errors.username?.message}
-																	</FormErrorMessage>
-																</FormControl>
-															</Flex>
-
-															<Stack
-																direction="row"
-																spacing={3}
-																mb={"10px"}
-															>
-																<FormControl
-																	flex="1"
-																	isInvalid={
-																		!!form.formState.errors.data_limit?.message
-																	}
-																>
-																	<FormLabel
-																		textAlign={isRTL ? "right" : "left"}
-																	>
-																		{t("userDialog.dataLimit")}
-																	</FormLabel>
-																	<Controller
-																		control={form.control}
-																		name="data_limit"
-																		render={({ field }) => {
-																			return (
-																				<>
-																					{renderUnitInput({
-																						unit: DATA_UNIT,
-																						value: field.value
-																							? String(field.value)
-																							: "",
-																						onChange: field.onChange,
-																						disabled,
-																					})}
-																					{isEditing && remainingDataInfo && (
-																						<FormHelperText
-																							fontSize="xs"
-																							color="gray.500"
-																							textAlign={
-																								isRTL ? "right" : "left"
-																							}
-																						>
-																							{`${remainingDataInfo.label}: ${remainingDataInfo.value}`}
-																						</FormHelperText>
-																					)}
-																					<FormErrorMessage>
-																						{
-																							form.formState.errors.data_limit
-																								?.message
-																						}
-																					</FormErrorMessage>
-																				</>
-																			);
-																		}}
-																	/>
-																</FormControl>
-																<FormControl flex="1" minW={0} isInvalid={Boolean(form.formState.errors.ip_limit)}>
-																	<FormLabel
-																		display="flex"
-																		alignItems="center"
-																		gap={2}
-																		justifyContent={
-																			isRTL ? "flex-end" : "flex-start"
-																		}
-																		flexDirection={
-																			isRTL ? "row-reverse" : "row"
-																		}
-																		textAlign={isRTL ? "right" : "left"}
-																	>
-																		{t("userDialog.ipLimitLabel")}
-																		<Tooltip
-																			hasArrow
-																			placement="top"
-																			label={t("userDialog.ipLimitHint")}
-																		>
-																			<chakra.span
-																				display="inline-flex"
-																				color="gray.400"
-																				cursor="help"
-																			>
-																				<QuestionMarkCircleIcon
-																					width={16}
-																					height={16}
-																				/>
-																			</chakra.span>
-																		</Tooltip>
-																	</FormLabel>
-																	<Controller
-																		control={form.control}
-																		name="ip_limit"
-																		rules={{
-																			validate: (value) => {
-																				if (
-																					value === null ||
-																					value === undefined
-																				) {
-																					return true;
-																				}
-																				if (
-																					typeof value !== "number" ||
-																					Number.isNaN(value)
-																				) {
-																					return t(
-																						"userDialog.ipLimitValidation",
-																					);
-																				}
-																				return value >= 0
-																					? true
-																					: t("userDialog.ipLimitValidation");
-																			},
-																		}}
-																		render={({ field }) => (
-																			<>
-																				<NumericInput
-																					sx={alwaysVisibleStepper}
-																					variant="outline"
-																					value={
-																						typeof field.value === "number" && field.value > 0
-																							? String(field.value)
-																							: ""
-																					}
-																					min={0}
-																					step={1}
-																					isDisabled={disabled}
-																					isInvalid={Boolean(form.formState.errors.ip_limit)}
-																					onChange={(valueAsString) => {
-																						const raw = valueAsString.trim();
-																						if (!raw || raw === "-") {
-																							field.onChange(null);
-																							return;
-																						}
-																						const parsed = Number(raw);
-																						if (Number.isNaN(parsed)) {
-																							return;
-																						}
-																						field.onChange(parsed < 0 ? 0 : Math.floor(parsed));
-																					}}
-																					fieldProps={{
-																						placeholder: t("userDialog.remainingDataUnlimited"),
-																						borderRadius: "6px",
-																						h: "32px",
-																						minH: "32px",
-																						dir: "ltr",
-																						textAlign: isRTL ? "right" : "left",
-																					}}
-																				/>
-																				<FormErrorMessage>
-																					{form.formState.errors.ip_limit?.message}
-																				</FormErrorMessage>
-																			</>
-																		)}
-																	/>
-																</FormControl>
-															</Stack>
-
-															<Collapse
-																in={!!(dataLimit && dataLimit > 0)}
-																animateOpacity
-																style={{ width: "100%" }}
-															>
-																<FormControl height="66px">
-																	<FormLabel
-																		textAlign={isRTL ? "right" : "left"}
-																	>
-																		{t("userDialog.periodicUsageReset")}
-																	</FormLabel>
-
-																	<Controller
-																		control={form.control}
-																		name="data_limit_reset_strategy"
-																		render={({ field }) => {
-																			return (
-																				<Select
-																					size="sm"
-																					{...field}
-																					disabled={
-																						disabled ||
-																						!canConfigurePeriodicUsageReset
-																					}
-																					bg={
-																						disabled ||
-																						!canConfigurePeriodicUsageReset
-																							? "gray.100"
-																							: "transparent"
-																					}
-																					_dark={{
-																						bg:
-																							disabled ||
-																							!canConfigurePeriodicUsageReset
-																								? "gray.600"
-																								: "transparent",
-																					}}
-																					sx={{
-																						option: {
-																							backgroundColor:
-																								colorMode === "dark"
-																									? "#222C3B"
-																									: "white",
-																						},
-																					}}
-																				>
-																					{resetStrategy.map((s) => {
-																						return (
-																							<option
-																								key={s.value}
-																								value={s.value}
-																							>
-																								{t(
-																									"userDialog.resetStrategy" +
-																										s.title,
-																								)}
-																							</option>
-																						);
-																					})}
-																				</Select>
-																			);
-																		}}
-																	/>
-																</FormControl>
-															</Collapse>
-															<Stack direction="row" spacing={3} mb={"10px"}>
-																<FormControl
-																	flex="1"
-																	minW={0}
-																	isInvalid={Boolean(
-																		form.formState.errors.speed_limit,
-																	)}
-																>
-																	<FormLabel
-																		display="flex"
-																		alignItems="center"
-																		gap={2}
-																		justifyContent={
-																			isRTL ? "flex-end" : "flex-start"
-																		}
-																		flexDirection={
-																			isRTL ? "row-reverse" : "row"
-																		}
-																		textAlign={isRTL ? "right" : "left"}
-																	>
-																		{t("userDialog.speedLimitLabel")}
-																		<Tooltip
-																			hasArrow
-																			placement="top"
-																			label={t("userDialog.speedLimitHint")}
-																		>
-																			<chakra.span
-																				display="inline-flex"
-																				color="gray.400"
-																				cursor="help"
-																			>
-																				<QuestionMarkCircleIcon
-																					width={16}
-																					height={16}
-																				/>
-																			</chakra.span>
-																		</Tooltip>
-																	</FormLabel>
-																	<Controller
-																		control={form.control}
-																		name="speed_limit"
-																		rules={{
-																			validate: (value) => {
-																				if (
-																					value === null ||
-																					value === undefined
-																				) {
-																					return true;
-																				}
-																				if (
-																					typeof value !== "number" ||
-																					Number.isNaN(value)
-																				) {
-																					return t(
-																						"userDialog.speedLimitValidation",
-																					);
-																				}
-																				return value >= 0
-																					? true
-																					: t(
-																							"userDialog.speedLimitValidation",
-																						);
-																			},
-																		}}
-																		render={({ field }) => (
-																			<>
-																				{renderUnitInput({
-																					unit: SPEED_UNIT,
-																					value:
-																						typeof field.value === "number" &&
-																						field.value > 0
-																							? String(field.value)
-																							: "",
-																					onChange: (event) => {
-																						const parsed = Number(
-																							event.target.value.trim(),
-																						);
-																						field.onChange(
-																							Number.isFinite(parsed) &&
-																								parsed > 0
-																								? Math.round(parsed * 100) / 100
-																								: null,
-																						);
-																					},
-																					disabled,
-																				})}
-																				<FormErrorMessage>
-																					{
-																						form.formState.errors.speed_limit
-																							?.message
-																					}
-																				</FormErrorMessage>
-																			</>
-																		)}
-																	/>
-																</FormControl>
-																<Flex flex="1" />
-															</Stack>
-
-															<FormControl
-																mb="10px"
-																isInvalid={
-																	isOnHold
-																		? Boolean(
-																				form.formState.errors
-																					.on_hold_expire_duration,
-																			)
-																		: Boolean(form.formState.errors.expire)
-																}
-															>
-																<Grid
-																	templateColumns={{
-																		base: "1fr",
-																		md: "minmax(0, 1fr) auto",
-																	}}
-																	templateAreas={{
-																		base: `"label" "field" "helper" "button"`,
-																		md: `"label ."
-																			   "field button"
-																			   "helper ."`,
-																	}}
-																	rowGap={2}
-																	columnGap={{ base: 0, md: 4 }}
-																	w="full"
-																	minW={0}
-																>
-																	<FormLabel
-																		gridArea="label"
-																		mb={0}
-																		textAlign={isRTL ? "right" : "left"}
-																	>
-																		{isOnHold
-																			? t("expires.days")
-																			: t("expires.selectDate")}
-																	</FormLabel>
-																	<Box gridArea="field" minW={0}>
-																		{isOnHold ? (
-																			<Controller
-																				control={form.control}
-																				name="on_hold_expire_duration"
-																				render={({ field }) => {
-																					return renderUnitInput({
-																						unit: DAYS_UNIT,
-																						value: field.value
-																							? String(field.value)
-																							: "",
-																						disabled,
-																						type: "text",
-																						inputMode: "decimal",
-																						onChange: (event) => {
-																							form.setValue("expire", null);
-																							const raw = event.target.value;
-																							if (!raw) {
-																								field.onChange(null);
-																								return;
-																							}
-																							if (
-																								!/^[0-9]*\.?[0-9]*$/.test(raw)
-																							) {
-																								return;
-																							}
-																							const parsed = Number(raw);
-																							if (
-																								Number.isNaN(parsed) ||
-																								parsed < 0
-																							) {
-																								return;
-																							}
-																							field.onChange(
-																								Math.round(parsed),
-																							);
-																						},
-																					});
-																				}}
-																			/>
-																		) : (
-																			<Controller
-																				name="expire"
-																				control={form.control}
-																				render={({ field }) => {
-																					const selectedDate = field.value
-																						? dayjs.unix(field.value).toDate()
-																						: null;
-
-																					const handleDateChange = (
-																						value: Date | null,
-																					) => {
-																						if (!value) {
-																							field.onChange(null);
-																							form.setValue(
-																								"on_hold_expire_duration",
-																								null,
-																								{
-																									shouldDirty: false,
-																								},
-																							);
-																							return;
-																						}
-																						const normalized = dayjs(value)
-																							.utc()
-																							.unix();
-																						form.setValue(
-																							"on_hold_expire_duration",
-																							null,
-																							{
-																								shouldDirty: false,
-																							},
-																						);
-																						field.onChange(normalized);
-																					};
-
-																					return (
-																						<DateTimePicker
-																							value={selectedDate}
-																							onChange={handleDateChange}
-																							placeholder={t(
-																								"expires.selectDate",
-																							)}
-																							disabled={disabled}
-																							minDate={new Date()}
-																							quickSelects={quickExpiryOptions.map(
-																								(option) => ({
-																									label: option.label,
-																									onClick: () => {
-																										const newDate =
-																											addQuickExpiry(
-																												selectedDate,
-																												option.amount,
-																												option.unit,
-																											);
-																										handleDateChange(newDate);
-																									},
-																								}),
-																							)}
-																						/>
-																					);
-																				}}
-																			/>
-																		)}
-																	</Box>
-																	{!isOnHold && expireHelperText ? (
-																		<FormHelperText gridArea="helper" mt={0}>
-																			{expireHelperText}
-																		</FormHelperText>
-																	) : null}
-																	{isOnHold ? (
-																		<HStack gridArea="helper" spacing={2} flexWrap="wrap">
-																			{[7, 30, 60, 90, 180, 365].map((days) => (
-																				<Button
-																					key={days}
-																					size="xs"
-																					variant="outline"
-																					isDisabled={disabled}
-																					onClick={() => {
-																						form.setValue("expire", null);
-																						form.setValue(
-																							"on_hold_expire_duration",
-																							days,
-																							{
-																								shouldDirty: true,
-																								shouldValidate: true,
-																							},
-																						);
-																					}}
-																				>
-																					{days}D
-																				</Button>
-																			))}
-																		</HStack>
-																	) : null}
-																	<Button
-																		gridArea="button"
-																		size="sm"
-																		variant={isOnHold ? "solid" : "outline"}
-																		colorScheme={isOnHold ? "primary" : "gray"}
-																		onClick={() => {
-																			if (isOnHold) {
-																				form.setValue("status", "active", {
-																					shouldDirty: true,
-																				});
-																				form.setValue(
-																					"on_hold_expire_duration",
-																					null,
-																					{
-																						shouldDirty: true,
-																					},
-																				);
-																			} else {
-																				form.setValue("status", "on_hold", {
-																					shouldDirty: true,
-																				});
-																				form.setValue("expire", null, {
-																					shouldDirty: true,
-																				});
-																			}
-																		}}
-																		isDisabled={disabled}
-																		minW={{ base: "100%", md: "auto" }}
-																		alignSelf={{
-																			base: "stretch",
-																			md: "end",
-																		}}
-																		justifySelf={{
-																			base: "stretch",
-																			md: "start",
-																		}}
-																		flexShrink={0}
-																		h="32px"
-																	>
-																		{t("onHold.button")}
-																	</Button>
-																</Grid>
-																{isOnHold ? (
-																	<FormErrorMessage>
-																		{
-																			form.formState.errors
-																				.on_hold_expire_duration?.message
-																		}
-																	</FormErrorMessage>
-																) : (
-																	<FormErrorMessage>
-																		{form.formState.errors.expire?.message}
-																	</FormErrorMessage>
-																)}
-															</FormControl>
-
-															{canSetFlow && (
-																<FormControl mb="10px">
-																	<FormLabel>
-																		{t("userDialog.flow.label")}
-																	</FormLabel>
-																	<Controller
-																		name="flow"
-																		control={form.control}
-																		render={({ field }) => (
-																			<Select
-																				size="sm"
-																				value={field.value ?? ""}
-																				onChange={(event) =>
-																					field.onChange(event.target.value)
-																				}
-																				isDisabled={disabled}
-																			>
-																				<option value="">
-																					{t("userDialog.flow.none")}
-																				</option>
-																				<option value="xtls-rprx-vision">
-																					{t(
-																						"userDialog.flow.xtls_rprx_vision",
-																					)}
-																				</option>
-																				<option value="xtls-rprx-vision-udp443">
-																					{t(
-																						"userDialog.flow.xtls_rprx_vision_udp443",
-																					)}
-																				</option>
-																			</Select>
-																		)}
-																	/>
-																</FormControl>
-															)}
-														</Flex>
-
-														{error && (
-															<Alert
-																status="error"
-																display={{ base: "none", md: "flex" }}
-															>
-																<AlertIcon />
-
-																{error}
-															</Alert>
-														)}
-													</VStack>
-												</GridItem>
-
-												{showServiceSelector && (
-													<GridItem mt={useTwoColumns ? 0 : 4}>
-														<FormControl isRequired>
-															<FormLabel>
-																{t("userDialog.selectServiceLabel")}
-															</FormLabel>
-
-															{servicesLoading ? (
-																<HStack spacing={2} py={4}>
-																	<Spinner size="sm" />
-
-																	<Text
-																		fontSize="sm"
-																		color="gray.500"
-																		_dark={{ color: "gray.400" }}
-																	>
-																		{t("loading")}
-																	</Text>
-																</HStack>
-															) : hasServices ? (
-																<VStack align="stretch" spacing={3}>
-																	{services.map((service) => {
-																		const isSelected =
-																			selectedServiceId === service.id;
-																		const isBroken =
-																			service.broken === true ||
-																			service.has_hosts === false;
-
-																		return (
-																			<Box
-																				key={service.id}
-																				role="button"
-																				tabIndex={
-																					serviceSelectionDisabled || isBroken
-																						? -1
-																						: 0
-																				}
-																				aria-pressed={isSelected}
-																				onKeyDown={(event) => {
-																					if (
-																						serviceSelectionDisabled ||
-																						isBroken
-																					)
-																						return;
-
-																					if (
-																						event.key === "Enter" ||
-																						event.key === " "
-																					) {
-																						event.preventDefault();
-
-																						setSelectedServiceId(service.id);
-																					}
-																				}}
-																				onClick={() => {
-																					if (
-																						serviceSelectionDisabled ||
-																						isBroken
-																					)
-																						return;
-
-																					setSelectedServiceId(service.id);
-																				}}
-																				borderWidth="1px"
-																				borderRadius="md"
-																				p={4}
-																				borderColor={
-																					isSelected
-																						? "primary.500"
-																						: "gray.200"
-																				}
-																				bg={
-																					isSelected
-																						? "primary.50"
-																						: "transparent"
-																				}
-																				cursor={
-																					serviceSelectionDisabled || isBroken
-																						? "not-allowed"
-																						: "pointer"
-																				}
-																				pointerEvents={
-																					serviceSelectionDisabled || isBroken
-																						? "none"
-																						: "auto"
-																				}
-																				transition="border-color 0.2s ease, background-color 0.2s ease"
-																				_hover={
-																					serviceSelectionDisabled
-																						? {}
-																						: {
-																								borderColor: isSelected
-																									? "primary.500"
-																									: "gray.300",
-																							}
-																				}
-																				_dark={{
-																					borderColor: isSelected
-																						? "primary.400"
-																						: "gray.700",
-
-																					bg: isSelected
-																						? "primary.900"
-																						: "transparent",
-																				}}
-																			>
-																				<HStack
-																					justify="space-between"
-																					align="flex-start"
-																				>
-																					<VStack
-																						align="flex-start"
-																						spacing={0}
-																					>
-																						<Text fontWeight="semibold">
-																							{service.name}
-																						</Text>
-
-																						{service.description && (
-																							<Text
-																								fontSize="sm"
-																								color="gray.500"
-																								_dark={{ color: "gray.400" }}
-																							>
-																								{service.description}
-																							</Text>
-																						)}
-																					</VStack>
-
-																					<Text
-																						fontSize="xs"
-																						color="gray.500"
-																						_dark={{ color: "gray.400" }}
-																					>
-																						{t("userDialog.serviceSummary", {
-																							hosts: service.host_count,
-
-																							users: service.user_count,
-																						})}
-																					</Text>
-																					{isBroken && (
-																						<Badge colorScheme="red" mt={1}>
-																							{t("userDialog.brokenService")}
-																						</Badge>
-																					)}
-																				</HStack>
-																			</Box>
-																		);
-																	})}
-																</VStack>
-															) : null}
-
-															{selectedService && (
-																<FormHelperText mt={2}>
-																	{t("userDialog.serviceSummary", {
-																		hosts: selectedService.host_count,
-
-																		users: selectedService.user_count,
-																	})}
-
-																	{selectedService &&
-																		(selectedService.broken ||
-																			selectedService.has_hosts === false) && (
-																			<Text
-																				color="red.500"
-																				fontSize="sm"
-																				mt={1}
-																			>
-																				{t("userDialog.brokenServiceWarning")}
-																			</Text>
-																		)}
-																</FormHelperText>
-															)}
-														</FormControl>
-													</GridItem>
-												)}
-
-												<GridItem
-													colSpan={{ base: 1, md: showServiceSelector ? 2 : 1 }}
-												>
-													{hasExistingKey && canSetCustomKey && (
-														<>
-															<FormControl className="rb-dialog-switch-row">
-																<FormLabel mb={0}>
-																	{t("userDialog.allowManualKeyEntry")}
-																</FormLabel>
-																<Controller
-																	name="manual_key_entry"
-																	control={form.control}
-																	render={({ field }) => (
-																		<Switch
-																			size="sm"
-																			colorScheme="primary"
-																			isChecked={field.value}
-																			onChange={(event) =>
-																				field.onChange(event.target.checked)
-																			}
-																			isDisabled={disabled}
-																		/>
-																	)}
-																/>
-															</FormControl>
-															{manualKeyEntryEnabled && (
-																<FormControl
-																	mt={4}
-																	isInvalid={Boolean(
-																		form.formState.errors.credential_key,
-																	)}
-																>
-																	<FormLabel>
-																		{t("userDialog.credentialKeyLabel")}
-																	</FormLabel>
-																	<Controller
-																		name="credential_key"
-																		control={form.control}
-																		render={({ field }) => (
-																			<ChakraInput
-																				placeholder="35e4e39c7d5c4f4b8b71558e4f37ff53"
-																				maxLength={32}
-																				value={field.value ?? ""}
-																				onChange={(event) =>
-																					field.onChange(event.target.value)
-																				}
-																				isDisabled={disabled}
-																				dir="ltr"
-																				textAlign="left"
-																			/>
-																		)}
-																	/>
-																	<FormHelperText>
-																		{t("userDialog.manualKeyHelper")}
-																	</FormHelperText>
-																	<FormErrorMessage>
-																		{
-																			form.formState.errors.credential_key
-																				?.message
-																		}
-																	</FormErrorMessage>
-																</FormControl>
-															)}
-														</>
-													)}
-												</GridItem>
-
-												<GridItem
-													colSpan={{ base: 1, md: showServiceSelector ? 2 : 1 }}
-													w="full"
-													minW={0}
-												>
-													<Box
-														className="xray-dialog-section rb-dialog-collapsible-section"
-														w="full"
-														minW={0}
-														mb="10px"
-													>
-														<Flex
-															className="rb-dialog-collapsible-trigger"
-															align="center"
-															justify="space-between"
-															cursor="pointer"
-															onClick={() => setAutoRenewOpen((prev) => !prev)}
-															gap={3}
-															dir={isRTL ? "rtl" : "ltr"}
-														>
-															<HStack
-																spacing={2}
-																align="center"
-																flex="1"
-																justify="flex-start"
-															>
-																<Text
-																	className="rb-dialog-collapsible-title"
-																	fontWeight="semibold"
-																	textAlign={isRTL ? "right" : "left"}
-																	w="full"
-																>
-																	{autoRenewTitle}
-																</Text>
-																{autoRenewRules.length > 0 && (
-																	<Badge colorScheme="gray" borderRadius="full">
-																		{autoRenewRules.length}
-																	</Badge>
-																)}
-															</HStack>
-															<SectionChevronIcon
-																transform={
-																	autoRenewOpen
-																		? "rotate(-180deg)"
-																		: "rotate(0deg)"
-																}
-																transition="transform 0.2s ease"
-															/>
-														</Flex>
-														<Collapse in={autoRenewOpen} animateOpacity>
-															<VStack
-																className="rb-dialog-collapsible-body"
-																align="stretch"
-																spacing={4}
-																w="full"
-																minW={0}
-															>
-																<Text
-																	fontSize="sm"
-																	color="gray.500"
-																	_dark={{ color: "gray.400" }}
-																	textAlign={isRTL ? "right" : "left"}
-																>
-																	{t("userDialog.autoRenewDescription")}
-																</Text>
-
-																{autoRenewRules.length === 0 ? (
-																	<VStack spacing={3} align="stretch">
-																		<Text
-																			textAlign="center"
-																			color="gray.400"
-																			fontSize="sm"
-																		>
-																			{t("autoRenew.empty")}
-																		</Text>
-																		<Button
-																			variant="outline"
-																			onClick={startAddAutoRenew}
-																			isDisabled={disabled}
-																			w="full"
-																		>
-																			{t("add")}
-																		</Button>
-																	</VStack>
-																) : (
-																	<>
-																		<VStack
-																			spacing={3}
-																			align="stretch"
-																			w="full"
-																		>
-																			{autoRenewRules.map((rule, idx) => {
-																				const dayText = deriveDaysFromSeconds(
-																					rule.expire,
-																				);
-																				return (
-																					<Box
-																						key={rule.id}
-																						borderWidth="1px"
-																						borderRadius="md"
-																						p={3}
-																						bg="blackAlpha.50"
-																						_dark={{ bg: "whiteAlpha.50" }}
-																						w="full"
-																						minW={0}
-																					>
-																						<Flex
-																							align={{
-																								base: "flex-start",
-																								md: "center",
-																							}}
-																							justify="space-between"
-																							gap={3}
-																							flexDirection={{
-																								base: "column",
-																								md: "row",
-																							}}
-																						>
-																							<HStack
-																								spacing={2}
-																								dir={isRTL ? "rtl" : "ltr"}
-																								align="center"
-																							>
-																								<Badge
-																									colorScheme="primary"
-																									borderRadius="full"
-																								>
-																									{idx + 1}
-																								</Badge>
-																								<Text fontWeight="semibold">
-																									{rule.dataLimit !== null &&
-																									typeof rule.dataLimit !==
-																										"undefined"
-																										? `${rule.dataLimit} ${DATA_UNIT}`
-																										: t(
-																												"userDialog.autoRenewUnlimited",
-																											)}
-																								</Text>
-																								<Text
-																									color="gray.500"
-																									fontSize="sm"
-																								>
-																									{dayText !== null
-																										? `${dayText} ${DAYS_UNIT}`
-																										: t(
-																												"userDialog.autoRenewUnlimited",
-																											)}
-																								</Text>
-																							</HStack>
-																							<HStack
-																								spacing={2}
-																								justify="flex-end"
-																							>
-																								<IconButton
-																									size="sm"
-																									aria-label={t("edit")}
-																									variant="ghost"
-																									onClick={() =>
-																										startEditAutoRenew(idx)
-																									}
-																									isDisabled={disabled}
-																								>
-																									<PencilIcon width={16} />
-																								</IconButton>
-																								<IconButton
-																									size="sm"
-																									aria-label={t("delete")}
-																									variant="ghost"
-																									onClick={() =>
-																										handleDeleteAutoRenewRule(
-																											idx,
-																										)
-																									}
-																									isDisabled={disabled}
-																								>
-																									<DeleteIcon />
-																								</IconButton>
-																							</HStack>
-																						</Flex>
-																						{idx > 0 && (
-																							<Text
-																								fontSize="xs"
-																								color="gray.500"
-																								mt={2}
-																							>
-																								{t("autoRenew.queuedNote")}
-																							</Text>
-																						)}
-																					</Box>
-																				);
-																			})}
-																		</VStack>
-																		<Button
-																			variant="outline"
-																			onClick={startAddAutoRenew}
-																			isDisabled={disabled}
-																		>
-																			{t("add")}
-																		</Button>
-																	</>
-																)}
-
-																{autoRenewFormMode && (
-																	<VStack
-																		align="stretch"
-																		spacing={3}
-																		borderWidth="1px"
-																		borderRadius="md"
-																		p={3}
-																		bg="blackAlpha.50"
-																		_dark={{ bg: "whiteAlpha.50" }}
-																		minW={0}
-																	>
-																		<HStack
-																			justify="space-between"
-																			align="center"
-																			w="full"
-																			flexDirection="row"
-																		>
-																			<Text fontWeight="semibold">
-																				{t("autoRenew.new")}
-																			</Text>
-																		</HStack>
-
-																		<Grid
-																			templateColumns={{
-																				base: "1fr",
-																				md: "minmax(0, 1fr) 220px",
-																			}}
-																			gap={3}
-																			w="full"
-																			minW={0}
-																			dir={isRTL ? "rtl" : "ltr"}
-																			alignItems="end"
-																		>
-																			<FormControl minW={0}>
-																				<FormLabel
-																					fontSize="sm"
-																					textAlign={isRTL ? "right" : "left"}
-																					w="full"
-																				>
-																					{t("userDialog.autoRenewDataLimit")}
-																				</FormLabel>
-																				{renderUnitInput({
-																					unit: DATA_UNIT,
-																					value: autoRenewDataValue,
-																					disabled,
-																					onChange: (event) => {
-																						const rawValue = event.target.value;
-																						if (!rawValue) {
-																							setAutoRenewDataValue("");
-																							return;
-																						}
-																						if (
-																							!/^[0-9]*\.?[0-9]*$/.test(
-																								rawValue,
-																							)
-																						) {
-																							return;
-																						}
-																						setAutoRenewDataValue(rawValue);
-																					},
-																				})}
-																			</FormControl>
-
-																			<Button
-																				size="sm"
-																				variant={
-																					autoRenewAddRemainingValue
-																						? "solid"
-																						: "outline"
-																				}
-																				colorScheme={
-																					autoRenewAddRemainingValue
-																						? "primary"
-																						: "gray"
-																				}
-																				onClick={() =>
-																					setAutoRenewAddRemainingValue(
-																						(prev) => !prev,
-																					)
-																				}
-																				isDisabled={disabled}
-																				w={{ base: "full", md: "auto" }}
-																				maxW="220px"
-																				whiteSpace="nowrap"
-																				flexShrink={0}
-																			>
-																				{autoRenewAddRemainingValue
-																					? t(
-																							"userDialog.nextPlanAddRemainingTraffic",
-																						)
-																					: t("userDialog.autoRenewResetUsage")}
-																			</Button>
-
-																			<FormControl minW={0}>
-																				<FormLabel
-																					fontSize="sm"
-																					textAlign={isRTL ? "right" : "left"}
-																					w="full"
-																				>
-																					{t("userDialog.autoRenewTimeLimit")}
-																				</FormLabel>
-																				{renderUnitInput({
-																					unit: DAYS_UNIT,
-																					value: autoRenewExpireDaysValue,
-																					disabled,
-																					onChange: (event) => {
-																						const rawValue = event.target.value;
-																						if (!rawValue) {
-																							setAutoRenewExpireDaysValue("");
-																							return;
-																						}
-																						if (
-																							!/^[0-9]*\.?[0-9]*$/.test(
-																								rawValue,
-																							)
-																						) {
-																							return;
-																						}
-																						setAutoRenewExpireDaysValue(
-																							rawValue,
-																						);
-																					},
-																				})}
-																			</FormControl>
-
-																			<Button
-																				size="sm"
-																				variant={
-																					autoRenewFireOnEitherValue
-																						? "solid"
-																						: "outline"
-																				}
-																				colorScheme={
-																					autoRenewFireOnEitherValue
-																						? "primary"
-																						: "gray"
-																				}
-																				onClick={() =>
-																					setAutoRenewFireOnEitherValue(
-																						(prev) => !prev,
-																					)
-																				}
-																				isDisabled={disabled}
-																				w={{ base: "full", md: "auto" }}
-																				maxW="220px"
-																				whiteSpace="nowrap"
-																				flexShrink={0}
-																			>
-																				{t("userDialog.nextPlanFireOnEither")}
-																			</Button>
-																		</Grid>
-
-																		<HStack
-																			spacing={3}
-																			w="full"
-																			justify={
-																				isRTL ? "flex-start" : "flex-end"
-																			}
-																			flexDirection={
-																				isRTL ? "row-reverse" : "row"
-																			}
-																			flexWrap="wrap"
-																		>
-																			<Button
-																				size="sm"
-																				variant="outline"
-																				onClick={handleCancelAutoRenewForm}
-																				isDisabled={disabled}
-																			>
-																				{t("cancel")}
-																			</Button>
-
-																			<Button
-																				size="sm"
-																				colorScheme="primary"
-																				onClick={handleSaveAutoRenewRule}
-																				isDisabled={disabled}
-																			>
-																				{autoRenewFormMode === "edit"
-																					? t("save")
-																					: t("add")}
-																			</Button>
-																		</HStack>
-																	</VStack>
-																)}
-															</VStack>
-														</Collapse>
-													</Box>
-												</GridItem>
-
-												<GridItem
-													colSpan={{ base: 1, md: 2 }}
-													w="full"
-													minW={0}
-												>
-													<Box
-														className="xray-dialog-section rb-dialog-collapsible-section"
-														w="full"
-														minW={0}
-														mb="10px"
-													>
-														<Flex
-															className="rb-dialog-collapsible-trigger"
-															align="center"
-															justify="space-between"
-															cursor="pointer"
-															onClick={() => setOtherInfoOpen((prev) => !prev)}
-															gap={3}
-														>
-															<Text
-																className="rb-dialog-collapsible-title"
-																fontWeight="semibold"
-																textAlign="start"
-																flex="1"
-															>
-																{t("otherInfo.title")}
-															</Text>
-															<SectionChevronIcon
-																transform={
-																	otherInfoOpen
-																		? "rotate(-180deg)"
-																		: "rotate(0deg)"
-																}
-																transition="transform 0.2s ease"
-															/>
-														</Flex>
-														<Collapse in={otherInfoOpen} animateOpacity>
-															<VStack
-																className="rb-dialog-collapsible-body"
-																align="stretch"
-																spacing={3}
-																w="full"
-																minW={0}
-															>
-																<FormControl
-																	isInvalid={!!form.formState.errors.note}
-																	w="full"
-																>
-																	<FormLabel
-																		textAlign={isRTL ? "right" : "left"}
-																		w="full"
-																	>
-																		{t("fields.note")}
-																	</FormLabel>
-																	<Textarea
-																		{...form.register("note")}
-																		textAlign={isRTL ? "right" : "left"}
-																	/>
-																	<FormErrorMessage>
-																		{form.formState.errors?.note?.message}
-																	</FormErrorMessage>
-																</FormControl>
-																<FormControl
-																	isInvalid={
-																		!!form.formState.errors.telegram_id
-																	}
-																	w="full"
-																>
-																	<FormLabel
-																		textAlign={isRTL ? "right" : "left"}
-																		w="full"
-																	>
-																		{t("fields.telegramId")}
-																	</FormLabel>
-																	<ChakraInput
-																		{...form.register("telegram_id")}
-																		textAlign={isRTL ? "right" : "left"}
-																		w="full"
-																		minW={0}
-																	/>
-																	<FormErrorMessage>
-																		{
-																			form.formState.errors?.telegram_id
-																				?.message
-																		}
-																	</FormErrorMessage>
-																</FormControl>
-																<FormControl
-																	isInvalid={
-																		!!form.formState.errors.contact_number
-																	}
-																	w="full"
-																>
-																	<FormLabel
-																		textAlign={isRTL ? "right" : "left"}
-																		w="full"
-																	>
-																		{t("fields.contactNumber")}
-																	</FormLabel>
-																	<ChakraInput
-																		{...form.register("contact_number")}
-																		textAlign={isRTL ? "right" : "left"}
-																		w="full"
-																		minW={0}
-																	/>
-																	<FormErrorMessage>
-																		{
-																			form.formState.errors?.contact_number
-																				?.message
-																		}
-																	</FormErrorMessage>
-																</FormControl>
-															</VStack>
-														</Collapse>
-													</Box>
-												</GridItem>
-											</Grid>
-
-											{error && (
-												<Alert
-													mt="3"
-													status="error"
-													display={{ base: "flex", md: "none" }}
-												>
-													<AlertIcon />
-
-													{error}
-												</Alert>
-											)}
-										</TabPanel>
-										{isEditing && canViewTraffic && (
-											<TabPanel px={0} pt={4}>
-												<VStack gap={4}>
-													<UsageFilter
-														defaultValue={usageFilter}
-														onChange={(filter, query) => {
-															setUsageFilter(filter);
-
-															fetchUsageWithFilter(query);
-														}}
-													/>
-
-													<Box
-														width={{ base: "100%", md: "70%" }}
-														justifySelf="center"
-													>
-														<ReactApexChart
-															options={usage.options}
-															series={usage.series}
-															type="donut"
-														/>
-													</Box>
-												</VStack>
-											</TabPanel>
-										)}
-										{isEditing && (
-											<TabPanel px={0} pt={4}>
-												<VStack align="stretch" spacing={4}>
-													<Box
-														borderWidth="1px"
-														borderRadius="md"
-														px={4}
-														py={3}
-														bg="white"
-														_dark={{ bg: "gray.900", borderColor: "gray.700" }}
-													>
-														<HStack spacing={2} minW={0} mb={3}>
-															<SubscriptionActionIcon />
-															<Text fontWeight="semibold">
-																{t("userDialog.links.subscription")}
-															</Text>
-														</HStack>
-														<VStack spacing={2} align="stretch">
-															{subscriptionLinks.length === 0 ? (
-																<Text fontSize="sm" color="gray.500">
-																	{t("userDialog.links.noSubscription")}
-																</Text>
-															) : (
-																subscriptionLinks.map((item) => (
-																	<Box
-																		key={item.key}
-																		borderWidth="1px"
-																		borderRadius="md"
-																		px={3}
-																		py={2}
-																		bg="blackAlpha.50"
-																		_dark={{ bg: "whiteAlpha.50" }}
-																	>
-																		<HStack
-																			justify="space-between"
-																			align="center"
-																			w="full"
-																		>
-																			<HStack spacing={2} minW={0}>
-																				<Text fontWeight="medium">
-																					{item.label}
-																				</Text>
-																				{item.key === "key" && (
-																					<Badge
-																						colorScheme="primary"
-																						borderRadius="full"
-																						fontSize="xs"
-																					>
-																						{t("userDialog.links.recommended")}
-																					</Badge>
-																				)}
-																			</HStack>
-																			<HStack spacing={1} flexShrink={0}>
-																				<Tooltip
-																					label={
-																						copiedSubscriptionKey === item.key
-																							? t("copied")
-																							: t("copy")
-																					}
-																					placement="top"
-																				>
-																					<IconButton
-																						aria-label={t(
-																							"a11y.copySubscriptionLink",
-																						)}
-																						variant="ghost"
-																						size="sm"
-																						type="button"
-																						onClick={() => {
-																							void copyTextToClipboard(
-																								item.url,
-																							).then(() =>
-																								setCopiedSubscriptionKey(
-																									item.key,
-																								),
-																							);
-																						}}
-																					>
-																						{copiedSubscriptionKey ===
-																						item.key ? (
-																							<CopiedActionIcon />
-																						) : (
-																							<CopyActionIcon />
-																						)}
-																					</IconButton>
-																				</Tooltip>
-																				<Tooltip
-																					label={t("userDialog.links.qr")}
-																					placement="top"
-																				>
-																					<IconButton
-																						aria-label={t(
-																							"a11y.subscriptionQr",
-																						)}
-																						variant="ghost"
-																						size="sm"
-																						type="button"
-																						onClick={() => {
-																							setQRCode(
-																								[],
-																								editingUser.username,
-																							);
-																							setSubLink(item.url);
-																						}}
-																					>
-																						<QRActionIcon />
-																					</IconButton>
-																				</Tooltip>
-																			</HStack>
-																		</HStack>
-																	</Box>
-																))
-															)}
-														</VStack>
-													</Box>
-
-													<Box
-														borderWidth="1px"
-														borderRadius="md"
-														px={4}
-														py={3}
-														bg="white"
-														_dark={{ bg: "gray.900", borderColor: "gray.700" }}
-													>
-														<HStack
-															justify="space-between"
-															align="center"
-															w="full"
-															mb={3}
-														>
-															<Text fontWeight="semibold">
-																{t("userDialog.links.configs")}
-															</Text>
-															<Button
-																size="sm"
-																variant="outline"
-																type="button"
-																isDisabled={configItems.length === 0}
-																leftIcon={
-																	copiedAllConfigs ? (
-																		<CopiedActionIcon />
-																	) : (
-																		<CopyActionIcon />
-																	)
-																}
-																onClick={() => {
-																	if (configItems.length === 0) return;
-																	void copyTextToClipboard(
-																		configLinksText,
-																	).then(() => setCopiedAllConfigs(true));
-																}}
-															>
-																{copiedAllConfigs
-																	? t("copied")
-																	: t("userDialog.links.copyAllConfigs")}
-															</Button>
-														</HStack>
-
-														<VStack spacing={2} align="stretch">
-															{configItems.length === 0 ? (
-																<Text fontSize="sm" color="gray.500">
-																	{t("userDialog.links.noConfigs")}
-																</Text>
-															) : (
-																configItems.map((item, index) => (
-																	<Box
-																		key={`${item.link}-${index}`}
-																		borderWidth="1px"
-																		borderRadius="md"
-																		px={3}
-																		py={2}
-																		bg="blackAlpha.50"
-																		_dark={{ bg: "whiteAlpha.50" }}
-																	>
-																		<HStack
-																			justify="space-between"
-																			align="center"
-																			w="full"
-																			dir="ltr"
-																		>
-																			<Text
-																				fontWeight="medium"
-																				noOfLines={1}
-																				minW={0}
-																				flex="1"
-																				textAlign="left"
-																				dir="ltr"
-																				sx={{ unicodeBidi: "isolate" }}
-																			>
-																				{item.label}
-																			</Text>
-																			<HStack spacing={1} flexShrink={0}>
-																				<Tooltip
-																					label={
-																						copiedConfigIndex === index
-																							? t("copied")
-																							: t("copy")
-																					}
-																					placement="top"
-																				>
-																					<IconButton
-																						aria-label={t("a11y.copyConfig")}
-																						variant="ghost"
-																						size="sm"
-																						type="button"
-																						onClick={() => {
-																							void copyTextToClipboard(
-																								item.link,
-																							).then(() =>
-																								setCopiedConfigIndex(index),
-																							);
-																						}}
-																					>
-																						{copiedConfigIndex === index ? (
-																							<CopiedActionIcon />
-																						) : (
-																							<CopyActionIcon />
-																						)}
-																					</IconButton>
-																				</Tooltip>
-																				<Tooltip
-																					label={t("userDialog.links.qr")}
-																					placement="top"
-																				>
-																					<IconButton
-																						aria-label={t("a11y.configQr")}
-																						variant="ghost"
-																						size="sm"
-																						type="button"
-																						onClick={() => {
-																							setQRCode(
-																								[item.link],
-																								editingUser.username,
-																							);
-																							setSubLink(null);
-																						}}
-																					>
-																						<QRActionIcon />
-																					</IconButton>
-																				</Tooltip>
-																			</HStack>
-																		</HStack>
-																	</Box>
-																))
-															)}
-														</VStack>
-													</Box>
-												</VStack>
-											</TabPanel>
-										)}
-									</TabPanels>
-								</Tabs>
-							</XrayModalBody>
-
-							<XrayModalFooter
-								position={{ base: "sticky", md: "static" }}
-								bottom={0}
-								zIndex="sticky"
-								flexShrink={0}
-								bg={footerBg}
-								borderTopWidth="1px"
-								borderColor={footerBorderColor}
-								px={{ base: 3, sm: 4, md: 5 }}
-								pt={{ base: 2.5, md: 3 }}
-								pb={{
-									base: "var(--rb-dialog-safe-bottom)",
-									md: 3,
-								}}
-								boxShadow={{
-									base: "0 -14px 28px rgba(0, 0, 0, 0.28)",
-									md: "none",
-								}}
-							>
-								<HStack
-									justifyContent="space-between"
-									w="full"
-									gap={3}
-									flexDirection={{
-										base: "column",
-
-										sm: "row",
-									}}
-								>
-									<HStack
-										justifyContent="flex-start"
-										w={{
-											base: "full",
-
-											sm: "unset",
-										}}
-										spacing={2}
-										flexWrap="wrap"
-									>
-										{isEditing && (
-											<>
-												{canDeleteUsersVisible && (
-													<DeleteConfirmDialog
-														description={t("deleteUser.prompt", {
-															username: editingUser?.username ?? "",
-														})}
-														isLoading={deleteLoading}
-														onConfirm={handleDeleteUser}
-													>
-														<Tooltip label={t("delete")} placement="top">
-															<IconButton
-																aria-label={t("delete")}
-																size={{ base: "md", sm: "sm" }}
-															>
-																<DeleteIcon />
-															</IconButton>
-														</Tooltip>
-													</DeleteConfirmDialog>
-												)}
-
-												{canResetUsageVisible && (
-													<Button
-														onClick={handleResetUsage}
-														size={{ base: "md", sm: "sm" }}
-														flex={{ base: "1 1 auto", sm: "0 0 auto" }}
-													>
-														{t("userDialog.resetUsage")}
-													</Button>
-												)}
-
-												{canRevokeSubscriptionVisible && (
-													<Button
-														onClick={handleRevokeSubscription}
-														size={{ base: "md", sm: "sm" }}
-														flex={{ base: "1 1 auto", sm: "0 0 auto" }}
-													>
-														{t("userDialog.revokeSubscription")}
-													</Button>
-												)}
-											</>
-										)}
-									</HStack>
-
-									<Box
-										w="full"
-										maxW={{ md: "260px", base: "full" }}
-										flexShrink={0}
-									>
-										<AnimatedSubmitButton
-											status={submitStatus}
-											idleContent={
-												isEditing ? t("userDialog.editUser") : t("createUser")
-											}
-											successLabel={t("userDialog.submitSuccess")}
-											isDisabled={submitDisabled}
-											type="submit"
-										/>
-									</Box>
-								</HStack>
-							</XrayModalFooter>
-						</form>
-					</Box>
-
-					{limitReached && (
-						<Flex
-							position="absolute"
-							inset={0}
-							align="center"
-							justify="center"
-							direction="column"
-							gap={4}
-							bg="blackAlpha.600"
-							color="white"
-							textAlign="center"
-							p={6}
-							pointerEvents="none"
-						>
-							<Icon color="primary">
-								<LimitLockIcon />
-							</Icon>
-
-							<Text fontSize="xl" fontWeight="semibold">
-								{t("userDialog.limitReachedTitle")}
-							</Text>
-
-							<Text fontSize="md" maxW="sm">
-								{usersLimit && usersLimit > 0
-									? t("userDialog.limitReachedBody", {
-											limit: usersLimit,
-
-											active: activeUsersCount ?? usersLimit,
-										})
-									: t("userDialog.limitReachedContent")}
-							</Text>
-						</Flex>
+							/>
+						</FormField>
 					)}
-				</XrayModalContent>
-			</FormProvider>
-		</Modal>
+				/>
+			) : null}
+
+			{speedLimitEditable ? (
+				<Controller
+					control={form.control}
+					name="speed_limit"
+					render={({ field }) => (
+						<FormField label={t("userDialog.speedLimitLabel")} error={errors.speed_limit?.message}>
+							<UnitInput
+								value={typeof field.value === "number" && field.value > 0 ? String(field.value) : ""}
+								onChange={(raw) => {
+									const parsed = Number(raw.trim());
+									field.onChange(Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) / 100 : null);
+								}}
+								unit={SPEED_UNIT}
+								disabled={disabled}
+								invalid={!!errors.speed_limit}
+							/>
+						</FormField>
+					)}
+				/>
+			) : null}
+
+			<div className={cn("flex min-w-0 flex-col gap-2", !speedLimitEditable && "sm:col-span-2")}>
+				<Label>{isOnHold ? t("expires.days") : t("userDialog.expiryDate")}</Label>
+				<div className="flex items-start gap-2">
+					<div className="min-w-0 flex-1">
+						{isOnHold ? (
+							<Controller
+								control={form.control}
+								name="on_hold_expire_duration"
+								render={({ field }) => (
+									<UnitInput
+										value={field.value ? String(field.value) : ""}
+										unit={DAYS_UNIT} integer
+										disabled={disabled}
+										invalid={!!errors.on_hold_expire_duration}
+										onChange={(raw) => {
+											form.setValue("expire", null);
+											if (!raw) {
+												field.onChange(null);
+												return;
+											}
+											if (!isDecimalDraft(raw)) return;
+											const parsed = Number(raw);
+											if (Number.isNaN(parsed) || parsed < 0) return;
+											field.onChange(Math.round(parsed));
+										}}
+									/>
+								)}
+							/>
+						) : (
+							<Controller
+								name="expire"
+								control={form.control}
+								render={({ field }) => {
+									const selectedDate = field.value ? dayjs.unix(field.value).toDate() : null;
+									const handleDateChange = (next: Date | null) => {
+										form.setValue("on_hold_expire_duration", null, { shouldDirty: false });
+										field.onChange(next ? dayjs(next).utc().unix() : null);
+									};
+									return (
+										<>
+											<DateTimeField
+												id="user-expire"
+												value={selectedDate}
+												onChange={handleDateChange}
+												placeholder={t("dateTimePicker.selectDate")}
+												disabled={disabled}
+												minDate={new Date()}
+												quickSelects={quickExpiryOptions.map((option) => ({
+													label: option.label,
+													onClick: () => handleDateChange(addQuickExpiry(selectedDate, option.amount, option.unit)),
+												}))}
+											/>
+											{expireHelperText ? <p className="mt-1 text-xs text-muted-foreground">{expireHelperText}</p> : null}
+											{errors.expire?.message ? (
+												<p role="alert" className="mt-1 text-xs text-destructive">
+													{errors.expire.message}
+												</p>
+											) : null}
+										</>
+									);
+								}}
+							/>
+						)}
+					</div>
+					<button
+						type="button"
+						disabled={disabled}
+						onClick={toggleOnHold}
+						className={buttonVariants({ variant: isOnHold ? "default" : "outline" })}
+					>
+						{t("onHold.button")}
+					</button>
+				</div>
+				{isOnHold ? (
+					<div className="grid grid-cols-6 gap-1 [&>button]:w-full [&>button]:px-0">
+						{ON_HOLD_QUICK_DAYS.map((days) => (
+							<button
+								key={days}
+								type="button"
+								disabled={disabled}
+								onClick={() => {
+									form.setValue("expire", null);
+									form.setValue("on_hold_expire_duration", days, { shouldDirty: true, shouldValidate: true });
+								}}
+								className={buttonVariants({ variant: "outline", size: "sm" })}
+							>
+								{days}D
+							</button>
+						))}
+					</div>
+				) : null}
+				{isOnHold && errors.on_hold_expire_duration?.message ? (
+					<p role="alert" className="text-xs text-destructive">
+						{errors.on_hold_expire_duration.message}
+					</p>
+				) : null}
+			</div>
+
+			{showServiceSelector ? (
+				<FormField
+					label={t("userDialog.selectServiceLabel")}
+					className={cn(!dataLimitSet && "sm:col-span-2")}
+					description={
+						selectedService ? (
+							<span className="flex flex-col gap-0.5">
+								{selectedService.description ? <span>{selectedService.description}</span> : null}
+								<span>
+									{t("userDialog.serviceSummary", {
+										hosts: selectedService.host_count,
+										users: selectedService.user_count,
+									})}
+								</span>
+							</span>
+						) : undefined
+					}
+				>
+					<Select
+						value={selectedServiceId ? String(selectedServiceId) : ""}
+						onValueChange={(value) => setSelectedServiceId(Number(value))}
+						disabled={serviceSelectionDisabled || servicesLoading}
+					>
+						<SelectTrigger id="user-service" aria-label={t("userDialog.selectServiceLabel")}>
+							<SelectValue placeholder={t("userDialog.selectService")} />
+						</SelectTrigger>
+						<SelectContent>
+							{services.map((service) => {
+								const isBroken = service.broken === true || service.has_hosts === false;
+								return (
+									<SelectItem key={service.id} value={String(service.id)} disabled={isBroken}>
+										<SelectItemText>{service.name}</SelectItemText>
+										{service.description ? (
+											<span className="line-clamp-2 text-xs text-muted-foreground">{service.description}</span>
+										) : null}
+										<span className="text-xs text-muted-foreground">
+											{t("userDialog.serviceSummary", { hosts: service.host_count, users: service.user_count })}
+											{isBroken ? ` · ${t("userDialog.brokenService")}` : ""}
+										</span>
+									</SelectItem>
+								);
+							})}
+						</SelectContent>
+					</Select>
+				</FormField>
+			) : null}
+
+			{dataLimitSet ? (
+				<Controller
+					control={form.control}
+					name="data_limit_reset_strategy"
+					render={({ field }) => (
+						<FormField label={t("userDialog.periodicUsageReset")} className={cn(!showServiceSelector && "sm:col-span-2")}>
+							<Select
+								value={field.value}
+								onValueChange={field.onChange}
+								disabled={disabled || !canConfigurePeriodicUsageReset}
+							>
+								<SelectTrigger id="user-reset">
+									<SelectValue />
+								</SelectTrigger>
+								<SelectContent>
+									{resetStrategy.map((strategy) => (
+										<SelectItem key={strategy.value} value={strategy.value}>
+											<SelectItemText>{t(`userDialog.resetStrategy${strategy.title}`)}</SelectItemText>
+										</SelectItem>
+									))}
+								</SelectContent>
+							</Select>
+						</FormField>
+					)}
+				/>
+			) : null}
+
+			{hasExistingKey && canSetCustomKey ? (
+				<div className="flex flex-col gap-2 sm:col-span-2">
+					<Controller
+						name="manual_key_entry"
+						control={form.control}
+						render={({ field }) => (
+							<label className="flex items-center justify-between gap-3 text-sm">
+								<span>{t("userDialog.allowManualKeyEntry")}</span>
+								<Switch checked={field.value} disabled={disabled} onCheckedChange={(checked) => field.onChange(checked)} />
+							</label>
+						)}
+					/>
+					{manualKeyEntryEnabled ? (
+						<Controller
+							name="credential_key"
+							control={form.control}
+							render={({ field }) => (
+								<FormField
+									label={t("userDialog.credentialKeyLabel")}
+									description={t("userDialog.manualKeyHelper")}
+									error={errors.credential_key?.message}
+								>
+									<Input
+										placeholder="35e4e39c7d5c4f4b8b71558e4f37ff53"
+										maxLength={32}
+										dir="ltr"
+										value={field.value ?? ""}
+										disabled={disabled}
+										onChange={(event) => field.onChange(event.target.value)}
+									/>
+								</FormField>
+							)}
+						/>
+					) : null}
+				</div>
+			) : null}
+
+			<Collapsible
+				open={autoRenewOpen}
+				onOpenChange={(open) => {
+					setAutoRenewOpen(open);
+					if (open) scrollBodyToEnd();
+				}}
+				className="flex flex-col gap-3 sm:col-span-2"
+			>
+				<CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium">
+					{t("autoRenew.title")}
+					{autoRenewRules.length > 0 ? <Badge variant="secondary">{autoRenewRules.length}</Badge> : null}
+					<ChevronDown className={cn("size-4 transition-transform", autoRenewOpen && "rotate-180")} />
+				</CollapsibleTrigger>
+				<CollapsibleContent className="flex flex-col gap-3">
+					{autoRenewRules.length === 0 && !ruleDraft ? (
+						<p className="text-sm text-muted-foreground">{t("autoRenew.empty")}</p>
+					) : null}
+					{autoRenewRules.map((rule, idx) => {
+						const dayText = deriveDaysFromSeconds(rule.expire);
+						return (
+							<div key={rule.id} className="flex flex-col gap-1">
+								<div className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
+									<span>
+										{rule.dataLimit !== null && rule.dataLimit !== undefined
+											? `${rule.dataLimit} ${DATA_UNIT}`
+											: t("userDialog.autoRenewUnlimited")}{" "}
+										· {dayText !== null ? `${dayText} ${DAYS_UNIT}` : t("userDialog.autoRenewUnlimited")}
+									</span>
+									<div className="flex items-center">
+										<button
+											type="button"
+											aria-label={t("edit")}
+											disabled={disabled}
+											onClick={() => startRuleDraft(idx)}
+											className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
+										>
+											<Pencil />
+										</button>
+										<button
+											type="button"
+											aria-label={t("delete")}
+											disabled={disabled}
+											onClick={() => deleteRule(idx)}
+											className={cn(buttonVariants({ variant: "ghost", size: "icon-sm" }), "text-destructive")}
+										>
+											<Trash2 />
+										</button>
+									</div>
+								</div>
+								{idx > 0 ? <p className="text-xs text-muted-foreground">{t("autoRenew.queuedNote")}</p> : null}
+							</div>
+						);
+					})}
+
+					{ruleDraft ? (
+						<div className="grid grid-cols-1 gap-3 rounded-md border p-3 sm:grid-cols-2">
+							<FormField label={t("userDialog.autoRenewDataLimit")}>
+								<UnitInput
+									value={ruleDraft.data}
+									unit={DATA_UNIT}
+									disabled={disabled}
+									onChange={(raw) => {
+										if (raw === "" || isDecimalDraft(raw)) setRuleDraft((draft) => draft && { ...draft, data: raw });
+									}}
+								/>
+							</FormField>
+							<FormField label={t("userDialog.autoRenewTimeLimit")}>
+								<UnitInput
+									value={ruleDraft.days}
+									unit={DAYS_UNIT} integer
+									disabled={disabled}
+									onChange={(raw) => {
+										if (raw === "" || isDecimalDraft(raw)) setRuleDraft((draft) => draft && { ...draft, days: raw });
+									}}
+								/>
+							</FormField>
+							<div className="flex flex-wrap gap-2 sm:col-span-2">
+								<button
+									type="button"
+									disabled={disabled}
+									onClick={() => setRuleDraft((draft) => draft && { ...draft, addRemaining: !draft.addRemaining })}
+									className={buttonVariants({ variant: ruleDraft.addRemaining ? "default" : "outline", size: "sm" })}
+								>
+									{ruleDraft.addRemaining
+										? t("userDialog.nextPlanAddRemainingTraffic")
+										: t("userDialog.autoRenewResetUsage")}
+								</button>
+								<button
+									type="button"
+									disabled={disabled}
+									onClick={() => setRuleDraft((draft) => draft && { ...draft, fireOnEither: !draft.fireOnEither })}
+									className={buttonVariants({ variant: ruleDraft.fireOnEither ? "default" : "outline", size: "sm" })}
+								>
+									{t("userDialog.nextPlanFireOnEither")}
+								</button>
+							</div>
+							<div className="flex justify-end gap-2 sm:col-span-2">
+								<button
+									type="button"
+									onClick={() => setRuleDraft(null)}
+									className={buttonVariants({ variant: "outline", size: "sm" })}
+								>
+									{t("cancel")}
+								</button>
+								<button type="button" disabled={disabled} onClick={saveRuleDraft} className={buttonVariants({ size: "sm" })}>
+									{ruleDraft.index !== null ? t("save") : t("add")}
+								</button>
+							</div>
+						</div>
+					) : (
+						<button
+							type="button"
+							disabled={disabled}
+							onClick={() => startRuleDraft(null)}
+							className={cn(buttonVariants({ variant: "outline", size: "sm" }), "self-start")}
+						>
+							<Plus />
+							{t("add")}
+						</button>
+					)}
+				</CollapsibleContent>
+			</Collapsible>
+
+			<Collapsible
+				open={otherInfoOpen}
+				onOpenChange={(open) => {
+					setOtherInfoOpen(open);
+					if (open) scrollBodyToEnd();
+				}}
+				className="flex flex-col gap-3 sm:col-span-2"
+			>
+				<CollapsibleTrigger className="flex items-center gap-2 text-sm font-medium">
+					{t("otherInfo.title")}
+					<ChevronDown className={cn("size-4 transition-transform", otherInfoOpen && "rotate-180")} />
+				</CollapsibleTrigger>
+				<CollapsibleContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+					<FormField label={t("groups.group")}>
+						<Controller
+							control={form.control}
+							name="group_id"
+							render={({ field }) => (
+								<GroupSelect type="user" value={field.value ?? null} onChange={field.onChange} />
+							)}
+						/>
+					</FormField>
+					<FormField label={t("tags.title")}>
+						<Controller
+							control={form.control}
+							name="tags"
+							render={({ field }) => (
+								<TagsSelect
+									value={field.value ?? []}
+									onChange={field.onChange}
+									options={knownUserTags.map((item) => item.tag)}
+								/>
+							)}
+						/>
+					</FormField>
+					<FormField label={t("fields.note")} className="sm:col-span-2" error={errors.note?.message}>
+						<Textarea {...form.register("note")} />
+					</FormField>
+					<FormField label={t("fields.telegramId")} error={errors.telegram_id?.message}>
+						<Input dir="ltr" {...form.register("telegram_id")} />
+					</FormField>
+					<FormField label={t("fields.contactNumber")} error={errors.contact_number?.message}>
+						<Input dir="ltr" {...form.register("contact_number")} />
+					</FormField>
+				</CollapsibleContent>
+			</Collapsible>
+
+			{error ? (
+				<Alert variant="destructive" className="sm:col-span-2">
+					<AlertDescription>{error}</AlertDescription>
+				</Alert>
+			) : null}
+		</div>
+	);
+
+	const linksTab = (
+		<div className="flex flex-col gap-4">
+			<div className="flex flex-col gap-2">
+				<span className="text-sm font-medium">{t("userDialog.links.subscription")}</span>
+				{subscriptionLinks.length === 0 ? (
+					<p className="text-sm text-muted-foreground">{t("userDialog.links.noSubscription")}</p>
+				) : (
+					subscriptionLinks.map((item) => (
+						<div key={item.key} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2">
+							<div className="flex min-w-0 items-center gap-2">
+								<span className="truncate text-sm">{item.label}</span>
+								{item.key === "key" ? <Badge variant="secondary">{t("userDialog.links.recommended")}</Badge> : null}
+							</div>
+							<div className="flex shrink-0 items-center">
+								<button
+									type="button"
+									aria-label={t("a11y.copySubscriptionLink")}
+									title={copiedKey === item.key ? t("copied") : t("copy")}
+									onClick={() => copyValue(item.key, item.url)}
+									className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
+								>
+									{copiedKey === item.key ? <Check /> : <Copy />}
+								</button>
+								<button
+									type="button"
+									aria-label={t("a11y.subscriptionQr")}
+									title={t("userDialog.links.qr")}
+									onClick={() => {
+										setQRCode([], editingUser?.username ?? null);
+										setSubLink(item.url);
+									}}
+									className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
+								>
+									<QrCode />
+								</button>
+							</div>
+						</div>
+					))
+				)}
+			</div>
+
+			<div className="flex flex-col gap-2">
+				<div className="flex items-center justify-between gap-2">
+					<span className="text-sm font-medium">{t("userDialog.links.configs")}</span>
+					{configItems.length > 0 ? (
+						<button
+							type="button"
+							onClick={() => copyValue("all", configLinksText)}
+							className={buttonVariants({ variant: "outline", size: "sm" })}
+						>
+							{copiedKey === "all" ? <Check /> : <Copy />}
+							{copiedKey === "all" ? t("copied") : t("userDialog.links.copyAllConfigs")}
+						</button>
+					) : null}
+				</div>
+				{configItems.length === 0 ? (
+					<p className="text-sm text-muted-foreground">{t("userDialog.links.noConfigs")}</p>
+				) : (
+					configItems.map((item, index) => (
+						<div key={`${item.link}-${index}`} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2">
+							<span dir="ltr" className="min-w-0 flex-1 truncate text-start text-sm">
+								{item.label}
+							</span>
+							<div className="flex shrink-0 items-center">
+								<button
+									type="button"
+									aria-label={t("a11y.copyConfig")}
+									title={copiedKey === `config-${index}` ? t("copied") : t("copy")}
+									onClick={() => copyValue(`config-${index}`, item.link)}
+									className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
+								>
+									{copiedKey === `config-${index}` ? <Check /> : <Copy />}
+								</button>
+								<button
+									type="button"
+									aria-label={t("a11y.configQr")}
+									title={t("userDialog.links.qr")}
+									onClick={() => {
+										setQRCode([item.link], editingUser?.username ?? null);
+										setSubLink(null);
+									}}
+									className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
+								>
+									<QrCode />
+								</button>
+							</div>
+						</div>
+					))
+				)}
+			</div>
+		</div>
+	);
+
+	const usageTab = (
+		<div className="flex flex-col items-center gap-4">
+			<UsageFilter
+				defaultValue={usageFilter}
+				onChange={(filter, query) => {
+					setUsageFilter(filter);
+					fetchUsageWithFilter(query);
+				}}
+			/>
+			<div className="w-full md:w-[70%]">
+				<ReactApexChart options={usage.options} series={usage.series} type="donut" />
+			</div>
+		</div>
+	);
+
+	return (
+		<Dialog
+			section="users"
+			page={editingUser && !isCreatingNewUser ? userEntityPage(editingUser) : undefined}
+			open={isOpen}
+			onOpenChange={(open) => {
+				if (!open && !loading) onClose();
+			}}
+		>
+			<DialogContent
+				dir={isRTL ? "rtl" : "ltr"}
+				className="flex max-h-[min(640px,calc(100dvh-10rem))] flex-col gap-0 overflow-hidden p-0 sm:max-w-xl max-md:inset-x-3 max-md:w-auto max-md:top-[4.5rem] max-md:bottom-24 max-md:max-h-none max-md:max-w-none max-md:translate-x-0 max-md:translate-y-0"
+			>
+				<form onSubmit={form.handleSubmit(submit)} className="flex min-h-0 flex-1 flex-col">
+					<DialogHeader className="flex-row items-center gap-3 border-b px-5 py-3.5 pe-12 text-start sm:text-start">
+						<div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+							{isEditing ? <Pencil className="size-4" /> : <UserPlus className="size-4" />}
+						</div>
+						<div className="min-w-0">
+							<DialogTitle className="truncate text-base">{title}</DialogTitle>
+							{isEditing && hasPrivilegedRole && editingUser?.admin_username ? (
+								<DialogDescription className="truncate">
+									{t("userDialog.createdBy")}: {editingUser.admin_username}
+								</DialogDescription>
+							) : null}
+						</div>
+					</DialogHeader>
+
+					<Tabs value={tab} onValueChange={handleTabChange} className="flex min-h-0 flex-1 flex-col">
+						{isEditing ? (
+							<div className="border-b px-5 pt-2.5 pb-2.5">
+								<TabsList className="w-full">
+									<TabsTrigger value="details">{t("details")}</TabsTrigger>
+									{canViewTraffic ? <TabsTrigger value="usage">{t("userDialog.tabs.usage")}</TabsTrigger> : null}
+									<TabsTrigger value="links">{t("userDialog.tabs.links")}</TabsTrigger>
+								</TabsList>
+							</div>
+						) : null}
+
+						<div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+							{limitReached ? (
+								<Alert variant="destructive" className="mb-4">
+									<AlertDescription>
+										{usersLimit && usersLimit > 0
+											? t("userDialog.limitReachedBody", { limit: usersLimit, active: activeUsersCount ?? usersLimit })
+											: t("userDialog.limitReachedContent")}
+									</AlertDescription>
+								</Alert>
+							) : null}
+
+							<TabsContent value="details" className="mt-0">
+								{detailsTab}
+							</TabsContent>
+							{isEditing && canViewTraffic ? (
+								<TabsContent value="usage" className="mt-0">
+									{usageTab}
+								</TabsContent>
+							) : null}
+							{isEditing ? <TabsContent value="links" className="mt-0">{linksTab}</TabsContent> : null}
+						</div>
+					</Tabs>
+
+					<DialogFooter className="flex-row flex-wrap items-center justify-between gap-2 border-t px-5 py-3">
+						<div className="flex flex-wrap items-center gap-1.5">
+							{isEditing && canDeleteUsersVisible ? (
+								<DeleteConfirmDialog
+									description={t("deleteUser.prompt", { username: editingUser?.username ?? "" })}
+									loading={deleteLoading}
+									onConfirm={handleDeleteUser}
+								>
+									<button
+										type="button"
+										aria-label={t("delete")}
+										disabled={disabled}
+										className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
+									>
+										<Trash2 className="text-destructive" />
+									</button>
+								</DeleteConfirmDialog>
+							) : null}
+							{isEditing && canResetUsageVisible ? (
+								<button type="button" onClick={handleResetUsage} className={buttonVariants({ variant: "ghost", size: "sm" })}>
+									<RotateCcw />
+									{t("userDialog.resetUsage")}
+								</button>
+							) : null}
+							{isEditing && canRevokeSubscriptionVisible ? (
+								<button
+									type="button"
+									onClick={handleRevokeSubscription}
+									className={buttonVariants({ variant: "ghost", size: "sm" })}
+								>
+									<Ban />
+									{t("userDialog.revokeSubscription")}
+								</button>
+							) : null}
+						</div>
+
+						<button type="submit" disabled={submitDisabled} className={cn(buttonVariants({ size: "sm" }), "ms-auto")}>
+							{submitStatus === "success" ? (
+								<>
+									<Check />
+									{t("userDialog.submitSuccess")}
+								</>
+							) : loading ? (
+								t("loading")
+							) : isEditing ? (
+								t("userDialog.editUser")
+							) : (
+								t("createUser")
+							)}
+						</button>
+					</DialogFooter>
+				</form>
+			</DialogContent>
+		</Dialog>
 	);
 };

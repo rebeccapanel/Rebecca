@@ -1688,7 +1688,7 @@ add_phpmyadmin_to_compose() {
     # Add phpMyAdmin service to docker-compose.yml
     if command -v yq >/dev/null 2>&1; then
         yq eval '.services.phpmyadmin = {
-            "image": "phpmyadmin/phpmyadmin:latest",
+            "image": "phpmyadmin:latest",
             "restart": "always",
             "env_file": ".env",
             "network_mode": "host",
@@ -1703,7 +1703,7 @@ add_phpmyadmin_to_compose() {
         cat >> "$compose_file" <<EOF
 
   phpmyadmin:
-    image: phpmyadmin/phpmyadmin:latest
+    image: phpmyadmin:latest
     restart: always
     env_file: .env
     network_mode: host
@@ -3381,6 +3381,7 @@ get_binary_dev_artifact_metadata() {
 
     if [ -z "$artifact_name" ]; then
         colorized_echo red "No usable binary dev artifact was found for workflow run ${run_id}." >&2
+        colorized_echo yellow "Dev builds publish linux-amd64 and linux-arm64. For other architectures, install the latest release instead." >&2
         exit 1
     fi
 

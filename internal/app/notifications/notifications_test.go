@@ -156,9 +156,12 @@ func TestNodeOfflineNotifiesOperatorsOnly(t *testing.T) {
 func TestDisabledRuleTracksStateWithoutSending(t *testing.T) {
 	ctx := context.Background()
 	service, db := newTestService(t)
-	insertAdmin(t, db, 1, "alice", "standard", 1000, 900, 0)
+	insertAdmin(t, db, 1, "sudo", "sudo", 0, 0, 0)
+	if _, err := db.Exec(`INSERT INTO nodes (id, name, address, port, api_port, status) VALUES (7, 'de-7', '127.0.0.1', 62050, 62051, 'error')`); err != nil {
+		t.Fatal(err)
+	}
 
-	rule, err := service.SaveRule(ctx, RuleAdminTraffic, RuleUpdate{Enabled: false, Threshold: 80, Title: "t", Body: "{percent}"})
+	rule, err := service.SaveRule(ctx, RuleNodeOffline, RuleUpdate{Enabled: false, Title: "t", Body: "{node}"})
 	if err != nil || rule.Enabled {
 		t.Fatalf("disable rule: rule=%#v err=%v", rule, err)
 	}
@@ -168,7 +171,7 @@ func TestDisabledRuleTracksStateWithoutSending(t *testing.T) {
 	if got := inboxTotal(t, service, 1); got != 0 {
 		t.Fatalf("disabled rule sent %d notifications", got)
 	}
-	if _, err := service.SaveRule(ctx, RuleAdminTraffic, RuleUpdate{Enabled: true, Threshold: 80, Title: "t", Body: "{percent}"}); err != nil {
+	if _, err := service.SaveRule(ctx, RuleNodeOffline, RuleUpdate{Enabled: true, Title: "t", Body: "{node}"}); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.Evaluate(ctx); err != nil {

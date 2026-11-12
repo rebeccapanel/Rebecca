@@ -1,12 +1,7 @@
-import {
-	Box,
-	HStack,
-	Image,
-	Text,
-	Tooltip,
-	useColorModeValue,
-	VStack,
-} from "@chakra-ui/react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "components/ui/tooltip";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+
+import { cn } from "lib/cn";
 import { useTranslation } from "react-i18next";
 import IrancellLogo from "../assets/operators/irancell-svgrepo-com.svg";
 import MCILogo from "../assets/operators/mci-svgrepo-com.svg";
@@ -40,34 +35,19 @@ const operatorBrands: OperatorBrand[] = [
 
 const fallbackPalettes = [
 	{
-		lightBg: "blue.100",
-		lightColor: "blue.700",
-		darkBg: "blue.800",
-		darkColor: "blue.100",
+		bg: "bg-blue-100 dark:bg-blue-800", color: "text-blue-700 dark:text-blue-100",
 	},
 	{
-		lightBg: "green.100",
-		lightColor: "green.700",
-		darkBg: "green.800",
-		darkColor: "green.100",
+		bg: "bg-green-100 dark:bg-green-800", color: "text-green-700 dark:text-green-100",
 	},
 	{
-		lightBg: "orange.100",
-		lightColor: "orange.700",
-		darkBg: "orange.800",
-		darkColor: "orange.100",
+		bg: "bg-orange-100 dark:bg-orange-800", color: "text-orange-700 dark:text-orange-100",
 	},
 	{
-		lightBg: "cyan.100",
-		lightColor: "cyan.700",
-		darkBg: "cyan.800",
-		darkColor: "cyan.100",
+		bg: "bg-cyan-100 dark:bg-cyan-800", color: "text-cyan-700 dark:text-cyan-100",
 	},
 	{
-		lightBg: "purple.100",
-		lightColor: "purple.700",
-		darkBg: "purple.800",
-		darkColor: "purple.100",
+		bg: "bg-purple-100 dark:bg-purple-800", color: "text-purple-700 dark:text-purple-100",
 	},
 ] as const;
 
@@ -107,66 +87,35 @@ export const OperatorIdentity = ({
 	const brand = findOperatorBrand(shortName, owner);
 	const markSize = compact ? "24px" : "32px";
 	const palette = fallbackPalette(label);
-	const fallbackBg = useColorModeValue(palette.lightBg, palette.darkBg);
-	const fallbackColor = useColorModeValue(
-		palette.lightColor,
-		palette.darkColor,
-	);
 	const identity = (
-		<HStack spacing={compact ? 1.5 : 2} minW={0} align="center">
-			<Box
-				w={markSize}
-				h={markSize}
-				flexShrink={0}
-				display="flex"
-				alignItems="center"
-				justifyContent="center"
-				borderWidth="1px"
-				borderColor="panel.border"
-				borderRadius="md"
-				bg={brand?.background || fallbackBg}
-				color={brand ? undefined : fallbackColor}
-				overflow="hidden"
-			>
+		<div className={cn("flex flex-row gap-2 min-w-0! items-center", compact ? "gap-1.5" : "gap-2")}>
+			<div style={{ width: markSize, height: markSize, backgroundColor: brand?.background }} className={cn("shrink-0 flex items-center justify-center border border-panel-border! rounded-md overflow-hidden", !brand && palette.bg, !brand && palette.color)}>
 				{brand ? (
-					<Image
-						src={brand.logo}
-						alt=""
-						boxSize={compact ? "18px" : "24px"}
-						objectFit="contain"
-					/>
+					<img src={brand.logo} alt="" className={cn("object-contain", compact ? "size-[18px]" : "size-[24px]")} />
 				) : (
-					<Text
-						fontSize={compact ? "2xs" : "xs"}
-						fontWeight="800"
-						lineHeight="1"
-					>
+					<p className={cn("font-extrabold leading-[1]", compact ? "text-[0.625rem]" : "text-[0.75rem]")}>
 						{operatorInitials(label)}
-					</Text>
+					</p>
 				)}
-			</Box>
-			<VStack spacing={0} align="start" minW={0} textAlign="start">
-				<Text
-					fontSize={compact ? "xs" : "sm"}
-					fontWeight="semibold"
-					noOfLines={1}
-					maxW="full"
-				>
+			</div>
+			<div className="flex flex-col gap-0 items-start min-w-0! text-start">
+				<p className={cn("font-semibold truncate max-w-full", compact ? "text-[0.75rem]" : "text-[0.875rem]")}>
 					{label}
-				</Text>
+				</p>
 				{!compact && owner && owner !== shortName ? (
-					<Text fontSize="xs" color="panel.textMuted" noOfLines={1} maxW="full">
+					<p className="text-[0.75rem] text-panel-text-muted truncate max-w-full">
 						{owner}
-					</Text>
+					</p>
 				) : null}
-			</VStack>
-		</HStack>
+			</div>
+		</div>
 	);
 
 	return compact && owner && owner !== shortName ? (
-		<Tooltip label={owner} hasArrow>
-			{identity}
-		</Tooltip>
+		<Tooltip>
+<TooltipTrigger asChild><span className="inline-flex max-w-full">{identity}</span></TooltipTrigger>
+<TooltipContent>{owner}</TooltipContent>
+</Tooltip>
 	) : (
 		identity
 	);

@@ -1,6 +1,6 @@
-import fa from "date-fns/locale/fa-IR";
-import ru from "date-fns/locale/ru";
-import zh from "date-fns/locale/zh-CN";
+import { faIR as fa } from "date-fns/locale/fa-IR";
+import { ru } from "date-fns/locale/ru";
+import { zhCN as zh } from "date-fns/locale/zh-CN";
 import dayjs from "dayjs";
 import i18n from "i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
@@ -65,6 +65,7 @@ i18n.on("languageChanged", (lng) => {
 applyDocumentLanguage(i18n.language || "en");
 
 // DataPicker
+registerLocale("zh", zh);
 registerLocale("zh-cn", zh);
 registerLocale("ru", ru);
 registerLocale("fa", fa);

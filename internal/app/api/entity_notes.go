@@ -43,6 +43,10 @@ func (s *Server) requireNoteViewer(next http.HandlerFunc) http.HandlerFunc {
 			writeError(w, http.StatusForbidden, "You're not allowed")
 			return
 		}
+		if principal.Role == string(adminapp.RoleSudo) && !principal.Context.Admin.Permissions.Sudo.Notes {
+			writeError(w, http.StatusForbidden, "You're not allowed")
+			return
+		}
 		next(w, r)
 	})
 }

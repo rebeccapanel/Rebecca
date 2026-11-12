@@ -1,23 +1,14 @@
-import {
-	Alert,
-	AlertIcon,
-	Badge,
-	Box,
-	Button,
-	FormControl,
-	FormErrorMessage,
-	FormHelperText,
-	FormLabel,
-	HStack,
-	Input,
-	Modal,
-	ModalCloseButton,
-	ModalOverlay,
-	Text,
-	Textarea,
-	useColorModeValue,
-	VStack,
-} from "@chakra-ui/react";
+import { Alert } from "components/ui/alert";
+import { Field, FieldDescription, FieldError, FieldLabel } from "components/ui/field";
+import { Textarea } from "components/ui/textarea";
+import { Button } from "components/ui/button";
+import { Input } from "components/ui/input";
+import { Badge } from "components/ui/badge";
+import { Dialog } from "components/ui/dialog";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+
+
+import { cn } from "lib/cn";
 import { type FC, useEffect, useMemo, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
@@ -44,8 +35,8 @@ export type PsiphonProxyFormValues = {
 };
 
 type Props = {
-	isOpen: boolean;
-	isLoading: boolean;
+	open: boolean;
+	loading: boolean;
 	isMasterTarget: boolean;
 	targetID: string;
 	existingTags: string[];
@@ -61,8 +52,8 @@ const defaults: PsiphonProxyFormValues = {
 };
 
 export const PsiphonProxyModal: FC<Props> = ({
-	isOpen,
-	isLoading,
+	open: isOpen,
+	loading: isLoading,
 	isMasterTarget,
 	targetID,
 	existingTags,
@@ -71,7 +62,7 @@ export const PsiphonProxyModal: FC<Props> = ({
 }) => {
 	const { t, i18n } = useTranslation();
 	const form = useForm<PsiphonProxyFormValues>({ defaultValues: defaults });
-	const borderColor = useColorModeValue("gray.200", "whiteAlpha.200");
+	const borderColor = "border-gray-200! dark:border-whiteAlpha-200!";
 	const [isLoadingLocations, setIsLoadingLocations] = useState(false);
 	const [availableLocations, setAvailableLocations] = useState<string[]>([]);
 	const [loadedConfig, setLoadedConfig] = useState("");
@@ -144,45 +135,26 @@ export const PsiphonProxyModal: FC<Props> = ({
 	};
 
 	return (
-		<Modal
-			isOpen={isOpen}
-			onClose={onClose}
-			size="xl"
-			isCentered
-			closeOnEsc={!isLoading && !isLoadingLocations}
-			closeOnOverlayClick={!isLoading && !isLoadingLocations}
-		>
-			<ModalOverlay />
+		<Dialog open={isOpen} onOpenChange={(open) => { if (!open) (onClose)(); }}>
+			
 			<XrayModalContent>
-				<Box
-					as="form"
-					display="flex"
-					flex="1"
-					flexDirection="column"
-					minH={0}
-					overflow="hidden"
-					onSubmit={form.handleSubmit(onSubmit)}
-				>
+				<form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-1 flex-col min-h-0 overflow-hidden">
 					<XrayModalHeader subtitle={t("pages.xray.psiphon.description")}>
 						{t("pages.xray.psiphon.title")}
 					</XrayModalHeader>
-					<ModalCloseButton isDisabled={isLoading || isLoadingLocations} />
-					<XrayModalBody flex="1" minH={0} overflowY="auto">
-						<VStack spacing={3} align="stretch">
+					
+					<XrayModalBody className="flex-1 min-h-0 overflow-y-auto">
+						<div className="flex flex-col gap-3 items-stretch">
 							{isMasterTarget && (
-								<Alert status="warning" borderRadius="sm" fontSize="sm">
-									<AlertIcon />
+								<Alert className="rounded-xs text-[0.875rem]">
+									<TriangleAlert className="size-4" aria-hidden="true" />
 									{t("pages.xray.psiphon.nodeRequired")}
 								</Alert>
 							)}
 							<XrayDialogSection title={t("pages.xray.psiphon.config")}>
-								<FormControl isInvalid={Boolean(form.formState.errors.config)}>
-									<FormLabel>{t("pages.xray.psiphon.config")}</FormLabel>
-									<Textarea
-										fontFamily="mono"
-										minH="160px"
-										spellCheck={false}
-										{...form.register("config", {
+								<Field data-invalid={Boolean(form.formState.errors.config)}>
+									<FieldLabel>{t("pages.xray.psiphon.config")}</FieldLabel>
+									<Textarea spellCheck={false} {...form.register("config", {
 											required: t("pages.xray.psiphon.configRequired"),
 											maxLength: {
 												value: 1 << 20,
@@ -199,36 +171,27 @@ export const PsiphonProxyModal: FC<Props> = ({
 													return t("pages.xray.psiphon.configInvalid");
 												}
 											},
-										})}
-									/>
-									<FormHelperText>
+										})} className="font-mono min-h-[160px]" />
+									<FieldDescription>
 										{t("pages.xray.psiphon.configHint")}
-									</FormHelperText>
-									<FormErrorMessage>
+									</FieldDescription>
+									<FieldError>
 										{form.formState.errors.config?.message}
-									</FormErrorMessage>
-									<Button
-										mt={3}
-										size="sm"
-										type="button"
-										variant="outline"
-										isLoading={isLoadingLocations}
-										isDisabled={isMasterTarget || isLoading}
-										onClick={loadLocations}
-									>
+									</FieldError>
+									<Button type="button" disabled={isMasterTarget || isLoading} onClick={loadLocations} variant="outline" size="sm" loading={isLoadingLocations} className="mt-3">
 										{t("pages.xray.psiphon.loadLocations")}
 									</Button>
 									{loadError && (
-										<Alert mt={3} status="error" borderRadius="sm" fontSize="sm">
-											<AlertIcon />
+										<Alert variant="destructive" className="mt-3 rounded-xs text-[0.875rem]">
+											<CircleAlert className="size-4" aria-hidden="true" />
 											{loadError}
 										</Alert>
 									)}
-								</FormControl>
+								</Field>
 							</XrayDialogSection>
 							<XrayDialogSection title={t("pages.xray.psiphon.proxy")}>
-								<FormControl isInvalid={Boolean(form.formState.errors.locations)}>
-									<FormLabel>{t("pages.xray.psiphon.locations")}</FormLabel>
+								<Field data-invalid={Boolean(form.formState.errors.locations)}>
+									<FieldLabel>{t("pages.xray.psiphon.locations")}</FieldLabel>
 									<Controller
 										name="locations"
 										control={form.control}
@@ -260,7 +223,7 @@ export const PsiphonProxyModal: FC<Props> = ({
 										render={({ field }) => (
 											<MultiValueAutocomplete
 												allowCustom={false}
-												isDisabled={!locationsReady || isLoadingLocations}
+												disabled={!locationsReady || isLoadingLocations}
 												options={locationOptions}
 												placeholder={t("pages.xray.psiphon.selectLocations")}
 												value={field.value}
@@ -268,103 +231,81 @@ export const PsiphonProxyModal: FC<Props> = ({
 											/>
 										)}
 									/>
-									<FormHelperText>
+									<FieldDescription>
 										{t("pages.xray.psiphon.locationsHint")}
-									</FormHelperText>
-									<FormErrorMessage>
+									</FieldDescription>
+									<FieldError>
 										{form.formState.errors.locations?.message}
-									</FormErrorMessage>
-								</FormControl>
-								<XrayFieldGrid mt={3}>
-									<FormControl isInvalid={Boolean(form.formState.errors.port)}>
-										<FormLabel>{t("pages.xray.psiphon.port")}</FormLabel>
-										<Input
-											type="number"
-											inputMode="numeric"
-											{...form.register("port", {
+									</FieldError>
+								</Field>
+								<XrayFieldGrid className="mt-3">
+									<Field data-invalid={Boolean(form.formState.errors.port)}>
+										<FieldLabel>{t("pages.xray.psiphon.port")}</FieldLabel>
+										<Input type="number" inputMode="numeric" {...form.register("port", {
 												valueAsNumber: true,
 												validate: (value) =>
 													(value >= 1024 && value + Math.max(0, locations.length - 1) <= 65535) ||
 													t("pages.xray.psiphon.portInvalid"),
-											})}
-										/>
-										<FormErrorMessage>
+											})} />
+										<FieldError>
 											{form.formState.errors.port?.message}
-										</FormErrorMessage>
-									</FormControl>
-									<FormControl isInvalid={Boolean(form.formState.errors.tag || duplicateTag)}>
-										<FormLabel>{t("pages.xray.psiphon.tagPrefix")}</FormLabel>
-										<Input
-											{...form.register("tag", {
+										</FieldError>
+									</Field>
+									<Field data-invalid={Boolean(form.formState.errors.tag || duplicateTag)}>
+										<FieldLabel>{t("pages.xray.psiphon.tagPrefix")}</FieldLabel>
+										<Input {...form.register("tag", {
 												required: t("pages.xray.psiphon.tagRequired"),
 												pattern: {
 													value: /^[a-zA-Z0-9_.-]+$/,
 													message: t("pages.xray.psiphon.tagInvalid"),
 												},
-											})}
-										/>
-										<FormErrorMessage>
+											})} />
+										<FieldError>
 											{form.formState.errors.tag?.message ||
 												(duplicateTag
 													? t("pages.xray.outbound.tagExistsNamed", {
 															tag: duplicateTag,
 														})
 													: undefined)}
-										</FormErrorMessage>
-									</FormControl>
+										</FieldError>
+									</Field>
 								</XrayFieldGrid>
-								<Box mt={4} pt={3} borderTopWidth="1px" borderColor={borderColor}>
-									<HStack justify="space-between" mb={2}>
-										<Text fontSize="xs" fontWeight="semibold">
+								<div className={cn("mt-4 pt-3 border-t", borderColor)}>
+									<div className="flex flex-row items-center gap-2 justify-between mb-2">
+										<p className="text-[0.75rem] font-semibold">
 											{t("pages.xray.psiphon.preview")}
-										</Text>
-										<Badge variant="subtle">{preview.length}</Badge>
-									</HStack>
-									<VStack align="stretch" spacing={0} maxH="152px" overflowY="auto">
+										</p>
+										<Badge>{preview.length}</Badge>
+									</div>
+									<div className="flex flex-col items-stretch gap-0 max-h-[152px] overflow-y-auto">
 										{preview.map((item, index) => (
-											<HStack
-												key={`${item.location}-${index}`}
-												justify="space-between"
-												minH="34px"
-												borderBottomWidth="1px"
-												borderColor={borderColor}
-												fontSize="xs"
-											>
-												<Text fontWeight="medium">{item.tag}</Text>
-												<Text color="panel.textMuted" fontFamily="mono">
+											<div key={`${item.location}-${index}`} className={cn("flex flex-row items-center gap-2 justify-between min-h-[34px] border-b text-[0.75rem]", borderColor)}>
+												<p className="font-medium">{item.tag}</p>
+												<p className="text-panel-text-muted font-mono">
 													127.0.0.1:{item.port}
-												</Text>
-											</HStack>
+												</p>
+											</div>
 										))}
-									</VStack>
-								</Box>
+									</div>
+								</div>
 							</XrayDialogSection>
-						</VStack>
+						</div>
 					</XrayModalBody>
-					<XrayModalFooter justifyContent="flex-end">
-						<Button
-							variant="outline"
-							onClick={onClose}
-							isDisabled={isLoading || isLoadingLocations}
-						>
+					<XrayModalFooter className="justify-end">
+						<Button onClick={onClose} disabled={isLoading || isLoadingLocations} variant="outline">
 							{t("cancel")}
 						</Button>
-						<Button
-							type="submit"
-							colorScheme="primary"
-							isLoading={isLoading}
-							isDisabled={
+						<Button type="submit" disabled={
 								isMasterTarget ||
 								!locationsReady ||
 								isLoadingLocations ||
 								Boolean(duplicateTag)
-							}
-						>
+							} loading={isLoading}>
 							{t("pages.xray.psiphon.start")}
 						</Button>
 					</XrayModalFooter>
-				</Box>
+				</form>
 			</XrayModalContent>
-		</Modal>
+		</Dialog>
 	);
 };

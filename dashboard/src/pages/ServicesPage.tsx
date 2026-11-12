@@ -1,44 +1,33 @@
-import {
-	Alert,
-	AlertDescription,
-	AlertIcon,
-	Badge,
-	Box,
-	Button,
-	Checkbox,
-	Flex,
-	FormControl,
-	FormHelperText,
-	FormLabel,
-	HStack,
-	IconButton,
-	Modal,
-	ModalCloseButton,
-	ModalOverlay,
-	Radio,
-	RadioGroup,
-	SimpleGrid,
-	Stack,
-	Text,
-	Tooltip,
-	useColorModeValue,
-	useDisclosure,
-	useToast,
-	VStack,
-} from "@chakra-ui/react";
-import {
-	ArrowDownIcon,
-	ArrowPathIcon,
-	ArrowUpIcon,
-	ChevronDoubleUpIcon,
-	EyeIcon,
-	PencilSquareIcon,
-	PlusIcon,
-	TrashIcon,
-} from "@heroicons/react/24/outline";
+import { Badge } from "components/ui/badge";
+import { Checkbox } from "components/ui/checkbox";
+import { Button } from "components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "components/ui/tooltip";
+import { RadioGroup, RadioGroupItem } from "components/ui/radio-group";
+import { Alert, AlertDescription } from "components/ui/alert";
+import { toast } from "components/ui/sonner";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+
+
+import { useDisclosure } from "hooks/useDisclosure";
+import { DataSizeField } from "components/ui/data-size-field";
+import { FieldHint } from "components/ui/field-hint";
+import { FormField } from "components/ui/form-field";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "components/ui/dialog";
+import { serviceEntityPage } from "components/entityPage/EntityOverviews";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "components/ui/tabs";
+import { buttonVariants } from "components/ui/button";
+import { Badge as UiBadge } from "components/ui/badge";
+import { Input as UiInput } from "components/ui/input";
+import { EmojiShortcodeInput } from "components/common/EmojiShortcodeInput";
+import { NumberField } from "components/ui/number-field";
+import { CheckRow } from "components/ui/check-row";
+import { Layers, ArrowDown, RefreshCw, ArrowUp, ChevronsUp, Eye, SquarePen, Plus, Trash2 } from "lucide-react";
+
+import { cn } from "lib/cn";
 import { AppleEmojiText } from "components/common/AppleEmojiText";
 import { PanelSelect as Select } from "components/common/PanelSelect";
 import { SearchInput } from "components/common/SearchInput";
+import { OverviewBand } from "components/ui/overview-band";
 import { Input } from "components/Input";
 import { AppDialog } from "components/dialogs/AppDialog";
 import { ConfirmDialog } from "components/dialogs/ConfirmDialog";
@@ -46,18 +35,12 @@ import {
 	DataTable,
 	PageHeader,
 	PageLoadingSkeleton,
-	ResourceListCard,
 	TabSystem,
 	type DataTableColumn,
 	type DataTableRowAction,
-	type ResourceSummaryItem,
 } from "components/ui";
-import {
-	XrayModalBody,
-	XrayModalContent,
-	XrayModalFooter,
-	XrayModalHeader,
-} from "components/xray/XrayDialog";
+
+import { ExpandedDetails, ExpandedHeading, ExpandedMeta } from "components/ui/ExpandedPanel";
 import { useAdminsStore } from "contexts/AdminsContext";
 import {
 	fetchInbounds,
@@ -97,11 +80,11 @@ type HostOption = {
 	label: string;
 	inboundTag: string;
 	protocol: string;
-	isDisabled: boolean;
+	disabled: boolean;
 };
 
 type ServiceDialogProps = {
-	isOpen: boolean;
+	open: boolean;
 	onClose: () => void;
 	onSubmit: (
 		payload: ServiceCreatePayload,
@@ -181,8 +164,10 @@ const withDeleteUserPermission = (permissions: AdminPermissions) => ({
 	},
 });
 
+type ServiceDialogTab = "details" | "admins" | "hosts";
+
 const ServiceDialog: FC<ServiceDialogProps> = ({
-	isOpen,
+	open: isOpen,
 	onClose,
 	onSubmit,
 	isSaving,
@@ -194,10 +179,6 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 	refreshHosts,
 }) => {
 	const { t } = useTranslation();
-	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
-	const subtleBg = useColorModeValue("gray.50", "whiteAlpha.50");
-	const selectedBg = useColorModeValue("primary.50", "whiteAlpha.100");
-	const labelColor = useColorModeValue("gray.500", "gray.400");
 	const [name, setName] = useState(initialService?.name ?? "");
 	const [description, setDescription] = useState(
 		initialService?.description ?? "",
@@ -219,9 +200,9 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 	const [hostSearchMatch, setHostSearchMatch] = useState(
 		DEFAULT_SEARCH_MATCH_OPTIONS,
 	);
-	const [hoveredHost, setHoveredHost] = useState<number | null>(null);
 	const [autoInboundBusy, setAutoInboundBusy] = useState(false);
-	const toast = useToast();
+	const [activeTab, setActiveTab] = useState<ServiceDialogTab>("details");
+	
 
 	const autoInboundTag = initialService?.id
 		? `setservice-${initialService.id}`
@@ -249,6 +230,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 			setAdminSearch("");
 			setHostSearch("");
 			setAutoInboundBusy(false);
+			setActiveTab("details");
 		}
 	}, [isOpen, initialService]);
 
@@ -258,7 +240,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 
 	const availableHosts = useMemo(() => {
 		return allHosts.filter(
-			(host) => !selectedHosts.includes(host.id) && !host.isDisabled,
+			(host) => !selectedHosts.includes(host.id) && !host.disabled,
 		);
 	}, [allHosts, selectedHosts]);
 
@@ -288,6 +270,9 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 		() => new Set(selectedAdmins),
 		[selectedAdmins],
 	);
+
+	const allAdminsSelected = selectedAdmins.length === allAdmins.length && allAdmins.length > 0;
+	const someAdminsSelected = selectedAdmins.length > 0 && !allAdminsSelected;
 
 	const handleToggleAllAdmins = () => {
 		const hasAllSelected =
@@ -332,17 +317,11 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 
 	const submit = async () => {
 		if (!name.trim()) {
-			toast({
-				status: "warning",
-				title: t("services.validation.nameRequired"),
-			});
+			toast.warning(t("services.validation.nameRequired"));
 			return;
 		}
 		if (!selectedHosts.length) {
-			toast({
-				status: "warning",
-				title: t("services.validation.hostRequired"),
-			});
+			toast.warning(t("services.validation.hostRequired"));
 			return;
 		}
 
@@ -351,10 +330,7 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 				? 1
 				: parseCoefficientInput(usageCoefficient);
 		if (coefficient === null || coefficient < 0.01 || coefficient > 100) {
-			toast({
-				status: "warning",
-				title: t("services.validation.usageCoefficientInvalid"),
-			});
+			toast.warning(t("services.validation.usageCoefficientInvalid"));
 			return;
 		}
 		const assignments: ServiceHostAssignment[] = selectedHosts.map(
@@ -387,15 +363,9 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 			});
 			await refreshInbounds();
 			refreshHosts();
-			toast({
-				status: "success",
-				title: t("services.autoInbound.created"),
-			});
+			toast.success(t("services.autoInbound.created"));
 		} catch (error: any) {
-			toast({
-				status: "error",
-				title: error?.data?.detail ?? t("services.autoInbound.createFailed"),
-			});
+			toast.error(error?.data?.detail ?? t("services.autoInbound.createFailed"));
 		} finally {
 			setAutoInboundBusy(false);
 		}
@@ -412,414 +382,291 @@ const ServiceDialog: FC<ServiceDialogProps> = ({
 			});
 			await refreshInbounds();
 			refreshHosts();
-			toast({
-				status: "success",
-				title: t("services.autoInbound.deleted"),
-			});
+			toast.success(t("services.autoInbound.deleted"));
 		} catch (error: any) {
-			toast({
-				status: "error",
-				title: error?.data?.detail ?? t("services.autoInbound.deleteFailed"),
-			});
+			toast.error(error?.data?.detail ?? t("services.autoInbound.deleteFailed"));
 		} finally {
 			setAutoInboundBusy(false);
 		}
 	};
 
 	return (
-		<Modal isOpen={isOpen} onClose={onClose} size="5xl" scrollBehavior="inside">
-			<ModalOverlay bg="blackAlpha.400" />
-			<XrayModalContent
-				mx="3"
-				sx={{
-					".service-dialog-section .chakra-form-control": {
-						display: "block",
-						gridTemplateColumns: "none",
-					},
-					".service-dialog-list": {
-						borderColor,
-						bg: subtleBg,
-					},
-				}}
-			>
-				<XrayModalHeader>
-					{initialService ? t("services.editTitle") : t("services.createTitle")}
-				</XrayModalHeader>
-				<ModalCloseButton />
-				<XrayModalBody>
-					<Stack spacing={4}>
-						<Box className="xray-dialog-section service-dialog-section">
-							<Text fontSize="sm" fontWeight="semibold" mb={3}>
-								{t("services.basicInfo")}
-							</Text>
-							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-								<Input
-									label={t("services.fields.name")}
-									value={name}
-									onChange={(event) => setName(event.target.value)}
-									maxLength={128}
-									isRequired
-								/>
-								<Input
-									label={t("services.fields.description")}
-									value={description ?? ""}
-									onChange={(event) => setDescription(event.target.value)}
-									maxLength={256}
-								/>
-								<Input
-									label={t("services.fields.usageCoefficient")}
-									type="number"
-									inputMode="decimal"
-									min={0.01}
-									max={100}
-									step={0.01}
-									precision={2}
-									value={usageCoefficient}
-									onChange={(event) => setUsageCoefficient(event.target.value)}
-								/>
-							</SimpleGrid>
-						</Box>
+		<Dialog
+			section="services"
+			page={initialService ? serviceEntityPage(initialService) : undefined}
+			open={isOpen}
+			onOpenChange={(open) => {
+				if (!open && !isSaving) onClose();
+			}}
+		>
+			<DialogContent className="flex max-h-[min(760px,calc(100dvh-10rem))] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl max-md:inset-x-3 max-md:top-[4.5rem] max-md:bottom-24 max-md:max-h-none max-md:w-auto max-md:max-w-none max-md:translate-x-0 max-md:translate-y-0">
+				<form
+					onSubmit={(event) => {
+						event.preventDefault();
+						void submit();
+					}}
+					className="flex min-h-0 flex-1 flex-col"
+				>
+					<DialogHeader className="flex-row items-center gap-3 border-b px-5 py-3.5 pe-12 text-start sm:text-start">
+						<div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+							<Layers className="size-4" />
+						</div>
+						<div className="min-w-0">
+							<DialogTitle className="truncate text-base">
+								{initialService ? t("services.editTitle") : t("services.createTitle")}
+							</DialogTitle>
+							{initialService ? <DialogDescription className="truncate">{initialService.name}</DialogDescription> : null}
+						</div>
+					</DialogHeader>
 
-						<Box className="xray-dialog-section service-dialog-section">
-							<Flex justify="space-between" align="center" gap={3} mb={3}>
-								<Text fontSize="sm" fontWeight="semibold">
-									{t("services.fields.admins")}
-								</Text>
-								<Badge borderRadius="md" variant="subtle" colorScheme="primary">
-									{selectedAdmins.length} / {allAdmins.length}
-								</Badge>
-							</Flex>
-							<Stack spacing={2}>
-								<Checkbox
-									isChecked={
-										selectedAdmins.length === allAdmins.length &&
-										allAdmins.length > 0
-									}
-									onChange={handleToggleAllAdmins}
-									isDisabled={allAdmins.length === 0}
-								>
-									{t("services.selectAllAdmins")}
-								</Checkbox>
-								<SearchInput
-									value={adminSearch}
-									onChange={(event) => setAdminSearch(event.target.value)}
-									placeholder={t("services.searchAdmins")}
-									matchOptions={adminSearchMatch}
-									onMatchOptionsChange={setAdminSearchMatch}
-									onClear={() => setAdminSearch("")}
-								/>
-								<VStack
-									className="service-dialog-list"
-									align="stretch"
-									spacing={1.5}
-									maxH="170px"
-									overflowY="auto"
-									borderWidth="1px"
-									borderRadius="md"
-									p={2}
-								>
-									{allAdmins.length === 0 ? (
-										<Text fontSize="sm" color={labelColor}>
-											{t("services.noAdminsFound")}
-										</Text>
-									) : filteredAdmins.length === 0 ? (
-										<Text fontSize="sm" color={labelColor}>
-											{t("services.noAdminsMatching")}
-										</Text>
-									) : (
-										filteredAdmins.map((admin) => {
-											const isSelected = selectedAdminsSet.has(admin.id);
-											return (
-												<Box
-													key={admin.id}
-													borderWidth="1px"
-													borderRadius="md"
-													px={2.5}
-													py={2}
-													borderColor={isSelected ? "primary.400" : borderColor}
-													bg={isSelected ? selectedBg : "transparent"}
-													_hover={{
-														borderColor: "primary.300",
-														cursor: "pointer",
-													}}
-													transition="background-color 0.1s ease-in-out, border-color 0.1s ease-in-out"
-													onClick={() => handleAdminToggle(admin.id)}
-													onKeyDown={(event) => {
-														if (event.key === "Enter" || event.key === " ") {
-															event.preventDefault();
-															handleAdminToggle(admin.id);
-														}
-													}}
-													role="button"
-													tabIndex={0}
-												>
-													<Flex align="center" justify="space-between" gap={3}>
-														<Text fontWeight="medium" noOfLines={1}>
-															{admin.username}
-														</Text>
-														{isSelected && (
-															<Badge colorScheme="primary" borderRadius="md">
-																{t("services.selected")}
-															</Badge>
-														)}
-													</Flex>
-												</Box>
-											);
-										})
-									)}
-								</VStack>
-							</Stack>
-							<Text fontSize="xs" color={labelColor} mt={2}>
-								{t("services.adminHint")}
-							</Text>
-						</Box>
+					<Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as ServiceDialogTab)} className="flex min-h-0 flex-1 flex-col">
+						<div className="border-b px-5 pt-2.5 pb-2.5">
+							<TabsList className="w-full">
+								<TabsTrigger value="details">{t("details")}</TabsTrigger>
+								<TabsTrigger value="admins">{t("services.fields.admins")}</TabsTrigger>
+								<TabsTrigger value="hosts">{t("services.hosts")}</TabsTrigger>
+							</TabsList>
+						</div>
 
-						<Box className="xray-dialog-section service-dialog-section">
-							<Flex
-								justify="space-between"
-								align={{ base: "flex-start", md: "center" }}
-								gap={3}
-								flexWrap="wrap"
-								mb={3}
-							>
-								<Box minW={0}>
-									<Text fontSize="sm" fontWeight="semibold">
-										{t("services.autoInbound.title")}
-									</Text>
-									<Text
-										fontFamily="mono"
-										fontSize="xs"
-										color={labelColor}
-										mt={1}
-									>
-										{autoInboundTag ?? t("services.autoInbound.pendingTag")}
-									</Text>
-								</Box>
-								<Badge
-									borderRadius="md"
-									colorScheme={autoInboundExists ? "green" : "gray"}
-								>
-									{autoInboundExists
-										? t("services.autoInbound.statusCreated")
-										: t("services.autoInbound.statusMissing")}
-								</Badge>
-							</Flex>
-							<HStack spacing={2} flexWrap="wrap">
-								<Button
-									size="sm"
-									onClick={handleCreateAutoInbound}
-									isDisabled={
-										!initialService?.id || autoInboundExists || autoInboundBusy
-									}
-									isLoading={autoInboundBusy}
-								>
-									{t("services.autoInbound.create")}
-								</Button>
-								<Button
-									size="sm"
-									variant="outline"
-									colorScheme="red"
-									onClick={handleDeleteAutoInbound}
-									isDisabled={
-										!initialService?.id || !autoInboundExists || autoInboundBusy
-									}
-									isLoading={autoInboundBusy}
-								>
-									{t("services.autoInbound.delete")}
-								</Button>
-							</HStack>
-							<Text fontSize="xs" color={labelColor} mt={2}>
-								{t("services.autoInbound.helper")}
-							</Text>
-						</Box>
+						<div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+							<TabsContent value="details" className="mt-0">
+								<div className="flex flex-col gap-4">
+									<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+										<FormField label={t("services.fields.name")} htmlFor="service-name">
+											<EmojiShortcodeInput id="service-name" value={name} onChange={setName} maxLength={128} required />
+										</FormField>
+										<FormField label={t("services.fields.description")} htmlFor="service-description">
+											<UiInput id="service-description" value={description ?? ""} onChange={(event) => setDescription(event.target.value)} maxLength={256} />
+										</FormField>
+										<FormField label={t("services.fields.usageCoefficient")} htmlFor="service-usage-coefficient">
+											<NumberField
+												id="service-usage-coefficient"
+												value={usageCoefficient}
+												onChange={setUsageCoefficient}
+												inputMode="decimal"
+												step={0.01}
+												min={0.01}
+												max={100}
+												placeholder="1"
+											/>
+										</FormField>
+									</div>
 
-						<SimpleGrid columns={{ base: 1, lg: 2 }} spacing={4}>
-							<Box className="xray-dialog-section service-dialog-section">
-								<Text fontSize="sm" fontWeight="semibold" mb={3}>
-									{t("services.availableHosts")}
-								</Text>
-								<Stack spacing={2}>
+									<section className="flex flex-col gap-3 rounded-lg border p-3.5">
+										<div className="flex items-start justify-between gap-3">
+											<div className="min-w-0">
+												<div className="flex items-center gap-1.5">
+													<span className="text-sm font-medium">{t("services.autoInbound.title")}</span>
+													<FieldHint>{t("services.autoInbound.helper")}</FieldHint>
+												</div>
+												<p dir="ltr" className="mt-1 truncate font-mono text-xs text-muted-foreground">
+													{autoInboundTag ?? t("services.autoInbound.pendingTag")}
+												</p>
+											</div>
+											<UiBadge variant={autoInboundExists ? "default" : "outline"}>
+												{autoInboundExists ? t("services.autoInbound.statusCreated") : t("services.autoInbound.statusMissing")}
+											</UiBadge>
+										</div>
+										<div className="flex flex-wrap items-center gap-2">
+											<button
+												type="button"
+												onClick={handleCreateAutoInbound}
+												disabled={!initialService?.id || autoInboundExists || autoInboundBusy}
+												className={buttonVariants({ size: "sm" })}
+											>
+												{t("services.autoInbound.create")}
+											</button>
+											<button
+												type="button"
+												onClick={handleDeleteAutoInbound}
+												disabled={!initialService?.id || !autoInboundExists || autoInboundBusy}
+												className={buttonVariants({ variant: "outline", size: "sm" })}
+											>
+												{t("services.autoInbound.delete")}
+											</button>
+										</div>
+									</section>
+								</div>
+							</TabsContent>
+
+							<TabsContent value="admins" className="mt-0">
+								<div className="flex flex-col gap-3">
+									<div className="flex items-center gap-1.5">
+										<span className="text-sm font-medium">{t("services.fields.admins")}</span>
+										<FieldHint>{t("services.adminHint")}</FieldHint>
+									</div>
+									<div className="flex items-center justify-between gap-3">
+										<CheckRow
+											checked={allAdminsSelected}
+											indeterminate={someAdminsSelected}
+											disabled={allAdmins.length === 0}
+											onChange={handleToggleAllAdmins}
+										>
+											{t("services.selectAllAdmins")}
+										</CheckRow>
+										<UiBadge variant="outline">
+											{selectedAdmins.length} / {allAdmins.length}
+										</UiBadge>
+									</div>
 									<SearchInput
-										value={hostSearch}
-										onChange={(event) => setHostSearch(event.target.value)}
-										placeholder={t("services.searchHosts")}
-										matchOptions={hostSearchMatch}
-										onMatchOptionsChange={setHostSearchMatch}
-										onClear={() => setHostSearch("")}
+										value={adminSearch}
+										onChange={(event) => setAdminSearch(event.target.value)}
+										placeholder={t("services.searchAdmins")}
+										matchOptions={adminSearchMatch}
+										onMatchOptionsChange={setAdminSearchMatch}
+										onClear={() => setAdminSearch("")}
 									/>
-									<VStack
-										className="service-dialog-list"
-										align="stretch"
-										spacing={1.5}
-										maxH="260px"
-										overflowY="auto"
-										borderWidth="1px"
-										borderRadius="md"
-										p={2}
-									>
-										{availableHosts.length === 0 ? (
-											<Text fontSize="sm" color={labelColor}>
-												{t("services.noHostsLeft")}
-											</Text>
-										) : filteredAvailableHosts.length === 0 ? (
-											<Text fontSize="sm" color={labelColor}>
-												{t("services.noHostsMatching")}
-											</Text>
+									<div className="flex max-h-[280px] flex-col gap-2.5 overflow-y-auto rounded-md border p-3">
+										{allAdmins.length === 0 ? (
+											<p className="text-sm text-muted-foreground">{t("services.noAdminsFound")}</p>
+										) : filteredAdmins.length === 0 ? (
+											<p className="text-sm text-muted-foreground">{t("services.noAdminsMatching")}</p>
 										) : (
-											filteredAvailableHosts.map((host) => (
-												<Box
-													key={host.id}
-													borderWidth="1px"
-													borderRadius="md"
-													px={2.5}
-													py={2}
-													borderColor={
-														hoveredHost === host.id
-															? "primary.400"
-															: borderColor
-													}
-													_hover={{
-														borderColor: "primary.300",
-														cursor: "pointer",
-													}}
-													onMouseEnter={() => setHoveredHost(host.id)}
-													onMouseLeave={() => setHoveredHost(null)}
-													onClick={() => handleHostToggle(host.id)}
-												>
-													<Text fontWeight="medium" noOfLines={1}>
-														<AppleEmojiText>{host.label}</AppleEmojiText>
-													</Text>
-													<Text fontSize="xs" color={labelColor}>
-														{host.protocol.toUpperCase()} - {host.inboundTag}
-													</Text>
-												</Box>
+											filteredAdmins.map((admin) => (
+												<CheckRow key={admin.id} checked={selectedAdminsSet.has(admin.id)} onChange={() => handleAdminToggle(admin.id)}>
+													{admin.username}
+												</CheckRow>
 											))
 										)}
-									</VStack>
-								</Stack>
-							</Box>
+									</div>
+								</div>
+							</TabsContent>
 
-							<Box className="xray-dialog-section service-dialog-section">
-								<Flex justify="space-between" align="center" gap={3} mb={3}>
-									<Text fontSize="sm" fontWeight="semibold">
-										{t("services.selectedHosts")}
-									</Text>
-									<Badge borderRadius="md" variant="subtle">
-										{selectedHosts.length}
-									</Badge>
-								</Flex>
-								<VStack
-									className="service-dialog-list"
-									align="stretch"
-									spacing={1.5}
-									maxH="300px"
-									overflowY="auto"
-									borderWidth="1px"
-									borderRadius="md"
-									p={2}
-								>
-									{selectedHosts.length === 0 && (
-										<Text fontSize="sm" color={labelColor}>
-											{t("services.noHostsSelected")}
-										</Text>
-									)}
-									{selectedHosts.map((hostId, index) => {
-										const host = hostMap.get(hostId);
-										if (!host) return null;
-										return (
-											<motion.div layout key={hostId}>
-												<Flex
-													align="center"
-													justify="space-between"
-													borderWidth="1px"
-													borderRadius="md"
-													borderColor={borderColor}
-													px={2.5}
-													py={2}
-													gap={3}
-												>
-													<Box minW={0}>
-														<HStack spacing={2} align="center">
-															<Text fontWeight="medium" noOfLines={1}>
-																<AppleEmojiText>{host.label}</AppleEmojiText>
-															</Text>
-															{host.isDisabled && (
-																<Badge colorScheme="red" borderRadius="md">
-																	{t("services.hostDisabled")}
-																</Badge>
-															)}
-														</HStack>
-														<Text fontSize="xs" color={labelColor}>
+							<TabsContent value="hosts" className="mt-0">
+								<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+									<div className="flex min-w-0 flex-col gap-2">
+										<span className="text-sm font-medium">{t("services.availableHosts")}</span>
+										<SearchInput
+											value={hostSearch}
+											onChange={(event) => setHostSearch(event.target.value)}
+											placeholder={t("services.searchHosts")}
+											matchOptions={hostSearchMatch}
+											onMatchOptionsChange={setHostSearchMatch}
+											onClear={() => setHostSearch("")}
+										/>
+										<div className="flex max-h-[300px] flex-col gap-1.5 overflow-y-auto rounded-md border p-2">
+											{availableHosts.length === 0 ? (
+												<p className="p-1 text-sm text-muted-foreground">{t("services.noHostsLeft")}</p>
+											) : filteredAvailableHosts.length === 0 ? (
+												<p className="p-1 text-sm text-muted-foreground">{t("services.noHostsMatching")}</p>
+											) : (
+												filteredAvailableHosts.map((host) => (
+													<button
+														key={host.id}
+														type="button"
+														onClick={() => handleHostToggle(host.id)}
+														className="flex w-full min-w-0 flex-col items-start gap-0.5 rounded-md border px-3 py-2 text-start transition-colors hover:bg-accent"
+													>
+														<span className="w-full truncate text-sm font-medium">
+															<AppleEmojiText>{host.label}</AppleEmojiText>
+														</span>
+														<span className="text-xs text-muted-foreground">
 															{host.protocol.toUpperCase()} - {host.inboundTag}
-														</Text>
-													</Box>
-													<HStack spacing={1} flexShrink={0}>
-														<Tooltip label={t("services.moveToTop")}>
-															<IconButton
-																aria-label="Move to top"
-																size="sm"
-																variant="ghost"
-																icon={<ChevronDoubleUpIcon width={16} />}
+														</span>
+													</button>
+												))
+											)}
+										</div>
+									</div>
+
+									<div className="flex min-w-0 flex-col gap-2">
+										<div className="flex items-center justify-between gap-2">
+											<span className="text-sm font-medium">{t("services.selectedHosts")}</span>
+											<UiBadge variant="outline">{selectedHosts.length}</UiBadge>
+										</div>
+										<div className="flex max-h-[340px] flex-col gap-1.5 overflow-y-auto rounded-md border p-2">
+											{selectedHosts.length === 0 ? (
+												<p className="p-1 text-sm text-muted-foreground">{t("services.noHostsSelected")}</p>
+											) : null}
+											{selectedHosts.map((hostId, index) => {
+												const host = hostMap.get(hostId);
+												if (!host) return null;
+												return (
+													<motion.div
+														layout
+														key={hostId}
+														className="flex items-center justify-between gap-2 rounded-md border px-2.5 py-2"
+													>
+														<div className="min-w-0">
+															<div className="flex items-center gap-2">
+																<span className="truncate text-sm font-medium">
+																	<AppleEmojiText>{host.label}</AppleEmojiText>
+																</span>
+																{host.disabled ? <UiBadge variant="destructive">{t("services.hostDisabled")}</UiBadge> : null}
+															</div>
+															<p className="text-xs text-muted-foreground">
+																{host.protocol.toUpperCase()} - {host.inboundTag}
+															</p>
+														</div>
+														<div className="flex shrink-0 items-center gap-0.5">
+															<button
+																type="button"
+																title={t("services.moveToTop")}
+																aria-label={t("services.moveToTop")}
 																onClick={() => moveHost(hostId, "top")}
-																isDisabled={index === 0}
-															/>
-														</Tooltip>
-														<Tooltip label={t("services.moveUp")}>
-															<IconButton
-																aria-label="Move up"
-																size="sm"
-																variant="ghost"
-																icon={<ArrowUpIcon width={16} />}
+																disabled={index === 0}
+																className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
+															>
+																<ChevronsUp className="size-4" />
+															</button>
+															<button
+																type="button"
+																title={t("services.moveUp")}
+																aria-label={t("services.moveUp")}
 																onClick={() => moveHost(hostId, "up")}
-																isDisabled={index === 0}
-															/>
-														</Tooltip>
-														<Tooltip label={t("services.moveDown")}>
-															<IconButton
-																aria-label="Move down"
-																size="sm"
-																variant="ghost"
-																icon={<ArrowDownIcon width={16} />}
+																disabled={index === 0}
+																className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
+															>
+																<ArrowUp className="size-4" />
+															</button>
+															<button
+																type="button"
+																title={t("services.moveDown")}
+																aria-label={t("services.moveDown")}
 																onClick={() => moveHost(hostId, "down")}
-																isDisabled={index === selectedHosts.length - 1}
-															/>
-														</Tooltip>
-														<Tooltip label={t("services.removeHost")}>
-															<IconButton
-																aria-label="Remove"
-																size="sm"
-																variant="ghost"
-																icon={<TrashIcon width={16} />}
+																disabled={index === selectedHosts.length - 1}
+																className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
+															>
+																<ArrowDown className="size-4" />
+															</button>
+															<button
+																type="button"
+																title={t("services.removeHost")}
+																aria-label={t("services.removeHost")}
 																onClick={() => handleHostToggle(hostId)}
-															/>
-														</Tooltip>
-													</HStack>
-												</Flex>
-											</motion.div>
-										);
-									})}
-								</VStack>
-							</Box>
-						</SimpleGrid>
-					</Stack>
-				</XrayModalBody>
-				<XrayModalFooter>
-					<Button variant="ghost" onClick={onClose}>
-						{t("cancel")}
-					</Button>
-					<Button colorScheme="primary" onClick={submit} isLoading={isSaving}>
-						{initialService ? t("saveChanges") : t("create")}
-					</Button>
-				</XrayModalFooter>
-			</XrayModalContent>
-		</Modal>
+																className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
+															>
+																<Trash2 className="size-4" />
+															</button>
+														</div>
+													</motion.div>
+												);
+											})}
+										</div>
+									</div>
+								</div>
+							</TabsContent>
+						</div>
+					</Tabs>
+
+					<DialogFooter className="flex-row flex-wrap items-center justify-between gap-2 border-t px-5 py-3">
+						<button type="button" onClick={onClose} className={buttonVariants({ variant: "ghost", size: "sm" })}>
+							{t("cancel")}
+						</button>
+						<Button type="submit" size="sm" loading={isSaving} className="ms-auto">
+							{initialService ? t("saveChanges") : t("create")}
+						</Button>
+					</DialogFooter>
+				</form>
+			</DialogContent>
+		</Dialog>
 	);
 };
-
 const ServicesPage: FC = () => {
-	const { t } = useTranslation();
-	const labelColor = useColorModeValue("gray.500", "gray.400");
-	const toast = useToast();
+	const { t, i18n } = useTranslation();
+	const locale = i18n.language || "en";
+	const labelColor = "text-gray-500 dark:text-gray-400";
+	
 	const { userData, getUserIsSuccess } = useGetUser();
 	const canManageServices =
 		getUserIsSuccess && Boolean(userData.permissions?.sections.services);
@@ -833,8 +680,13 @@ const ServicesPage: FC = () => {
 		ServiceListParams & { limit: number; offset: number; name: string }
 	>({ limit: 20, offset: 0, name: "" });
 	const [serviceSearch, setServiceSearch] = useState("");
+	// Matching is done server-side through the name filter, so the toggles only
+	// affect the local highlight; kept for a consistent search field.
+	const [serviceMatchOptions, setServiceMatchOptions] = useState(
+		DEFAULT_SEARCH_MATCH_OPTIONS,
+	);
 	const serviceDetail = useServicesStore((state) => state.serviceDetail);
-	const isServicesLoading = useServicesStore((state) => state.isLoading);
+	const isServicesLoading = useServicesStore((state) => state.loading);
 	const isServiceSaving = useServicesStore((state) => state.isSaving);
 	const fetchServices = useServicesStore((state) => state.fetchServices);
 	const fetchServiceDetail = useServicesStore(
@@ -957,7 +809,7 @@ const ServicesPage: FC = () => {
 					label: host.remark,
 					inboundTag: tag,
 					protocol,
-					isDisabled: Boolean(host.is_disabled),
+					disabled: Boolean(host.is_disabled),
 				});
 			});
 		}
@@ -978,10 +830,7 @@ const ServicesPage: FC = () => {
 			setEditingService(detail);
 			dialogDisclosure.onOpen();
 		} catch (_error) {
-			toast({
-				status: "error",
-				title: t("services.fetchFailed"),
-			});
+			toast.error(t("services.fetchFailed"));
 		}
 	};
 
@@ -1000,24 +849,15 @@ const ServicesPage: FC = () => {
 		try {
 			if (serviceId) {
 				await updateService(serviceId, payload);
-				toast({
-					status: "success",
-					title: t("services.updated"),
-				});
+				toast.success(t("services.updated"));
 			} else {
 				await createService(payload);
-				toast({
-					status: "success",
-					title: t("services.created"),
-				});
+				toast.success(t("services.created"));
 			}
 			refetchUsers(true);
 			dialogDisclosure.onClose();
 		} catch (error: any) {
-			toast({
-				status: "error",
-				title: error?.data?.detail ?? t("services.saveFailed"),
-			});
+			toast.error(error?.data?.detail ?? t("services.saveFailed"));
 		}
 	};
 
@@ -1028,25 +868,16 @@ const ServicesPage: FC = () => {
 			setServicePendingDelete(detail);
 			openDeleteDialog();
 		} catch (error: any) {
-			toast({
-				status: "error",
-				title: error?.data?.detail ?? t("services.deleteFailed"),
-			});
+			toast.error(error?.data?.detail ?? t("services.deleteFailed"));
 		}
 	};
 
 	const handleResetUsage = async (serviceId: number) => {
 		try {
 			await resetServiceUsage(serviceId);
-			toast({
-				status: "success",
-				title: t("services.resetSuccess"),
-			});
+			toast.success(t("services.resetSuccess"));
 		} catch (error: any) {
-			toast({
-				status: "error",
-				title: error?.data?.detail ?? t("services.resetFailed"),
-			});
+			toast.error(error?.data?.detail ?? t("services.resetFailed"));
 		}
 	};
 
@@ -1097,11 +928,7 @@ const ServicesPage: FC = () => {
 		};
 		if (payload.mode === "transfer_users") {
 			if (!targetServiceId) {
-				toast({
-					status: "warning",
-					title: t("services.selectTargetService"),
-					description: t("services.targetServiceRequired"),
-				});
+				toast.warning(t("services.selectTargetService"), { description: t("services.targetServiceRequired") });
 				return;
 			}
 			payload.target_service_id = targetServiceId;
@@ -1109,17 +936,11 @@ const ServicesPage: FC = () => {
 		setIsDeleting(true);
 		try {
 			await deleteService(servicePendingDelete.id, payload);
-			toast({
-				status: "success",
-				title: t("services.deleted"),
-			});
+			toast.success(t("services.deleted"));
 			refetchUsers(true);
 			handleCloseDeleteDialog();
 		} catch (error: any) {
-			toast({
-				status: "error",
-				title: error?.data?.detail ?? t("services.deleteFailed"),
-			});
+			toast.error(error?.data?.detail ?? t("services.deleteFailed"));
 		} finally {
 			setIsDeleting(false);
 		}
@@ -1169,42 +990,38 @@ const ServicesPage: FC = () => {
 			[summaryServices],
 	);
 
-	const serviceSummaryItems = useMemo<ResourceSummaryItem[]>(
-		() => [
-			{
+	const serviceOverview = useMemo(() => {
+		const withHosts = summaryServices.filter((service) => service.has_hosts).length;
+		const tones = ["bg-panel-accent", "bg-panel-success", "bg-panel-info", "bg-panel-warning", "bg-panel-text-muted/60"];
+		const ranked = [...summaryServices].sort((a, b) => b.user_count - a.user_count);
+		const segments = ranked.slice(0, 4).map((service, index) => ({
+			key: String(service.id),
+			label: service.name,
+			value: service.user_count,
+			tone: tones[index],
+		}));
+		const otherUsers = ranked.slice(4).reduce((sum, service) => sum + service.user_count, 0);
+		if (otherUsers) {
+			segments.push({ key: "other", label: t("overview.other"), value: otherUsers, tone: tones[4] });
+		}
+		return {
+			total: {
 				label: t("services.title"),
-					value: summaryServices.length,
-				colorScheme: "gray",
+				value: summaryServices.length,
+				caption: `${t("services.columns.hosts")}: ${servicesSummary.totalHosts}`,
 			},
-			{
-				label: t("services.columns.hosts"),
-				value: servicesSummary.totalHosts,
-				colorScheme: "green",
-			},
-			{
-				label: t("users"),
-				value: servicesSummary.totalUsers,
-				colorScheme: "orange",
-			},
-			{
+			rows: [
+				{ key: "withHosts", label: t("services.columns.hosts"), value: withHosts, tone: "bg-panel-success" },
+				{ key: "broken", label: t("services.broken"), value: servicesSummary.brokenServices, tone: "bg-panel-danger" },
+			],
+			distribution: { label: t("users"), segments },
+			extra: {
 				label: t("services.columns.usage"),
 				value: formatBytes(servicesSummary.totalUsage),
-				colorScheme: "blue",
+				caption: `${t("services.columns.lifetime")}: ${formatBytes(servicesSummary.lifetimeUsage)}`,
 			},
-			{
-				label: t("services.columns.lifetime"),
-				value: formatBytes(servicesSummary.lifetimeUsage),
-				colorScheme: "purple",
-				helper:
-					servicesSummary.brokenServices > 0
-						? t("services.brokenCount", {
-								count: servicesSummary.brokenServices,
-							})
-						: undefined,
-			},
-		],
-			[summaryServices.length, servicesSummary, t],
-	);
+		};
+	}, [summaryServices, servicesSummary, t]);
 
 	useEffect(() => {
 		if (servicePendingDelete) {
@@ -1223,6 +1040,8 @@ const ServicesPage: FC = () => {
 		}
 	}, [deleteMode, otherServices, targetServiceId]);
 
+	const [expandedServiceId, setExpandedServiceId] = useState<number | null>(null);
+
 	const serviceColumns = useMemo<DataTableColumn<ServiceSummary>[]>(
 		() => [
 			{
@@ -1235,9 +1054,9 @@ const ServicesPage: FC = () => {
 				mobilePriority: 1,
 				mobileMetaLabel: t("services.columns.id"),
 				cell: (service) => (
-					<Badge borderRadius="md" variant="subtle">
+					<span className="tabular-nums text-panel-text-secondary">
 						#{service.id}
-					</Badge>
+					</span>
 				),
 			},
 			{
@@ -1255,23 +1074,23 @@ const ServicesPage: FC = () => {
 				mobilePriority: 0,
 				mobileMetaLabel: t("services.columns.name"),
 				cell: (service) => (
-					<VStack spacing={0.5} align="start" textAlign="start" minW={0}>
-						<HStack spacing={2} justify="flex-start" minW={0} maxW="full">
-							<Text fontWeight="semibold" noOfLines={1}>
+					<div className="flex flex-col gap-0.5 items-start text-start min-w-0!">
+						<div className="flex flex-row items-center gap-2 justify-start min-w-0! max-w-full">
+							<p className="font-semibold truncate">
 								{service.name}
-							</Text>
+							</p>
 							{!service.has_hosts && (
-								<Badge colorScheme="red" borderRadius="md" flexShrink={0}>
+								<Badge className={cn("bg-destructive/10 text-destructive", "rounded-md shrink-0")}>
 									{t("services.broken")}
 								</Badge>
 							)}
-						</HStack>
+						</div>
 						{service.description && (
-							<Text fontSize="xs" color={labelColor} noOfLines={1}>
+							<p className={cn(labelColor, "text-[0.75rem] truncate")}>
 								{service.description}
-							</Text>
+							</p>
 						)}
-					</VStack>
+					</div>
 				),
 			},
 			{
@@ -1284,7 +1103,7 @@ const ServicesPage: FC = () => {
 				mobilePriority: 2,
 				mobileMetaLabel: t("services.columns.hosts"),
 				cell: (service) => (
-					<Text fontWeight="semibold">{service.host_count}</Text>
+					<p className="font-semibold">{service.host_count}</p>
 				),
 			},
 			{
@@ -1297,7 +1116,7 @@ const ServicesPage: FC = () => {
 				mobilePriority: 3,
 				mobileMetaLabel: t("users"),
 				cell: (service) => (
-					<Text fontWeight="semibold">{service.user_count}</Text>
+					<p className="font-semibold">{service.user_count}</p>
 				),
 			},
 			{
@@ -1311,9 +1130,9 @@ const ServicesPage: FC = () => {
 				mobileSummary: true,
 				mobileMetaLabel: t("services.columns.usage"),
 				cell: (service) => (
-					<Text dir="ltr" sx={{ unicodeBidi: "isolate" }} whiteSpace="nowrap">
+					<p dir="ltr" className="[unicode-bidi:isolate] whitespace-nowrap">
 						{formatBytes(service.used_traffic)}
-					</Text>
+					</p>
 				),
 			},
 			{
@@ -1327,13 +1146,13 @@ const ServicesPage: FC = () => {
 				mobilePriority: 5,
 				mobileMetaLabel: t("services.columns.lifetime"),
 				cell: (service) => (
-					<Text dir="ltr" sx={{ unicodeBidi: "isolate" }} whiteSpace="nowrap">
+					<p dir="ltr" className="[unicode-bidi:isolate] whitespace-nowrap">
 						{formatBytes(service.lifetime_used_traffic)}
-					</Text>
+					</p>
 				),
 			},
 		],
-		[labelColor, t],
+		[t],
 	);
 
 	const serviceRowActions = (
@@ -1343,7 +1162,7 @@ const ServicesPage: FC = () => {
 			{
 				id: "view",
 				label: t("services.view"),
-				icon: <EyeIcon width={16} />,
+				icon: <Eye className="w-[16px]" />,
 				onClick: () => {
 					void openServiceDetail(service.id, "admins");
 				},
@@ -1355,19 +1174,19 @@ const ServicesPage: FC = () => {
 				{
 					id: "edit",
 					label: t("edit"),
-					icon: <PencilSquareIcon width={16} />,
+					icon: <SquarePen className="w-[16px]" />,
 					onClick: () => openEditDialog(service.id),
 				},
 				{
 					id: "reset",
 					label: t("services.resetUsage"),
-					icon: <ArrowPathIcon width={16} />,
+					icon: <RefreshCw className="w-[16px]" />,
 					onClick: () => openResetConfirmation(service.id),
 				},
 				{
 					id: "delete",
 					label: t("delete"),
-					icon: <TrashIcon width={16} />,
+					icon: <Trash2 className="w-[16px]" />,
 					onClick: () => beginDeleteService(service.id),
 					isDanger: true,
 				},
@@ -1416,11 +1235,7 @@ const ServicesPage: FC = () => {
 				}
 				return true;
 			} catch (error) {
-				toast({
-					status: "error",
-					title: t("services.adminLimitSaveFailed"),
-					description: error instanceof Error ? error.message : undefined,
-				});
+				toast.error(t("services.adminLimitSaveFailed"), { description: error instanceof Error ? error.message : undefined });
 				return false;
 			} finally {
 				setSavingAdminLimitId(null);
@@ -1472,10 +1287,7 @@ const ServicesPage: FC = () => {
 			serviceAdminLimitForm.usage_coefficient,
 		);
 		if (usageCoefficient !== null && (usageCoefficient < 0.01 || usageCoefficient > 100)) {
-			toast({
-				status: "warning",
-				title: t("services.validation.usageCoefficientInvalid"),
-			});
+			toast.warning(t("services.validation.usageCoefficientInvalid"));
 			return;
 		}
 		const saved = await saveServiceAdminLimit(editingServiceAdminLimit.id, {
@@ -1508,16 +1320,9 @@ const ServicesPage: FC = () => {
 				selectedService.id,
 			);
 			await fetchServiceDetail(selectedService.id);
-			toast({
-				status: "success",
-				title: t("admins.resetDeletedUsageSuccess"),
-			});
+			toast.success(t("admins.resetDeletedUsageSuccess"));
 		} catch (error) {
-			toast({
-				status: "error",
-				title: t("admins.resetDeletedUsageFailed"),
-				description: error instanceof Error ? error.message : undefined,
-			});
+			toast.error(t("admins.resetDeletedUsageFailed"), { description: error instanceof Error ? error.message : undefined });
 		} finally {
 			setSavingAdminLimitId(null);
 		}
@@ -1539,13 +1344,14 @@ const ServicesPage: FC = () => {
 				mobilePriority: 0,
 				mobileMetaLabel: t("username"),
 				cell: (link) => (
-					<Text fontWeight="semibold" dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+					<p dir="ltr" className="font-semibold [unicode-bidi:isolate]">
 						{link.username}
-					</Text>
+					</p>
 				),
 			},
 			{
 				id: "usage",
+				sortValue: (link) => (link.traffic_limit_mode === AdminTrafficLimitMode.CreatedTraffic ? link.created_traffic : link.used_traffic) ?? 0,
 				header: t("services.columns.usage"),
 				priority: "high",
 				width: "170px",
@@ -1554,21 +1360,17 @@ const ServicesPage: FC = () => {
 				mobileSummary: true,
 				mobileMetaLabel: t("services.columns.usage"),
 				cell: (link) => (
-					<Text
-						fontSize="sm"
-						dir="ltr"
-						sx={{ unicodeBidi: "isolate" }}
-						whiteSpace="nowrap"
-					>
+					<p dir="ltr" className="text-[0.875rem] [unicode-bidi:isolate] whitespace-nowrap">
 						{link.traffic_limit_mode === AdminTrafficLimitMode.CreatedTraffic
 							? formatBytes(link.created_traffic)
 							: formatBytes(link.used_traffic)}{" "}
 						/ {formatGigabytes(link.data_limit, t("nodes.unlimited"))}
-					</Text>
+					</p>
 				),
 			},
 			{
 				id: "mode",
+				sortValue: (link) => link.traffic_limit_mode ?? "",
 				header: t("admins.trafficMode"),
 				priority: "medium",
 				hideBelow: "xl",
@@ -1599,6 +1401,7 @@ const ServicesPage: FC = () => {
 			},
 			{
 				id: "data_limit",
+				sortValue: (link) => link.data_limit ?? 0,
 				header: t("admins.dataLimit"),
 				priority: "medium",
 				hideBelow: "xl",
@@ -1633,6 +1436,7 @@ const ServicesPage: FC = () => {
 			},
 			{
 				id: "users_limit",
+				sortValue: (link) => link.users_limit ?? 0,
 				header: t("admins.usersLimit"),
 				priority: "low",
 				hideBelow: "xl",
@@ -1665,6 +1469,7 @@ const ServicesPage: FC = () => {
 			},
 			{
 				id: "delete_cap",
+				sortValue: (link) => link.delete_user_usage_limit ?? 0,
 				header: t("admins.deleteUserUsageLimit"),
 				priority: "low",
 				hideBelow: "xl",
@@ -1706,6 +1511,7 @@ const ServicesPage: FC = () => {
 			},
 			{
 				id: "usage_coefficient",
+				sortValue: (link) => link.usage_coefficient ?? 0,
 				header: t("services.usageCoefficientColumn"),
 				priority: "low",
 				hideBelow: "xl",
@@ -1716,7 +1522,7 @@ const ServicesPage: FC = () => {
 				cell: (link) => {
 					const coefficient = link.usage_coefficient ?? null;
 					return (
-						<HStack spacing={2}>
+						<div className="flex flex-row items-center gap-2">
 							<Select
 								size="sm"
 								value={coefficient === null ? "default" : "custom"}
@@ -1735,44 +1541,27 @@ const ServicesPage: FC = () => {
 								<option value="custom">{t("services.usageCoefficientCustom")}</option>
 							</Select>
 							{coefficient !== null ? (
-								<Input
-									key={`${link.id}-${coefficient}`}
-									size="sm"
-									type="number"
-									inputMode="decimal"
-									min={0.01}
-									max={100}
-									step={0.01}
-									w="90px"
-									precision={2}
-									defaultValue={coefficient}
-									disabled={savingAdminLimitId === link.id}
-									onClick={(event) => event.stopPropagation()}
-									onInput={(event) => {
+								<Input key={`${link.id}-${coefficient}`} size="sm" type="number" inputMode="decimal" min={0.01} max={100} step={0.01} precision={2} defaultValue={coefficient} disabled={savingAdminLimitId === link.id} onClick={(event) => event.stopPropagation()} onInput={(event) => {
 										event.currentTarget.value = sanitizeDecimalInput(event.currentTarget.value);
-									}}
-									onBlur={(event) => {
+									}} onBlur={(event) => {
 										const value = parseCoefficientInput(event.target.value);
 										if (value === null || value < 0.01 || value > 100) {
-											toast({
-												status: "warning",
-												title: t("services.validation.usageCoefficientInvalid"),
-											});
+											toast.warning(t("services.validation.usageCoefficientInvalid"));
 											event.target.value = String(coefficient);
 											return;
 										}
 										if (value !== coefficient) {
 											saveServiceAdminLimit(link.id, { usage_coefficient: value });
 										}
-									}}
-								/>
+									}} className="w-[90px]" />
 							) : null}
-						</HStack>
+						</div>
 					);
 				},
 			},
 			{
 				id: "flags",
+				sortValue: (link) => (link.show_user_traffic ? 1 : 0) + (link.delete_user_usage_limit_enabled ? 2 : 0),
 				header: t("admins.permissionsTabLabel"),
 				priority: "low",
 				hideBelow: "xl",
@@ -1781,34 +1570,14 @@ const ServicesPage: FC = () => {
 				mobilePriority: 6,
 				mobileMetaLabel: t("admins.permissionsTabLabel"),
 				cell: (link) => (
-					<HStack spacing={3} justify="center" flexWrap="wrap">
-						<Checkbox
-							size="sm"
-							isChecked={link.show_user_traffic}
-							isDisabled={savingAdminLimitId === link.id}
-							onClick={(event) => event.stopPropagation()}
-							onChange={(event) =>
-								saveServiceAdminLimit(link.id, {
-									show_user_traffic: event.target.checked,
-								})
-							}
-						>
-							{t("admins.showUserTraffic")}
-						</Checkbox>
-						<Checkbox
-							size="sm"
-							isChecked={link.delete_user_usage_limit_enabled}
-							isDisabled={savingAdminLimitId === link.id}
-							onClick={(event) => event.stopPropagation()}
-							onChange={(event) =>
-								saveServiceAdminLimit(link.id, {
-									delete_user_usage_limit_enabled: event.target.checked,
-								})
-							}
-						>
-							{t("admins.deleteUserUsageCap")}
-						</Checkbox>
-					</HStack>
+					<div className="flex flex-row items-center gap-3 justify-center flex-wrap">
+						<label className="flex cursor-pointer items-center gap-2 text-sm"><Checkbox checked={link.show_user_traffic} disabled={savingAdminLimitId === link.id} onClick={(event) => event.stopPropagation()} onCheckedChange={(checked: boolean) => saveServiceAdminLimit(link.id, {
+									show_user_traffic: checked,
+								})} /><span>{t("admins.showUserTraffic")}</span></label>
+						<label className="flex cursor-pointer items-center gap-2 text-sm"><Checkbox checked={link.delete_user_usage_limit_enabled} disabled={savingAdminLimitId === link.id} onClick={(event) => event.stopPropagation()} onCheckedChange={(checked: boolean) => saveServiceAdminLimit(link.id, {
+									delete_user_usage_limit_enabled: checked,
+								})} /><span>{t("admins.deleteUserUsageCap")}</span></label>
+					</div>
 				),
 			},
 		],
@@ -1821,16 +1590,16 @@ const ServicesPage: FC = () => {
 		{
 			id: "editLimits",
 			label: t("services.editAdminLimits"),
-			icon: <PencilSquareIcon width={16} />,
+			icon: <SquarePen className="w-[16px]" />,
 			onClick: () => openServiceAdminLimitEditor(link),
-			isDisabled: savingAdminLimitId === link.id,
+			disabled: savingAdminLimitId === link.id,
 		},
 		{
 			id: "resetDeleted",
 			label: t("admins.resetDeletedUsage"),
-			icon: <ArrowPathIcon width={16} />,
+			icon: <RefreshCw className="w-[16px]" />,
 			onClick: () => resetServiceDeletedUsersUsage(link),
-			isDisabled:
+			disabled:
 				link.deleted_users_usage <= 0 || savingAdminLimitId === link.id,
 		},
 	];
@@ -1850,13 +1619,14 @@ const ServicesPage: FC = () => {
 				mobilePriority: 0,
 				mobileMetaLabel: t("nodes.nodeName"),
 				cell: (host) => (
-					<Text fontWeight="semibold" noOfLines={1}>
+					<p className="font-semibold truncate">
 						<AppleEmojiText>{host.remark}</AppleEmojiText>
-					</Text>
+					</p>
 				),
 			},
 			{
 				id: "inbound",
+				sortValue: (host) => host.inbound_tag ?? "",
 				header: t("inbound"),
 				priority: "high",
 				width: "180px",
@@ -1866,9 +1636,9 @@ const ServicesPage: FC = () => {
 				mobilePriority: 1,
 				mobileMetaLabel: t("inbound"),
 				cell: (host) => (
-					<Text fontSize="sm" noOfLines={1}>
+					<p className="text-[0.875rem] truncate">
 						{host.inbound_protocol.toUpperCase()} - {host.inbound_tag}
-					</Text>
+					</p>
 				),
 			},
 			{
@@ -1884,9 +1654,9 @@ const ServicesPage: FC = () => {
 				mobilePriority: 2,
 				mobileMetaLabel: t("nodes.nodeAddress"),
 				cell: (host) => (
-					<Text dir="ltr" sx={{ unicodeBidi: "isolate" }} noOfLines={1}>
+					<p dir="ltr" className="[unicode-bidi:isolate] truncate">
 						{host.address || "-"}
-					</Text>
+					</p>
 				),
 			},
 			{
@@ -1898,7 +1668,7 @@ const ServicesPage: FC = () => {
 				maxWidth: "110px",
 				mobilePriority: 3,
 				mobileMetaLabel: t("port"),
-				cell: (host) => <Text>{host.port ?? "-"}</Text>,
+				cell: (host) => <p>{host.port ?? "-"}</p>,
 			},
 			{
 				id: "sort",
@@ -1910,7 +1680,7 @@ const ServicesPage: FC = () => {
 				maxWidth: "110px",
 				mobilePriority: 4,
 				mobileMetaLabel: t("services.sort"),
-				cell: (host) => <Badge borderRadius="md">#{host.sort + 1}</Badge>,
+				cell: (host) => <Badge className="rounded-md">#{host.sort + 1}</Badge>,
 			},
 		],
 		[t],
@@ -1922,79 +1692,108 @@ const ServicesPage: FC = () => {
 
 	if (!canManageServices) {
 		return (
-			<VStack spacing={3} align="stretch">
+			<div className="flex flex-col gap-3 items-stretch">
 				<PageHeader title={t("services.title")} />
-				<Text fontSize="sm" color="panel.textMuted">
+				<p className="text-[0.875rem] text-panel-text-muted">
 					{t("services.noPermission")}
-				</Text>
-			</VStack>
+				</p>
+			</div>
 		);
 	}
 
-	return (
-		<VStack spacing={4} align="stretch">
-			<ResourceListCard
-				title={t("services.listHeader")}
-				summaryItems={serviceSummaryItems}
-				actions={
-					<Button
-						leftIcon={<PlusIcon width={18} />}
-						colorScheme="primary"
-						onClick={openCreateDialog}
-						size="sm"
-						h="36px"
-						px={3}
-						borderRadius="4px"
-					>
-						{t("services.addService")}
-					</Button>
-				}
-			/>
+	const renderExpandedService = (service: ServiceSummary) => {
+		const actions = serviceRowActions(service).filter(Boolean);
+		return (
+			<div className="rb-resource-expanded">
+				<ExpandedDetails>
+					<ExpandedHeading title={t("services.basicInfo")} first />
+					<ExpandedMeta label={t("services.fields.description")} value={service.description || "-"} />
+					<ExpandedMeta label={t("services.fields.usageCoefficient")} value={String(service.usage_coefficient)} />
+					<ExpandedMeta label={t("users")} value={String(service.user_count)} />
+					<ExpandedMeta label={t("services.columns.hosts")} value={String(service.host_count)} />
+					<ExpandedHeading title={t("services.totalUsage")} />
+					<ExpandedMeta label={t("services.columns.usage")} value={formatBytes(service.used_traffic)} />
+					<ExpandedMeta label={t("services.columns.lifetime")} value={formatBytes(service.lifetime_used_traffic)} />
+				</ExpandedDetails>
+				{/* biome-ignore lint/a11y/noStaticElementInteractions: wrapper only stops row clicks, it is not a control */}
+				{/* biome-ignore lint/a11y/useKeyWithClickEvents: wrapper only stops row clicks, it is not a control */}
+				<div onClick={(event) => event.stopPropagation()} className="flex items-center justify-end gap-1 flex-wrap rb-resource-expanded-actions">
+					<div className="flex flex-row items-center gap-1 flex-wrap rb-inline-actions">
+						{actions.map((action) => (
+							<Tooltip key={action.id}>
+<TooltipTrigger asChild>
+								<span>
+									<Button aria-label={String(action.label)} disabled={typeof action.disabled === "function" ? action.disabled(service) : action.disabled} onClick={() => action.onClick?.(service)} variant="ghost" size="sm" className={cn("size-8 p-0", "min-w-[30px]! h-[30px]")}>{action.icon}</Button>
+								</span>
+							</TooltipTrigger>
+<TooltipContent>{action.label}</TooltipContent>
+</Tooltip>
+						))}
+					</div>
+				</div>
+			</div>
+		);
+	};
 
-			<Input
-				value={serviceSearch}
-				onChange={(event) => setServiceSearch(event.target.value)}
-				placeholder={t("services.searchServices")}
-				maxW="320px"
-			/>
+	return (
+		<div className="flex flex-col gap-4 items-stretch rb-services-section">
+			<div className="border border-panel-border! bg-panel-surface rounded-xl overflow-hidden">
+				<OverviewBand total={serviceOverview.total} rows={serviceOverview.rows} distribution={serviceOverview.distribution} extra={serviceOverview.extra} locale={locale} />
+				<div className="border-t border-panel-border! p-3">
+					<div className="flex flex-col gap-2 md:flex-row md:items-center">
+						<div className="min-w-0 flex-1">
+							<SearchInput
+								containerProps={{ className: "w-full md:w-[360px]" }}
+								placeholder={t("services.searchServices")}
+								value={serviceSearch}
+								onChange={(event) => setServiceSearch(event.target.value)}
+								matchOptions={serviceMatchOptions}
+								onMatchOptionsChange={setServiceMatchOptions}
+								loading={isServicesLoading}
+								onClear={() => setServiceSearch("")}
+							/>
+						</div>
+						<div className="flex shrink-0 items-center justify-end gap-1.5">
+							<Button aria-label={t("refresh")} onClick={() => void fetchServices(listFilters)} variant="ghost" size="sm" loading={isServicesLoading} className="size-8 p-0">{<RefreshCw className="w-[16px]" />}</Button>
+							<Button onClick={openCreateDialog} size="sm" className="h-[36px] px-3 rounded-[4px]">
+								<Plus className="w-[18px]" />
+								{t("services.addService")}
+							</Button>
+						</div>
+					</div>
+				</div>
+			</div>
 
 			<DataTable
 				ariaLabel={t("services.title")}
 					data={services}
 				columns={serviceColumns}
 				getRowId={(service) => String(service.id)}
-					isLoading={isServicesLoading}
+					loading={isServicesLoading}
 				loadingRows={5}
 				emptyState={
-					<Box textAlign="center">
-						<Text fontWeight="semibold">
+					<div className="text-center">
+						<p className="font-semibold">
 							{t("services.noServicesAvailable")}
-						</Text>
-						<Text fontSize="sm" color={labelColor} mt={1}>
+						</p>
+						<p className={cn(labelColor, "text-[0.875rem] mt-1")}>
 							{t("services.emptyHint")}
-						</Text>
-					</Box>
+						</p>
+					</div>
 				}
 				rowActions={serviceRowActions}
-				actionsDisplay="menu"
+
 				actionsPlacement="end"
 				actionsColumnWidth="60px"
-				showActionsOnHover
-				onRowClick={(service) => {
-					void openServiceDetail(service.id, "admins");
-				}}
+				// Two services, sorted client-side: the floating sort control above the
+				// table added noise without a toolbar to sit in.
+				showSortMenu={false}
+
+				onRowClick={(service) => setExpandedServiceId((current) => (current === service.id ? null : service.id))}
+				isRowExpanded={(service) => expandedServiceId === service.id}
+				renderExpandedRow={renderExpandedService}
 				mobileBreakpoint="md"
-				tableProps={{
-					w: "full",
-					sx: {
-						tableLayout: "fixed",
-						"& th, & td": {
-							px: { base: 2, xl: 2.5 },
-							py: 2.5,
-							verticalAlign: "middle",
-						},
-					},
-				}}
+				tableProps={{ className: "w-full [table-layout:fixed] [&_th]:px-2 [&_td]:px-2 [&_th]:py-2.5 [&_td]:py-2.5 [&_th]:align-middle [&_td]:align-middle xl:[&_th]:px-2.5 xl:[&_td]:px-2.5" }}
 			/>
 			<Pagination
 				for="services"
@@ -2017,22 +1816,22 @@ const ServicesPage: FC = () => {
 			/>
 
 			{selectedService && (
-				<Stack spacing={3}>
+				<div className="flex flex-col gap-3">
 					<PageHeader
 						title={
-							<Text as="span" fontSize="md" fontWeight="semibold" noOfLines={1}>
+							<span className="text-[1rem] font-semibold truncate">
 								{selectedService.name}
-							</Text>
+							</span>
 						}
 						description={
 							selectedService.description ? (
-								<Text as="span" noOfLines={2}>
+								<span className="line-clamp-2">
 									{selectedService.description}
-								</Text>
+								</span>
 							) : undefined
 						}
 						actions={
-							<Badge colorScheme="primary" borderRadius="md">
+							<Badge className="rounded-md">
 								{t("services.usersCount", {
 									count: selectedService.user_count,
 								})}
@@ -2056,120 +1855,62 @@ const ServicesPage: FC = () => {
 						]}
 					/>
 					{activeServiceTab === "admins" ? (
-						<DataTable
-							containerProps={{ mt: 3 }}
-							ariaLabel={t("services.admins")}
-							data={selectedService.admins}
-							columns={serviceAdminColumns}
-							getRowId={(link) => String(link.id)}
-							emptyState={
-								<Text fontSize="sm" color="panel.textMuted" textAlign="center">
+						<DataTable containerProps={{ className: "mt-3" }} ariaLabel={t("services.admins")} data={selectedService.admins} columns={serviceAdminColumns} getRowId={(link) => String(link.id)} emptyState={
+								<p className="text-[0.875rem] text-panel-text-muted text-center">
 									{t("services.noAdmins")}
-								</Text>
-							}
-							rowActions={serviceAdminRowActions}
-							actionsDisplay="menu"
-							actionsPlacement="end"
-							actionsColumnWidth="60px"
-							showActionsOnHover
-							mobileBreakpoint="md"
-							tableProps={{
-								w: "full",
-								sx: {
-									tableLayout: "fixed",
-									"& th, & td": {
-										px: { base: 2, xl: 2.5 },
-										py: 2.5,
-										verticalAlign: "middle",
-									},
-								},
-							}}
-						/>
+								</p>
+							} rowActions={serviceAdminRowActions} actionsPlacement="end" actionsColumnWidth="60px" mobileBreakpoint="md" tableProps={{ className: "w-full [table-layout:fixed] [&_th]:px-2 [&_td]:px-2 [&_th]:py-2.5 [&_td]:py-2.5 [&_th]:align-middle [&_td]:align-middle xl:[&_th]:px-2.5 xl:[&_td]:px-2.5" }} />
 					) : (
-						<DataTable
-							containerProps={{ mt: 3 }}
-							ariaLabel={t("services.hosts")}
-							data={selectedService.hosts}
-							columns={serviceHostColumns}
-							getRowId={(host) => String(host.id)}
-							emptyState={
-								<Text fontSize="sm" color="panel.textMuted" textAlign="center">
+						<DataTable containerProps={{ className: "mt-3" }} ariaLabel={t("services.hosts")} data={selectedService.hosts} columns={serviceHostColumns} getRowId={(host) => String(host.id)} emptyState={
+								<p className="text-[0.875rem] text-panel-text-muted text-center">
 									{t("services.noHosts")}
-								</Text>
-							}
-							mobileBreakpoint="md"
-							tableProps={{
-								w: "full",
-								sx: {
-									tableLayout: "fixed",
-									"& th, & td": {
-										px: { base: 2, xl: 2.5 },
-										py: 2.5,
-										verticalAlign: "middle",
-									},
-								},
-							}}
-						/>
+								</p>
+							} mobileBreakpoint="md" tableProps={{ className: "w-full [table-layout:fixed] [&_th]:px-2 [&_td]:px-2 [&_th]:py-2.5 [&_td]:py-2.5 [&_th]:align-middle [&_td]:align-middle xl:[&_th]:px-2.5 xl:[&_td]:px-2.5" }} />
 					)}
-				</Stack>
+				</div>
 			)}
 
-			<AppDialog
-				isOpen={Boolean(editingServiceAdminLimit)}
-				onClose={closeServiceAdminLimitEditor}
-				size="lg"
-				scrollBehavior="inside"
-				isCentered
-				title={`${t("services.editAdminLimits")}${
+			<AppDialog open={Boolean(editingServiceAdminLimit)} onClose={closeServiceAdminLimitEditor} size="lg" title={`${t("services.editAdminLimits")}${
 					editingServiceAdminLimit
 						? ` - ${editingServiceAdminLimit.username}`
 						: ""
-				}`}
-				overlayProps={{ bg: "blackAlpha.300" }}
-				footerProps={{ gap: 3 }}
-				footer={
+				}`} footerProps={{ className: "gap-3" }} footer={
 					<>
-						<Button variant="ghost" onClick={closeServiceAdminLimitEditor}>
+						<Button onClick={closeServiceAdminLimitEditor} variant="ghost">
 							{t("cancel")}
 						</Button>
-						<Button
-							colorScheme="primary"
-							onClick={submitServiceAdminLimitEditor}
-							isLoading={
+						<Button onClick={submitServiceAdminLimitEditor} loading={
 								editingServiceAdminLimit
 									? savingAdminLimitId === editingServiceAdminLimit.id
 									: false
-							}
-						>
+							}>
 							{t("save")}
 						</Button>
 					</>
-				}
-			>
-				<Stack spacing={4}>
-					<FormControl>
-						<FormLabel>{t("admins.trafficMode")}</FormLabel>
+				}>
+				<div className="flex flex-col gap-4">
+					<FormField label={t("admins.trafficMode")} htmlFor="service-admin-traffic-mode">
 						<Select
+							id="service-admin-traffic-mode"
 							value={serviceAdminLimitForm.traffic_limit_mode}
 							onChange={(event) =>
 								setServiceAdminLimitForm((current) => ({
 									...current,
-									traffic_limit_mode: event.target
-										.value as AdminTrafficLimitMode,
+									traffic_limit_mode: event.target.value as AdminTrafficLimitMode,
 								}))
 							}
 						>
-							<option value={AdminTrafficLimitMode.UsedTraffic}>
-								{t("nodes.usedTrafficSeries")}
-							</option>
-							<option value={AdminTrafficLimitMode.CreatedTraffic}>
-								{t("myaccount.createdTraffic")}
-							</option>
+							<option value={AdminTrafficLimitMode.UsedTraffic}>{t("nodes.usedTrafficSeries")}</option>
+							<option value={AdminTrafficLimitMode.CreatedTraffic}>{t("myaccount.createdTraffic")}</option>
 						</Select>
-					</FormControl>
-					<FormControl>
-						<FormLabel>{t("services.usageCoefficientColumn")}</FormLabel>
+					</FormField>
+					<FormField
+						label={t("services.usageCoefficientColumn")}
+						htmlFor="service-admin-usage-coefficient"
+						description={t("services.adminUsageCoefficientHint", { value: selectedService?.usage_coefficient ?? 1 })}
+					>
 						<Input
+							id="service-admin-usage-coefficient"
 							type="number"
 							inputMode="decimal"
 							min={0.01}
@@ -2185,38 +1926,30 @@ const ServicesPage: FC = () => {
 								}))
 							}
 						/>
-						<FormHelperText>
-							{t("services.adminUsageCoefficientHint", { value: selectedService?.usage_coefficient ?? 1 })}
-						</FormHelperText>
-					</FormControl>
-					<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-						<FormControl>
-							<FormLabel>{t("admins.dataLimit")}</FormLabel>
-							<Input
-								type="number"
-								inputMode="decimal"
-								min={0}
-								step={0.01}
-								value={serviceAdminLimitForm.data_limit_gb}
-								placeholder={t("admins.dataLimitPlaceholder")}
-								onChange={(event) =>
+					</FormField>
+					<div className="grid grid-cols-1 gap-3">
+						<FormField label={t("admins.dataLimit")} htmlFor="service-admin-data-limit">
+							<DataSizeField
+								id="service-admin-data-limit"
+								valueGb={serviceAdminLimitForm.data_limit_gb}
+								placeholder={t("admins.dataLimitHint")}
+								onChangeGb={(raw) =>
 									setServiceAdminLimitForm((current) => ({
 										...current,
-										data_limit_gb: sanitizeDecimalInput(event.target.value),
+										data_limit_gb: raw,
 									}))
 								}
 							/>
-							<FormHelperText>{t("admins.dataLimitHint")}</FormHelperText>
-						</FormControl>
-						<FormControl>
-							<FormLabel>{t("admins.usersLimit")}</FormLabel>
+						</FormField>
+						<FormField label={t("admins.usersLimit")} htmlFor="service-admin-users-limit">
 							<Input
+								id="service-admin-users-limit"
 								type="number"
 								inputMode="numeric"
 								min={0}
 								step={1}
 								value={serviceAdminLimitForm.users_limit}
-								placeholder={t("admins.usersLimitPlaceholder")}
+								placeholder={t("admins.usersLimitHint")}
 								onChange={(event) =>
 									setServiceAdminLimitForm((current) => ({
 										...current,
@@ -2224,39 +1957,18 @@ const ServicesPage: FC = () => {
 									}))
 								}
 							/>
-							<FormHelperText>{t("admins.usersLimitHint")}</FormHelperText>
-						</FormControl>
-					</SimpleGrid>
-					<Stack spacing={3}>
-						<Checkbox
-							isChecked={serviceAdminLimitForm.show_user_traffic}
-							onChange={(event) =>
-								setServiceAdminLimitForm((current) => ({
+						</FormField>
+					</div>
+					<div className="flex flex-col gap-3">
+						<label className="flex cursor-pointer items-center gap-2 text-sm"><Checkbox checked={serviceAdminLimitForm.show_user_traffic} onCheckedChange={(checked: boolean) => setServiceAdminLimitForm((current) => ({
 									...current,
-									show_user_traffic: event.target.checked,
-								}))
-							}
-						>
-							{t("admins.showUserTraffic")}
-						</Checkbox>
-						<Checkbox
-							isChecked={serviceAdminLimitForm.delete_user_usage_limit_enabled}
-							onChange={(event) =>
-								setServiceAdminLimitForm((current) => ({
+									show_user_traffic: checked,
+								}))} /><span>{t("admins.showUserTraffic")}</span></label>
+						<label className="flex cursor-pointer items-center gap-2 text-sm"><Checkbox checked={serviceAdminLimitForm.delete_user_usage_limit_enabled} onCheckedChange={(checked: boolean) => setServiceAdminLimitForm((current) => ({
 									...current,
-									delete_user_usage_limit_enabled: event.target.checked,
-								}))
-							}
-						>
-							{t("admins.deleteUserUsageCap")}
-						</Checkbox>
-						<FormControl
-							isDisabled={
-								!serviceAdminLimitForm.delete_user_usage_limit_enabled
-							}
-						>
-							<FormLabel>{t("admins.deleteUserUsageLimit")}</FormLabel>
-							<Input
+									delete_user_usage_limit_enabled: checked,
+								}))} /><span>{t("admins.deleteUserUsageCap")}</span></label>
+						<FormField label={t("admins.deleteUserUsageLimit")} htmlFor="service-admin-delete-usage-limit" className={!serviceAdminLimitForm.delete_user_usage_limit_enabled ? "opacity-60" : undefined}><Input id="service-admin-delete-usage-limit" disabled={!serviceAdminLimitForm.delete_user_usage_limit_enabled}
 								type="number"
 								inputMode="decimal"
 								min={0}
@@ -2270,14 +1982,13 @@ const ServicesPage: FC = () => {
 										),
 									}))
 								}
-							/>
-						</FormControl>
-					</Stack>
-				</Stack>
+							/></FormField>
+					</div>
+				</div>
 			</AppDialog>
 
 			<ConfirmDialog
-				isOpen={isResetDialogOpen}
+				open={isResetDialogOpen}
 				onClose={closeResetDialog}
 				onConfirm={confirmResetUsage}
 				title={t("services.resetUsage")}
@@ -2286,85 +1997,58 @@ const ServicesPage: FC = () => {
 				})}
 				confirmLabel={t("services.resetUsage")}
 				colorScheme="primary"
-				isLoading={isResetting}
+				loading={isResetting}
 				isConfirmDisabled={resetServiceId == null}
 			/>
 
-			<AppDialog
-				isOpen={isDeleteDialogOpen}
-				onClose={handleCloseDeleteDialog}
-				size="lg"
-				title={`${t("services.deleteDialogTitle")}${
+			<AppDialog open={isDeleteDialogOpen} onClose={handleCloseDeleteDialog} size="lg" title={`${t("services.deleteDialogTitle")}${
 					servicePendingDelete ? ` – ${servicePendingDelete.name}` : ""
-				}`}
-				overlayProps={{ bg: "blackAlpha.300" }}
-				footerProps={{ gap: 3 }}
-				footer={
+				}`} footerProps={{ className: "gap-3" }} footer={
 					<>
-						<Button variant="ghost" onClick={handleCloseDeleteDialog}>
+						<Button onClick={handleCloseDeleteDialog} variant="ghost">
 							{t("cancel")}
 						</Button>
-						<Button
-							colorScheme="red"
-							onClick={confirmDeleteService}
-							isLoading={isDeleting}
-							isDisabled={
+						<Button onClick={confirmDeleteService} disabled={
 								!servicePendingDelete ||
 								(deleteMode === "transfer_users" &&
 									servicePendingDelete.user_count > 0 &&
 									!targetServiceId)
-							}
-						>
+							} variant="destructive" loading={isDeleting}>
 							{t("delete")}
 						</Button>
 					</>
-				}
-			>
+				}>
 				{servicePendingDelete ? (
-					<VStack align="stretch" spacing={4}>
-						<Text>
+					<div className="flex flex-col items-stretch gap-4">
+						<p>
 							{t("services.deleteDialogDescription", {
 								name: servicePendingDelete.name,
 							})}
-						</Text>
+						</p>
 						{servicePendingDelete.admin_ids.length > 0 ? (
-							<Checkbox
-								isChecked={unlinkAdmins}
-								onChange={(event) => setUnlinkAdmins(event.target.checked)}
-							>
-								{t("services.unlinkAdminsOption")}
-							</Checkbox>
+							<label className="flex cursor-pointer items-center gap-2 text-sm"><Checkbox checked={unlinkAdmins} onCheckedChange={(checked: boolean) => setUnlinkAdmins(checked)} /><span>{t("services.unlinkAdminsOption")}</span></label>
 						) : (
-							<Text fontSize="sm" color="gray.500">
+							<p className="text-[0.875rem] text-gray-500">
 								{t("services.noAdminsLinked")}
-							</Text>
+							</p>
 						)}
 						{servicePendingDelete.user_count > 0 ? (
-							<VStack align="stretch" spacing={3}>
-								<Text fontWeight="semibold">
+							<div className="flex flex-col items-stretch gap-3">
+								<p className="font-semibold">
 									{t("services.userDeletePrompt", {
 										count: servicePendingDelete.user_count,
 									})}
-								</Text>
-								<RadioGroup
-									value={deleteMode}
-									onChange={(value) =>
+								</p>
+								<RadioGroup value={deleteMode} onValueChange={(value) =>
 										setDeleteMode(value as "delete_users" | "transfer_users")
-									}
-								>
-									<Stack align="flex-start" spacing={2}>
-										<Radio value="delete_users">
-											{t("services.deleteUsersOption")}
-										</Radio>
-										<Radio value="transfer_users">
-											{t("services.transferUsersOption")}
-										</Radio>
-									</Stack>
+									}>
+									<div className="flex flex-col items-start gap-2">
+										<label className="flex cursor-pointer items-center gap-2 text-sm"><RadioGroupItem value="delete_users" /><span>{t("services.deleteUsersOption")}</span></label>
+										<label className="flex cursor-pointer items-center gap-2 text-sm"><RadioGroupItem value="transfer_users" /><span>{t("services.transferUsersOption")}</span></label>
+									</div>
 								</RadioGroup>
 								{deleteMode === "transfer_users" && (
-									<FormControl>
-										<FormLabel>{t("services.selectTargetService")}</FormLabel>
-										<Select
+									<FormField label={t("services.selectTargetService")} htmlFor="service-transfer-target" description={t("services.transferUsersHint")}><Select id="service-transfer-target"
 											placeholder={t("services.selectServicePlaceholder")}
 											value={targetServiceId?.toString() ?? ""}
 											onChange={(
@@ -2383,30 +2067,26 @@ const ServicesPage: FC = () => {
 													{service.name}
 												</option>
 											))}
-										</Select>
-										<FormHelperText>
-											{t("services.transferUsersHint")}
-										</FormHelperText>
-									</FormControl>
+										</Select></FormField>
 								)}
-							</VStack>
+							</div>
 						) : (
-							<Alert status="info" borderRadius="md">
-								<AlertIcon />
+							<Alert className="rounded-md">
+								<Info className="size-4" aria-hidden="true" />
 								<AlertDescription>
 									{t("services.noUsersLinked")}
 								</AlertDescription>
 							</Alert>
 						)}
-					</VStack>
+					</div>
 				) : (
-					<Text>{t("services.loading")}</Text>
+					<p>{t("services.loading")}</p>
 				)}
 			</AppDialog>
 
 			{dialogDisclosure.isOpen && (
 				<ServiceDialog
-					isOpen={dialogDisclosure.isOpen}
+					open={dialogDisclosure.isOpen}
 					onClose={dialogDisclosure.onClose}
 					onSubmit={handleSubmit}
 						isSaving={isServiceSaving}
@@ -2418,7 +2098,7 @@ const ServicesPage: FC = () => {
 						refreshHosts={fetchHosts}
 				/>
 			)}
-		</VStack>
+		</div>
 	);
 };
 

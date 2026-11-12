@@ -1,23 +1,16 @@
-import {
-	Alert,
-	AlertIcon,
-	Box,
-	Button,
-	HStack,
-	MenuItem,
-	Stack,
-	Tag,
-	Text,
-	Tooltip,
-	useDisclosure,
-	useToast,
-} from "@chakra-ui/react";
-import {
-	ArrowPathIcon,
-	PencilIcon,
-	PlusIcon,
-	TrashIcon,
-} from "@heroicons/react/24/outline";
+import { Badge } from "components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "components/ui/tooltip";
+import { Button } from "components/ui/button";
+import { Alert } from "components/ui/alert";
+import { toast } from "components/ui/sonner";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+import { cn } from "lib/cn";
+import { RefreshCw, Pencil, Plus, Trash2 } from "lucide-react";
+import type { SortingState } from "@tanstack/react-table";
+import { buildSortOptions, DataTableSortMenu } from "components/ui/DataTableSortMenu";
+
+import { useDisclosure } from "hooks/useDisclosure";
+
 import type { CoreConfigTarget } from "contexts/CoreSettingsContext";
 import { fetchInbounds as refreshInboundsStore } from "contexts/DashboardContext";
 import { type FC, useCallback, useEffect, useMemo, useState } from "react";
@@ -26,35 +19,43 @@ import { fetch, getAPIErrorMessage } from "service/http";
 import {
 	buildInboundPayload,
 	getInboundTraffic,
+	inboundPortNumbers,
 	type InboundFormValues,
+	protocolLabel,
 	protocolOptions,
 	type RawInbound,
 } from "utils/inbounds";
+import { supportsSniffing } from "utils/inboundCapabilities";
 import { getInboundTargetIds } from "utils/inboundTargets";
 import { SizeFormatter } from "utils/outbound";
 import {
 	DEFAULT_SEARCH_MATCH_OPTIONS,
 	matchesAnySearch,
 } from "utils/searchMatch";
-import { sortByTraffic, type TrafficSortOrder } from "utils/trafficSort";
 import { type InboundSpeedMap, summarizeInbounds } from "utils/resourceSummary";
 import { SearchableTagSelect } from "../common/SearchableTagSelect";
 import { SearchInput } from "../common/SearchInput";
+import { OverviewBand } from "components/ui/overview-band";
+import { TagChips } from "components/labels/TagChips";
+import { TagFilterButton } from "components/labels/TagFilterButton";
+import {
+	EMPTY_LABEL_FILTER,
+	type LabelFilterValue,
+	matchesTagFilter,
+} from "components/labels/LabelFilter";
+import { saveLabels, useInvalidateLabels, useLabelItems } from "service/labels";
 import { ConfirmDialog, DeleteConfirmDialog } from "../dialogs/ConfirmDialog";
 import {
 	DataTable,
 	type DataTableColumn,
 	type DataTableRowAction,
-	ResourceListCard,
 	ResourceRefreshButton,
-	type ResourceSummaryItem,
 } from "../ui";
 import { InboundFormModal } from "./FormDrawer";
 
 type FilterState = {
 	protocol: string;
 	search: string;
-	traffic: TrafficSortOrder;
 };
 
 const normalizeTargetRefs = (value: unknown): string[] => {
@@ -80,8 +81,9 @@ const normalizeInboundTargets = (inbound: RawInbound): RawInbound => ({
 });
 
 export const InboundsManager: FC = () => {
-	const { t } = useTranslation();
-	const toast = useToast();
+	const { t, i18n } = useTranslation();
+	const locale = i18n.language || "en";
+	
 	const [inbounds, setInbounds] = useState<RawInbound[]>([]);
 	const [speeds, setSpeeds] = useState<InboundSpeedMap>({});
 	const [configTargets, setConfigTargets] = useState<CoreConfigTarget[]>([]);
@@ -91,7 +93,6 @@ export const InboundsManager: FC = () => {
 	const [filter, setFilter] = useState<FilterState>({
 		protocol: "all",
 		search: "",
-		traffic: "default",
 	});
 	const [searchMatch, setSearchMatch] = useState(DEFAULT_SEARCH_MATCH_OPTIONS);
 	const [selectedInboundTags, setSelectedInboundTags] = useState<string[]>([]);
@@ -102,6 +103,7 @@ export const InboundsManager: FC = () => {
 	const resetDialog = useDisclosure();
 	const [drawerMode, setDrawerMode] = useState<"create" | "edit">("create");
 	const [resetTarget, setResetTarget] = useState<RawInbound | null>(null);
+	const [deleteTarget, setDeleteTarget] = useState<RawInbound | null>(null);
 
 	const loadInbounds = useCallback(() => {
 		setIsLoading(true);
@@ -141,9 +143,15 @@ export const InboundsManager: FC = () => {
 		};
 	}, []);
 
+	const { data: inboundLabels } = useLabelItems("inbound");
+	const invalidateLabels = useInvalidateLabels();
+	const [tagFilter, setTagFilter] = useState<LabelFilterValue>(EMPTY_LABEL_FILTER);
 	const filtered = useMemo(() => {
 		const matches = inbounds.filter((inbound) => {
 			if (filter.protocol !== "all" && inbound.protocol !== filter.protocol) {
+				return false;
+			}
+			if (!matchesTagFilter(inboundLabels?.items[inbound.tag]?.tags, tagFilter)) {
 				return false;
 			}
 			return matchesAnySearch(
@@ -152,12 +160,8 @@ export const InboundsManager: FC = () => {
 				searchMatch,
 			);
 		});
-		return sortByTraffic(
-			matches,
-			filter.traffic,
-			(inbound) => getInboundTraffic(inbound).total,
-		);
-	}, [inbounds, filter, searchMatch]);
+		return matches;
+	}, [inbounds, filter, searchMatch, inboundLabels, tagFilter]);
 	const targetNameById = useMemo(
 		() =>
 			Object.fromEntries(
@@ -190,6 +194,7 @@ export const InboundsManager: FC = () => {
 		},
 	) => {
 		const { mode, initial, onSuccess } = options;
+		const { note: nextNote, tags: nextTags, ...inboundValues } = values;
 		setIsMutating(true);
 		try {
 			const normalizedTag = (values.tag || "").trim().toLowerCase();
@@ -224,7 +229,7 @@ export const InboundsManager: FC = () => {
 			}
 
 			const payload = {
-				...buildInboundPayload(values, { initial: initial ?? null }),
+				...buildInboundPayload(inboundValues, { initial: initial ?? null }),
 				targets: values.targetIds?.length ? values.targetIds : ["master"],
 			};
 			const url =
@@ -235,15 +240,29 @@ export const InboundsManager: FC = () => {
 				method: mode === "create" ? "POST" : "PUT",
 				body: payload,
 			});
-			toast({
-				status: "success",
-				title:
-					mode === "create"
+			toast.success(mode === "create"
 						? t("inbounds.success.created")
-						: t("inbounds.success.updated"),
-			});
+						: t("inbounds.success.updated"));
 			refreshInboundsStore();
 			await loadInbounds();
+			if (nextNote !== undefined) {
+				try {
+					await fetch(`/notes/inbound/${encodeURIComponent(payload.tag)}`, {
+						method: "PUT",
+						body: { note: nextNote },
+					});
+				} catch {
+					toast.error(t("entityNote.saveFailed"));
+				}
+			}
+			if (nextTags !== undefined) {
+				try {
+					await saveLabels("inbound", payload.tag, { tags: nextTags });
+					await invalidateLabels();
+				} catch {
+					toast.error(t("labels.saveFailed"));
+				}
+			}
 			onSuccess();
 		} catch (err: unknown) {
 			let description: string | undefined;
@@ -263,11 +282,7 @@ export const InboundsManager: FC = () => {
 			) {
 				description = (err as { message?: string }).message;
 			}
-			toast({
-				status: "error",
-				title: t("inbounds.error.submit"),
-				description,
-			});
+			toast.error(t("inbounds.error.submit"));
 		} finally {
 			setIsMutating(false);
 		}
@@ -301,10 +316,7 @@ export const InboundsManager: FC = () => {
 			await fetch(`/inbounds/${encodeURIComponent(inbound.tag)}`, {
 				method: "DELETE",
 			});
-			toast({
-				status: "success",
-				title: t("inbounds.success.deleted"),
-			});
+			toast.success(t("inbounds.success.deleted"));
 			refreshInboundsStore();
 			await loadInbounds();
 			setSelectedInboundTags((current) =>
@@ -336,11 +348,7 @@ export const InboundsManager: FC = () => {
 			) {
 				description = (err as { message?: string }).message;
 			}
-			toast({
-				status: "error",
-				title: t("inbounds.error.submit"),
-				description,
-			});
+			toast.error(t("inbounds.error.submit"));
 		} finally {
 			setIsMutating(false);
 		}
@@ -358,13 +366,9 @@ export const InboundsManager: FC = () => {
 					method: "DELETE",
 				});
 			}
-			toast({
-				status: "success",
-				title: t("inbounds.success.bulkDeleted"),
-				description: t("inbounds.success.bulkDeletedDescription", {
+			toast.success(t("inbounds.success.bulkDeleted"), { description: t("inbounds.success.bulkDeletedDescription", {
 					count: items.length,
-				}),
-			});
+				}) });
 			refreshInboundsStore();
 			await loadInbounds();
 			setSelectedInboundTags([]);
@@ -394,11 +398,7 @@ export const InboundsManager: FC = () => {
 			) {
 				description = (err as { message?: string }).message;
 			}
-			toast({
-				status: "error",
-				title: t("inbounds.error.bulkDelete"),
-				description,
-			});
+			toast.error(t("inbounds.error.bulkDelete"));
 		} finally {
 			setIsMutating(false);
 		}
@@ -412,18 +412,14 @@ export const InboundsManager: FC = () => {
 				`/inbounds/${encodeURIComponent(resetTarget.tag)}/usage/reset`,
 				{ method: "POST" },
 			);
-			toast({ status: "success", title: t("inbounds.resetUsageSuccess") });
+			toast.success(t("inbounds.resetUsageSuccess"));
 			await loadInbounds();
 		} catch (error: unknown) {
 			const detail = error as {
 				data?: { detail?: string };
 				message?: string;
 			};
-			toast({
-				status: "error",
-				title: t("inbounds.resetUsageError"),
-				description: detail.data?.detail || detail.message,
-			});
+			toast.error(t("inbounds.resetUsageError"), { description: detail.data?.detail || detail.message });
 		} finally {
 			setIsMutating(false);
 			setResetTarget(null);
@@ -446,9 +442,12 @@ export const InboundsManager: FC = () => {
 
 			const portNumber =
 				typeof inbound.port === "string" ? Number(inbound.port) : inbound.port;
+			const listedPorts = inboundPortNumbers(String(inbound.port ?? ""));
 			const nextPort = Number.isFinite(portNumber)
 				? portNumber + 1
-				: inbound.port;
+				: listedPorts.length > 1
+					? listedPorts.map((port) => port + 1).join(",")
+					: inbound.port;
 
 			setCloneTarget({
 				...inbound,
@@ -461,7 +460,7 @@ export const InboundsManager: FC = () => {
 		[cloneDrawer, onClose],
 	);
 
-	const inboundSummaryItems = useMemo<ResourceSummaryItem[]>(() => {
+		const inboundOverview = useMemo(() => {
 		const protocolCounts = inbounds.reduce<Record<string, number>>(
 			(acc, inbound) => {
 				const key = inbound.protocol || "unknown";
@@ -470,62 +469,73 @@ export const InboundsManager: FC = () => {
 			},
 			{},
 		);
+		const ranked = Object.entries(protocolCounts).sort((a, b) => b[1] - a[1]);
+		const tones = [
+			"bg-panel-accent",
+			"bg-panel-success",
+			"bg-panel-info",
+			"bg-panel-warning",
+			"bg-panel-text-muted/60",
+		];
+		const segments = ranked.slice(0, 4).map(([protocol, value], index) => ({
+			key: protocol,
+			label: protocolLabel(protocol),
+			value,
+			tone: tones[index],
+		}));
+		const otherCount = ranked
+			.slice(4)
+			.reduce((sum, [, value]) => sum + value, 0);
+		if (otherCount) {
+			segments.push({
+				key: "other",
+				label: t("overview.other"),
+				value: otherCount,
+				tone: tones[4],
+			});
+		}
 		const multiTargetCount = inbounds.filter(
 			(inbound) => getInboundTargetIds(inbound).length > 1,
 		).length;
 		const sniffingCount = inbounds.filter(
-			(inbound) => inbound.sniffing?.enabled,
+			(inbound) =>
+				supportsSniffing(inbound.protocol) && inbound.sniffing?.enabled,
 		).length;
-		const mostUsedProtocol = Object.entries(protocolCounts).sort(
-			(a, b) => b[1] - a[1],
-		)[0];
-
 		const totals = summarizeInbounds(filtered, speeds);
 		const isFiltered = filtered.length !== inbounds.length;
 
-		return [
-			{
+		return {
+			total: {
 				label: t("total"),
 				value: inbounds.length,
-				colorScheme: "gray",
+				caption: isFiltered
+					? `${t("usersPage.filtered")}: ${filtered.length}`
+					: `${t("userDialog.protocols")}: ${ranked.length}`,
 			},
-			{
-				label: t("userDialog.protocols"),
-				value: Object.keys(protocolCounts).length,
-				colorScheme: "purple",
-				helper: mostUsedProtocol
-					? `${mostUsedProtocol[0].toUpperCase()}: ${mostUsedProtocol[1]}`
-					: undefined,
-			},
-			{
-				label: t("inbounds.summary.multiTarget"),
-				value: multiTargetCount,
-				colorScheme: "blue",
-			},
-			{
-				label: t("inbounds.sniffing"),
-				value: sniffingCount,
-				colorScheme: "green",
-			},
-			{
+			rows: [
+				{
+					key: "sniffing",
+					label: t("inbounds.sniffing"),
+					value: sniffingCount,
+					tone: "bg-panel-accent",
+				},
+				{
+					key: "multiTarget",
+					label: t("inbounds.summary.multiTarget"),
+					value: multiTargetCount,
+					tone: "bg-panel-success",
+				},
+			],
+			distribution: { label: t("userDialog.protocols"), segments },
+			extra: {
 				label: isFiltered ? t("summary.filteredUsage") : t("summary.usage"),
 				value: SizeFormatter.sizeFormat(totals.total),
-				colorScheme: "blue",
-				helper: `↑ ${SizeFormatter.sizeFormat(totals.upload)} · ↓ ${SizeFormatter.sizeFormat(totals.download)}`,
+				caption: `↑ ${SizeFormatter.sizeFormat(totals.uploadSpeed)}/s · ↓ ${SizeFormatter.sizeFormat(totals.downloadSpeed)}/s`,
 			},
-			{
-				label: t("summary.speed"),
-				value: `↑ ${SizeFormatter.sizeFormat(totals.uploadSpeed)}/s · ↓ ${SizeFormatter.sizeFormat(totals.downloadSpeed)}/s`,
-				colorScheme: "cyan",
-			},
-			{
-				label: t("usersPage.filtered"),
-				value: filtered.length,
-				colorScheme: "teal",
-			},
-		];
+		};
 	}, [filtered, inbounds, speeds, t]);
 
+	const [inboundSorting, setInboundSorting] = useState<SortingState>([]);
 	const inboundColumns = useMemo<DataTableColumn<RawInbound>[]>(
 		() => [
 			{
@@ -534,32 +544,43 @@ export const InboundsManager: FC = () => {
 				accessor: "tag",
 				isPrimary: true,
 				priority: "primary",
-				width: "220px",
-				minWidth: "180px",
+				width: "168px",
+				minWidth: "130px",
 				maxWidth: "260px",
 				truncate: true,
 				tooltip: true,
 				mobilePriority: 0,
 				mobileMetaLabel: t("inbounds.tag"),
 				cell: (inbound) => (
-					<Stack spacing={0.5} minW={0}>
-						<Text fontWeight="semibold" noOfLines={1}>
+					<div className="flex flex-col gap-0.5 min-w-0!">
+						<p className="font-semibold truncate">
 							{inbound.tag}
-						</Text>
+						</p>
 						{inbound.validation_error && (
-							<Tooltip label={inbound.validation_error} hasArrow>
-								<Stack spacing={1} align="start">
-									<Tag size="sm" colorScheme="red">{t("diagnostics.broken")}</Tag>
-									<Text fontSize="xs" color="red.400" noOfLines={2}>{inbound.validation_error}</Text>
-								</Stack>
+							<Tooltip>
+<TooltipTrigger asChild>
+								<div className="flex flex-col gap-1 items-start">
+									<Badge className="bg-destructive/10 text-destructive">{t("diagnostics.broken")}</Badge>
+									<p className="text-[0.75rem] text-red-400 line-clamp-2">{inbound.validation_error}</p>
+								</div>
+							</TooltipTrigger>
+<TooltipContent>{inbound.validation_error}</TooltipContent>
+</Tooltip>
+						)}
+						{!inbound.validation_error && inbound.compatibility_warning && (
+							<Tooltip>
+								<TooltipTrigger asChild>
+									<p className="text-[0.75rem] text-amber-500 line-clamp-2">{inbound.compatibility_warning}</p>
+								</TooltipTrigger>
+								<TooltipContent>{inbound.compatibility_warning}</TooltipContent>
 							</Tooltip>
 						)}
 						{inbound.listen && (
-							<Text fontSize="xs" color="panel.textMuted" noOfLines={1}>
+							<p className="text-[0.75rem] text-panel-text-muted truncate">
 								{inbound.listen}
-							</Text>
+							</p>
 						)}
-					</Stack>
+					</div>
 				),
 			},
 			{
@@ -567,14 +588,14 @@ export const InboundsManager: FC = () => {
 				header: t("protocol"),
 				accessor: "protocol",
 				priority: "high",
-				width: "120px",
+				width: "108px",
 				maxWidth: "140px",
 				mobilePriority: 1,
 				mobileMetaLabel: t("protocol"),
 				cell: (inbound) => (
-					<Tag size="sm" colorScheme="purple" textTransform="uppercase">
+					<Badge className={cn("bg-purple-100 text-purple-800 hover:bg-purple-200 dark:bg-purple-500/20 dark:text-purple-200", "uppercase")}>
 						{inbound.protocol}
-					</Tag>
+					</Badge>
 				),
 			},
 			{
@@ -582,21 +603,22 @@ export const InboundsManager: FC = () => {
 				header: t("port"),
 				accessor: "port",
 				priority: "high",
-				width: "92px",
+				width: "84px",
 				maxWidth: "110px",
 				mobilePriority: 2,
 				mobileMetaLabel: t("port"),
 				cell: (inbound) => (
-					<Text fontWeight="semibold" dir="ltr" sx={{ unicodeBidi: "isolate" }}>
+					<p dir="ltr" className="font-semibold [unicode-bidi:isolate]">
 						{inbound.port}
-					</Text>
+					</p>
 				),
 			},
 			{
 				id: "network",
+				sortValue: (inbound) => String(inbound.streamSettings?.network ?? ""),
 				header: t("inbounds.network"),
 				priority: "medium",
-				width: "110px",
+				width: "98px",
 				maxWidth: "130px",
 				mobilePriority: 3,
 				mobileMetaLabel: t("inbounds.network"),
@@ -604,25 +626,27 @@ export const InboundsManager: FC = () => {
 			},
 			{
 				id: "security",
+				sortValue: (inbound) => String(inbound.streamSettings?.security ?? ""),
 				header: t("inbounds.security"),
 				priority: "medium",
-				width: "120px",
+				width: "108px",
 				maxWidth: "140px",
 				mobilePriority: 4,
 				mobileMetaLabel: t("inbounds.security"),
 				cell: (inbound) => {
 					const security = inbound.streamSettings?.security;
 					return security && security !== "none" ? (
-						<Tag size="sm" colorScheme="blue">
+						<Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200 dark:bg-blue-500/20 dark:text-blue-200">
 							{security}
-						</Tag>
+						</Badge>
 					) : (
-						<Text color="panel.textMuted">-</Text>
+						<p className="text-panel-text-muted">-</p>
 					);
 				},
 			},
 			{
 				id: "traffic",
+				sortValue: (inbound) => getInboundTraffic(inbound).total,
 				header: t("inbounds.traffic"),
 				priority: "medium",
 				width: "175px",
@@ -632,28 +656,23 @@ export const InboundsManager: FC = () => {
 				cell: (inbound) => {
 					const traffic = getInboundTraffic(inbound);
 					return (
-						<HStack
-							spacing={3}
-							whiteSpace="nowrap"
-							fontSize="xs"
-							dir="ltr"
-							sx={{
-								fontVariantNumeric: "tabular-nums",
-								unicodeBidi: "isolate",
-							}}
-						>
-							<Text color="teal.400">
+						<div dir="ltr" className="rb-stat-pair flex flex-row items-center gap-3 whitespace-nowrap text-[0.75rem] [font-variant-numeric:tabular-nums] [unicode-bidi:isolate]">
+							<p className="text-teal-400">
 								↑ {SizeFormatter.sizeFormat(traffic.upload)}
-							</Text>
-							<Text color="blue.400">
+							</p>
+							<p className="text-blue-400">
 								↓ {SizeFormatter.sizeFormat(traffic.download)}
-							</Text>
-						</HStack>
+							</p>
+						</div>
 					);
 				},
 			},
 			{
 				id: "speed",
+				sortValue: (inbound) => {
+					const speed = speeds[inbound.tag];
+					return (speed?.upload_speed ?? 0) + (speed?.download_speed ?? 0);
+				},
 				header: t("inbounds.speed"),
 				priority: "medium",
 				width: "175px",
@@ -663,28 +682,23 @@ export const InboundsManager: FC = () => {
 				cell: (inbound) => {
 					const speed = speeds[inbound.tag];
 					return (
-						<HStack
-							spacing={3}
-							whiteSpace="nowrap"
-							fontSize="xs"
-							dir="ltr"
-							sx={{
-								fontVariantNumeric: "tabular-nums",
-								unicodeBidi: "isolate",
-							}}
-						>
-							<Text color="teal.400">
+						<div dir="ltr" className="rb-stat-pair flex flex-row items-center gap-3 whitespace-nowrap text-[0.75rem] [font-variant-numeric:tabular-nums] [unicode-bidi:isolate]">
+							<p className="text-teal-400">
 								↑ {SizeFormatter.sizeFormat(speed?.upload_speed ?? 0)}/s
-							</Text>
-							<Text color="blue.400">
+							</p>
+							<p className="text-blue-400">
 								↓ {SizeFormatter.sizeFormat(speed?.download_speed ?? 0)}/s
-							</Text>
-						</HStack>
+							</p>
+						</div>
 					);
 				},
 			},
 			{
 				id: "sniffing",
+				sortValue: (inbound) =>
+					supportsSniffing(inbound.protocol) && inbound.sniffing?.enabled
+						? 1
+						: 0,
 				header: t("inbounds.sniffing"),
 				priority: "low",
 				hideBelow: "xl",
@@ -693,23 +707,37 @@ export const InboundsManager: FC = () => {
 				mobilePriority: 6,
 				mobileMetaLabel: t("inbounds.sniffing"),
 				cell: (inbound) =>
-					inbound.sniffing?.enabled ? (
-						<Tag size="sm" colorScheme="green">
+					!supportsSniffing(inbound.protocol) ? (
+						<span className="text-muted-foreground">–</span>
+					) : inbound.sniffing?.enabled ? (
+						<Badge className="bg-green-600 text-white">
 							{t("inbounds.sniffingEnabled")}
-						</Tag>
+						</Badge>
 					) : (
-						<Tag size="sm" colorScheme="gray">
+						<Badge className="bg-gray-100 text-gray-800 hover:bg-gray-200 dark:bg-gray-500/20 dark:text-gray-200">
 							{t("inbounds.sniffingDisabled")}
-						</Tag>
+						</Badge>
 					),
 			},
 			{
+				id: "tags",
+				header: t("tags.title"),
+				priority: "low",
+				hideBelow: "lg",
+				width: "170px",
+				maxWidth: "220px",
+				mobilePriority: 8,
+				mobileMetaLabel: t("tags.title"),
+				cell: (inbound) => <TagChips tags={inboundLabels?.items[inbound.tag]?.tags} limit={2} />,
+			},
+			{
 				id: "targets",
+				sortValue: (inbound) => getInboundTargetIds(inbound).length,
 				header: t("inbounds.targets"),
 				priority: "low",
 				hideBelow: "lg",
-				width: "210px",
-				maxWidth: "260px",
+				width: "140px",
+				maxWidth: "176px",
 				mobilePriority: 7,
 				mobileMetaLabel: t("inbounds.targets"),
 				cell: (inbound) => {
@@ -724,32 +752,30 @@ export const InboundsManager: FC = () => {
 					);
 
 					return (
-						<Tooltip
-							label={targetLabels.join(", ")}
-							isDisabled={targetLabels.length <= 3}
-							hasArrow
-							placement="top"
-						>
-							<HStack spacing={1} flexWrap="wrap" maxW="full">
+						<Tooltip>
+<TooltipTrigger asChild>
+							<div className="rb-chip-list flex flex-row items-center gap-1 flex-wrap max-w-full">
 								{visibleTargets.map((targetId) => (
-									<Tag key={targetId} size="sm" maxW="80px">
-										<Text as="span" noOfLines={1}>
+									<Badge key={targetId} className="max-w-[80px]">
+										<span className="truncate">
 											{targetNameById[targetId] || targetId}
-										</Text>
-									</Tag>
+										</span>
+									</Badge>
 								))}
 								{hiddenCount > 0 && (
-									<Tag size="sm" colorScheme="blue">
+									<Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200 dark:bg-blue-500/20 dark:text-blue-200">
 										+{hiddenCount}
-									</Tag>
+									</Badge>
 								)}
-							</HStack>
-						</Tooltip>
+							</div>
+						</TooltipTrigger>
+<TooltipContent>{targetLabels.join(", ")}</TooltipContent>
+</Tooltip>
 					);
 				},
 			},
 		],
-		[t, targetNameById, speeds],
+		[t, targetNameById, speeds, inboundLabels],
 	);
 
 	const inboundRowActions = (
@@ -758,134 +784,86 @@ export const InboundsManager: FC = () => {
 		{
 			id: "edit",
 			label: t("edit"),
-			icon: <PencilIcon width={16} />,
+			icon: <Pencil className="w-[16px]" />,
 			onClick: () => openEdit(inbound),
 		},
 		{
 			id: "reset-usage",
 			label: t("inbounds.resetUsage"),
-			icon: <ArrowPathIcon width={16} />,
+			icon: <RefreshCw className="w-[16px]" />,
 			onClick: () => {
 				setResetTarget(inbound);
 				resetDialog.onOpen();
 			},
-			isDisabled: isMutating,
+			disabled: isMutating,
 		},
 		{
 			id: "delete",
 			label: t("delete"),
-			icon: <TrashIcon width={16} />,
+			icon: <Trash2 className="w-[16px]" />,
 			isDanger: true,
-			render: (_row, onMenuClose) => (
-				<DeleteConfirmDialog
-					description={t("inbounds.confirmDelete", {
-						tag: inbound.tag,
-					})}
-					isLoading={isMutating}
-					onConfirm={async () => {
-						await handleDelete(inbound);
-						onMenuClose();
-					}}
-				>
-					<MenuItem
-						icon={<TrashIcon width={16} />}
-						color="red.400"
-						isDisabled={isMutating}
-						onClick={(event) => event.stopPropagation()}
-					>
-						{t("delete")}
-					</MenuItem>
-				</DeleteConfirmDialog>
-			),
+			onClick: () => setDeleteTarget(inbound),
 		},
 	];
 
 	return (
-		<Stack spacing={4}>
-			<ResourceListCard
-				title={t("inbounds.listHeader")}
-				summaryItems={inboundSummaryItems}
-				actions={
-					<Button
-						leftIcon={<PlusIcon width={18} height={18} />}
-						onClick={openCreate}
-						colorScheme="primary"
-						size="sm"
-						h="36px"
-						px={3}
-						borderRadius="4px"
-					>
-						{t("inbounds.add")}
-					</Button>
-				}
-				footerActions={
-					<ResourceRefreshButton
-						aria-label={t("inbounds.refresh")}
-						label={t("inbounds.refresh")}
-						icon={<ArrowPathIcon width={16} />}
-						isLoading={isLoading}
-						onClick={loadInbounds}
-					/>
-				}
-			>
-				<Stack
-					direction={{ base: "column", md: "row" }}
-					spacing={2}
-					align={{ base: "stretch", md: "center" }}
-					flexWrap="wrap"
-				>
-					<SearchInput
-						containerProps={{ w: { base: "full", md: "320px" } }}
-						placeholder={t("inbounds.searchPlaceholder")}
-						value={filter.search}
-						onChange={(event) =>
+		<div className="flex flex-col gap-4">
+			<div className="border border-panel-border! bg-panel-surface rounded-xl overflow-hidden">
+				<OverviewBand
+					total={inboundOverview.total}
+					rows={inboundOverview.rows}
+					distribution={inboundOverview.distribution}
+					extra={inboundOverview.extra}
+					locale={locale}
+				/>
+				<div className="border-t border-panel-border! p-3">
+					<div className="flex flex-col gap-2 md:flex-row md:items-center">
+						<div className="min-w-0 flex-1"><div className="flex flex-col gap-2 md:flex-row md:items-center">
+					<div className="flex min-w-0 flex-1 flex-row items-center gap-2">
+					<SearchInput containerProps={{ className: "min-w-0 flex-1 md:w-[320px] md:flex-none" }} placeholder={t("inbounds.searchPlaceholder")} value={filter.search} onChange={(event) =>
 							setFilter((prev) => ({ ...prev, search: event.target.value }))
-						}
-						matchOptions={searchMatch}
-						onMatchOptionsChange={setSearchMatch}
+						} matchOptions={searchMatch} onMatchOptionsChange={setSearchMatch} />
+					<DataTableSortMenu
+						options={buildSortOptions(inboundColumns, filtered)}
+						sorting={inboundSorting}
+						onSortingChange={setInboundSorting}
 					/>
-					<SearchableTagSelect
-						size="sm"
-						width="190px"
-						value={filter.protocol}
-						options={[
+					</div>
+					<TagFilterButton type="inbound" value={tagFilter} onChange={setTagFilter} />
+					<div className="md:flex md:flex-row">
+					<SearchableTagSelect size="sm" value={filter.protocol} options={[
 							{
 								value: "all",
 								label: t("inbounds.filterProtocol"),
 							},
 							...protocolOptions.map((option) => ({
 								value: option,
-								label: option.toUpperCase(),
+								label: protocolLabel(option),
 							})),
-						]}
-						placeholder={t("inbounds.filterProtocol")}
-						onChange={(value) =>
+						]} placeholder={t("inbounds.filterProtocol")} onChange={(value) =>
 							setFilter((prev) => ({ ...prev, protocol: String(value) }))
-						}
-					/>
-					<SearchableTagSelect
-						size="sm"
-						width="190px"
-						value={filter.traffic}
-						options={[
-							{ value: "default", label: t("trafficSort.default") },
-							{ value: "highest", label: t("trafficSort.highest") },
-							{ value: "lowest", label: t("trafficSort.lowest") },
-						]}
-						placeholder={t("trafficSort.label")}
-						onChange={(value) =>
-							setFilter((prev) => ({
-								...prev,
-								traffic: String(value) as TrafficSortOrder,
-							}))
-						}
-					/>
-				</Stack>
-			</ResourceListCard>
+						} className="w-full md:w-[190px]" />
+					</div>
+				</div></div>
+						<div className="flex shrink-0 items-center justify-end gap-1">
+							<ResourceRefreshButton
+								aria-label={t("inbounds.refresh")}
+								label={t("inbounds.refresh")}
+								icon={<RefreshCw className="w-[16px]" />}
+								loading={isLoading}
+								onClick={loadInbounds}
+							/>
+							<Button onClick={openCreate} size="sm" className="h-[36px] px-3 rounded-[4px]">{<Plus className="w-[18px] h-[18px]" />}
+								{t("inbounds.add")}
+							</Button>
+						</div>
+					</div>
+				</div>
+			</div>
 
 			{error && (
-				<Alert status="error">
-					<AlertIcon />
+				<Alert variant="destructive">
+					<CircleAlert className="size-4" aria-hidden="true" />
 					{error}
 				</Alert>
 			)}
@@ -894,19 +872,22 @@ export const InboundsManager: FC = () => {
 				ariaLabel={t("hostsPage.tabInbounds")}
 				data={filtered}
 				columns={inboundColumns}
+				sorting={inboundSorting}
+				onSortingChange={setInboundSorting}
+				showSortMenu={false}
 				getRowId={(inbound) => inbound.tag}
-				isLoading={isLoading}
+				loading={isLoading}
 				loadingRows={5}
 				emptyState={
-					<Box textAlign="center" color="panel.textMuted">
+					<div className="text-center text-panel-text-muted">
 						{t("inbounds.emptyState")}
-					</Box>
+					</div>
 				}
 				rowActions={inboundRowActions}
-				actionsDisplay="menu"
+
 				actionsPlacement="end"
 				actionsColumnWidth="60px"
-				showActionsOnHover
+
 				enableSelection
 				selectedRowIds={selectedInboundTags}
 				selectedCount={selectedInboundTags.length}
@@ -919,39 +900,22 @@ export const InboundsManager: FC = () => {
 						description={t("inbounds.confirmBulkDelete", {
 							count: selectedRows.length,
 						})}
-						isLoading={isMutating}
-						isDisabled={selectedRows.length === 0}
+						loading={isMutating}
+						disabled={selectedRows.length === 0}
 						onConfirm={() => handleBulkDelete(selectedRows)}
 					>
-						<Button
-							size="sm"
-							variant="outline"
-							colorScheme="red"
-							leftIcon={<TrashIcon width={16} />}
-							isLoading={isMutating}
-							isDisabled={selectedRows.length === 0}
-						>
+						<Button disabled={selectedRows.length === 0} variant="outline" size="sm" loading={isMutating} className="border border-destructive/50 bg-transparent text-destructive hover:bg-destructive/10">{<Trash2 className="w-[16px]" />}
 							{t("delete")}
 						</Button>
 					</DeleteConfirmDialog>
 				)}
 				mobileBreakpoint="md"
-				tableProps={{
-					w: "full",
-					sx: {
-						tableLayout: "fixed",
-						"& th, & td": {
-							px: { base: 2, xl: 2.5 },
-							py: 2.5,
-							verticalAlign: "middle",
-						},
-					},
-				}}
+				tableProps={{ className: "w-full [table-layout:fixed] [&_th]:px-2 [&_td]:px-2 [&_th]:py-2.5 [&_td]:py-2.5 [&_th]:align-middle [&_td]:align-middle xl:[&_th]:px-2.5 xl:[&_td]:px-2.5" }}
 			/>
 
 			{isOpen && (
 				<InboundFormModal
-					isOpen={isOpen}
+					open={isOpen}
 					mode={drawerMode}
 					initialValue={selected}
 					isSubmitting={isMutating}
@@ -966,7 +930,7 @@ export const InboundsManager: FC = () => {
 			)}
 			{cloneDrawer.isOpen && (
 				<InboundFormModal
-					isOpen={cloneDrawer.isOpen}
+					open={cloneDrawer.isOpen}
 					mode="clone"
 					initialValue={cloneTarget}
 					isSubmitting={isMutating}
@@ -980,7 +944,7 @@ export const InboundsManager: FC = () => {
 				/>
 			)}
 			<ConfirmDialog
-				isOpen={resetDialog.isOpen}
+				open={resetDialog.isOpen}
 				onClose={() => {
 					if (isMutating) return;
 					setResetTarget(null);
@@ -993,9 +957,26 @@ export const InboundsManager: FC = () => {
 				})}
 				confirmLabel={t("inbounds.resetUsage")}
 				colorScheme="red"
-				isLoading={isMutating}
+				loading={isMutating}
 				isConfirmDisabled={!resetTarget}
 			/>
-		</Stack>
+			<ConfirmDialog
+				open={Boolean(deleteTarget)}
+				onClose={() => {
+					if (isMutating) return;
+					setDeleteTarget(null);
+				}}
+				onConfirm={async () => {
+					if (!deleteTarget) return;
+					await handleDelete(deleteTarget);
+					setDeleteTarget(null);
+				}}
+				title={t("common.confirmAction")}
+				description={t("inbounds.confirmDelete", { tag: deleteTarget?.tag ?? "" })}
+				confirmLabel={t("delete")}
+				colorScheme="red"
+				loading={isMutating}
+			/>
+		</div>
 	);
 };

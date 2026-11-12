@@ -1,10 +1,10 @@
-import { Box, Text } from "@chakra-ui/react";
+import { cn } from "lib/cn";
 import type { ReactNode } from "react";
 
 export const ExpandedDetails = ({ children }: { children: ReactNode }) => (
-	<Box className="rb-resource-details" data-density="compact">
+	<div data-density="compact" className="rb-resource-details">
 		{children}
-	</Box>
+	</div>
 );
 
 export const ExpandedHeading = ({
@@ -14,31 +14,26 @@ export const ExpandedHeading = ({
 	title: ReactNode;
 	first?: boolean;
 }) => (
-	<Text
-		gridColumn="1 / -1"
-		fontSize="xs"
-		fontWeight="semibold"
-		color="panel.textSecondary"
-		pt={first ? 0 : 3}
-		pb={1}
-	>
+	<p className={cn("[grid-column:1_/_-1] flex items-center gap-2 pb-0.5 text-[0.6875rem] font-semibold uppercase tracking-[0.08em] text-panel-text-muted after:h-px after:flex-1 after:bg-panel-border", first ? "pt-0" : "pt-2")}>
 		{title}
-	</Text>
+	</p>
 );
 
 export const ExpandedMeta = ({
 	label,
 	value,
+	wide,
 }: {
 	label: ReactNode;
 	value: ReactNode;
+	wide?: boolean;
 }) => (
-	<Box className="rb-resource-meta" minW={0}>
-		<Text as="span" color="panel.textMuted">
+	<div className={cn("min-w-0! rb-resource-meta", wide && "[grid-column:1_/_-1]")}>
+		<span className="text-panel-text-muted">
 			{label}
-		</Text>
-		<Box className="rb-resource-meta-value" color="panel.text">
+		</span>
+		<div className="text-panel-text rb-resource-meta-value">
 			{value}
-		</Box>
-	</Box>
+		</div>
+	</div>
 );

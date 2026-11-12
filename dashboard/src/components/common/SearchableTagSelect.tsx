@@ -12,7 +12,7 @@ export type SearchableTagSelectOption =
 
 type SearchableTagSelectProps = {
 	emptyText?: string;
-	isDisabled?: boolean;
+	disabled?: boolean;
 	mode?: "single" | "multiple";
 	onChange: (value: string | string[]) => void;
 	options: SearchableTagSelectOption[];
@@ -22,6 +22,7 @@ type SearchableTagSelectProps = {
 	size?: "sm" | "md";
 	value: string | string[];
 	width?: string;
+	className?: string;
 };
 
 const normalizeOption = (
@@ -44,7 +45,7 @@ const normalizeOption = (
 
 export const SearchableTagSelect = ({
 	emptyText = "No options found",
-	isDisabled = false,
+	disabled: isDisabled,
 	mode = "single",
 	onChange,
 	options,
@@ -54,6 +55,7 @@ export const SearchableTagSelect = ({
 	size = "sm",
 	value,
 	width,
+	className,
 }: SearchableTagSelectProps) => (
 	<PanelSelect
 		mode={mode}
@@ -63,9 +65,9 @@ export const SearchableTagSelect = ({
 		rightElement={rightElement}
 		searchPlaceholder={searchPlaceholder}
 		emptyText={emptyText}
-		isDisabled={isDisabled}
+		disabled={isDisabled}
 		size={size}
-		width={width}
+		className={className} style={{ width }}
 		onValueChange={onChange}
 	/>
 );

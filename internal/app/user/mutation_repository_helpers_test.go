@@ -10,7 +10,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func TestActiveNodeIDsTxOnlyReturnsConnectedNodes(t *testing.T) {
+func TestActiveNodeIDsTxReturnsNodesThatCanReceiveQueuedUserOperations(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "user-active-nodes.db")+"?_pragma=busy_timeout(30000)")
 	if err != nil {
@@ -30,7 +30,8 @@ VALUES
 	(3, 'connecting'),
 	(4, 'disabled'),
 	(5, 'limited'),
-	(6, NULL);
+	(6, NULL),
+	(7, 'deleted');
 `)
 	if err != nil {
 		t.Fatal(err)
@@ -47,8 +48,14 @@ VALUES
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(nodeIDs) != 1 || nodeIDs[0] != 1 {
-		t.Fatalf("expected only connected node, got %#v", nodeIDs)
+	want := []int64{1, 2, 3, 6}
+	if len(nodeIDs) != len(want) {
+		t.Fatalf("expected nodes %v, got %#v", want, nodeIDs)
+	}
+	for i := range want {
+		if nodeIDs[i] != want[i] {
+			t.Fatalf("expected nodes %v, got %#v", want, nodeIDs)
+		}
 	}
 }
 

@@ -43,7 +43,7 @@ jobs:
       - name: Setup Node.js 20 LTS
         uses: actions/setup-node@v6
         with:
-          node-version: "20"
+          node-version: "22"
           cache: npm
           cache-dependency-path: ${{ env.DASH_DIR }}/package-lock.json
 
@@ -130,13 +130,13 @@ jobs:
           path: dashboard/build
 
       - name: Set up Go
-        if: matrix.asset_arch == 'amd64' || github.ref_type == 'tag' || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.full_matrix == true)
+        if: matrix.asset_arch == 'amd64' || matrix.asset_arch == 'arm64' || github.ref_type == 'tag' || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.full_matrix == true)
         uses: actions/setup-go@v6
         with:
           go-version-file: "go.mod"
 
       - name: Build Linux binary package
-        if: matrix.asset_arch == 'amd64' || github.ref_type == 'tag' || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.full_matrix == true)
+        if: matrix.asset_arch == 'amd64' || matrix.asset_arch == 'arm64' || github.ref_type == 'tag' || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.full_matrix == true)
         shell: bash
         env:
           ASSET_NAME: rebecca-linux-${{ matrix.asset_arch }}.tar.gz
@@ -150,7 +150,7 @@ jobs:
           sha256sum "dist/${ASSET_NAME}"
 
       - name: Upload Linux package artifact
-        if: matrix.asset_arch == 'amd64' || github.ref_type == 'tag' || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.full_matrix == true)
+        if: matrix.asset_arch == 'amd64' || matrix.asset_arch == 'arm64' || github.ref_type == 'tag' || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.full_matrix == true)
         uses: actions/upload-artifact@v4
         with:
           name: rebecca-linux-${{ matrix.asset_arch }}
@@ -268,7 +268,7 @@ jobs:
       - build-linux
       - build-windows-amd64
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     if: github.event_name == 'push' && github.ref_name == 'dev'
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -315,6 +315,33 @@ jobs:
             exit 1
           fi
           echo "build_tag=${build_tag}" >> "${GITHUB_OUTPUT}"
+
+      - name: Prune old dev build assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          keep_builds=49
+          if ! gh release view "${DEV_RELEASE_TAG}" >/dev/null 2>&1; then
+            exit 0
+          fi
+          gh release view "${DEV_RELEASE_TAG}" --json assets -q '.assets' > dev-assets.json
+          jq -r --argjson keep "${keep_builds}" '
+            [ .[]
+              | select(.name | test("-dev-[0-9a-f]+\\.(tar\\.gz|zip)$"))
+              | {
+                  id: (.apiUrl | split("/") | last),
+                  created: .createdAt,
+                  tag: (.name | capture("-dev-(?<t>[0-9a-f]+)\\.(tar\\.gz|zip)$").t)
+                } ]
+            | group_by(.tag)
+            | map({created: (map(.created) | max), ids: map(.id)})
+            | sort_by(.created)
+            | reverse
+            | .[$keep:][]
+            | .ids[]
+          ' dev-assets.json > dev-assets-to-prune.txt
+          echo "Pruning $(wc -l < dev-assets-to-prune.txt | tr -d ' ') old dev build asset(s), keeping the newest ${keep_builds} builds"
+          xargs -r -P 6 -I{} bash -c 'gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/$1" >/dev/null || echo "::warning::could not delete old dev asset $1"' _ {} < dev-assets-to-prune.txt
 
       - name: Publish dev build assets
         shell: bash
@@ -433,4 +460,12 @@ jobs:
           git -C dev-manifest config user.name "github-actions[bot]"
           git -C dev-manifest config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git -C dev-manifest commit -m "Update dev binary build manifest [skip ci]"
-          git -C dev-manifest push origin "HEAD:${DEV_MANIFEST_BRANCH}"
+          for attempt in 1 2 3 4; do
+            if git -C dev-manifest push origin "HEAD:${DEV_MANIFEST_BRANCH}"; then
+              exit 0
+            fi
+            git -C dev-manifest fetch origin "${DEV_MANIFEST_BRANCH}"
+            git -C dev-manifest rebase "origin/${DEV_MANIFEST_BRANCH}" || git -C dev-manifest rebase --abort
+            sleep $((attempt * 5))
+          done
+          exit 1

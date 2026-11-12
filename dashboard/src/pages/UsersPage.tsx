@@ -1,34 +1,19 @@
-import {
-	Button,
-	chakra,
-	Flex,
-	HStack,
-	Menu,
-	MenuButton,
-	MenuItem,
-	MenuList,
-	Portal,
-	Spinner,
-	Text,
-	useToast,
-	VStack,
-} from "@chakra-ui/react";
-import {
-	ArrowPathIcon,
-	ChevronDownIcon,
-	LockClosedIcon,
-} from "@heroicons/react/24/outline";
+import { Button } from "components/ui/button";
+import { toast } from "components/ui/sonner";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+import { withClass } from "lib/withClass";
+import { RefreshCw, Lock } from "lucide-react";
+
 import { AppDialog } from "components/dialogs/AppDialog";
-import { ReloadIcon } from "components/Filters";
 import { Icon } from "components/Icon";
 import { Pagination } from "components/Pagination";
 import { UsersTable } from "components/UsersTable";
 import {
 	PageHeader,
 	PageLoadingSkeleton,
-	ResourceRefreshButton,
 } from "components/ui";
-import { UsersFilterBar } from "components/users";
+import { UsersCreateButton, UsersFilterBar } from "components/users";
+import { RefreshSplitButton } from "components/users/RefreshSplitButton";
 import { fetchInbounds, useDashboard } from "contexts/DashboardContext";
 import useGetUser from "hooks/useGetUser";
 import {
@@ -43,8 +28,6 @@ import {
 import { Trans, useTranslation } from "react-i18next";
 import { fetch } from "service/http";
 import { AdminStatus } from "types/Admin";
-
-const AUTO_REFRESH_INTERVALS = [3_000, 5_000, 10_000, 30_000] as const;
 
 const UserDialog = lazy(async () => ({
 	default: (await import("components/UserDialog")).UserDialog,
@@ -64,17 +47,13 @@ type OnlineUsersResponse =
 			speeds: Record<string, { upload_speed: number; download_speed: number }>;
 	  };
 
-const ResetIcon = chakra(ArrowPathIcon, {
-	baseStyle: { w: 5, h: 5 },
-});
+const ResetIcon = withClass(RefreshCw, "w-5 h-5");
 
-const DisabledIcon = chakra(LockClosedIcon, {
-	baseStyle: { h: 12, w: 12 },
-});
+const DisabledIcon = withClass(Lock, "h-12 w-12");
 
 const UserActionDialog: FC<{ action: "reset" | "revoke" }> = ({ action }) => {
 	const { t } = useTranslation();
-	const toast = useToast();
+	
 	const {
 		resetUsageUser,
 		revokeSubscriptionUser,
@@ -102,25 +81,13 @@ const UserActionDialog: FC<{ action: "reset" | "revoke" }> = ({ action }) => {
 			setLoading(true);
 			(isRevoke ? revokeSubscription(user) : resetDataUsage(user))
 				.then(() => {
-					toast({
-						title: t(
+					toast.success(t(
 							isRevoke ? "revokeUserSub.success" : "resetUserUsage.success",
 							{ username: user.username },
-						),
-						status: "success",
-						isClosable: true,
-						position: "top",
-						duration: 3000,
-					});
+						), { duration: 3000 });
 				})
 				.catch(() => {
-					toast({
-						title: t(isRevoke ? "revokeUserSub.error" : "resetUserUsage.error"),
-						status: "error",
-						isClosable: true,
-						position: "top",
-						duration: 3000,
-					});
+					toast.error(t(isRevoke ? "revokeUserSub.error" : "resetUserUsage.error"), { duration: 3000 });
 				})
 				.finally(() => {
 					setLoading(false);
@@ -129,54 +96,31 @@ const UserActionDialog: FC<{ action: "reset" | "revoke" }> = ({ action }) => {
 	};
 
 	return (
-		<AppDialog
-			isCentered
-			isOpen={Boolean(user)}
-			onClose={onClose}
-			size="sm"
-			title={
+		<AppDialog open={Boolean(user)} onClose={onClose} size="sm" title={
 				<Icon color="blue">
 					<ResetIcon />
 				</Icon>
-			}
-			overlayProps={{ bg: "blackAlpha.300" }}
-			contentProps={{ mx: "3" }}
-			headerProps={{ pt: 6 }}
-			closeButtonProps={{ mt: 3 }}
-			footerProps={{ display: "flex" }}
-			footer={
+			} contentProps={{ className: "mx-3" }} headerProps={{ className: "pt-6" }} footerProps={{ className: "flex" }} footer={
 				<>
-					<Button size="sm" onClick={onClose} mr={3} w="full" variant="outline">
+					<Button onClick={onClose} variant="outline" size="sm" className="flex-1">
 						{t("cancel")}
 					</Button>
-					<Button
-						size="sm"
-						w="full"
-						colorScheme="blue"
-						onClick={onSubmit}
-						leftIcon={loading ? <Spinner size="xs" /> : undefined}
-					>
+					<Button onClick={onSubmit} size="sm" loading={loading} className="flex-1 bg-blue-600 text-white shadow-xs hover:bg-blue-700">
 						{t(isRevoke ? "revoke" : "reset")}
 					</Button>
 				</>
-			}
-		>
-			<Text fontWeight="semibold" fontSize="lg">
+			}>
+			<p className="font-semibold text-[1.125rem]">
 				{t(isRevoke ? "revokeUserSub.title" : "resetUserUsage.title")}
-			</Text>
+			</p>
 			{user && (
-				<Text
-					mt={1}
-					fontSize="sm"
-					_dark={{ color: "gray.400" }}
-					color="gray.600"
-				>
+				<p className="mt-1 text-[0.875rem] dark:text-gray-400 text-gray-600">
 					<Trans components={{ b: <b /> }}>
 						{t(isRevoke ? "revokeUserSub.prompt" : "resetUserUsage.prompt", {
 							username: user.username,
 						})}
 					</Trans>
-				</Text>
+				</p>
 			)}
 		</AppDialog>
 	);
@@ -325,97 +269,39 @@ export const UsersPage: FC = () => {
 
 	if (isAdminDisabled) {
 		return (
-			<VStack spacing={5} align="stretch" dir={isRTL ? "rtl" : "ltr"}>
+			<div dir={isRTL ? "rtl" : "ltr"} className="flex flex-col gap-5 items-stretch">
 				<PageHeader title={t("users")} />
-				<Flex
-					align="center"
-					border="1px solid"
-					borderColor="panel.border"
-					borderRadius="8px"
-					direction="column"
-					justify="center"
-					minH="420px"
-					px={6}
-					py={10}
-					textAlign="center"
-				>
-					<DisabledIcon color="red.400" mb={5} />
-					<Text fontSize="xl" fontWeight="bold" mb={2}>
+				<div className="flex-col flex items-center border border-panel-border! rounded-[8px] justify-center min-h-[420px] px-6 py-10 text-center">
+					<DisabledIcon className="text-red-400 mb-5" />
+					<p className="text-[1.25rem] font-bold mb-2">
 						{t("usersTable.adminDisabledTitle")}
-					</Text>
-					<Text color="panel.textSecondary" maxW="520px">
+					</p>
+					<p className="text-panel-text-secondary max-w-[520px]">
 						{userData.disabled_reason ||
 							t("usersTable.adminDisabledDescription")}
-					</Text>
-				</Flex>
-			</VStack>
+					</p>
+				</div>
+			</div>
 		);
 	}
 
 	return (
-		<VStack
-			className="rb-users-section"
-			spacing={4}
-			align="stretch"
-			dir={isRTL ? "rtl" : "ltr"}
-		>
+		<div dir={isRTL ? "rtl" : "ltr"} className="flex flex-col gap-4 items-stretch rb-users-section">
 			<UsersTable
 				toolbar={<UsersFilterBar />}
 				headerActions={
-					<HStack spacing={1}>
-						<ResourceRefreshButton
-							aria-label={t("refresh")}
-							label={t("refresh")}
-							icon={<ReloadIcon />}
-							onClick={() => {
+					<>
+						<RefreshSplitButton
+							onRefresh={() => {
 								refetchUsers(true);
 								void refreshOnlineUsers();
 							}}
-							isLoading={loading}
+							loading={loading}
+							interval={autoRefreshInterval}
+							onIntervalChange={setAutoRefreshInterval}
 						/>
-						<Menu placement={isRTL ? "bottom-start" : "bottom-end"} isLazy>
-							<MenuButton
-								as={Button}
-								size="sm"
-								variant="ghost"
-								rightIcon={<ChevronDownIcon width={14} />}
-								aria-label={t("usersTable.autoRefresh")}
-								px={2}
-							>
-								{autoRefreshInterval
-									? `${t("usersTable.autoRefresh")} · ${autoRefreshInterval / 1000}s`
-									: t("usersTable.autoRefreshOff")}
-							</MenuButton>
-							<Portal>
-								<MenuList
-									zIndex={1800}
-									minW="170px"
-									bg="panel.surface"
-									borderColor="panel.border"
-								>
-									<MenuItem
-										onClick={() => setAutoRefreshInterval(0)}
-										fontWeight={autoRefreshInterval === 0 ? "bold" : "normal"}
-									>
-										{t("usersTable.autoRefreshOff")}
-									</MenuItem>
-									{AUTO_REFRESH_INTERVALS.map((interval) => (
-										<MenuItem
-											key={interval}
-											onClick={() => setAutoRefreshInterval(interval)}
-											fontWeight={
-												autoRefreshInterval === interval ? "bold" : "normal"
-											}
-										>
-											{t("usersTable.autoRefreshEvery", {
-												seconds: interval / 1000,
-											})}
-										</MenuItem>
-									))}
-								</MenuList>
-							</Portal>
-						</Menu>
-					</HStack>
+						<UsersCreateButton />
+					</>
 				}
 			/>
 			<Pagination />
@@ -436,7 +322,7 @@ export const UsersPage: FC = () => {
 					<UserQuickEditModal />
 				</Suspense>
 			)}
-		</VStack>
+		</div>
 	);
 };
 

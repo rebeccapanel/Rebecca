@@ -1,15 +1,10 @@
-import {
-	Box,
-	Button,
-	HStack,
-	Modal,
-	ModalCloseButton,
-	ModalOverlay,
-	Spacer,
-	Tag,
-	Text,
-	VStack,
-} from "@chakra-ui/react";
+import { toneClass } from "lib/tone";
+import { Badge } from "components/ui/badge";
+import { Button } from "components/ui/button";
+import { Dialog } from "components/ui/dialog";
+import { CircleAlert, CircleCheck, TriangleAlert } from "lucide-react";
+
+
 import type { FC } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -78,63 +73,50 @@ const DNS_PRESETS: DnsPreset[] = [
 ];
 
 interface DnsPresetsModalProps {
-	isOpen: boolean;
+	open: boolean;
 	onClose: () => void;
 	onSelectPreset: (servers: string[]) => void;
 }
 
 export const DnsPresetsModal: FC<DnsPresetsModalProps> = ({
-	isOpen,
+	open: isOpen,
 	onClose,
 	onSelectPreset,
 }) => {
 	const { t } = useTranslation();
 
 	return (
-		<Modal isOpen={isOpen} onClose={onClose} size="md">
-			<ModalOverlay bg="blackAlpha.400" />
-			<XrayModalContent mx="3">
+		<Dialog open={isOpen} onOpenChange={(open) => { if (!open) (onClose)(); }}>
+			
+			<XrayModalContent className="mx-3">
 				<XrayModalHeader>
 					{t("pages.xray.dns.dnsPresetTitle")}
 				</XrayModalHeader>
-				<ModalCloseButton />
-				<XrayModalBody pb={6}>
-					<VStack spacing={3} align="stretch">
+				
+				<XrayModalBody className="pb-6">
+					<div className="flex flex-col gap-3 items-stretch">
 						{DNS_PRESETS.map((preset) => (
-							<Box
-								key={preset.name}
-								className="xray-dialog-section"
-								borderWidth="1px"
-								borderRadius="md"
-								p={3}
-							>
-								<HStack spacing={3}>
-									<Tag
-										colorScheme={preset.family ? "purple" : "green"}
-										size="sm"
-									>
+							<div key={preset.name} className="border rounded-md p-3 xray-dialog-section">
+								<div className="flex flex-row items-center gap-3">
+									<Badge className={toneClass(preset.family ? "purple" : "green")}>
 										{preset.family
 											? t("pages.xray.dns.dnsPresetFamily")
 											: t("DNS")}
-									</Tag>
-									<Text fontWeight="semibold">{preset.name}</Text>
-									<Spacer />
-									<Button
-										size="xs"
-										colorScheme="primary"
-										onClick={() => {
+									</Badge>
+									<p className="font-semibold">{preset.name}</p>
+									<div className="flex-1" />
+									<Button onClick={() => {
 											onSelectPreset(preset.servers);
 											onClose();
-										}}
-									>
+										}} size="xs">
 										{t("install")}
 									</Button>
-								</HStack>
-							</Box>
+								</div>
+							</div>
 						))}
-					</VStack>
+					</div>
 				</XrayModalBody>
 			</XrayModalContent>
-		</Modal>
+		</Dialog>
 	);
 };

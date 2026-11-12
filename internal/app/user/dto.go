@@ -1,6 +1,10 @@
 package user
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/rebeccapanel/rebecca/internal/app/labels"
+)
 
 type AdminContext struct {
 	ID             *int64 `json:"id,omitempty"`
@@ -23,6 +27,9 @@ type UsersListRequest struct {
 	MatchCase       bool         `json:"match_case,omitempty"`
 	MatchWholeWord  bool         `json:"match_whole_word,omitempty"`
 	Owners          []string     `json:"owners,omitempty"`
+	GroupIDs        []int64      `json:"group_ids,omitempty"`
+	Tags            []string     `json:"tags,omitempty"`
+	TagMatchAll     bool         `json:"tag_match_all,omitempty"`
 	Status          string       `json:"status,omitempty"`
 	AdvancedFilters []string     `json:"advanced_filters,omitempty"`
 	ServiceID       *int64       `json:"service_id,omitempty"`
@@ -102,6 +109,8 @@ type UserListItem struct {
 	Links                  []string         `json:"links"`
 	SubscriptionURL        string           `json:"subscription_url"`
 	SubscriptionURLs       OrderedStringMap `json:"subscription_urls"`
+	Group                  *labels.Group    `json:"group"`
+	Tags                   []string         `json:"tags"`
 }
 
 type UsersResponse struct {
@@ -154,6 +163,8 @@ type UserDetail struct {
 	ServiceHostOrders      map[int64]int             `json:"service_host_orders"`
 	Credentials            map[string]string         `json:"credentials,omitempty"`
 	LinkData               []map[string]any          `json:"link_data,omitempty"`
+	Group                  *labels.Group             `json:"group"`
+	Tags                   []string                  `json:"tags"`
 }
 
 type OrderedStringMap struct {

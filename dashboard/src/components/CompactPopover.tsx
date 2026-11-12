@@ -1,30 +1,20 @@
-import {
-	Button,
-	chakra,
-	HStack,
-	IconButton,
-	Popover,
-	PopoverArrow,
-	PopoverBody,
-	PopoverCloseButton,
-	PopoverContent,
-	PopoverHeader,
-	PopoverTrigger,
-	Tag,
-	Text,
-	Tooltip,
-	useBreakpointValue,
-	useClipboard,
-	VStack,
-} from "@chakra-ui/react";
-import {
-	ClipboardIcon,
-	InformationCircleIcon,
-} from "@heroicons/react/24/outline";
+import { toneClass } from "lib/tone";
+import { Button } from "components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "components/ui/popover";
+import { Badge } from "components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "components/ui/tooltip";
+import { TriangleAlert } from "lucide-react";
+import { withClass } from "lib/withClass";
+import { cn } from "lib/cn";
+import { Clipboard, Info } from "lucide-react";
+import { useBreakpointValue } from "hooks/useBreakpointValue";
+
+import { useClipboard } from "hooks/useClipboard";
+
 import type React from "react";
 
-const InfoIcon = chakra(InformationCircleIcon, { baseStyle: { w: 4, h: 4 } });
-const CopyIcon = chakra(ClipboardIcon, { baseStyle: { w: 4, h: 4 } });
+const InfoIcon = withClass(Info, "w-4 h-4");
+const CopyIcon = withClass(Clipboard, "w-4 h-4");
 
 interface CompactPopoverProps {
 	triggerLabel?: React.ReactNode;
@@ -39,17 +29,17 @@ export const CompactPopover: React.FC<CompactPopoverProps> = ({
 }) => {
 	const isMobile = useBreakpointValue({ base: true, md: false });
 	return (
-		<Popover placement={isMobile ? "bottom" : "right"} isLazy>
-			<PopoverTrigger>
-				<Button size="xs" variant="outline">
+		<Popover>
+			<PopoverTrigger asChild>
+				<Button variant="outline" size="xs">
 					{triggerLabel ?? <InfoIcon />}
 				</Button>
 			</PopoverTrigger>
 			<PopoverContent>
-				<PopoverArrow />
-				<PopoverCloseButton />
-				{title && <PopoverHeader fontWeight="semibold">{title}</PopoverHeader>}
-				<PopoverBody>{children}</PopoverBody>
+				
+				
+				{title && <div className={cn("p-3 font-semibold", "font-semibold")}>{title}</div>}
+				<div className="p-3">{children}</div>
 			</PopoverContent>
 		</Popover>
 	);
@@ -62,29 +52,29 @@ export const CompactChips: React.FC<{ chips: string[]; color?: string }> = ({
 	const first = chips[0];
 	const rest = chips.slice(1);
 	return (
-		<HStack spacing={2} align="center">
+		<div className="flex flex-row gap-2 items-center">
 			{first ? (
-				<Tag size="sm" colorScheme={color}>
+				<Badge className={toneClass(color)}>
 					{first}
-				</Tag>
+				</Badge>
 			) : (
-				<Text color="gray.400">-</Text>
+				<p className="text-gray-400">-</p>
 			)}
 			{rest.length > 0 && (
 				<CompactPopover
-					triggerLabel={<Tag size="sm">+{rest.length}</Tag>}
+					triggerLabel={<Badge>+{rest.length}</Badge>}
 					title={"Details"}
 				>
-					<VStack align="stretch">
+					<div className="flex flex-col gap-2 items-stretch">
 						{chips.map((c) => (
-							<HStack key={c} justify="space-between">
-								<Text>{c}</Text>
-							</HStack>
+							<div key={c} className="flex flex-row items-center gap-2 justify-between">
+								<p>{c}</p>
+							</div>
 						))}
-					</VStack>
+					</div>
 				</CompactPopover>
 			)}
-		</HStack>
+		</div>
 	);
 };
 
@@ -96,21 +86,19 @@ export const CompactTextWithCopy: React.FC<{
 		text && text.length > 40 ? `${text.slice(0, 36)}...` : text || "-";
 	const { hasCopied, onCopy } = useClipboard(text ?? "");
 	return (
-		<HStack spacing={2} align="center">
+		<div className="flex flex-row gap-2 items-center">
 			<CompactPopover triggerLabel={display} title={label}>
-				<HStack align="start" spacing={2}>
-					<Tooltip label={hasCopied ? "Copied" : "Copy"} hasArrow>
-						<IconButton
-							aria-label={hasCopied ? "Copied" : "Copy"}
-							size="sm"
-							icon={<CopyIcon />}
-							onClick={onCopy}
-						/>
-					</Tooltip>
-					<Text wordBreak="break-all" pt={1.5}>{text}</Text>
-				</HStack>
+				<div className="flex flex-row items-start gap-2">
+					<Tooltip>
+<TooltipTrigger asChild>
+						<Button aria-label={hasCopied ? "Copied" : "Copy"} onClick={onCopy} size="sm" className="size-8 p-0">{<CopyIcon />}</Button>
+					</TooltipTrigger>
+<TooltipContent>{hasCopied ? "Copied" : "Copy"}</TooltipContent>
+</Tooltip>
+					<p className="break-all pt-1.5">{text}</p>
+				</div>
 			</CompactPopover>
-		</HStack>
+		</div>
 	);
 };
 

@@ -1,13 +1,9 @@
-import {
-	Box,
-	Checkbox,
-	HStack,
-	Spinner,
-	Stack,
-	Text,
-	Tooltip,
-} from "@chakra-ui/react";
-import { QuestionMarkCircleIcon } from "@heroicons/react/24/outline";
+import { Spinner } from "components/ui/spinner";
+import { Checkbox } from "components/ui/checkbox";
+import { Tooltip, TooltipContent, TooltipTrigger } from "components/ui/tooltip";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+import { CircleHelp } from "lucide-react";
+
 import { type FC, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -75,13 +71,13 @@ export const PropagationTargets: FC<PropagationTargetsProps> = ({
 	}, [targets, enabledIds, selectedIds, onChange]);
 
 	if (targets === null) {
-		return <Spinner size="sm" />;
+		return <Spinner />;
 	}
 	if (!targets.length) {
 		return (
-			<Text fontSize="sm" color="panel.textMuted">
+			<p className="text-[0.875rem] text-panel-text-muted">
 				{t("pages.xray.propagate.noCustomNodes")}
-			</Text>
+			</p>
 		);
 	}
 
@@ -97,47 +93,35 @@ export const PropagationTargets: FC<PropagationTargetsProps> = ({
 		);
 
 	return (
-		<Stack spacing={3}>
-			<Text fontSize="sm" color="panel.textMuted">
+		<div className="flex flex-col gap-3">
+			<p className="text-[0.875rem] text-panel-text-muted">
 				{t("pages.xray.propagate.hint")}
-			</Text>
-			<Checkbox
-				isDisabled={!enabledIds.length}
-				isChecked={allSelected}
-				isIndeterminate={someSelected}
-				onChange={() => onChange(allSelected ? [] : enabledIds)}
-			>
-				{t("pages.xray.propagate.selectAll")}
-			</Checkbox>
-			<Stack spacing={2}>
+			</p>
+			<label className="flex cursor-pointer items-center gap-2 text-sm"><Checkbox disabled={!enabledIds.length} checked={allSelected || (someSelected ? "indeterminate" : false)} onCheckedChange={() => onChange(allSelected ? [] : enabledIds)} /><span>{t("pages.xray.propagate.selectAll")}</span></label>
+			<div className="flex flex-col gap-2">
 				{targets.map((target) => {
 					const disabled = target.status !== "ok";
 					return (
-						<HStack key={target.id} justify="space-between">
-							<Checkbox
-								isDisabled={disabled}
-								isChecked={selectedIds.includes(target.id)}
-								onChange={(event) => toggle(target.id, event.target.checked)}
-							>
-								{target.name || target.id}
-							</Checkbox>
+						<div key={target.id} className="flex flex-row items-center gap-2 justify-between">
+							<label className="flex cursor-pointer items-center gap-2 text-sm"><Checkbox disabled={disabled} checked={selectedIds.includes(target.id)} onCheckedChange={(checked: boolean) => toggle(target.id, checked)} /><span>{target.name || target.id}</span></label>
 							{disabled && (
-								<Tooltip
-									label={t(
+								<Tooltip>
+<TooltipTrigger asChild>
+									<span className="text-panel-text-muted cursor-help">
+										<CircleHelp className="w-[16px] h-[16px]" />
+									</span>
+								</TooltipTrigger>
+<TooltipContent>{t(
 										statusMessageKeys[
 											target.status as keyof typeof statusMessageKeys
 										],
-									)}
-								>
-									<Box as="span" color="panel.textMuted" cursor="help">
-										<QuestionMarkCircleIcon width={16} height={16} />
-									</Box>
-								</Tooltip>
+									)}</TooltipContent>
+</Tooltip>
 							)}
-						</HStack>
+						</div>
 					);
 				})}
-			</Stack>
-		</Stack>
+			</div>
+		</div>
 	);
 };

@@ -17,7 +17,14 @@ export type AdminFilters = {
 	limit: number;
 	offset: number;
 	sort: string;
+	roleFilter: string;
+	statusFilter: string;
+	groups?: string[];
+	tags?: string[];
+	tagMatchAll?: boolean;
 };
+
+export type AdminDialogTab = "details" | "permissions" | "history";
 
 type AdminsStore = {
 	admins: Admin[];
@@ -32,6 +39,7 @@ type AdminsStore = {
 	filters: AdminFilters;
 	isAdminDialogOpen: boolean;
 	adminInDialog: Admin | null;
+	adminDialogInitialTab: AdminDialogTab;
 	fetchAdmins: (
 		overrides?: Partial<AdminFilters>,
 		options?: { force?: boolean },
@@ -55,8 +63,42 @@ type AdminsStore = {
 	bulkUpdateStandardPermissions: (
 		payload: StandardAdminPermissionsBulkPayload,
 	) => Promise<StandardAdminPermissionsBulkResponse>;
-	openAdminDialog: (admin?: Admin) => void;
+	openAdminDialog: (admin?: Admin, tab?: AdminDialogTab) => void;
 	closeAdminDialog: () => void;
+};
+
+const buildAdminQuery = (filters: AdminFilters) => {
+	const query: Record<string, string | number | string[]> = {};
+	if (filters.groups?.length) {
+		query.group_id = filters.groups;
+	}
+	if (filters.tags?.length) {
+		query.tag = filters.tags;
+		if (filters.tagMatchAll) {
+			query.tag_match = "all";
+		}
+	}
+	if (filters.search) {
+		query.username = filters.search;
+		query.match_case = String(filters.matchCase);
+		query.match_whole_word = String(filters.matchWholeWord);
+	}
+	if (filters.offset !== undefined) {
+		query.offset = filters.offset;
+	}
+	if (filters.limit !== undefined) {
+		query.limit = filters.limit;
+	}
+	if (filters.roleFilter) {
+		query.role = filters.roleFilter;
+	}
+	if (filters.statusFilter) {
+		query.status = filters.statusFilter;
+	}
+	if (filters.sort) {
+		query.sort = filters.sort;
+	}
+	return query;
 };
 
 const createDefaultFilters = (): AdminFilters => ({
@@ -66,6 +108,11 @@ const createDefaultFilters = (): AdminFilters => ({
 	limit: getAdminsPerPageLimitSize(),
 	offset: 0,
 	sort: "username",
+	roleFilter: "",
+	statusFilter: "",
+	groups: [],
+	tags: [],
+	tagMatchAll: false,
 });
 
 const isAbortError = (error: unknown): boolean => {
@@ -134,6 +181,7 @@ export const clearAdminsCache = () => {
 		filters: createDefaultFilters(),
 		isAdminDialogOpen: false,
 		adminInDialog: null,
+		adminDialogInitialTab: "details",
 	});
 };
 
@@ -150,6 +198,7 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 	filters: createDefaultFilters(),
 	isAdminDialogOpen: false,
 	adminInDialog: null,
+	adminDialogInitialTab: "details",
 	async fetchAdmins(overrides, options) {
 		const {
 			filters: stateFilters,
@@ -167,27 +216,7 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 			...stateFilters,
 			...overrides,
 		};
-		const query: Record<string, string | number> = {};
-		if (filters.search) {
-			query.username = filters.search;
-			query.match_case = String(filters.matchCase);
-			query.match_whole_word = String(filters.matchWholeWord);
-		}
-		if (filters.offset !== undefined) {
-			query.offset = filters.offset;
-		}
-		if (filters.limit !== undefined) {
-			query.limit = filters.limit;
-		}
-		if (filters.sort) {
-			if (filters.sort === "data_usage") {
-				query.sort = "users_usage";
-			} else if (filters.sort === "data_limit") {
-				query.sort = "data_limit";
-			} else {
-				query.sort = filters.sort;
-			}
-		}
+		const query = buildAdminQuery(filters);
 
 		const requestKey = JSON.stringify(query);
 		if (loading && currentRequestKey === requestKey && inflight) {
@@ -275,23 +304,11 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 			limit: 1000,
 			offset: 0,
 			sort: "username",
+			roleFilter: "",
+			statusFilter: "",
 			...overrides,
 		};
-		const query: Record<string, string | number> = {};
-		if (filters.search) {
-			query.username = filters.search;
-			query.match_case = String(filters.matchCase);
-			query.match_whole_word = String(filters.matchWholeWord);
-		}
-		if (filters.offset !== undefined) {
-			query.offset = filters.offset;
-		}
-		if (filters.limit !== undefined) {
-			query.limit = filters.limit;
-		}
-		if (filters.sort) {
-			query.sort = filters.sort;
-		}
+		const query = buildAdminQuery(filters);
 
 		if (
 			!force &&
@@ -434,8 +451,8 @@ export const useAdminsStore = create<AdminsStore>((set, get) => ({
 		await get().fetchAdminOptions(undefined, { force: true });
 		return response;
 	},
-	openAdminDialog(admin) {
-		set({ isAdminDialogOpen: true, adminInDialog: admin || null });
+	openAdminDialog(admin, tab) {
+		set({ isAdminDialogOpen: true, adminInDialog: admin || null, adminDialogInitialTab: tab ?? "details" });
 	},
 	closeAdminDialog() {
 		set({ isAdminDialogOpen: false, adminInDialog: null });

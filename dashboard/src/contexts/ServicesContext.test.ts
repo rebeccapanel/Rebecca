@@ -11,7 +11,7 @@ type PendingRequest = { resolve: (value: unknown) => void };
 describe("fetchServiceDetail", () => {
 	afterEach(() => {
 		vi.clearAllMocks();
-		useServicesStore.setState({ isLoading: false, serviceDetail: null });
+		useServicesStore.setState({ loading: false, serviceDetail: null });
 	});
 
 	it("keeps the newest service detail when requests finish out of order", async () => {
@@ -32,14 +32,14 @@ describe("fetchServiceDetail", () => {
 		expect(await first).toBeNull();
 
 		expect(useServicesStore.getState().serviceDetail).toMatchObject({ id: 2 });
-		expect(useServicesStore.getState().isLoading).toBe(false);
+		expect(useServicesStore.getState().loading).toBe(false);
 	});
 });
 
 describe("fetchServices", () => {
 	afterEach(() => {
 		vi.clearAllMocks();
-		useServicesStore.setState({ services: [], summaryServices: [], total: 0, isLoading: false });
+		useServicesStore.setState({ services: [], summaryServices: [], total: 0, loading: false });
 	});
 
 	it("requests the page it is given with its search", async () => {

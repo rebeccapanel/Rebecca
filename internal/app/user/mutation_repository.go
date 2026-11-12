@@ -39,6 +39,7 @@ type existingUserRow struct {
 	OnHoldExpireDuration *int64
 	OnlineAt             *string
 	SpeedLimitKbps       int64
+	IPLimit              int64
 }
 
 func (r Repository) createUserMutation(ctx context.Context, admin adminapp.Admin, payload UserCreate, serviceID *int64) (MutationResult, error) {
@@ -193,13 +194,15 @@ func (r Repository) updateUserMutation(ctx context.Context, admin adminapp.Admin
 		return MutationResult{}, err
 	}
 	catalog.ExistingUser = &UserSnapshot{
-		ID:          existing.ID,
-		Username:    existing.Username,
-		Status:      existing.Status,
-		UsedTraffic: existing.UsedTraffic,
-		DataLimit:   existing.DataLimit,
-		ServiceID:   existing.ServiceID,
-		AdminID:     existing.AdminID,
+		ID:             existing.ID,
+		Username:       existing.Username,
+		Status:         existing.Status,
+		UsedTraffic:    existing.UsedTraffic,
+		DataLimit:      existing.DataLimit,
+		ServiceID:      existing.ServiceID,
+		AdminID:        existing.AdminID,
+		SpeedLimitKbps: existing.SpeedLimitKbps,
+		IPLimit:        existing.IPLimit,
 	}
 	if err := ValidateUserModify(&payload, catalog); err != nil {
 		return MutationResult{}, clientError(400, err.Error())

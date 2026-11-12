@@ -10,7 +10,7 @@ export type RebeccaJsonContext =
 	| "routingRules"
 	| "routingRule";
 
-const isPlainObject = (value: unknown): value is JsonObject =>
+export const isPlainObject = (value: unknown): value is JsonObject =>
 	typeof value === "object" &&
 	value !== null &&
 	!Array.isArray(value);

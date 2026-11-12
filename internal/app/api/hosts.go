@@ -22,6 +22,7 @@ import (
 	"time"
 
 	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
+	"github.com/rebeccapanel/rebecca/internal/app/labels"
 	userapp "github.com/rebeccapanel/rebecca/internal/app/user"
 	"github.com/rebeccapanel/rebecca/internal/app/xrayconfig"
 )
@@ -40,6 +41,7 @@ var (
 const maxHostFinalMaskBytes = 64 << 10
 
 type hostPayload struct {
+	Tags                 *[]string      `json:"tags"`
 	ID                   *int64         `json:"id"`
 	Remark               string         `json:"remark"`
 	Address              string         `json:"address"`
@@ -75,6 +77,7 @@ type hostPayload struct {
 }
 
 type hostResponse struct {
+	Tags                 []string       `json:"tags"`
 	ID                   int64          `json:"id"`
 	Remark               string         `json:"remark"`
 	Address              string         `json:"address"`
@@ -314,7 +317,31 @@ func (s *Server) listHostsGrouped(r *http.Request) (map[string][]hostResponse, e
 		return nil, err
 	}
 
-	return queryHostsGroupedByInbound(r.Context(), s.db, tags)
+	grouped, err := queryHostsGroupedByInbound(r.Context(), s.db, tags)
+	if err != nil {
+		return nil, err
+	}
+	return grouped, s.attachHostTags(r.Context(), grouped)
+}
+
+func (s *Server) attachHostTags(ctx context.Context, grouped map[string][]hostResponse) error {
+	var ids []int64
+	for _, hosts := range grouped {
+		for _, host := range hosts {
+			ids = append(ids, host.ID)
+		}
+	}
+	found, err := s.labels.ForIDs(ctx, labels.TypeHost, ids)
+	if err != nil {
+		return err
+	}
+	for tag, hosts := range grouped {
+		for i := range hosts {
+			hosts[i].Tags = append([]string{}, found[hosts[i].ID].Tags...)
+		}
+		grouped[tag] = hosts
+	}
+	return nil
 }
 
 func (s *Server) modifyHosts(r *http.Request, payload map[string][]hostPayload) (map[string][]hostResponse, error) {
@@ -491,12 +518,18 @@ func (s *Server) replaceHostsForInboundTx(r *http.Request, tx *sql.Tx, inboundTa
 				if err := updateHostTx(r.Context(), tx, inboundTag, host); err != nil {
 					return err
 				}
+				if err := setHostTagsTx(r.Context(), tx, *host.ID, host.Tags); err != nil {
+					return err
+				}
 				delete(remaining, *host.ID)
 				continue
 			}
 		}
-		_, err := insertHostTx(r.Context(), tx, inboundTag, host)
+		newID, err := insertHostTx(r.Context(), tx, inboundTag, host)
 		if err != nil {
+			return err
+		}
+		if err := setHostTagsTx(r.Context(), tx, newID, host.Tags); err != nil {
 			return err
 		}
 	}
@@ -516,6 +549,9 @@ func (s *Server) replaceHostsForInboundTx(r *http.Request, tx *sql.Tx, inboundTa
 			return err
 		}
 		if _, err := tx.ExecContext(r.Context(), `DELETE FROM hosts WHERE id = ?`, id); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(r.Context(), `DELETE FROM entity_tags WHERE entity_type = ? AND entity_id = ?`, labels.TypeHost, id); err != nil {
 			return err
 		}
 	}
@@ -2717,4 +2753,15 @@ func boolToInt(value bool) int {
 		return 1
 	}
 	return 0
+}
+
+func setHostTagsTx(ctx context.Context, tx *sql.Tx, hostID int64, tags *[]string) error {
+	if tags == nil {
+		return nil
+	}
+	normalized, err := labels.NormalizeTags(*tags)
+	if err != nil {
+		return statusError{status: http.StatusBadRequest, detail: err.Error()}
+	}
+	return labels.SetManyTx(ctx, tx, []labels.Ref{labels.HostRef(hostID)}, labels.Assignment{TagsSet: true, Tags: normalized})
 }

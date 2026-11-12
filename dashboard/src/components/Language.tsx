@@ -1,148 +1,92 @@
+import { Button } from "components/ui/button";
 import {
-	chakra,
-	HStack,
-	IconButton,
-	Menu,
-	MenuButton,
-	MenuItem,
-	MenuList,
-	Portal,
-	Text,
-	useColorModeValue,
-} from "@chakra-ui/react";
-import { CheckIcon, LanguageIcon } from "@heroicons/react/24/outline";
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "components/ui/dropdown-menu";
+import { cn } from "lib/cn";
+import { Check, Languages } from "lucide-react";
 import type { FC, MutableRefObject, ReactNode } from "react";
 import ReactCountryFlag from "react-country-flag";
 import { useTranslation } from "react-i18next";
-import { ReactComponent as ImperialIranFlag } from "../assets/imperial-iran-flag.svg";
+import ImperialIranFlag from "../assets/imperial-iran-flag.svg?react";
+import { resolveAppLanguageCode } from "lib/language";
 
-type HeaderProps = {
+type LanguageProps = {
 	actions?: ReactNode;
 	portalContainer?: MutableRefObject<HTMLElement | null>;
 	triggerVariant?: "outline" | "ghost";
 };
 
-const LangIcon = chakra(LanguageIcon, {
-	baseStyle: {
-		w: 4,
-		h: 4,
-	},
-});
+const LANGUAGE_OPTIONS = [
+	{ code: "en", label: "English", flag: "US" },
+	{ code: "fa", label: "پارسی", flag: "IR" },
+	{ code: "zh-cn", label: "中文", flag: "CN" },
+	{ code: "ru", label: "Русский", flag: "RU" },
+] as const;
 
-const CheckIconChakra = chakra(CheckIcon, {
-	baseStyle: {
-		w: 4,
-		h: 4,
-	},
-});
-
-export const Language: FC<HeaderProps> = ({
-	portalContainer,
+export const Language: FC<LanguageProps> = ({
 	triggerVariant = "outline",
 }) => {
-	const { i18n } = useTranslation();
-	const menuBg = useColorModeValue("surface.light", "surface.dark");
-	const hoverBg = useColorModeValue("blackAlpha.50", "whiteAlpha.100");
-	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
-	const textColor = useColorModeValue("gray.800", "gray.100");
-
-	const changeLanguage = (lang: string) => {
-		i18n.changeLanguage(lang);
-	};
-
-	const items = [
-		{ code: "en", label: "English", flag: "US" },
-		{ code: "fa", label: "پارسی", flag: "IR" },
-		{ code: "zh-cn", label: "中文", flag: "CN" },
-		{ code: "ru", label: "Русский", flag: "RU" },
-	];
-
-	const popperModifiers = [
-		{
-			name: "preventOverflow",
-			options: { boundary: "viewport", padding: 8 },
-		},
-		{
-			name: "flip",
-			options: {
-				fallbackPlacements: ["bottom-start", "bottom", "top-end", "top-start"],
-			},
-		},
-	];
-
-	const menuList = (
-		<MenuList
-			minW={{ base: "calc(100vw - 24px)", sm: "200px" }}
-			maxW="calc(100vw - 16px)"
-			zIndex={9999}
-			bg={menuBg}
-			borderColor={borderColor}
-			color={textColor}
-			sx={{
-				".chakra-menu__menuitem": {
-					bg: "transparent !important",
-					"&:hover": {
-						bg: `${hoverBg} !important`,
-					},
-					"&:active, &:focus": {
-						bg: `${hoverBg} !important`,
-					},
-				},
-			}}
-		>
-			{items.map(({ code, label, flag }) => (
-				<MenuItem
-					key={code}
-					fontSize="sm"
-					onClick={() => changeLanguage(code)}
-					bg="transparent"
-					_hover={{ bg: hoverBg }}
-					_active={{ bg: hoverBg }}
-					_focus={{ bg: hoverBg }}
-				>
-					<HStack justify="space-between" w="full">
-						<HStack spacing={2}>
-							{code === "fa" ? (
-								<ImperialIranFlag style={{ width: "16px", height: "12px" }} />
-							) : (
-								<ReactCountryFlag
-									countryCode={flag}
-									svg
-									style={{ width: "16px", height: "12px" }}
-								/>
-							)}
-							<Text>{label}</Text>
-						</HStack>
-						{i18n.language === code && <CheckIconChakra />}
-					</HStack>
-				</MenuItem>
-			))}
-		</MenuList>
+	const { t, i18n } = useTranslation();
+	const isRTL = i18n.dir(i18n.language) === "rtl";
+	const activeLanguage = resolveAppLanguageCode(
+		i18n.language || i18n.resolvedLanguage,
 	);
 
 	return (
-		<Menu
-			placement="bottom-end"
-			strategy="fixed"
-			isLazy
-			autoSelect={false}
-			gutter={6}
-			computePositionOnMount
-			modifiers={popperModifiers}
-		>
-			<MenuButton
-				as={IconButton}
-				size="sm"
-				variant={triggerVariant}
-				icon={<LangIcon />}
-				position="relative"
-				type="button"
-			/>
-			{portalContainer ? (
-				<Portal containerRef={portalContainer}>{menuList}</Portal>
-			) : (
-				<Portal>{menuList}</Portal>
-			)}
-		</Menu>
+		<DropdownMenu dir={isRTL ? "rtl" : "ltr"}>
+			<DropdownMenuTrigger asChild>
+				<Button
+					type="button"
+					size="sm"
+					variant={triggerVariant}
+					aria-label={t("header.language")}
+					className="relative h-[34px] min-w-[34px]! rounded-[12px] border-panel-border! bg-panel-surface px-2.5 text-panel-text shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,box-shadow,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:bg-panel-surface dark:hover:bg-input/30 active:scale-[0.97] min-[769px]:hover:border-panel-border-strong! min-[769px]:hover:bg-panel-elevated min-[769px]:dark:hover:bg-panel-elevated min-[769px]:hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)]"
+				>
+					<Languages className="size-4" strokeWidth={1.75} />
+				</Button>
+			</DropdownMenuTrigger>
+			<DropdownMenuContent
+				align={isRTL ? "start" : "end"}
+				sideOffset={8}
+				className="z-[9999] min-w-[180px]! rounded-[16px] border border-panel-border! bg-panel-surface p-1.5 text-panel-text shadow-[0_12px_32px_rgba(0,0,0,0.24)] select-none"
+			>
+				{LANGUAGE_OPTIONS.map(({ code, label, flag }) => {
+					const isActive = activeLanguage === code;
+					return (
+						<DropdownMenuItem
+							key={code}
+							onSelect={() => i18n.changeLanguage(code)}
+							className={cn(
+								"flex cursor-pointer items-center justify-between gap-3 rounded-[10px] px-3 py-2 text-[13px] transition-[background-color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.98] focus:bg-panel-elevated min-[769px]:hover:bg-panel-elevated",
+								isActive
+									? "bg-panel-elevated/60 font-semibold text-panel-text"
+									: "font-medium text-panel-text-secondary",
+							)}
+						>
+							<span className="flex items-center gap-2.5">
+								{code === "fa" ? (
+									<ImperialIranFlag
+										style={{ width: "16px", height: "12px", borderRadius: "2px" }}
+									/>
+								) : (
+									<ReactCountryFlag
+										countryCode={flag}
+										svg
+										style={{ width: "16px", height: "12px", borderRadius: "2px" }}
+									/>
+								)}
+								<span>{label}</span>
+							</span>
+							{isActive ? (
+								<Check className="size-4 text-panel-accent" />
+							) : null}
+						</DropdownMenuItem>
+					);
+				})}
+			</DropdownMenuContent>
+		</DropdownMenu>
 	);
 };

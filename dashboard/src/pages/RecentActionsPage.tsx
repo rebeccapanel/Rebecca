@@ -1,45 +1,31 @@
-import {
-	Alert,
-	AlertIcon,
-	Badge,
-	Box,
-	Button,
-	Divider,
-	HStack,
-	Input,
-	SimpleGrid,
-	Spinner,
-	Stack,
-	Text,
-	VStack,
-} from "@chakra-ui/react";
-import {
-	ArrowPathIcon,
-	ArrowUturnLeftIcon,
-	CheckCircleIcon,
-	EyeIcon,
-	KeyIcon,
-	NoSymbolIcon,
-	PencilSquareIcon,
-	PlusCircleIcon,
-	TrashIcon,
-} from "@heroicons/react/24/outline";
+import { toneClass } from "lib/tone";
+import { Badge } from "components/ui/badge";
+import { Alert } from "components/ui/alert";
+import { Spinner } from "components/ui/spinner";
+import { Input } from "components/ui/input";
+import { Button } from "components/ui/button";
+import { CircleAlert, Info, TriangleAlert } from "lucide-react";
+import { cn } from "lib/cn";
+import { RefreshCw, Undo2, CircleCheck, Eye, Key, Ban, SquarePen, CirclePlus, Trash2 } from "lucide-react";
+import type { SortingState } from "@tanstack/react-table";
+import { buildSortOptions, DataTableSortMenu } from "components/ui/DataTableSortMenu";
+
 import { PanelSelect as Select } from "components/common/PanelSelect";
 import { SearchInput } from "components/common/SearchInput";
+import { OverviewBand } from "components/ui/overview-band";
 import { JsonEditor } from "components/JsonEditor";
 import { Pagination } from "components/Pagination";
 import {
 	DataTable,
 	type DataTableColumn,
 	type DataTableRowAction,
-	ResourceListCard,
 } from "components/ui";
 import dayjs from "dayjs";
 import useGetUser from "hooks/useGetUser";
 import debounce from "lodash.debounce";
 import { type FC, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useMutation, useQuery, useQueryClient } from "react-query";
+import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { fetch } from "service/http";
 import { AdminRole, AdminSudoScope } from "types/Admin";
 import { buildJsonDiff } from "utils/jsonDiff";
@@ -178,22 +164,22 @@ const actionOperationVisual = (
 	actionType: string,
 ) => {
 	if (nodeRuntimeActionTypes.has(actionType))
-		return { color: "blue.400", icon: <ArrowPathIcon width={18} /> };
+		return { color: "var(--color-blue-400)", icon: <RefreshCw className="w-[18px]" /> };
 	switch (operation) {
 		case "created":
-			return { color: "green.400", icon: <PlusCircleIcon width={18} /> };
+			return { color: "var(--color-green-400)", icon: <CirclePlus className="w-[18px]" /> };
 		case "deleted":
-			return { color: "red.400", icon: <TrashIcon width={18} /> };
+			return { color: "var(--color-red-400)", icon: <Trash2 className="w-[18px]" /> };
 		case "disabled":
-			return { color: "orange.400", icon: <NoSymbolIcon width={18} /> };
+			return { color: "var(--color-orange-400)", icon: <Ban className="w-[18px]" /> };
 		case "enabled":
-			return { color: "green.400", icon: <CheckCircleIcon width={18} /> };
+			return { color: "var(--color-green-400)", icon: <CircleCheck className="w-[18px]" /> };
 		case "reset":
-			return { color: "orange.400", icon: <ArrowPathIcon width={18} /> };
+			return { color: "var(--color-orange-400)", icon: <RefreshCw className="w-[18px]" /> };
 		case "regenerated":
-			return { color: "blue.400", icon: <KeyIcon width={18} /> };
+			return { color: "var(--color-blue-400)", icon: <Key className="w-[18px]" /> };
 		default:
-			return { color: "blue.400", icon: <PencilSquareIcon width={18} /> };
+			return { color: "var(--color-blue-400)", icon: <SquarePen className="w-[18px]" /> };
 	}
 };
 
@@ -405,73 +391,55 @@ const JsonDiffEditors: FC<{ before: unknown; after: unknown }> = ({
 	);
 
 	return (
-		<SimpleGrid columns={{ base: 1, xl: 2 }} spacing={4} dir="ltr">
-			<Box minW={0}>
-				<Text fontWeight="medium" mb={2}>
+		<div dir="ltr" className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+			<div className="min-w-0!">
+				<p className="font-medium mb-2">
 					{t("recentActions.before")}
-				</Text>
-				<Box h={{ base: "360px", xl: "440px" }}>
-					<JsonEditor
-						json={before}
-						onChange={() => undefined}
-						readOnly
-						showToolbar={false}
-						minHeight={0}
-						highlightLines={beforeChangedLines}
-						highlightVariant="removed"
-						highlightRanges={beforeHighlightRanges}
-					/>
-				</Box>
-			</Box>
-			<Box minW={0}>
-				<Text fontWeight="medium" mb={2}>
+				</p>
+				<div className="h-[360px] xl:h-[440px]">
+					<JsonEditor json={before} onChange={() => undefined} readOnly showToolbar={false} highlightLines={beforeChangedLines} highlightVariant="removed" highlightRanges={beforeHighlightRanges} />
+				</div>
+			</div>
+			<div className="min-w-0!">
+				<p className="font-medium mb-2">
 					{t("recentActions.after")}
-				</Text>
-				<Box h={{ base: "360px", xl: "440px" }}>
-					<JsonEditor
-						json={after}
-						onChange={() => undefined}
-						readOnly
-						showToolbar={false}
-						minHeight={0}
-						highlightLines={afterChangedLines}
-						highlightVariant="added"
-						highlightRanges={afterHighlightRanges}
-					/>
-				</Box>
-			</Box>
-		</SimpleGrid>
+				</p>
+				<div className="h-[360px] xl:h-[440px]">
+					<JsonEditor json={after} onChange={() => undefined} readOnly showToolbar={false} highlightLines={afterChangedLines} highlightVariant="added" highlightRanges={afterHighlightRanges} />
+				</div>
+			</div>
+		</div>
 	);
 };
 
 const ActionPreview: FC<{ preview?: RecentActionPreview }> = ({ preview }) => {
 	const { t } = useTranslation();
 	if (!preview || preview.operation) {
-		return <Text color="panel.textMuted">—</Text>;
+		return <p className="text-panel-text-muted">—</p>;
 	}
 	const field = changedFieldTranslationKey(preview.field);
 	return (
-		<VStack align="start" spacing={0.5} minW={0}>
+		<div className="flex flex-col items-start gap-0.5 min-w-0!">
 			{field && (
-				<Text fontSize="xs" color="panel.textMuted" noOfLines={1}>
+				<p className="text-[0.75rem] text-panel-text-muted truncate">
 					{t(field)}
-				</Text>
+				</p>
 			)}
-			<HStack spacing={1.5} minW={0} maxW="full">
-				<Text color="red.300" textDecoration="line-through" noOfLines={1}>
+			<div className="flex flex-row items-center gap-1.5 min-w-0! max-w-full">
+				<p className="text-red-300 line-through truncate">
 					{preview.before}
-				</Text>
-				<Text color="panel.textMuted">→</Text>
-				<Text color="green.300" noOfLines={1}>
+				</p>
+				<p className="text-panel-text-muted">→</p>
+				<p className="text-green-300 truncate">
 					{preview.after}
-				</Text>
+				</p>
 				{preview.delta && (
-					<Text color="panel.textMuted" noOfLines={1}>
+					<p className="text-panel-text-muted truncate">
 						({preview.delta})
-					</Text>
+					</p>
 				)}
-			</HStack>
-		</VStack>
+			</div>
+		</div>
 	);
 };
 
@@ -536,36 +504,21 @@ export const RecentActionsPage: FC = () => {
 		searchMatch,
 		statusesFilter,
 	]);
-	const actionsQuery = useQuery(
-		["recent-actions", actionsQueryString],
-		() =>
+	const actionsQuery = useQuery({ queryKey: ["recent-actions", actionsQueryString], queryFn: () =>
 			fetch<RecentActionsResponse>(
 				`/core/recent-actions?${actionsQueryString}`,
-			),
-		{
-			enabled: canView,
+			), enabled: canView,
 			staleTime: 15_000,
 			refetchOnWindowFocus: false,
-			keepPreviousData: true,
-		},
-	);
-	const detailQuery = useQuery(
-		["recent-action", selectedID],
-		() => fetch<RecentActionDetail>(`/core/recent-actions/${selectedID}`),
-		{ enabled: canView && selectedID !== null, refetchOnWindowFocus: false },
-	);
-	const rollbackMutation = useMutation(
-		(id: number) =>
-			fetch(`/core/recent-actions/${id}/rollback`, { method: "POST" }),
-		{
-			onSuccess: async () => {
-				await queryClient.invalidateQueries("recent-actions");
+			placeholderData: keepPreviousData, });
+	const detailQuery = useQuery({ queryKey: ["recent-action", selectedID], queryFn: () => fetch<RecentActionDetail>(`/core/recent-actions/${selectedID}`), enabled: canView && selectedID !== null, refetchOnWindowFocus: false });
+	const rollbackMutation = useMutation({ mutationFn: (id: number) =>
+			fetch(`/core/recent-actions/${id}/rollback`, { method: "POST" }), onSuccess: async () => {
+				await queryClient.invalidateQueries({ queryKey: ["recent-actions"] });
 				if (selectedID !== null) {
-					await queryClient.invalidateQueries(["recent-action", selectedID]);
+					await queryClient.invalidateQueries({ queryKey: ["recent-action", selectedID] });
 				}
-			},
-		},
-	);
+			}, });
 
 	const actions = actionsQuery.data?.actions ?? [];
 	const totalActions = actionsQuery.data?.total ?? actions.length;
@@ -615,10 +568,12 @@ export const RecentActionsPage: FC = () => {
 		setRecentActionsPerPageLimitSize(String(next));
 		resetPagination();
 	};
+	const [recentSorting, setRecentSorting] = useState<SortingState>([]);
 	const columns = useMemo<DataTableColumn<RecentAction>[]>(
 		() => [
 			{
 				id: "action",
+				sortValue: (action) => action.action_type ?? "",
 				header: t("recentActions.columns.action"),
 				isPrimary: true,
 				priority: "primary",
@@ -634,45 +589,42 @@ export const RecentActionsPage: FC = () => {
 							? action.summary
 							: actionTypeLabel(action.action_type);
 					return (
-						<HStack align="start" spacing={2.5} minW={0}>
-							<Box color={visual.color} mt={0.5} flexShrink={0}>
+						<div className="flex flex-row items-start gap-2.5 min-w-0!">
+							<div style={{ color: visual.color }} className="mt-0.5 shrink-0">
 								{visual.icon}
-							</Box>
-							<VStack align="start" spacing={0} minW={0}>
-								<Text fontWeight="semibold" noOfLines={1} maxW="full">
+							</div>
+							<div className="flex flex-col items-start gap-0 min-w-0!">
+								<p className="font-semibold truncate max-w-full">
 									{label}
-								</Text>
-							</VStack>
-						</HStack>
+								</p>
+							</div>
+						</div>
 					);
 				},
 			},
 			{
 				id: "resource",
+				sortValue: (action) => action.resource_key ?? "",
 				header: t("recentActions.columns.resource"),
 				priority: "high",
 				minWidth: "180px",
 				cell: (action) => {
 					const resourceType = actionLifecycle(action).resource;
 					return (
-						<VStack align="start" spacing={1} minW={0}>
-							<Badge variant="subtle">
+						<div className="flex flex-col items-start gap-1 min-w-0!">
+							<Badge>
 								{t(resourceTranslationKey(resourceType))}
 							</Badge>
-							<Text
-								fontFamily="mono"
-								fontSize="xs"
-								color="panel.textMuted"
-								noOfLines={1}
-							>
+							<p className="font-mono text-[0.75rem] text-panel-text-muted truncate">
 								{action.resource_key}
-							</Text>
-						</VStack>
+							</p>
+						</div>
 					);
 				},
 			},
 			{
 				id: "preview",
+				sortValue: (action) => action.preview ?? "",
 				header: t("recentActions.columns.preview"),
 				priority: "high",
 				minWidth: "220px",
@@ -681,27 +633,29 @@ export const RecentActionsPage: FC = () => {
 			},
 			{
 				id: "status",
+				sortValue: (action) => action.rollback_status ?? "",
 				header: t("recentActions.columns.status"),
 				priority: "medium",
 				minWidth: "140px",
 				cell: (action) => (
-					<Badge colorScheme={statusTone(action.rollback_status)}>
+					<Badge className={toneClass(statusTone(action.rollback_status))}>
 						{t(`recentActions.status.${action.rollback_status}`)}
 					</Badge>
 				),
 			},
 			{
 				id: "actor",
+				sortValue: (action) => action.actor_username ?? "",
 				header: t("recentActions.columns.actor"),
 				priority: "medium",
 				minWidth: "140px",
 				cell: (action) => (
-					<VStack align="start" spacing={0}>
-						<Text fontWeight="medium">{action.actor_username}</Text>
-						<Text fontSize="xs" color="panel.textMuted">
+					<div className="flex flex-col items-start gap-0">
+						<p className="font-medium">{action.actor_username}</p>
+						<p className="text-[0.75rem] text-panel-text-muted">
 							{action.auth_source}
-						</Text>
-					</VStack>
+						</p>
+					</div>
 				),
 			},
 			{
@@ -713,9 +667,9 @@ export const RecentActionsPage: FC = () => {
 				accessor: "created_at",
 				sortable: true,
 				cell: (action) => (
-					<Text fontSize="sm" dir="ltr">
+					<p dir="ltr" className="text-[0.875rem]">
 						{dayjs(action.created_at).format("YYYY-MM-DD HH:mm")}
-					</Text>
+					</p>
 				),
 			},
 		],
@@ -727,7 +681,7 @@ export const RecentActionsPage: FC = () => {
 		{
 			id: "details",
 			label: t("recentActions.details"),
-			icon: <EyeIcon width={16} />,
+			icon: <Eye className="w-[16px]" />,
 			onClick: () => toggleDetails(action.id),
 		},
 		...(action.rollback_status === "available"
@@ -735,7 +689,7 @@ export const RecentActionsPage: FC = () => {
 					{
 						id: "rollback",
 						label: t("recentActions.rollback"),
-						icon: <ArrowUturnLeftIcon width={16} />,
+						icon: <Undo2 className="w-[16px]" />,
 						isDanger: true,
 						onClick: () => rollback(action),
 					},
@@ -745,8 +699,8 @@ export const RecentActionsPage: FC = () => {
 
 	if (!canView) {
 		return (
-			<Alert status="error" borderRadius="md">
-				<AlertIcon />
+			<Alert variant="destructive" className="rounded-md">
+				<CircleAlert className="size-4" aria-hidden="true" />
 				{t("recentActions.noPermission")}
 			</Alert>
 		);
@@ -782,78 +736,78 @@ export const RecentActionsPage: FC = () => {
 		rollbackError?.data?.detail || rollbackError?.message;
 	const rollbackConflictPaths = rollbackError?.data?.conflict_paths ?? [];
 	const renderDetailPanel = () => (
-		<Box borderTopWidth="1px" borderColor="panel.border" pt={4}>
-			<Text fontWeight="semibold" mb={4}>
+		<div className="border-t border-panel-border! pt-4">
+			<p className="font-semibold mb-4">
 				{t("recentActions.changePreview")}
-			</Text>
+			</p>
 			{detailQuery.isLoading ? (
-				<HStack justify="center" py={10}>
+				<div className="flex flex-row items-center gap-2 justify-center py-10">
 					<Spinner />
-				</HStack>
+				</div>
 			) : detailQuery.isError ? (
-				<Alert status="error">
-					<AlertIcon />
+				<Alert variant="destructive">
+					<CircleAlert className="size-4" aria-hidden="true" />
 					{t("recentActions.loadFailed")}
 				</Alert>
 			) : detail?.snapshot_available || affectedResources.length > 0 ? (
-				<Stack spacing={4}>
+				<div className="flex flex-col gap-4">
 					{eventChanges.length > 0 && (
-						<Stack spacing={2}>
-							<Text fontSize="sm" color="panel.textSecondary">
+						<div className="flex flex-col gap-2">
+							<p className="text-[0.875rem] text-panel-text-secondary">
 								{t("recentActions.changedValues")}
-							</Text>
+							</p>
 							{eventChanges.map((change) => {
 								const labelKey = changedFieldTranslationKey(change.field);
 								return (
-									<HStack key={change.field} spacing={2} flexWrap="wrap">
-										<Text fontSize="sm" minW="140px" color="panel.textMuted">
+									<div key={change.field} className="flex flex-row items-center gap-2 flex-wrap">
+										<p className="text-[0.875rem] min-w-[140px]! text-panel-text-muted">
 											{labelKey
 												? t(labelKey)
 												: change.field.replaceAll("_", " ")}
-										</Text>
-										<Text color="red.300" textDecoration="line-through">
+										</p>
+										<p className="text-red-300 line-through">
 											{change.before}
-										</Text>
-										<Text color="panel.textMuted">→</Text>
-										<Text color="green.300">{change.after}</Text>
+										</p>
+										<p className="text-panel-text-muted">→</p>
+										<p className="text-green-300">{change.after}</p>
 										{change.delta && (
-											<Text color="panel.textMuted">({change.delta})</Text>
+											<p className="text-panel-text-muted">({change.delta})</p>
 										)}
-									</HStack>
+									</div>
 								);
 							})}
-						</Stack>
+						</div>
 					)}
 					{affectedResources.length > 0 && (
-						<Box>
-							<Text fontSize="sm" color="panel.textSecondary" mb={2}>
+						<div>
+							<p className="text-[0.875rem] text-panel-text-secondary mb-2">
 								{t("recentActions.affectedResources")}
-							</Text>
-							<HStack spacing={2} flexWrap="wrap">
+							</p>
+							<div className="flex flex-row items-center gap-2 flex-wrap">
 								{affectedResources.map((resource) => (
-									<Badge key={resource} variant="subtle">
+									<Badge key={resource}>
 										{resource}
 									</Badge>
 								))}
-							</HStack>
-						</Box>
+							</div>
+						</div>
 					)}
 					{diffPathLabels.length > 0 && (
-						<Box>
-							<Text fontSize="sm" color="panel.textSecondary" mb={2}>
+						<div>
+							<p className="text-[0.875rem] text-panel-text-secondary mb-2">
 								{t("recentActions.changedPaths")}
-							</Text>
-							<HStack spacing={2} flexWrap="wrap">
+							</p>
+							<div className="flex flex-row items-center gap-2 flex-wrap">
 								{diffPathLabels.map((label) => (
-									<Badge key={label} colorScheme="orange">
+									<Badge key={label} className="bg-orange-100 text-orange-800 hover:bg-orange-200 dark:bg-orange-500/20 dark:text-orange-200">
 										{t(label)}
 									</Badge>
 								))}
-							</HStack>
-						</Box>
+							</div>
+						</div>
 					)}
 					{displayConfigChanges.length > 0 ? (
-						<Stack spacing={4}>
+						<div className="flex flex-col gap-4">
 							{displayConfigChanges.map((change, index) => {
 								const paths = configChangePaths(change);
 								const labels = Array.from(
@@ -864,33 +818,27 @@ export const RecentActionsPage: FC = () => {
 									),
 								);
 								return (
-									<Box
-										key={`${change.target_id}-${change.path}-${index}`}
-										borderWidth="1px"
-										borderColor="panel.border"
-										borderRadius="md"
-										p={3}
-									>
+									<div key={`${change.target_id}-${change.path}-${index}`} className="border border-panel-border! rounded-md p-3">
 										{labels.length > 0 && (
-											<Text fontSize="sm" color="panel.textSecondary" mb={3}>
+											<p className="text-[0.875rem] text-panel-text-secondary mb-3">
 												{labels.map((label) => t(label)).join(" · ")}
-											</Text>
+											</p>
 										)}
 										<JsonDiffEditors
 											before={change.before_exists ? change.before : undefined}
 											after={change.after_exists ? change.after : undefined}
 										/>
-									</Box>
+									</div>
 								);
 							})}
-						</Stack>
+						</div>
 					) : eventChanges.length === 0 && affectedResources.length === 0 ? (
 						<JsonDiffEditors before={detail?.before} after={detail?.after} />
 					) : null}
-				</Stack>
+				</div>
 			) : (
-				<Alert status="info">
-					<AlertIcon />
+				<Alert>
+					<Info className="size-4" aria-hidden="true" />
 					{t(
 						detail?.action.rollback_status === "unsupported"
 							? "recentActions.historyOnly"
@@ -900,118 +848,88 @@ export const RecentActionsPage: FC = () => {
 			)}
 			{rollbackMutation.isError && (
 				<>
-					<Divider my={4} />
-					<Alert status="error">
-						<AlertIcon />
-						<Stack spacing={2}>
-							<Text>
+					<hr className="my-4 w-full border-0 border-b border-panel-border! opacity-60" />
+					<Alert variant="destructive">
+						<CircleAlert className="size-4" aria-hidden="true" />
+						<div className="flex flex-col gap-2">
+							<p>
 								{rollbackErrorDetail || t("recentActions.rollbackFailed")}
-							</Text>
+							</p>
 							{rollbackConflictPaths.length > 0 && (
-								<HStack spacing={2} flexWrap="wrap">
+								<div className="flex flex-row items-center gap-2 flex-wrap">
 									{rollbackConflictPaths.map((path) => (
-										<Badge key={path} colorScheme="red">
+										<Badge key={path} className="bg-destructive/10 text-destructive">
 											{path}
 										</Badge>
 									))}
-								</HStack>
+								</div>
 							)}
-						</Stack>
+						</div>
 					</Alert>
 				</>
 			)}
-		</Box>
+		</div>
 	);
 
+	const locale = i18n.language || "en";
+	const statusTones: Record<string, string> = {
+		available: "bg-panel-success",
+		undone: "bg-panel-info",
+		expired: "bg-panel-text-muted/60",
+		conflict: "bg-panel-danger",
+		unsupported: "bg-panel-warning",
+	};
+	const statusCount = (status: string) => actions.filter((action) => action.rollback_status === status).length;
+	const overview = {
+		total: { label: t("recentActions.title"), value: totalActions },
+		rows: [
+			{ key: "available", label: t("recentActions.status.available"), value: statusCount("available"), tone: statusTones.available },
+			{ key: "conflict", label: t("recentActions.status.conflict"), value: statusCount("conflict"), tone: statusTones.conflict },
+		],
+		distribution: {
+			label: t("recentActions.filters.status"),
+			segments: Object.keys(statusTones).map((status) => ({
+				key: status,
+				label: t(`recentActions.status.${status}`),
+				value: statusCount(status),
+				tone: statusTones[status],
+			})),
+		},
+		extra: { label: t("usersPage.filtered"), value: actions.length },
+	};
+
 	return (
-		<VStack
-			spacing={4}
-			align="stretch"
-			dir={i18n.dir(i18n.language)}
-			pb={{ base: 8, md: 16 }}
-		>
-			<ResourceListCard
-				title={t("recentActions.title")}
-				summaryItems={[
-					{ label: t("total"), value: totalActions },
-					{
-						label: t("usersPage.filtered"),
-						value: totalActions,
-						colorScheme: "green",
-					},
-				]}
-				actions={
-					<Button
-						leftIcon={<ArrowPathIcon width={16} />}
-						variant="outline"
-						onClick={() => void actionsQuery.refetch()}
-						isLoading={actionsQuery.isFetching}
-					>
-						{t("recentActions.refresh")}
-					</Button>
-				}
-			>
-				<Stack
-					direction={{ base: "column", xl: "row" }}
-					spacing={2}
-					align="stretch"
-				>
-					<SearchInput
-						containerProps={{ w: { base: "full", md: "340px" } }}
-							value={search}
-							onChange={(event) => {
+		<div dir={i18n.dir(i18n.language)} className="flex flex-col gap-4 items-stretch pb-8 md:pb-16">
+			<div className="border border-panel-border! bg-panel-surface rounded-xl overflow-hidden">
+				<OverviewBand total={overview.total} rows={overview.rows} distribution={overview.distribution} extra={overview.extra} locale={locale} />
+				<div className="border-t border-panel-border! p-3">
+					<div className="flex flex-col gap-2 md:flex-row md:items-center">
+						<div className="min-w-0 flex-1"><div className="grid grid-cols-2 gap-2 items-stretch xl:flex xl:flex-row">
+					<SearchInput containerProps={{ className: "col-span-2 w-full md:w-[340px]" }} value={search} onChange={(event) => {
 								setSearch(event.target.value);
 								debouncedSearchChange(event.target.value);
-							}}
-							placeholder={t("recentActions.searchPlaceholder")}
-							aria-label={t("recentActions.searchPlaceholder")}
-						matchOptions={searchMatch}
-						onMatchOptionsChange={(options) => {
+							}} placeholder={t("recentActions.searchPlaceholder")} aria-label={t("recentActions.searchPlaceholder")} matchOptions={searchMatch} onMatchOptionsChange={(options) => {
 							setSearchMatch(options);
 							resetPagination();
-						}}
-						/>
-					<Select
-						mode="multiple"
-						size="sm"
-						value={actionTypesFilter}
-						onValueChange={(value) => {
+						}} />
+					<Select mode="multiple" size="sm" value={actionTypesFilter} onValueChange={(value) => {
 							setActionTypesFilter(Array.isArray(value) ? value : [value]);
 							resetPagination();
-						}}
-						options={actionTypes.map((type) => ({
+						}} options={actionTypes.map((type) => ({
 							label: actionTypeLabel(type),
 							value: type,
-						}))}
-						placeholder={t("recentActions.filters.allActions")}
-						aria-label={t("recentActions.filters.action")}
-						w={{ base: "full", xl: "240px" }}
-					/>
-					<Select
-						mode="multiple"
-						size="sm"
-						value={resourceTypesFilter}
-						onValueChange={(value) => {
+						}))} placeholder={t("recentActions.filters.allActions")} aria-label={t("recentActions.filters.action")} className="w-full xl:w-[240px]" />
+					<Select mode="multiple" size="sm" value={resourceTypesFilter} onValueChange={(value) => {
 							setResourceTypesFilter(Array.isArray(value) ? value : [value]);
 							resetPagination();
-						}}
-						options={resourceTypes.map((type) => ({
+						}} options={resourceTypes.map((type) => ({
 							label: t(resourceTranslationKey(type)),
 							value: type,
-						}))}
-						placeholder={t("recentActions.filters.allResources")}
-						aria-label={t("recentActions.filters.resource")}
-						w={{ base: "full", xl: "220px" }}
-					/>
-					<Select
-						mode="multiple"
-						size="sm"
-						value={statusesFilter}
-						onValueChange={(value) => {
+						}))} placeholder={t("recentActions.filters.allResources")} aria-label={t("recentActions.filters.resource")} className="w-full xl:w-[220px]" />
+					<Select mode="multiple" size="sm" value={statusesFilter} onValueChange={(value) => {
 							setStatusesFilter(Array.isArray(value) ? value : [value]);
 							resetPagination();
-						}}
-						options={[
+						}} options={[
 							"available",
 							"undone",
 							"expired",
@@ -1020,66 +938,55 @@ export const RecentActionsPage: FC = () => {
 						].map((value) => ({
 							label: t(`recentActions.status.${value}`),
 							value,
-						}))}
-						placeholder={t("recentActions.filters.allStatuses")}
-						aria-label={t("recentActions.filters.status")}
-						w={{ base: "full", xl: "190px" }}
-					/>
-					<Input
-						type="date"
-						size="sm"
-						value={dayFilter}
-						onChange={(event) => {
+						}))} placeholder={t("recentActions.filters.allStatuses")} aria-label={t("recentActions.filters.status")} className="w-full xl:w-[190px]" />
+					<Input type="date" value={dayFilter} onChange={(event) => {
 							setDayFilter(event.target.value);
 							resetPagination();
-						}}
-						aria-label={t("recentActions.filters.day")}
-						w={{ base: "full", xl: "170px" }}
-					/>
-				</Stack>
-			</ResourceListCard>
+						}} aria-label={t("recentActions.filters.day")} className="w-full xl:w-[170px]" />
+				</div></div>
+						<div className="flex shrink-0 items-center justify-end gap-1.5">
+							<DataTableSortMenu options={buildSortOptions(columns, actions)} sorting={recentSorting} onSortingChange={setRecentSorting} />
+							<Button onClick={() => void actionsQuery.refetch()} variant="outline" loading={actionsQuery.isFetching}>{<RefreshCw className="w-[16px]" />}
+								{t("recentActions.refresh")}
+							</Button>
+						</div>
+					</div>
+				</div>
+			</div>
 
 			<DataTable
 				ariaLabel={t("recentActions.title")}
 				data={actions}
 				columns={columns}
+				sorting={recentSorting}
+				onSortingChange={setRecentSorting}
+				showSortMenu={false}
 				getRowId={(action) => String(action.id)}
-				isLoading={actionsQuery.isLoading}
+				loading={actionsQuery.isLoading}
 				loadingRows={8}
 				error={actionsQuery.isError ? t("recentActions.loadFailed") : undefined}
 				emptyState={
-					<Text fontSize="sm" color="panel.textMuted" textAlign="center">
+					<p className="text-[0.875rem] text-panel-text-muted text-center">
 						{actions.length
 							? t("recentActions.noMatching")
 							: t("recentActions.empty")}
-					</Text>
+					</p>
 				}
 				rowActions={rowActions}
 				renderRowActions={(action) => (
-					<HStack spacing={2} justify="flex-end">
-						<Button
-							size="sm"
-							variant="outline"
-							leftIcon={<EyeIcon width={16} />}
-							onClick={() => toggleDetails(action.id)}
-						>
+					<div className="flex flex-row items-center gap-2 justify-end">
+						<Button onClick={() => toggleDetails(action.id)} variant="outline" size="sm">{<Eye className="w-[16px]" />}
 							{t("recentActions.details")}
 						</Button>
 						{action.rollback_status === "available" && (
-							<Button
-								size="sm"
-								colorScheme="orange"
-								leftIcon={<ArrowUturnLeftIcon width={16} />}
-								onClick={() => rollback(action)}
-								isLoading={
-									rollbackMutation.isLoading &&
+							<Button onClick={() => rollback(action)} size="sm" loading={
+									rollbackMutation.isPending &&
 									rollbackMutation.variables === action.id
-								}
-							>
+								} className="bg-orange-600 text-white shadow-xs hover:bg-orange-700">{<Undo2 className="w-[16px]" />}
 								{t("recentActions.rollback")}
 							</Button>
 						)}
-					</HStack>
+					</div>
 				)}
 				actionsDisplay="inline"
 				actionsColumnWidth="210px"
@@ -1101,6 +1008,6 @@ export const RecentActionsPage: FC = () => {
 					/>
 				}
 			/>
-		</VStack>
+		</div>
 	);
 };

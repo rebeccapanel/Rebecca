@@ -24,7 +24,7 @@ declare module "@cubone/react-file-manager" {
 		};
 		height?: string | number;
 		initialPath?: string;
-		isLoading?: boolean;
+		loading?: boolean;
 		language?: string;
 		layout?: "list" | "grid";
 		maxFileSize?: number;

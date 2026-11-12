@@ -5,6 +5,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/rebeccapanel/rebecca/internal/app/labels"
 )
 
 const UsernameValidationMessage = "Username only can be 3 to 32 characters and contain a-z, 0-9, underscores, hyphens, dots, or @."
@@ -113,9 +115,46 @@ func ValidateBulkUsersAction(payload *BulkUsersActionRequest) error {
 		AdvancedUserActionDisableUsers:    {},
 		AdvancedUserActionChangeService:   {},
 		AdvancedUserActionDeleteUsers:     {},
+		AdvancedUserActionMultiplyExpire:  {},
+		AdvancedUserActionDivideExpire:    {},
+		AdvancedUserActionMultiplyTraffic: {},
+		AdvancedUserActionDivideTraffic:   {},
+		AdvancedUserActionSetGroup:        {},
+		AdvancedUserActionClearGroup:      {},
+		AdvancedUserActionAddTags:         {},
+		AdvancedUserActionRemoveTags:      {},
 	}
 	if _, ok := allowedActions[payload.Action]; !ok {
 		return ValidationError{Detail: "unsupported bulk action"}
+	}
+	for _, id := range payload.GroupIDs {
+		if id <= 0 && id != labels.NoGroupID {
+			return ValidationError{Detail: "group_ids must be positive integers"}
+		}
+	}
+	filterTags, err := labels.NormalizeTags(payload.Tags)
+	if err != nil {
+		return ValidationError{Detail: err.Error()}
+	}
+	if len(payload.Tags) > 0 && len(filterTags) == 0 {
+		return ValidationError{Detail: "tags must not be blank"}
+	}
+	payload.Tags = filterTags
+	if payload.TagMatch != "" && payload.TagMatch != "any" && payload.TagMatch != "all" {
+		return ValidationError{Detail: "tag_match must be any or all"}
+	}
+	if payload.Action == AdvancedUserActionSetGroup && (payload.TargetGroupID == nil || *payload.TargetGroupID <= 0) {
+		return ValidationError{Detail: "target_group_id is required"}
+	}
+	if payload.Action == AdvancedUserActionAddTags || payload.Action == AdvancedUserActionRemoveTags {
+		targetTags, err := labels.NormalizeTags(payload.TargetTags)
+		if err != nil {
+			return ValidationError{Detail: err.Error()}
+		}
+		if len(targetTags) == 0 {
+			return ValidationError{Detail: "target_tags is required"}
+		}
+		payload.TargetTags = targetTags
 	}
 	needsDays := map[AdvancedUserAction]struct{}{
 		AdvancedUserActionExtendExpire:  {},
@@ -125,6 +164,17 @@ func ValidateBulkUsersAction(payload *BulkUsersActionRequest) error {
 	if _, ok := needsDays[payload.Action]; ok {
 		if payload.Days == nil || *payload.Days <= 0 {
 			return ValidationError{Detail: "days must be a positive integer"}
+		}
+	}
+	needsFactor := map[AdvancedUserAction]struct{}{
+		AdvancedUserActionMultiplyExpire:  {},
+		AdvancedUserActionDivideExpire:    {},
+		AdvancedUserActionMultiplyTraffic: {},
+		AdvancedUserActionDivideTraffic:   {},
+	}
+	if _, ok := needsFactor[payload.Action]; ok {
+		if payload.Factor == nil || *payload.Factor <= 0 {
+			return ValidationError{Detail: "factor must be a positive number"}
 		}
 	}
 	if payload.Action == AdvancedUserActionIncreaseTraffic || payload.Action == AdvancedUserActionDecreaseTraffic {

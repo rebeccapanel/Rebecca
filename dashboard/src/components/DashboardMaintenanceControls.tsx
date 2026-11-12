@@ -1,60 +1,58 @@
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Alert } from "components/ui/alert";
+import { Button } from "components/ui/button";
 import {
-	Alert,
-	AlertIcon,
-	Box,
-	Button,
-	Flex,
-	FormControl,
-	FormHelperText,
-	FormLabel,
-	HStack,
-	IconButton,
-	Modal,
-	ModalBody,
-	ModalCloseButton,
-	ModalContent,
-	ModalFooter,
-	ModalHeader,
-	ModalOverlay,
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "components/ui/dialog";
+import { Field, FieldDescription, FieldLabel } from "components/ui/field";
+import {
 	Popover,
-	PopoverBody,
 	PopoverContent,
-	PopoverHeader,
 	PopoverTrigger,
-	Progress,
-	Spinner,
-	Stack,
-	Text,
-	Tooltip,
-	useColorModeValue,
-	useToast,
-} from "@chakra-ui/react";
+} from "components/ui/popover";
+import { Progress } from "components/ui/progress";
+import { toast } from "components/ui/sonner";
+import { Spinner } from "components/ui/spinner";
 import {
-	ArrowPathIcon,
-	ArrowsRightLeftIcon,
-	ArrowUpTrayIcon,
-	CheckIcon,
-	ClipboardIcon,
-	CommandLineIcon,
-} from "@heroicons/react/24/outline";
-import { motion } from "framer-motion";
+	Tooltip,
+	TooltipContent,
+	TooltipTrigger,
+} from "components/ui/tooltip";
 import useGetUser from "hooks/useGetUser";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useMediaQuery } from "hooks/useMediaQuery";
+import { cn } from "lib/cn";
+import {
+	ArrowUpCircle,
+	Check,
+	CircleAlert,
+	CircleCheck,
+	Clipboard,
+	RefreshCw,
+	RotateCcw,
+	RotateCw,
+	Terminal,
+	TriangleAlert,
+	X,
+} from "lucide-react";
+import { type FC, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useMutation, useQuery } from "react-query";
 import { fetch } from "service/http";
 import { AdminRole } from "types/Admin";
 import {
 	generateErrorMessage,
 	generateSuccessMessage,
 } from "utils/toastHandler";
-import { getAPIWebSocketURL } from "utils/websocket";
-import { DashboardBackupControls } from "./RebeccaBackupPanel";
 import {
-	BuildVersionSelect,
 	type BuildCatalog,
+	BuildVersionSelect,
 } from "./BuildVersionSelect";
 import { PanelSelect as Select } from "./common/PanelSelect";
+import { DashboardBackupControls } from "./RebeccaBackupPanel";
 
 type UpdateChannel = "current" | "latest" | "dev";
 type MaintenanceAction = "update" | "restart" | "soft-reload";
@@ -97,28 +95,38 @@ const shouldWaitForPanelReturn = (operation?: MaintenanceOperation | null) =>
 			operation?.phase === "restarting",
 	);
 
-const ansiEscapePattern =
-	// biome-ignore lint/suspicious/noControlCharactersInRegex: Strip ANSI escape codes from raw terminal logs
-	/\u001B|\u009B|[\u001B\u009B][[\]()#;?]*(?:(?:(?:[a-zA-Z\d]*(?:;[a-zA-Z\d]*)*)?\u0007)|(?:(?:\d{1,4}(?:;\d{0,4})*)?[\dA-PR-TZcf-nq-uy=><~]))/g;
+const ESC_CHAR = String.fromCharCode(27);
+const CSI_CHAR = String.fromCharCode(155);
+const BEL_CHAR = String.fromCharCode(7);
+const BS_CHAR = String.fromCharCode(8);
+
+const ansiEscapePattern = new RegExp(
+	`${ESC_CHAR}|${CSI_CHAR}|[${ESC_CHAR}${CSI_CHAR}][[\\]()#;?]*(?:(?:(?:[a-zA-Z\\d]*(?:;[a-zA-Z\\d]*)*)?${BEL_CHAR})|(?:(?:\\d{1,4}(?:;\\d{0,4})*)?[\\dA-PR-TZcf-nq-uy=><~]))`,
+	"g",
+);
+const backspacePattern = new RegExp(BS_CHAR, "g");
 
 const cleanTerminalOutput = (logs?: string[]) =>
 	(logs || [])
 		.join("\n")
 		.replace(ansiEscapePattern, "")
-		// biome-ignore lint/suspicious/noControlCharactersInRegex: Strip backspace characters from terminal logs
-		.replace(/\x08/g, "")
+		.replace(backspacePattern, "")
 		.trimEnd();
 
-export const DashboardMaintenanceControls = ({
-	channel,
-	version,
-}: {
+export interface DashboardMaintenanceControlsProps {
 	channel?: string;
 	version: string;
+}
+
+export const DashboardMaintenanceControls: FC<DashboardMaintenanceControlsProps> = ({
+	channel,
+	version,
 }) => {
-	const { t } = useTranslation();
-	const toast = useToast();
+	const { t, i18n } = useTranslation();
+	const isRTL = i18n.dir(i18n.language) === "rtl";
+	const isDesktop = useMediaQuery("(min-width: 769px)");
 	const { userData, getUserIsSuccess } = useGetUser();
+
 	const canMaintain =
 		getUserIsSuccess &&
 		(userData.role === AdminRole.FullAccess ||
@@ -129,45 +137,49 @@ export const DashboardMaintenanceControls = ({
 		(userData.role === AdminRole.FullAccess ||
 			(userData.role === AdminRole.Sudo &&
 				Boolean(userData.permissions?.sudo.backups)));
-	const outputBg = useColorModeValue("gray.50", "blackAlpha.400");
-	const outputBorder = useColorModeValue("gray.200", "whiteAlpha.200");
+
 	const [selectedChannel, setSelectedChannel] =
 		useState<UpdateChannel>("current");
 	const [selectedVersion, setSelectedVersion] = useState("");
 	const [operation, setOperation] = useState<MaintenanceOperation | null>(null);
 	const [waitingForAPI, setWaitingForAPI] = useState(false);
+	const [isUpdatePopoverOpen, setUpdatePopoverOpen] = useState(false);
 	const [isUpdateDialogOpen, setUpdateDialogOpen] = useState(false);
-	const [confirmAction, setConfirmAction] = useState<"restart" | "soft-reload" | "update" | null>(null);
+	const [confirmAction, setConfirmAction] =
+		useState<MaintenanceAction>("restart");
+	const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 	const [logsCopied, setLogsCopied] = useState(false);
-	const logsContainerRef = useRef<HTMLDivElement | null>(null);
+
+	const logsContainerRef = useRef<HTMLPreElement | null>(null);
 	const panelReturnPollRef = useRef<number | null>(null);
 	const panelReturnSawOfflineRef = useRef(false);
-	const devUpdateTimerRef = useRef<number | null>(null);
 
-	const info = useQuery<MaintenanceInfo>(
-		["dashboard-maintenance-info"],
-		() => fetch<MaintenanceInfo>("/maintenance/info", { timeout: 8000 }),
-		{
-			enabled: canMaintain || canBackUp,
-			refetchOnWindowFocus: false,
-			staleTime: 5 * 60 * 1000,
-			retry: false,
-		},
-	);
+	const info = useQuery<MaintenanceInfo>({
+		queryKey: ["dashboard-maintenance-info"],
+		queryFn: () => fetch<MaintenanceInfo>("/maintenance/info", { timeout: 8000 }),
+		enabled: canMaintain || canBackUp,
+		refetchOnWindowFocus: false,
+		staleTime: 5 * 60 * 1000,
+		retry: false,
+	});
+
 	const panel = info.data?.panel;
 	const update = panel?.update;
 	const installMode = panel?.mode || panel?.install_mode;
 	const hostActionsAvailable = installMode === "binary";
-	const builds = useQuery<BuildCatalog>(
-		["maintenance-builds", "panel"],
-		() => fetch<BuildCatalog>("/maintenance/builds?target=panel", { timeout: 12000 }),
-		{
-			enabled: canMaintain && hostActionsAvailable,
-			refetchOnWindowFocus: false,
-			staleTime: 10 * 60 * 1000,
-			retry: false,
-		},
-	);
+
+	const builds = useQuery<BuildCatalog>({
+		queryKey: ["maintenance-builds", "panel"],
+		queryFn: () =>
+			fetch<BuildCatalog>("/maintenance/builds?target=panel", {
+				timeout: 12000,
+			}),
+		enabled: canMaintain && hostActionsAvailable,
+		refetchOnWindowFocus: false,
+		staleTime: 10 * 60 * 1000,
+		retry: false,
+	});
+
 	const fallbackVersion = channel?.toLowerCase() === "dev" ? "dev" : version;
 	const currentVersion =
 		panel?.tag || update?.current || fallbackVersion || "-";
@@ -188,10 +200,13 @@ export const DashboardMaintenanceControls = ({
 	const selectBuildVersion = (value: string) => {
 		setSelectedVersion(value);
 		if (!value) return;
-		const build = [...(builds.data?.stable ?? []), ...(builds.data?.dev ?? [])].find(
-			(item) => item.version === value,
-		);
-		if (build) setSelectedChannel(build.channel === "dev" ? "dev" : "latest");
+		const build = [
+			...(builds.data?.stable ?? []),
+			...(builds.data?.dev ?? []),
+		].find((item) => item.version === value);
+		if (build) {
+			setSelectedChannel(build.channel === "dev" ? "dev" : "latest");
+		}
 	};
 
 	const clearPanelReturnPolling = useCallback(() => {
@@ -212,7 +227,8 @@ export const DashboardMaintenanceControls = ({
 			try {
 				await fetch("/auth/session", { timeout: 2500 });
 			} catch (error) {
-				const status = (error as { response?: { status?: number } })?.response?.status;
+				const status = (error as { response?: { status?: number } })?.response
+					?.status;
 				up = status === 401 || status === 403;
 			}
 			if (!up) {
@@ -231,42 +247,49 @@ export const DashboardMaintenanceControls = ({
 	}, [clearPanelReturnPolling]);
 
 	useEffect(() => () => clearPanelReturnPolling(), [clearPanelReturnPolling]);
-	useEffect(
-		() => () => {
-			if (devUpdateTimerRef.current !== null) {
-				window.clearTimeout(devUpdateTimerRef.current);
-			}
-		},
-		[],
-	);
 
 	useEffect(() => {
-		if (!operation?.id || waitingForAPI) return;
-		const url = getAPIWebSocketURL("/maintenance/status", { id: operation.id });
-		if (!url) return;
-		const socket = new WebSocket(url);
-		socket.onmessage = (event) => {
+		if (
+			!operation?.id ||
+			waitingForAPI ||
+			operation.error ||
+			operation.phase === "completed"
+		) {
+			return;
+		}
+		let failures = 0;
+		const timer = window.setInterval(async () => {
 			try {
-				const status = JSON.parse(event.data) as MaintenanceOperation;
-				if (status.id !== operation.id) return;
+				const status = await fetch<MaintenanceOperation>(
+					"/maintenance/status",
+					{ timeout: 2500 },
+				);
+				failures = 0;
+				if (status.id && status.id !== operation.id) return;
+				if (!status.id) {
+					startPanelReturnPolling();
+					return;
+				}
 				setOperation(status);
 				if (shouldWaitForPanelReturn(status)) startPanelReturnPolling();
-				if (
-					status.action === "update" &&
-					!status.running &&
-					!status.error &&
-					!shouldWaitForPanelReturn(status)
-				) {
-					window.location.reload();
-				}
-			} catch {}
-		};
-		return () => socket.close();
-	}, [operation?.id, startPanelReturnPolling, waitingForAPI]);
+			} catch {
+				failures += 1;
+				if (failures >= 3) startPanelReturnPolling();
+			}
+		}, 1000);
+		return () => window.clearInterval(timer);
+	}, [
+		operation?.id,
+		operation?.error,
+		operation?.phase,
+		waitingForAPI,
+		startPanelReturnPolling,
+	]);
 
 	useEffect(() => {
 		if (operation?.logs && logsContainerRef.current) {
-			logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
+			logsContainerRef.current.scrollTop =
+				logsContainerRef.current.scrollHeight;
 		}
 	}, [operation?.logs]);
 
@@ -280,8 +303,9 @@ export const DashboardMaintenanceControls = ({
 				{ method: "POST", body, timeout: 3000 },
 			);
 			return { wentOffline: false, operation: result.operation };
-		} catch (error: any) {
-			if (!error?.response) return { wentOffline: true };
+		} catch (error: unknown) {
+			const maybeErr = error as { response?: unknown };
+			if (!maybeErr?.response) return { wentOffline: true };
 			throw error;
 		}
 	};
@@ -315,29 +339,31 @@ export const DashboardMaintenanceControls = ({
 		window.setTimeout(() => info.refetch(), 6000);
 	};
 
-	const updateMutation = useMutation(
-		() =>
+	const updateMutation = useMutation({
+		mutationFn: () =>
 			triggerAction("update", {
 				channel: selectedChannel,
 				...(selectedVersion ? { version: selectedVersion } : {}),
 			}),
-		{
-			retry: false,
-			onSuccess: (result) => handleSuccess("update", result),
-			onError: (error) => {
-				setUpdateDialogOpen(false);
-				generateErrorMessage(error, toast);
-			},
+		retry: false,
+		onSuccess: (result) => handleSuccess("update", result),
+		onError: (error) => {
+			setUpdateDialogOpen(false);
+			generateErrorMessage(error, toast);
 		},
-	);
-	const restartMutation = useMutation(() => triggerAction("restart"), {
+	});
+
+	const restartMutation = useMutation({
+		mutationFn: () => triggerAction("restart"),
 		retry: false,
 		onSuccess: (result) => handleSuccess("restart", result),
 		onError: (error) => {
 			generateErrorMessage(error, toast);
 		},
 	});
-	const reloadMutation = useMutation(() => triggerAction("soft-reload"), {
+
+	const reloadMutation = useMutation({
+		mutationFn: () => triggerAction("soft-reload"),
 		retry: false,
 		onSuccess: (result) => handleSuccess("soft-reload", result),
 		onError: (error) => {
@@ -351,623 +377,581 @@ export const DashboardMaintenanceControls = ({
 		updateMutation.mutate();
 	};
 
-	const startUpdate = () => {
-		setConfirmAction("update");
+	const isStandardAdminOnly = !canMaintain && !canBackUp;
+	if (isStandardAdminOnly) {
+		return null;
+	}
+
+	const openConfirmModal = (action: MaintenanceAction) => {
+		setConfirmAction(action);
+		setIsConfirmOpen(true);
 	};
 
-	const renderUpdatePopover = () => (
-		<Popover
-			placement="bottom-end"
-			closeOnBlur={true}
-			closeOnEsc={true}
-			isLazy
-		>
-			<PopoverTrigger>
-				<Button
-					size="xs"
-					h="32px"
-					w={{ base: "full", sm: "auto" }}
-					px={3.5}
-					colorScheme={update?.available ? "primary" : "gray"}
-					variant={update?.available ? "solid" : "outline"}
-					bg={update?.available ? "var(--rb-panel-accent)" : "transparent"}
-					color={update?.available ? "white" : "panel.text"}
-					borderColor="panel.border"
-					borderRadius="full"
-					isDisabled={!canMaintain || !hostActionsAvailable || info.isLoading}
-					whiteSpace="nowrap"
-				>
-					<HStack spacing={1.5} align="center" justify="center" w="full">
-						<Box as="span" display="inline-flex" alignItems="center" justifyContent="center" flexShrink={0}>
-							<ArrowUpTrayIcon width={15} height={15} />
-						</Box>
-						<Text as="span" fontSize="12px" fontWeight="600" lineHeight="none">
-							{update?.available
-								? t("dashboard.maintenance.updateAvailable")
-								: t("dashboard.maintenance.updateAction")}
-						</Text>
-					</HStack>
-				</Button>
-			</PopoverTrigger>
-			<PopoverContent
-				w="min(480px, calc(100vw - 24px))"
-				maxW="480px"
-				borderRadius="2xl"
-				boxShadow="0 24px 60px rgba(0,0,0,0.5)"
-				bg="panel.surface"
-				borderColor="panel.border"
-				borderWidth="1px"
-				p={1}
-				onClick={(e) => e.stopPropagation()}
-			>
-				<PopoverHeader fontWeight="700" fontSize="13px" py={3} px={4} borderColor="panel.border">
-					<Flex justify="space-between" align="center" gap={3}>
-						<Text fontSize="13px" fontWeight="700" color="panel.text">{t("dashboard.maintenance.title")}</Text>
-						<Button
-							size="xs"
-							variant="ghost"
-							borderRadius="full"
-							color="panel.textMuted"
-							_hover={{ color: "panel.text", bg: "panel.elevated" }}
-							leftIcon={<ArrowPathIcon width={13} height={13} />}
-							onClick={() => info.refetch()}
-							isLoading={info.isFetching}
-						>
-							{t("refresh")}
-						</Button>
-					</Flex>
-				</PopoverHeader>
-				<PopoverBody p={4}>
-					<Stack spacing={4}>
-						{info.isLoading && (
-							<Flex align="center" justify="center" py={5}>
-								<Spinner size="sm" color="panel.accent" />
-							</Flex>
-						)}
-						{info.isError && (
-							<Alert status="error" borderRadius="xl" fontSize="13px">
-								<AlertIcon />
-								<Text fontSize="12px">
-									{t("dashboard.maintenance.updateCheckFailed", {
-										error:
-											(info.error as Error)?.message ||
-											t("dashboard.system.genericError"),
-									})}
-								</Text>
-							</Alert>
-						)}
-						<Box
-							p={3.5}
-							borderRadius="xl"
-							bg="panel.elevated"
-							borderWidth="1px"
-							borderColor="panel.border"
-						>
-							<Text fontSize="11px" fontWeight="600" color="panel.textMuted" mb={1}>
-								{t("dashboard.maintenance.panelVersion")}
-							</Text>
-							<Text fontSize="13px" fontWeight="700" color="panel.text" dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-								{panel?.image
-									? `${panel.image} (${currentVersion})`
-									: currentVersion}
-							</Text>
-						</Box>
-						{info.isSuccess && !hostActionsAvailable && (
-							<Alert status="warning" borderRadius="xl" fontSize="13px">
-								<AlertIcon />
-								<Text fontSize="12px">
-									{t("dashboard.maintenance.binaryMigrationRequired")}
-								</Text>
-							</Alert>
-						)}
-						{update?.available && (
-							<Alert status="success" borderRadius="xl" fontSize="13px">
-								<AlertIcon />
-								<Text fontSize="12px">
-									{t("dashboard.maintenance.updateAvailableNotice", {
-										current: update.current || currentVersion,
-										target: selectedTarget || update.target || "-",
-									})}
-								</Text>
-							</Alert>
-						)}
-						{update?.error && (
-							<Alert status="warning" borderRadius="xl" fontSize="13px">
-								<AlertIcon />
-								<Text fontSize="12px">
-									{t("dashboard.maintenance.updateCheckFailed", {
-										error: update.error,
-									})}
-								</Text>
-							</Alert>
-						)}
-						{hostActionsAvailable && (
-							<FormControl>
-								<FormLabel fontSize="12px" fontWeight="600" color="panel.textSecondary">
-									{t("dashboard.maintenance.updateChannel")}
-								</FormLabel>
-								<Select
-									size="sm"
-									portalled={false}
-									value={selectedChannel}
-									onChange={(event) => {
-										setSelectedChannel(
-											event.target.value as UpdateChannel,
-										);
-										setSelectedVersion("");
-									}}
-								>
-									<option value="current">
-										{t("dashboard.maintenance.updateChannelCurrent")}
-									</option>
-									<option value="latest">
-										{t("dashboard.maintenance.updateChannelLatest")}
-									</option>
-									<option value="dev">
-										{t("dashboard.maintenance.updateChannelDev")}
-									</option>
-								</Select>
-								<FormHelperText fontSize="11px" color="panel.textMuted">
-									{selectedTarget
-										? t("dashboard.maintenance.updateTargetHint", {
-												version: selectedTarget,
-											})
-										: t("dashboard.maintenance.updateTargetUnknown")}
-								</FormHelperText>
-								</FormControl>
-							)}
-							{hostActionsAvailable && (
-								<BuildVersionSelect
-									catalog={builds.data}
-									value={selectedVersion}
-									onChange={selectBuildVersion}
-								/>
-							)}
-						{selectedChannel === "dev" && hostActionsAvailable && (
-							<Alert status="warning" borderRadius="xl" fontSize="12px">
-								<AlertIcon />
-								<Text fontSize="12px">
-									{t("dashboard.maintenance.devChannelWarning")}
-								</Text>
-							</Alert>
-						)}
-						<Flex gap={2} flexWrap="wrap" justify="flex-end" pt={2} borderTopWidth="1px" borderColor="panel.border">
-							<Button
-								size="xs"
-								h="30px"
-								px={3.5}
-								variant="outline"
-								borderRadius="full"
-								borderColor="panel.border"
-								color="panel.text"
-								_hover={{ bg: "panel.elevated", borderColor: "panel.borderStrong" }}
-								onClick={() => setConfirmAction("soft-reload")}
-								isLoading={reloadMutation.isLoading}
-								isDisabled={!hostActionsAvailable}
-								fontSize="12px"
-								fontWeight="600"
-							>
-								{t("dashboard.maintenance.softReloadAction")}
-							</Button>
-							<Button
-								size="xs"
-								h="30px"
-								px={4}
-								colorScheme={update?.available ? "primary" : "gray"}
-								borderRadius="full"
-								onClick={startUpdate}
-								isLoading={updateMutation.isLoading}
-								isDisabled={!hostActionsAvailable}
-								fontSize="12px"
-								fontWeight="600"
-							>
-								{t("dashboard.maintenance.updateAction")}
-							</Button>
-						</Flex>
-					</Stack>
-				</PopoverBody>
-			</PopoverContent>
-		</Popover>
-	);
+	const openConfirmFromPopover = (action: "soft-reload" | "update") => {
+		setUpdatePopoverOpen(false);
+		openConfirmModal(action);
+	};
 
-	const isStandardAdminOnly = !canMaintain && !canBackUp;
-
-	return (
-		<Flex
-			align="center"
-			justify={{ base: "center", sm: "flex-end" }}
-			w={{ base: "full", sm: "auto" }}
-			flexShrink={0}
-		>
-			<HStack
-				display={{ base: "none", sm: "flex" }}
-				spacing={2}
-				align="center"
-				justify="flex-end"
-				flexWrap="nowrap"
-				flexShrink={0}
-			>
-				{canMaintain && renderUpdatePopover()}
-
-				{canBackUp && (
-					<DashboardBackupControls
-						isBinaryRuntime={hostActionsAvailable}
-						runtimeLoading={info.isLoading}
-					/>
-				)}
-
-				{canMaintain && (
-					<Button
-						size="xs"
-						h="32px"
-						px={3.5}
-						colorScheme="red"
-						variant="outline"
-						borderColor="panel.border"
-						color="red.400"
-						_hover={{ bg: "rgba(239, 68, 68, 0.1)", borderColor: "red.400" }}
-						borderRadius="full"
-						onClick={() => setConfirmAction("restart")}
-						isLoading={restartMutation.isLoading}
-						isDisabled={info.isLoading || !hostActionsAvailable}
-						whiteSpace="nowrap"
-					>
-						<HStack spacing={1.5} align="center" justify="center">
-							<Box as="span" display="inline-flex" alignItems="center" justifyContent="center" flexShrink={0}>
-								<ArrowsRightLeftIcon width={15} height={15} />
-							</Box>
-							<Text as="span" fontSize="12px" fontWeight="600" lineHeight="none">
-								{t("dashboard.maintenance.restartAction")}
-							</Text>
-						</HStack>
-					</Button>
-				)}
-			</HStack>
-
-			{!isStandardAdminOnly && (
-				<Stack
-					display={{ base: "flex", sm: "none" }}
-					spacing={2}
-					w="full"
-				>
-					<Box w="full">
-						{renderUpdatePopover()}
-					</Box>
-
-					<Flex gap={2} w="full" align="center">
-						<Button
-							flex="1 1 50%"
-							h="32px"
-							size="xs"
-							px={3}
-							colorScheme="red"
-							variant="outline"
-							borderColor="panel.border"
-							color="red.400"
-							_hover={{ bg: "rgba(239, 68, 68, 0.1)", borderColor: "red.400" }}
-							borderRadius="full"
-							onClick={() => setConfirmAction("restart")}
-							isLoading={restartMutation.isLoading}
-							isDisabled={info.isLoading || !hostActionsAvailable}
-							whiteSpace="nowrap"
-						>
-							<HStack spacing={1.5} align="center" justify="center" w="full">
-								<Box as="span" display="inline-flex" alignItems="center" justifyContent="center" flexShrink={0}>
-									<ArrowsRightLeftIcon width={15} height={15} />
-								</Box>
-								<Text as="span" fontSize="12px" fontWeight="600" lineHeight="none">
-									{t("dashboard.maintenance.restartAction")}
-								</Text>
-							</HStack>
-						</Button>
-
-						{canBackUp && (
-							<Box
-								flex="1 1 50%"
-								minW={0}
-								sx={{
-									"& > button": {
-										w: "full",
-										h: "32px !important",
-										borderRadius: "full !important",
-										fontSize: "12px !important",
-										fontWeight: "600 !important",
-										borderColor: "panel.border !important",
-										color: "panel.text !important",
-										whiteSpace: "nowrap !important",
-									},
-								}}
-							>
-								<DashboardBackupControls
-									isBinaryRuntime={hostActionsAvailable}
-									runtimeLoading={info.isLoading}
-								/>
-							</Box>
-						)}
-					</Flex>
-				</Stack>
+	const maintenanceBody = (
+		<div className="flex flex-col gap-3.5 p-4">
+			{info.isLoading && (
+				<div className="flex items-center justify-center py-5">
+					<Spinner className="text-panel-text-secondary" />
+				</div>
 			)}
 
-			<Modal
-				isOpen={isUpdateDialogOpen}
-				onClose={() => {
-					if (operation?.error) setUpdateDialogOpen(false);
-				}}
-				closeOnEsc={Boolean(operation?.error)}
-				closeOnOverlayClick={false}
-				isCentered
-				size="xl"
-			>
-				<ModalOverlay bg="blackAlpha.700" backdropFilter="blur(16px)" />
-				<ModalContent
-					borderRadius="24px"
-					overflow="hidden"
-					bg="panel.surface"
-					borderColor="panel.border"
-					borderWidth="1px"
-					boxShadow="0 24px 60px -12px rgba(0, 0, 0, 0.45), inset 0 1px 1px 0 rgba(255, 255, 255, 0.08)"
-					mx={4}
+			{info.isError && (
+				<Alert
+					variant="destructive"
+					className="rounded-[12px] text-[12px]"
 				>
-					<ModalHeader
-						px={6}
-						pt={6}
-						pb={4}
-						borderBottom="1px solid"
-						borderColor="panel.border"
+					<CircleAlert className="size-4" aria-hidden="true" />
+					<p className="text-[12px] leading-relaxed">
+						{t("dashboard.maintenance.updateCheckFailed", {
+							error:
+								(info.error as Error)?.message ||
+								t("dashboard.system.genericError"),
+						})}
+					</p>
+				</Alert>
+			)}
+
+			<div className="flex items-center justify-between gap-3 rounded-[12px] bg-panel-elevated/60 px-3.5 py-2.5">
+				<div className="flex min-w-0 flex-col gap-0.5">
+					<p className="text-[11px] font-semibold text-panel-text-muted">
+						{t("dashboard.maintenance.panelVersion")}
+					</p>
+					<p
+						dir="ltr"
+						className="truncate text-[13px] font-bold text-panel-text tabular-nums [unicode-bidi:isolate]"
 					>
-						<Flex align="center" justify="space-between">
-							<HStack spacing={3}>
-								<Flex
-									w="36px"
-									h="36px"
-									align="center"
-									justify="center"
-									borderRadius="12px"
-									bg="panel.elevated"
-									color="var(--rb-panel-accent)"
-									border="1px solid"
-									borderColor="panel.border"
+						{panel?.image
+							? `${panel.image} (${currentVersion})`
+							: currentVersion}
+					</p>
+				</div>
+				{panel?.channel && (
+					<span
+						dir="ltr"
+						className="shrink-0 rounded-full bg-panel-surface px-2.5 py-0.5 text-[11px] font-semibold text-panel-text-secondary [unicode-bidi:isolate]"
+					>
+						{panel.channel}
+					</span>
+				)}
+			</div>
+
+			{info.isSuccess && !hostActionsAvailable && (
+				<Alert className="rounded-[12px] text-[12px]">
+					<TriangleAlert className="size-4" aria-hidden="true" />
+					<p className="text-[12px] leading-relaxed">
+						{t("dashboard.maintenance.binaryMigrationRequired")}
+					</p>
+				</Alert>
+			)}
+
+			{update?.available && (
+				<Alert className="rounded-[12px] border border-emerald-500/20 bg-emerald-500/8 px-3.5 py-2.5 text-[12px]">
+					<CircleCheck
+						className="size-4 text-emerald-600 dark:text-emerald-400"
+						aria-hidden="true"
+					/>
+					<p className="text-[12px] leading-relaxed text-panel-text">
+						{t("dashboard.maintenance.updateAvailableNotice", {
+							current: update.current || currentVersion,
+							target: selectedTarget || update.target || "-",
+						})}
+					</p>
+				</Alert>
+			)}
+
+			{update?.error && (
+				<Alert className="rounded-[12px] text-[12px]">
+					<TriangleAlert className="size-4" aria-hidden="true" />
+					<p className="text-[12px] leading-relaxed">
+						{t("dashboard.maintenance.updateCheckFailed", {
+							error: update.error,
+						})}
+					</p>
+				</Alert>
+			)}
+
+			{hostActionsAvailable && (
+				<Field className="flex flex-col gap-1.5">
+					<FieldLabel className="text-[12px] font-semibold text-panel-text-secondary">
+						{t("dashboard.maintenance.updateChannel")}
+					</FieldLabel>
+					<Select
+						size="sm"
+						portalled={false}
+						value={selectedChannel}
+						onChange={(event) => {
+							setSelectedChannel(event.target.value as UpdateChannel);
+							setSelectedVersion("");
+						}}
+					>
+						<option value="current">
+							{t("dashboard.maintenance.updateChannelCurrent")}
+						</option>
+						<option value="latest">
+							{t("dashboard.maintenance.updateChannelLatest")}
+						</option>
+						<option value="dev">
+							{t("dashboard.maintenance.updateChannelDev")}
+						</option>
+					</Select>
+					<FieldDescription className="text-[11px] leading-relaxed text-panel-text-muted">
+						{selectedTarget
+							? t("dashboard.maintenance.updateTargetHint", {
+									version: selectedTarget,
+								})
+							: t("dashboard.maintenance.updateTargetUnknown")}
+					</FieldDescription>
+				</Field>
+			)}
+
+			{hostActionsAvailable && (
+				<BuildVersionSelect
+					catalog={builds.data}
+					value={selectedVersion}
+					onChange={selectBuildVersion}
+				/>
+			)}
+
+			{selectedChannel === "dev" && hostActionsAvailable && (
+				<Alert className="rounded-[12px] border border-amber-500/20 bg-amber-500/8 px-3.5 py-2.5 text-[12px]">
+					<TriangleAlert
+						className="size-4 text-amber-600 dark:text-amber-400"
+						aria-hidden="true"
+					/>
+					<p className="text-[12px] leading-relaxed text-panel-text-secondary">
+						{t("dashboard.maintenance.devChannelWarning")}
+					</p>
+				</Alert>
+			)}
+		</div>
+	);
+
+	const maintenanceFooterButtons = (
+		<>
+			<Button
+				type="button"
+				onClick={() => openConfirmFromPopover("soft-reload")}
+				disabled={!hostActionsAvailable}
+				variant="outline"
+				size="sm"
+				loading={reloadMutation.isPending}
+				className="h-8 min-h-8 rounded-[10px] border border-panel-border! bg-panel-elevated/70 px-3.5 has-[>svg]:px-3.5 text-[12px] font-semibold leading-none text-panel-text shadow-none hover:bg-panel-elevated/70 dark:bg-panel-elevated/70 dark:hover:bg-panel-elevated/70 active:scale-[0.97] min-[769px]:hover:border-panel-border-strong! min-[769px]:hover:bg-panel-elevated min-[769px]:dark:hover:bg-panel-elevated whitespace-nowrap"
+			>
+				<RotateCcw className="size-3.5 text-panel-text-secondary" />
+				<span>{t("dashboard.maintenance.softReloadAction")}</span>
+			</Button>
+			<Button
+				type="button"
+				onClick={() => openConfirmFromPopover("update")}
+				disabled={!hostActionsAvailable}
+				size="sm"
+				loading={updateMutation.isPending}
+				className="h-8 min-h-8 rounded-[10px] border border-transparent bg-panel-accent px-3.5 has-[>svg]:px-3.5 text-[12px] font-semibold leading-none text-white shadow-none hover:bg-panel-accent active:scale-[0.97] min-[769px]:hover:bg-panel-accent-hover whitespace-nowrap"
+			>
+				<ArrowUpCircle className="size-3.5" />
+				<span>{t("dashboard.maintenance.updateAction")}</span>
+			</Button>
+		</>
+	);
+
+	const maintenanceRefreshButton = (
+		<Button
+			type="button"
+			onClick={() => info.refetch()}
+			variant="ghost"
+			size="sm"
+			loading={info.isFetching}
+			className="h-8 min-h-8 rounded-[10px] px-2.5 has-[>svg]:px-2.5 text-[12px] text-panel-text-muted active:scale-[0.97] min-[769px]:hover:bg-panel-elevated min-[769px]:hover:text-panel-text"
+		>
+			<RefreshCw className="size-3.5" />
+			<span>{t("refresh")}</span>
+		</Button>
+	);
+
+	const renderUpdateTrigger = (onClick?: () => void) => (
+		<Button
+			type="button"
+			onClick={onClick}
+			disabled={!canMaintain || !hostActionsAvailable || info.isLoading}
+			size="xs"
+			variant={update?.available ? "default" : "outline"}
+			className={cn(
+				"h-9 w-full rounded-[12px] px-3.5 transition-[background-color,border-color,color,transform,box-shadow] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.97] min-[769px]:h-8 min-[769px]:w-auto whitespace-nowrap",
+				update?.available
+					? "border border-panel-accent! bg-panel-accent text-white shadow-[0_2px_10px_color-mix(in_srgb,var(--rb-panel-accent)_28%,transparent)] hover:bg-panel-accent min-[769px]:hover:bg-panel-accent-hover"
+					: "border border-panel-border! bg-panel-surface text-panel-text shadow-[0_1px_2px_rgba(0,0,0,0.04)] hover:bg-panel-surface dark:hover:bg-input/30 min-[769px]:hover:border-panel-border-strong! min-[769px]:hover:bg-panel-elevated min-[769px]:dark:hover:bg-panel-elevated min-[769px]:hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)]",
+			)}
+		>
+			<span className="inline-flex items-center justify-center gap-2">
+				<ArrowUpCircle
+					strokeWidth={1.85}
+					className={cn(
+						"size-4 shrink-0",
+						update?.available ? "text-white" : "text-panel-text-secondary",
+					)}
+				/>
+				<span className="text-[12px] font-semibold leading-none">
+					{update?.available
+						? t("dashboard.maintenance.updateAvailable")
+						: t("dashboard.maintenance.updateAction")}
+				</span>
+			</span>
+		</Button>
+	);
+
+	const renderUpdatePopover = () =>
+		isDesktop ? (
+			<Popover open={isUpdatePopoverOpen} onOpenChange={setUpdatePopoverOpen}>
+				<PopoverTrigger asChild>{renderUpdateTrigger()}</PopoverTrigger>
+				<PopoverContent
+					dir={isRTL ? "rtl" : "ltr"}
+					align={isRTL ? "start" : "end"}
+					sideOffset={8}
+					collisionPadding={12}
+					onClick={(e) => e.stopPropagation()}
+					className="z-[2500] w-[min(400px,calc(100vw-24px))] max-w-[400px] max-h-[min(calc(var(--radix-popover-content-available-height,76dvh)-8px),calc(100dvh-24px))] overflow-y-auto overscroll-contain rounded-[20px] border border-panel-border! bg-panel-surface p-0 text-panel-text shadow-[0_20px_52px_-12px_rgba(0,0,0,0.46)]"
+				>
+					<div className="flex items-center justify-between gap-3 border-b border-panel-border/70! px-4 py-3">
+						<div className="flex min-w-0 items-center gap-2">
+							<ArrowUpCircle className="size-4 shrink-0 text-panel-text-secondary" />
+							<p className="truncate text-[13px] font-bold tracking-[-0.01em] text-panel-text">
+								{t("dashboard.maintenance.title")}
+							</p>
+						</div>
+						{maintenanceRefreshButton}
+					</div>
+					{maintenanceBody}
+					<div className="flex flex-wrap items-center justify-end gap-2 border-t border-panel-border/70! px-4 py-3">
+						{maintenanceFooterButtons}
+					</div>
+				</PopoverContent>
+			</Popover>
+		) : (
+			<>
+				{renderUpdateTrigger(() => setUpdatePopoverOpen(true))}
+				<Dialog open={isUpdatePopoverOpen} onOpenChange={setUpdatePopoverOpen}>
+					<DialogContent
+						dir={isRTL ? "rtl" : "ltr"}
+						showCloseButton={false}
+						className="flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-1.5rem)] max-w-[420px] flex-col gap-0 overflow-hidden rounded-[20px] border border-panel-border! bg-panel-surface p-0 text-panel-text shadow-[0_24px_64px_-12px_rgba(0,0,0,0.48)] sm:w-full sm:max-w-[420px]"
+					>
+						<DialogHeader className="flex flex-row items-center justify-between gap-3 border-b border-panel-border/70! px-5 py-3.5 text-start">
+							<div className="flex min-w-0 items-center gap-2.5">
+								<ArrowUpCircle className="size-4 shrink-0 text-panel-text-secondary" />
+								<DialogTitle className="truncate text-[14px] font-bold tracking-[-0.01em] text-panel-text">
+									{t("dashboard.maintenance.title")}
+								</DialogTitle>
+								<DialogDescription className="sr-only">
+									{t("dashboard.maintenance.title")}
+								</DialogDescription>
+							</div>
+							<div className="flex shrink-0 items-center gap-1">
+								{maintenanceRefreshButton}
+								<Button
+									type="button"
+									variant="ghost"
+									size="icon-sm"
+									onClick={() => setUpdatePopoverOpen(false)}
+									aria-label={t("close")}
+									className="size-8 shrink-0 rounded-[10px] text-panel-text-muted transition-[background-color,color,transform] duration-150 active:scale-[0.95] min-[769px]:hover:bg-panel-elevated min-[769px]:hover:text-panel-text"
 								>
-									{operation?.error ? (
-										<ArrowPathIcon width={18} />
-									) : operation?.phase === "completed" ? (
-										<CheckIcon width={18} />
-									) : (
-										<motion.div
-											animate={{ rotate: 360 }}
-											transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
-											style={{ display: "flex", alignItems: "center", justifyContent: "center" }}
-										>
-											<ArrowPathIcon width={18} />
-										</motion.div>
-									)}
-								</Flex>
-								<Box>
-									<Text fontSize="15px" fontWeight="700" color="panel.text">
-										{t("dashboard.maintenance.updateProgressTitle")}
-									</Text>
-									<HStack spacing={2} mt={0.5}>
-										<Text fontSize="11px" color="panel.textMuted" fontWeight="500">
-											{currentVersion}
-										</Text>
-										{selectedTarget && (
-											<>
-												<Text fontSize="11px" color="panel.textMuted">
-													{document.documentElement.dir === "rtl" ? "←" : "→"}
-												</Text>
-												<Text
-													fontSize="11px"
-													color="var(--rb-panel-accent)"
-													fontWeight="700"
-													dir="ltr"
-													sx={{ unicodeBidi: "isolate" }}
-												>
-													{selectedTarget}
-												</Text>
-											</>
+									<X className="size-4" />
+								</Button>
+							</div>
+						</DialogHeader>
+						<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+							{maintenanceBody}
+						</div>
+						<DialogFooter className="flex flex-row flex-wrap items-center justify-end gap-2 border-t border-panel-border/70! px-5 py-3.5">
+							{maintenanceFooterButtons}
+						</DialogFooter>
+					</DialogContent>
+				</Dialog>
+			</>
+		);
+
+	const renderRestartButton = (extraClassName?: string) => (
+		<Button
+			type="button"
+			onClick={() => openConfirmModal("restart")}
+			disabled={info.isPending || !hostActionsAvailable}
+			variant="outline"
+			size="xs"
+			loading={restartMutation.isPending}
+			className={cn(
+				"h-9 rounded-[12px] border border-panel-border! bg-panel-surface px-3.5 text-panel-text shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,color,box-shadow,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:bg-panel-surface dark:hover:bg-input/30 active:scale-[0.97] min-[769px]:h-8 min-[769px]:hover:border-panel-border-strong! min-[769px]:hover:bg-panel-elevated min-[769px]:dark:hover:bg-panel-elevated min-[769px]:hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] whitespace-nowrap",
+				extraClassName,
+			)}
+		>
+			<span className="inline-flex items-center justify-center gap-2">
+				<RotateCw
+					strokeWidth={1.85}
+					className="size-4 shrink-0 text-red-600 dark:text-red-400"
+				/>
+				<span className="text-[12px] font-semibold leading-none text-red-600 dark:text-red-400">
+					{t("dashboard.maintenance.restartAction")}
+				</span>
+			</span>
+		</Button>
+	);
+
+	return (
+		<div className="flex w-full min-[769px]:w-auto shrink-0 items-center justify-end">
+			<div className="grid w-full grid-cols-2 gap-2 min-[769px]:flex min-[769px]:w-auto min-[769px]:flex-row min-[769px]:items-center min-[769px]:justify-end">
+				{canMaintain && (
+					<div className="col-span-2 min-[769px]:col-span-1">
+						{renderUpdatePopover()}
+					</div>
+				)}
+				{canBackUp && (
+					<div className={cn("min-w-0", !canMaintain && "col-span-2")}>
+						<DashboardBackupControls
+							isBinaryRuntime={hostActionsAvailable}
+							runtimeLoading={info.isLoading}
+							className="w-full min-[769px]:w-auto"
+						/>
+					</div>
+				)}
+				{canMaintain &&
+					renderRestartButton(
+						cn(
+							"w-full min-[769px]:w-auto",
+							!canBackUp && "col-span-2 min-[769px]:col-span-1",
+						),
+					)}
+			</div>
+
+			<Dialog
+				open={isUpdateDialogOpen}
+				onOpenChange={(open) => {
+					if (!open) setUpdateDialogOpen(false);
+				}}
+			>
+				<DialogContent
+					dir={isRTL ? "rtl" : "ltr"}
+					showCloseButton={false}
+					className="flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-1.5rem)] max-w-[640px] flex-col gap-0 overflow-hidden rounded-[20px] border border-panel-border! bg-panel-surface p-0 text-panel-text shadow-[0_24px_64px_-12px_rgba(0,0,0,0.48)] sm:w-full sm:max-w-[640px]"
+				>
+					<DialogHeader className="flex flex-row items-center justify-between gap-3 border-b border-panel-border/70! px-5 py-3.5 text-start">
+						<div className="flex min-w-0 items-center gap-2.5">
+							<ArrowUpCircle className="size-4 shrink-0 text-panel-text-secondary" />
+							<DialogTitle className="truncate text-[14px] font-bold tracking-[-0.01em] text-panel-text">
+								{t("dashboard.maintenance.updateProgressTitle")}
+							</DialogTitle>
+							<DialogDescription className="sr-only">
+								{t("dashboard.maintenance.updateProgressTitle")}
+							</DialogDescription>
+						</div>
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon-sm"
+							onClick={() => setUpdateDialogOpen(false)}
+							aria-label={t("close")}
+							className="size-8 shrink-0 rounded-[10px] text-panel-text-muted transition-[background-color,color,transform] duration-150 active:scale-[0.95] min-[769px]:hover:bg-panel-elevated min-[769px]:hover:text-panel-text"
+						>
+							<X className="size-4" />
+						</Button>
+					</DialogHeader>
+
+					<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">
+						<div className="flex flex-col gap-3.5">
+							<div className="flex flex-col gap-3 rounded-[14px] border border-panel-border/75! bg-panel-elevated/45 p-4">
+								<div className="flex items-center justify-between gap-3">
+									<div className="flex min-w-0 items-center gap-2">
+										{operation?.error ? (
+											<CircleAlert
+												className="size-4 shrink-0 text-red-600 dark:text-red-400"
+												aria-hidden="true"
+											/>
+										) : operation?.phase === "completed" ? (
+											<CircleCheck
+												className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400"
+												aria-hidden="true"
+											/>
+										) : (
+											<Spinner className="shrink-0 text-panel-text-secondary" />
 										)}
-									</HStack>
-								</Box>
-							</HStack>
-							{operation?.error && <ModalCloseButton position="static" />}
-						</Flex>
-					</ModalHeader>
-
-					<ModalBody px={6} py={5}>
-						<Stack spacing={4}>
-							<Box
-								p={4}
-								borderRadius="16px"
-								bg="panel.elevated"
-								border="1px solid"
-								borderColor="panel.border"
-								transition="all 0.3s ease"
-							>
-								<Flex align="center" justify="space-between" mb={2}>
-									<HStack spacing={2.5}>
-										<Flex
-											w="8px"
-											h="8px"
-											borderRadius="full"
-											bg={
-												operation?.error
-													? "red.500"
-													: operation?.phase === "completed"
-														? "green.500"
-														: "var(--rb-panel-accent)"
-											}
-											boxShadow={
-												operation?.error
-													? "0 0 10px rgba(239, 68, 68, 0.6)"
-													: operation?.phase === "completed"
-														? "0 0 10px rgba(34, 197, 94, 0.6)"
-														: "0 0 10px var(--rb-panel-accent)"
-											}
-										/>
-										<Text fontSize="13px" fontWeight="700" color="panel.text">
+										<p className="truncate text-[13px] font-bold text-panel-text">
 											{operation?.phase
-												? t(`dashboard.maintenance.phase.${operation.phase}`, operation.phase)
+												? t(
+														`dashboard.maintenance.phase.${operation.phase}`,
+														operation.phase,
+													)
 												: t("dashboard.maintenance.phase.queued")}
-										</Text>
-									</HStack>
-									{typeof operation?.progress === "number" && (
-										<Text
-											fontSize="12px"
-											fontWeight="700"
-											color="var(--rb-panel-accent)"
+										</p>
+									</div>
+									<div className="flex shrink-0 items-center gap-2.5 text-[12px]">
+										<span
 											dir="ltr"
-											sx={{ fontVariantNumeric: "tabular-nums" }}
+											className="font-semibold text-panel-text-muted tabular-nums [unicode-bidi:isolate]"
 										>
-											{Math.round(operation.progress)}%
-										</Text>
-									)}
-								</Flex>
-
-								<Text fontSize="12px" color="panel.textSecondary" fontWeight="500" mb={3}>
+											{selectedTarget
+												? `${currentVersion} → ${selectedTarget}`
+												: currentVersion}
+										</span>
+										{typeof operation?.progress === "number" && (
+											<span
+												dir="ltr"
+												className="font-bold text-panel-text tabular-nums [unicode-bidi:isolate]"
+											>
+												{Math.round(operation.progress)}%
+											</span>
+										)}
+									</div>
+								</div>
+								<Progress
+									value={
+										typeof operation?.progress === "number"
+											? operation.progress
+											: undefined
+									}
+									className="h-1.5 rounded-full"
+								/>
+								<p className="text-[12px] leading-relaxed text-panel-text-secondary">
 									{operation?.error
 										? operation.error
 										: operation?.message
-											? t(`dashboard.maintenance.message.${operation.message.replace(/[^a-zA-Z]/g, "")}`, operation.message)
+											? t(
+													`dashboard.maintenance.message.${operation.message.replace(/[^a-zA-Z]/g, "")}`,
+													operation.message,
+												)
 											: t("dashboard.maintenance.message.preparingUpdate")}
-								</Text>
+								</p>
+								{waitingForAPI && !operation?.error && (
+									<p className="text-[11px] text-panel-text-muted">
+										{t("dashboard.maintenance.autoRefreshAfterRestart")}
+									</p>
+								)}
+							</div>
 
-								<Progress
-									value={typeof operation?.progress === "number" ? operation.progress : undefined}
-									isIndeterminate={typeof operation?.progress !== "number" && !operation?.error && operation?.phase !== "completed"}
-									borderRadius="full"
-									h="6px"
-									bg="panel.surface"
-									sx={{
-										"& > div": {
-											background: operation?.error
-												? "var(--chakra-colors-red-500)"
-												: operation?.phase === "completed"
-													? "var(--chakra-colors-green-500)"
-													: "var(--rb-panel-accent)",
-											transition: "width 0.4s ease",
-										},
-									}}
-								/>
-							</Box>
-
-							{waitingForAPI && (
-								<Text fontSize="12px" color="panel.textMuted" textAlign="center">
-									{t("dashboard.maintenance.autoRefreshAfterRestart")}
-								</Text>
-							)}
-
-							<Box
-								borderRadius="16px"
-								bg={outputBg}
-								border="1px solid"
-								borderColor={outputBorder}
-								overflow="hidden"
-							>
-								<Flex
-									align="center"
-									justify="space-between"
-									px={3.5}
-									py={2}
-									borderBottom="1px solid"
-									borderColor={outputBorder}
-									bg="panel.elevated"
-								>
-									<Flex align="center" gap={2}>
-										<CommandLineIcon width={14} height={14} color="var(--rb-panel-accent)" />
-										<Text fontSize="11px" fontWeight="600" color="panel.textSecondary" lineHeight="1">
-											{t("dashboard.maintenance.liveLogs")}
-										</Text>
-									</Flex>
-									<Tooltip
-										label={logsCopied ? t("dashboard.maintenance.logsCopied") : t("dashboard.maintenance.copyLogs")}
-										fontSize="10px"
-										openDelay={300}
-										closeOnClick={false}
-										closeOnMouseDown
-									>
-										<IconButton
-											aria-label={t("dashboard.maintenance.copyLogs")}
-											tabIndex={-1}
-											icon={logsCopied ? <CheckIcon width={13} /> : <ClipboardIcon width={13} />}
-											size="xs"
-											variant="ghost"
-											h="22px"
-											w="22px"
-											minW="22px"
-											borderRadius="6px"
-											color={logsCopied ? "green.500" : "panel.textMuted"}
-											_hover={{ color: "panel.text" }}
-											onClick={() => {
-												const logs = cleanTerminalOutput(operation?.logs);
-												if (logs) {
+							<div className="flex flex-col overflow-hidden rounded-[14px] border border-panel-border/75! bg-panel-elevated/60">
+								<div className="flex items-center justify-between gap-2 border-b border-panel-border/60! px-3.5 py-2">
+									<div className="flex items-center gap-2 text-[12px] font-semibold text-panel-text-secondary">
+										<Terminal className="size-3.5 text-panel-text-muted" />
+										<span>{t("dashboard.maintenance.liveLogs")}</span>
+									</div>
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<Button
+												type="button"
+												aria-label={t("dashboard.maintenance.copyLogs")}
+												onClick={() => {
+													const logs = cleanTerminalOutput(operation?.logs);
+													if (!logs) return;
 													navigator.clipboard.writeText(logs);
 													setLogsCopied(true);
-													setTimeout(() => setLogsCopied(false), 2000);
-												}
-											}}
-										/>
+													window.setTimeout(() => setLogsCopied(false), 2000);
+												}}
+												variant="ghost"
+												size="xs"
+												className="h-7 rounded-[8px] px-2 text-panel-text-muted active:scale-[0.96] min-[769px]:hover:text-panel-text"
+											>
+												{logsCopied ? (
+													<Check className="size-3.5 text-emerald-600 dark:text-emerald-400" />
+												) : (
+													<Clipboard className="size-3.5" />
+												)}
+											</Button>
+										</TooltipTrigger>
+										<TooltipContent>
+											{logsCopied
+												? t("dashboard.maintenance.logsCopied")
+												: t("dashboard.maintenance.copyLogs")}
+										</TooltipContent>
 									</Tooltip>
-								</Flex>
-
-								<Box
+								</div>
+								<pre
 									ref={logsContainerRef}
-									as="pre"
-									maxH="220px"
-									overflowY="auto"
-									p={3.5}
-									fontSize="11px"
-									fontFamily="'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, monospace"
-									lineHeight="1.6"
-									color="panel.text"
 									dir="ltr"
-									textAlign="left"
-									whiteSpace="pre-wrap"
-									wordBreak="break-all"
-									sx={{
-										"&::-webkit-scrollbar": {
-											width: "6px",
-										},
-										"&::-webkit-scrollbar-thumb": {
-											background: "rgba(255, 255, 255, 0.12)",
-											borderRadius: "3px",
-										},
-									}}
+									className="max-h-[250px] min-h-[120px] overflow-auto p-3.5 font-mono text-[12px] leading-[1.65] whitespace-pre-wrap break-all text-panel-text"
 								>
-									{cleanTerminalOutput(operation?.logs) || t("dashboard.maintenance.waitingForOutput")}
-								</Box>
-							</Box>
-						</Stack>
-					</ModalBody>
-				</ModalContent>
-			</Modal>
+									{cleanTerminalOutput(operation?.logs) ||
+										t("dashboard.maintenance.waitingForOutput")}
+								</pre>
+							</div>
+						</div>
+					</div>
 
-			<Modal
-				isOpen={confirmAction !== null}
-				onClose={() => setConfirmAction(null)}
-				isCentered
-				size="md"
+					<DialogFooter className="flex flex-row items-center justify-end gap-2 border-t border-panel-border/70! px-5 py-3.5">
+						<Button
+							type="button"
+							onClick={() => setUpdateDialogOpen(false)}
+							variant="ghost"
+							size="sm"
+							className="h-9 rounded-[12px] px-4 text-[12px] font-semibold text-panel-text-muted hover:bg-transparent dark:hover:bg-transparent active:scale-[0.97] min-[769px]:hover:bg-panel-elevated min-[769px]:hover:text-panel-text"
+						>
+							{t("close")}
+						</Button>
+						{(operation?.error || operation?.phase === "completed") && (
+							<Button
+								type="button"
+								onClick={() => window.location.reload()}
+								size="sm"
+								className="h-9 rounded-[12px] px-4 text-[12px] font-semibold active:scale-[0.97]"
+							>
+								{t("refresh")}
+							</Button>
+						)}
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			<Dialog
+				open={isConfirmOpen}
+				onOpenChange={setIsConfirmOpen}
 			>
-				<ModalOverlay bg="blackAlpha.600" backdropFilter="blur(6px)" />
-				<ModalContent
-					bg="panel.surface"
-					borderColor="panel.border"
-					borderWidth="1px"
-					borderRadius="2xl"
-					boxShadow="0 24px 60px rgba(0,0,0,0.4)"
-					mx={4}
+				<DialogContent
+					dir={isRTL ? "rtl" : "ltr"}
+					showCloseButton={false}
+					className="flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-1.5rem)] max-w-[420px] flex-col gap-0 overflow-hidden rounded-[20px] border border-panel-border! bg-panel-surface p-0 text-panel-text shadow-[0_24px_64px_-12px_rgba(0,0,0,0.48)] sm:w-full sm:max-w-[420px]"
 				>
-					<ModalHeader fontSize="md" fontWeight="700" color="panel.text" pb={2}>
-						{confirmAction === "restart"
-							? t("dashboard.maintenance.restartConfirmTitle")
-							: confirmAction === "soft-reload"
-								? t("dashboard.maintenance.softReloadConfirmTitle")
-								: t("dashboard.maintenance.updateConfirmTitle")}
-					</ModalHeader>
-					<ModalCloseButton />
-							<ModalBody py={3}>
-								<Stack spacing={3}>
-									<Text fontSize="13px" color="panel.textSecondary" lineHeight="tall">
-									{confirmAction === "restart"
+					<DialogHeader className="flex flex-row items-center justify-between gap-3 border-b border-panel-border/70! px-5 py-3.5 text-start">
+						<div className="flex min-w-0 items-center gap-2.5">
+							{confirmAction === "restart" ? (
+								<RotateCw className="size-4 shrink-0 text-panel-text-secondary" />
+							) : confirmAction === "soft-reload" ? (
+								<RotateCcw className="size-4 shrink-0 text-panel-text-secondary" />
+							) : (
+								<ArrowUpCircle className="size-4 shrink-0 text-panel-text-secondary" />
+							)}
+							<DialogTitle className="truncate text-[14px] font-bold tracking-[-0.01em] text-panel-text">
+								{confirmAction === "restart"
+									? t("dashboard.maintenance.restartConfirmTitle")
+									: confirmAction === "soft-reload"
+										? t("dashboard.maintenance.softReloadConfirmTitle")
+										: t("dashboard.maintenance.updateConfirmTitle")}
+							</DialogTitle>
+							<DialogDescription className="sr-only">
+								{confirmAction === "restart"
+									? t("dashboard.maintenance.restartConfirmDescription")
+									: confirmAction === "soft-reload"
+										? t("dashboard.maintenance.softReloadConfirmDescription")
+										: t("dashboard.maintenance.updateConfirmDescription", {
+												target: selectedTarget || update?.target || "-",
+											})}
+							</DialogDescription>
+						</div>
+						<Button
+							type="button"
+							variant="ghost"
+							size="icon-sm"
+							onClick={() => setIsConfirmOpen(false)}
+							aria-label={t("close")}
+							className="size-8 shrink-0 rounded-[10px] text-panel-text-muted transition-[background-color,color,transform] duration-150 active:scale-[0.95] min-[769px]:hover:bg-panel-elevated min-[769px]:hover:text-panel-text"
+						>
+							<X className="size-4" />
+						</Button>
+					</DialogHeader>
+
+					<div className="flex flex-col gap-3 px-5 py-4">
+						<p className="text-[13px] leading-relaxed text-panel-text-secondary">
+							{confirmAction === "restart"
 								? t("dashboard.maintenance.restartConfirmDescription")
 								: confirmAction === "soft-reload"
 									? t("dashboard.maintenance.softReloadConfirmDescription")
@@ -976,44 +960,68 @@ export const DashboardMaintenanceControls = ({
 										: t("dashboard.maintenance.updateConfirmDescription", {
 												target: selectedTarget || update?.target || "-",
 											})}
-									</Text>
-									{confirmAction === "update" && selectedVersion && (
-										<Alert status="warning" borderRadius="xl" fontSize="12px">
-											<AlertIcon />
-											<Text>{t("dashboard.maintenance.versionSwitchWarning")}</Text>
-										</Alert>
-									)}
-								</Stack>
-					</ModalBody>
-					<ModalFooter gap={2} pt={3}>
+						</p>
+						{confirmAction === "update" && (
+							<div className="flex items-center justify-between gap-3 rounded-[12px] bg-panel-elevated/60 px-3.5 py-2.5 text-[12px]">
+								<span className="font-semibold text-panel-text-muted">
+									{t("dashboard.maintenance.panelVersion")}
+								</span>
+								<span
+									dir="ltr"
+									className="font-bold text-panel-text tabular-nums [unicode-bidi:isolate]"
+								>
+									{selectedTarget
+										? `${currentVersion} → ${selectedTarget}`
+										: currentVersion}
+								</span>
+							</div>
+						)}
+						{confirmAction === "update" && selectedVersion && (
+							<Alert className="rounded-[12px] border border-amber-500/20 bg-amber-500/8 px-3.5 py-2.5 text-[12px]">
+								<TriangleAlert
+									className="size-4 text-amber-600 dark:text-amber-400"
+									aria-hidden="true"
+								/>
+								<p className="text-[12px] leading-relaxed text-panel-text-secondary">
+									{t("dashboard.maintenance.versionSwitchWarning")}
+								</p>
+							</Alert>
+						)}
+					</div>
+
+					<DialogFooter className="flex flex-row items-center justify-end gap-2 border-t border-panel-border/70! px-5 py-3.5">
 						<Button
+							type="button"
+							onClick={() => setIsConfirmOpen(false)}
 							variant="ghost"
 							size="sm"
-							borderRadius="full"
-							color="panel.textMuted"
-							onClick={() => setConfirmAction(null)}
+							className="h-9 rounded-[12px] px-4 text-[12px] font-semibold text-panel-text-muted hover:bg-transparent dark:hover:bg-transparent active:scale-[0.97] min-[769px]:hover:bg-panel-elevated min-[769px]:hover:text-panel-text"
 						>
 							{t("cancel")}
 						</Button>
 						<Button
-							colorScheme={confirmAction === "restart" ? "red" : selectedChannel === "dev" && confirmAction === "update" ? "orange" : "primary"}
-							size="sm"
-							borderRadius="full"
-							px={5}
-							isLoading={restartMutation.isLoading || reloadMutation.isLoading || updateMutation.isLoading}
+							type="button"
 							onClick={() => {
 								const act = confirmAction;
-								setConfirmAction(null);
+								setIsConfirmOpen(false);
 								if (act === "restart") restartMutation.mutate();
 								if (act === "soft-reload") reloadMutation.mutate();
 								if (act === "update") executeUpdate();
 							}}
+							size="sm"
+							variant={confirmAction === "restart" ? "destructive" : "default"}
+							loading={
+								restartMutation.isPending ||
+								reloadMutation.isPending ||
+								updateMutation.isPending
+							}
+							className="h-9 rounded-[12px] px-5 text-[12px] font-semibold active:scale-[0.97]"
 						>
 							{t("confirm")}
 						</Button>
-					</ModalFooter>
-				</ModalContent>
-			</Modal>
-		</Flex>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+		</div>
 	);
 };

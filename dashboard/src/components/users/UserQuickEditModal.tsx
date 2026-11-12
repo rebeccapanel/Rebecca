@@ -1,13 +1,10 @@
-import {
-	Button,
-	FormControl,
-	FormLabel,
-	InputGroup,
-	InputRightAddon,
-	Text,
-	useToast,
-	VStack,
-} from "@chakra-ui/react";
+import { Button } from "components/ui/button";
+import { Field, FieldLabel } from "components/ui/field";
+import { toast } from "components/ui/sonner";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+import { cn } from "lib/cn";
+
+
 import { NumericInput } from "components/common/NumericInput";
 import { DateTimePicker } from "components/DateTimePicker";
 import { AppDialog } from "components/dialogs/AppDialog";
@@ -27,7 +24,7 @@ const BYTES_PER_GB = 1024 * 1024 * 1024;
  */
 export const UserQuickEditModal: FC = () => {
 	const { t } = useTranslation();
-	const toast = useToast();
+	
 	const quickEditUser = useDashboard((state) => state.quickEditUser);
 	const refetchUsers = useDashboard((state) => state.refetchUsers);
 	const user = quickEditUser?.user ?? null;
@@ -69,26 +66,13 @@ export const UserQuickEditModal: FC = () => {
 				method: "PUT",
 				body,
 			});
-			toast({
-				title:
-					field === "data_limit"
+			toast.success(field === "data_limit"
 						? t("usersTable.setDataLimitSuccess")
-						: t("usersTable.setExpirySuccess"),
-				status: "success",
-				isClosable: true,
-				position: "top",
-				duration: 2500,
-			});
+						: t("usersTable.setExpirySuccess"), { duration: 2500 });
 			refetchUsers(true);
 			useDashboard.setState({ quickEditUser: null });
 		} catch (error: any) {
-			toast({
-				title: error?.data?.detail || error?.message || t("error"),
-				status: "error",
-				isClosable: true,
-				position: "top",
-				duration: 3000,
-			});
+			toast.error(error?.data?.detail || error?.message || t("error"), { duration: 3000 });
 		} finally {
 			setLoading(false);
 		}
@@ -97,77 +81,57 @@ export const UserQuickEditModal: FC = () => {
 	const isDataLimit = field === "data_limit";
 
 	return (
-		<AppDialog
-			isCentered
-			isOpen={Boolean(quickEditUser)}
-			onClose={onClose}
-			size="sm"
-			title={
+		<AppDialog open={Boolean(quickEditUser)} onClose={onClose} size="sm" title={
 				isDataLimit
 					? t("usersTable.setDataLimit")
 					: t("usersTable.setExpiry")
-			}
-			overlayProps={{ bg: "blackAlpha.300" }}
-			contentProps={{ mx: "3" }}
-			footerProps={{ gap: 3 }}
-			footer={
+			} contentProps={{ className: "mx-3" }} footerProps={{ className: "gap-3" }} footer={
 				<>
-					<Button
-						size="sm"
-						variant="outline"
-						onClick={onClose}
-						isDisabled={loading}
-					>
+					<Button onClick={onClose} disabled={loading} variant="outline" size="sm">
 						{t("cancel")}
 					</Button>
-					<Button
-						size="sm"
-						colorScheme="primary"
-						onClick={save}
-						isLoading={loading}
-					>
+					<Button onClick={save} size="sm" loading={loading}>
 						{t("save")}
 					</Button>
 				</>
-			}
-		>
-					<VStack align="stretch" spacing={3}>
+			}>
+					<div className="flex flex-col items-stretch gap-3">
 						{user && (
-							<Text fontSize="sm" color="panel.textMuted" dir="ltr">
+							<p dir="ltr" className="text-[0.875rem] text-panel-text-muted">
 								{user.username}
-							</Text>
+							</p>
 						)}
 						{isDataLimit ? (
-							<FormControl>
-								<FormLabel>{t("userDialog.dataLimit")}</FormLabel>
-								<InputGroup>
+							<Field>
+								<FieldLabel>{t("userDialog.dataLimit")}</FieldLabel>
+								<div className="relative flex w-full items-center">
 									<NumericInput
 										min={0}
 										step={1}
 										value={limitGb}
 										onChange={(valueAsString) => setLimitGb(valueAsString)}
 									/>
-									<InputRightAddon>GB</InputRightAddon>
-								</InputGroup>
-								<Text fontSize="xs" color="panel.textMuted" mt={1}>
+									<div className="flex items-center rounded-e-md border border-s-0 border-input bg-muted px-3 text-sm">GB</div>
+								</div>
+								<p className="text-[0.75rem] text-panel-text-muted mt-1">
 									{t("usersTable.unlimitedHint")}
-								</Text>
-							</FormControl>
+								</p>
+							</Field>
 						) : (
-							<FormControl>
-								<FormLabel>{t("usersTable.expire")}</FormLabel>
+							<Field>
+								<FieldLabel>{t("usersTable.expire")}</FieldLabel>
 								<DateTimePicker
 									value={expireDate}
 									onChange={setExpireDate}
 									minDate={new Date()}
 									placeholder={t("usersTable.setExpiry")}
 								/>
-								<Text fontSize="xs" color="panel.textMuted" mt={1}>
+								<p className="text-[0.75rem] text-panel-text-muted mt-1">
 									{t("usersTable.expiryClearHint")}
-								</Text>
-							</FormControl>
+								</p>
+							</Field>
 						)}
-					</VStack>
+					</div>
 		</AppDialog>
 	);
 };

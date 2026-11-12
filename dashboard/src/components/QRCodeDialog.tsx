@@ -1,405 +1,233 @@
-import {
-	Box,
-	Button,
-	chakra,
-	Collapse,
-	HStack,
-	IconButton,
-	Modal,
-	ModalBody,
-	ModalCloseButton,
-	ModalContent,
-	ModalHeader,
-	ModalOverlay,
-	Text,
-	useBreakpointValue,
-	VStack,
-} from "@chakra-ui/react";
-import { keyframes } from "@emotion/react";
-import {
-	ChevronLeftIcon,
-	ChevronRightIcon,
-	QrCodeIcon,
-} from "@heroicons/react/24/outline";
+import { Check, ChevronLeft, ChevronRight, Copy } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { type FC, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { buttonVariants } from "components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "components/ui/tabs";
+import { useBreakpointValue } from "hooks/useBreakpointValue";
+import { cn } from "lib/cn";
+import { getSwipeTargetIndex } from "utils/carousel";
 import { copyTextToClipboard } from "utils/clipboard";
 import { getConfigLabelFromLink } from "utils/configLabel";
-import { getSwipeTargetIndex } from "utils/carousel";
 import { useDashboard } from "../contexts/DashboardContext";
-import { Icon } from "./Icon";
 
-const QRCode = chakra(QRCodeCanvas);
-const NextIcon = chakra(ChevronRightIcon, {
-	baseStyle: {
-		w: 6,
-		h: 6,
-		color: "gray.600",
-		_dark: {
-			color: "white",
-		},
-	},
-});
-const PrevIcon = chakra(ChevronLeftIcon, {
-	baseStyle: {
-		w: 6,
-		h: 6,
-		color: "gray.600",
-		_dark: {
-			color: "white",
-		},
-	},
-});
-const QRIcon = chakra(QrCodeIcon, {
-	baseStyle: {
-		w: 5,
-		h: 5,
-	},
-});
+type QRCopyPanelProps = {
+	value: string;
+	size: number;
+	/** Accessible name for the QR, which copies on click. */
+	label: string;
+	/** Set on the carousel only: a horizontal swipe moves to another config. */
+	onSwipe?: (delta: number) => void;
+};
 
-const clickPulse = keyframes`
-	0% { transform: scale(1); }
-	40% { transform: scale(0.94); }
-	70% { transform: scale(1.04); }
-	100% { transform: scale(1); }
-`;
+/**
+ * A QR code that copies its value on click, with the value and an explicit copy button
+ * under it. The copy state lives here, so callers remount it (via `key`) to reset it.
+ */
+const QRCopyPanel = ({ value, size, label, onSwipe }: QRCopyPanelProps) => {
+	const { t } = useTranslation();
+	const [copied, setCopied] = useState(false);
+	const qrRef = useRef<HTMLButtonElement>(null);
+	const touchStartX = useRef<number | null>(null);
+	// A swipe can end on the QR; the click that follows it must not copy.
+	const swiped = useRef(false);
 
+	useEffect(() => {
+		if (!copied) return undefined;
+		const timer = window.setTimeout(() => setCopied(false), 1500);
+		return () => window.clearTimeout(timer);
+	}, [copied]);
+
+	const copyText = () =>
+		copyTextToClipboard(value)
+			.then(() => setCopied(true))
+			.catch(() => undefined);
+
+	// Clicking the QR copies the picture itself; without image clipboard support it falls back to the link text.
+	const copyQrImage = async () => {
+		const canvas = qrRef.current?.querySelector("canvas");
+		if (!canvas || !navigator.clipboard?.write) return copyText();
+		const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+		if (!blob) return copyText();
+		await navigator.clipboard
+			.write([new ClipboardItem({ "image/png": blob })])
+			.then(() => setCopied(true))
+			.catch(() => undefined);
+	};
+
+	return (
+		<div className="flex w-full flex-col items-center gap-4">
+			<button
+				ref={qrRef}
+				type="button"
+				aria-label={label}
+				onClick={() => {
+					if (swiped.current) {
+						swiped.current = false;
+						return;
+					}
+					void copyQrImage();
+				}}
+				onTouchStart={(event) => {
+					touchStartX.current = event.touches[0]?.clientX ?? null;
+					swiped.current = false;
+				}}
+				onTouchEnd={(event) => {
+					const startX = touchStartX.current;
+					touchStartX.current = null;
+					if (startX === null || !onSwipe) return;
+					const delta = (event.changedTouches[0]?.clientX ?? startX) - startX;
+					if (Math.abs(delta) < 40) return;
+					swiped.current = true;
+					onSwipe(delta);
+				}}
+				className="rounded-xl bg-white p-3 shadow-sm ring-1 ring-black/5 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
+			>
+				<QRCodeCanvas value={value} size={size} level="M" includeMargin={false} />
+			</button>
+			<div className="flex w-full min-w-0 items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 py-2">
+				<p dir="ltr" title={value} className="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground">
+					{value}
+				</p>
+				<button
+					type="button"
+					onClick={() => void copyText()}
+					className={cn(buttonVariants({ variant: "outline", size: "sm" }), "shrink-0 gap-1.5")}
+				>
+					{copied ? <Check className="size-4" /> : <Copy className="size-4" />}
+					{copied ? t("copied") : t("copy")}
+				</button>
+			</div>
+		</div>
+	);
+};
+
+/** Subscription and per-config QR codes for one user, shown in a shadcn dialog. */
 export const QRCodeDialog: FC = () => {
+	const { t } = useTranslation();
 	const QRcodeLinks = useDashboard((state) => state.QRcodeLinks);
 	const qrCodeUsername = useDashboard((state) => state.qrCodeUsername);
 	const setQRCode = useDashboard((state) => state.setQRCode);
 	const setSubLink = useDashboard((state) => state.setSubLink);
 	const subscribeUrl = useDashboard((state) => state.subscribeUrl);
-	const isOpen = QRcodeLinks !== null;
-	const [index, setIndex] = useState(0);
-	const [copiedSub, setCopiedSub] = useState(false);
-	const [copiedConfigIndex, setCopiedConfigIndex] = useState<number | null>(
-		null,
+	const [configIndex, setConfigIndex] = useState(0);
+	const qrSize = useBreakpointValue({ base: 200, sm: 220 }) ?? 200;
+
+	const configItems = useMemo(
+		() =>
+			(QRcodeLinks ?? []).map((link, itemIndex) => ({
+				link,
+				label:
+					getConfigLabelFromLink(link) ||
+					t("userDialog.links.configFallback", { index: itemIndex + 1 }),
+			})),
+		[QRcodeLinks, t],
 	);
-	const [configAnimIndex, setConfigAnimIndex] = useState<number | null>(null);
-	const [subAnimSeed, setSubAnimSeed] = useState(0);
-	const [configAnimSeed, setConfigAnimSeed] = useState(0);
-	const [showConfigQrs, setShowConfigQrs] = useState(false);
-	const touchStartX = useRef<number | null>(null);
-	const suppressNextCopy = useRef(false);
-	const { t } = useTranslation();
-	const qrSize = useBreakpointValue({ base: 220, sm: 260, md: 300 }) ?? 220;
+
+	const activeIndex = Math.min(configIndex, Math.max(configItems.length - 1, 0));
+	const activeConfig = configItems[activeIndex];
+	const hasSubscription = Boolean(subscribeUrl);
+	const subscribeQrLink = String(subscribeUrl).startsWith("/")
+		? window.location.origin + subscribeUrl
+		: String(subscribeUrl);
+
 	const onClose = () => {
 		setQRCode(null);
 		setSubLink(null);
 	};
 
-	const copySubscribeLink = () => {
-		void copyTextToClipboard(subscribeQrLink).then(() => {
-			setCopiedSub(true);
-			setSubAnimSeed((prev) => prev + 1);
-		});
+	const stepConfig = (step: number) =>
+		setConfigIndex((current) => (current + step + configItems.length) % configItems.length);
+
+	const subscriptionView = (
+		<QRCopyPanel value={subscribeQrLink} size={qrSize} label={t("a11y.copySubscriptionLink")} />
+	);
+
+	const configsView = activeConfig && (
+		<div className="flex w-full flex-col gap-4">
+			<div className="flex items-center justify-between gap-3">
+				<button
+					type="button"
+					aria-label={t("a11y.previous")}
+					disabled={configItems.length < 2}
+					onClick={() => stepConfig(-1)}
+					className={buttonVariants({ variant: "outline", size: "icon" })}
+				>
+					<ChevronLeft className="rtl:rotate-180" />
+				</button>
+				<div className="min-w-0 text-center">
+					<p className="truncate text-sm font-semibold">{activeConfig.label}</p>
+					<p className="text-xs tabular-nums text-muted-foreground">
+						{activeIndex + 1} / {configItems.length}
+					</p>
+				</div>
+				<button
+					type="button"
+					aria-label={t("a11y.next")}
+					disabled={configItems.length < 2}
+					onClick={() => stepConfig(1)}
+					className={buttonVariants({ variant: "outline", size: "icon" })}
+				>
+					<ChevronRight className="rtl:rotate-180" />
+				</button>
+			</div>
+			<QRCopyPanel
+				key={activeIndex}
+				value={activeConfig.link}
+				size={qrSize}
+				label={t("a11y.copyConfig")}
+				onSwipe={
+					configItems.length > 1
+						? (delta) => setConfigIndex((current) => getSwipeTargetIndex(current, configItems.length, delta))
+						: undefined
+				}
+			/>
+		</div>
+	);
+
+	const renderBody = () => {
+		if (hasSubscription && configItems.length > 0) {
+			return (
+				<Tabs defaultValue="subscription" className="w-full">
+					<TabsList className="w-full">
+						<TabsTrigger value="subscription">{t("userDialog.links.subscription")}</TabsTrigger>
+						<TabsTrigger value="configs">{t("userDialog.links.configs")}</TabsTrigger>
+					</TabsList>
+					<TabsContent value="subscription" className="pt-5">
+						{subscriptionView}
+					</TabsContent>
+					<TabsContent value="configs" className="pt-5">
+						{configsView}
+					</TabsContent>
+				</Tabs>
+			);
+		}
+		if (hasSubscription) return subscriptionView;
+		if (configsView) return configsView;
+		return (
+			<p className="py-6 text-center text-sm text-muted-foreground">{t("userDialog.links.noConfigs")}</p>
+		);
 	};
-
-	const copyConfigLink = (link: string, itemIndex: number) => {
-		void copyTextToClipboard(link).then(() => {
-			setCopiedConfigIndex(itemIndex);
-			setConfigAnimIndex(itemIndex);
-			setConfigAnimSeed((prev) => prev + 1);
-		});
-	};
-
-	const subscribeQrLink = String(subscribeUrl).startsWith("/")
-		? window.location.origin + subscribeUrl
-		: String(subscribeUrl);
-
-	const configItems = useMemo(() => {
-		const links = QRcodeLinks ?? [];
-		return links.map((link, itemIndex) => {
-			const label =
-				getConfigLabelFromLink(link) ||
-				t("userDialog.links.configFallback", {
-					index: itemIndex + 1,
-				});
-			return { link, label };
-		});
-	}, [QRcodeLinks, t]);
-
-	const activeIndex =
-		configItems.length > 0 ? Math.min(index, configItems.length - 1) : 0;
-	const activeConfig = configItems[activeIndex];
-	const activeConfigLabel = configItems[activeIndex]?.label ?? "";
-
-	useEffect(() => {
-		if (isOpen) {
-			setIndex(0);
-			setShowConfigQrs(false);
-		}
-	}, [isOpen]);
-
-	useEffect(() => {
-		if (index >= configItems.length && configItems.length > 0) {
-			setIndex(0);
-		}
-	}, [index, configItems.length]);
-
-	useEffect(() => {
-		if (!isOpen) {
-			setCopiedSub(false);
-			setCopiedConfigIndex(null);
-			setConfigAnimIndex(null);
-		}
-	}, [isOpen]);
-
-	useEffect(() => {
-		if (!copiedSub) return undefined;
-		const timer = window.setTimeout(() => setCopiedSub(false), 1000);
-		return () => window.clearTimeout(timer);
-	}, [copiedSub]);
-
-	useEffect(() => {
-		if (copiedConfigIndex === null) return undefined;
-		const timer = window.setTimeout(() => setCopiedConfigIndex(null), 1000);
-		return () => window.clearTimeout(timer);
-	}, [copiedConfigIndex]);
 
 	return (
-		<Modal isOpen={isOpen} onClose={onClose}>
-			<ModalOverlay bg="blackAlpha.300" />
-			<ModalContent
-				mx={{ base: 3, md: 4 }}
-				w="full"
-				maxW="3xl"
-				maxH="92vh"
-				overflow="hidden"
-			>
-				<ModalHeader pt={6}>
-					<HStack spacing={3} align="center">
-						<Icon color="primary">
-							<QRIcon color="white" />
-						</Icon>
-						{qrCodeUsername && (
-							<Box minW={0}>
-								<Text fontSize="xs" color="gray.500">
-									{t("username")}
-								</Text>
-								<Text
-									dir="ltr"
-									fontSize="md"
-									fontWeight="semibold"
-									noOfLines={1}
-								>
-									{qrCodeUsername}
-								</Text>
-							</Box>
-						)}
-					</HStack>
-				</ModalHeader>
-				<ModalCloseButton mt={3} />
-				{QRcodeLinks && (
-					<ModalBody
-						gap={{ base: 4, lg: 10 }}
-						px={{ base: 4, sm: 6, lg: 10 }}
-						pb={{ base: 5, md: 6 }}
-						display="flex"
-						justifyContent="center"
-						flexDirection={{
-							base: "column",
-							lg: "row",
-						}}
-						overflowY="auto"
-					>
-						{subscribeUrl && (
-							<VStack spacing={2}>
-								<Text display="block" textAlign="center" fontWeight="semibold">
-									{t("qrcodeDialog.sublink")}
-								</Text>
-								{copiedSub && (
-									<Box
-										bg="green.500"
-										color="white"
-										fontSize="xs"
-										px={2}
-										py={0.5}
-										borderRadius="full"
-									>
-										{t("copied")}
-									</Box>
-								)}
-								<Box
-									key={`sub-qr-${subAnimSeed}`}
-									cursor="pointer"
-									role="button"
-									tabIndex={0}
-									aria-label={t("copy")}
-									animation={
-										copiedSub && subAnimSeed > 0
-											? `${clickPulse} 260ms ease-in-out`
-											: "none"
-									}
-									onClick={copySubscribeLink}
-									onKeyDown={(event) => {
-										if (event.key === "Enter" || event.key === " ") {
-											event.preventDefault();
-											copySubscribeLink();
-										}
-									}}
-								>
-									<QRCode
-										mx="auto"
-										maxW="100%"
-										size={qrSize}
-										p="2"
-										level={"L"}
-										includeMargin={false}
-										value={subscribeQrLink}
-										bg="white"
-									/>
-								</Box>
-								<Text fontSize="xs" color="gray.500" textAlign="center">
-									{t("qrcodeDialog.clickToCopy")}
-								</Text>
-							</VStack>
-						)}
-						{configItems.length > 0 && (
-							<Box w={{ base: "full", lg: `${qrSize}px` }}>
-								<Button
-									w="full"
-									size="sm"
-									variant="outline"
-									leftIcon={<QRIcon />}
-									onClick={() => setShowConfigQrs((prev) => !prev)}
-								>
-									{showConfigQrs
-										? t("qrcodeDialog.hideConfigs")
-										: t("qrcodeDialog.showConfigs")}
-								</Button>
-								<Collapse in={showConfigQrs} animateOpacity>
-									<Box pt={4}>
-										<Text
-											display="block"
-											textAlign="center"
-											fontWeight="semibold"
-											mb={2}
-										>
-											{activeConfigLabel}
-										</Text>
-										{copiedConfigIndex === activeIndex && (
-											<Box
-												bg="green.500"
-												color="white"
-												fontSize="xs"
-												px={2}
-												py={0.5}
-												borderRadius="full"
-												mx="auto"
-												mb={2}
-												w="fit-content"
-											>
-												{t("copied")}
-											</Box>
-										)}
-										<Box
-											position="relative"
-											onTouchStart={(event) => {
-												touchStartX.current = event.touches[0]?.clientX ?? null;
-												suppressNextCopy.current = false;
-											}}
-											onTouchEnd={(event) => {
-												const startX = touchStartX.current;
-												touchStartX.current = null;
-												if (startX === null || configItems.length < 2) return;
-												const delta =
-													(event.changedTouches[0]?.clientX ?? startX) - startX;
-												if (Math.abs(delta) < 40) return;
-												suppressNextCopy.current = true;
-												setIndex((current) =>
-													getSwipeTargetIndex(current, configItems.length, delta),
-												);
-											}}
-											onTouchCancel={() => {
-												touchStartX.current = null;
-											}}
-										>
-											<IconButton
-												size="sm"
-												position="absolute"
-												left="0"
-												top="calc(100% + 4px)"
-												zIndex={1}
-												aria-label={t("a11y.previous")}
-												isDisabled={configItems.length < 2}
-												onClick={() =>
-													setIndex((current) =>
-														(current - 1 + configItems.length) % configItems.length,
-													)
-												}
-											>
-												<PrevIcon />
-											</IconButton>
-											{activeConfig && (
-												<Box
-													key={
-														configAnimIndex === activeIndex
-															? `qr-${activeIndex}-${configAnimSeed}`
-															: `qr-${activeIndex}`
-													}
-													cursor="pointer"
-													role="button"
-													tabIndex={0}
-													aria-label={t("copy")}
-													animation={
-														configAnimIndex === activeIndex && configAnimSeed > 0
-															? `${clickPulse} 260ms ease-in-out`
-															: "none"
-													}
-													onClick={() => {
-														if (suppressNextCopy.current) {
-															suppressNextCopy.current = false;
-															return;
-														}
-														copyConfigLink(activeConfig.link, activeIndex);
-													}}
-													onKeyDown={(event) => {
-														if (event.key === "Enter" || event.key === " ") {
-															event.preventDefault();
-															copyConfigLink(activeConfig.link, activeIndex);
-														}
-													}}
-												>
-													<QRCode
-														mx="auto"
-														maxW="100%"
-														size={qrSize}
-														p="2"
-														level="L"
-														includeMargin={false}
-														value={activeConfig.link}
-														bg="white"
-													/>
-												</Box>
-											)}
-											<IconButton
-												size="sm"
-												position="absolute"
-												right="0"
-												top="calc(100% + 4px)"
-												zIndex={1}
-												aria-label={t("a11y.next")}
-												isDisabled={configItems.length < 2}
-												onClick={() =>
-													setIndex((current) => (current + 1) % configItems.length)
-												}
-											>
-												<NextIcon />
-											</IconButton>
-										</Box>
-										<Text display="block" textAlign="center" pb={3} mt={1}>
-											{activeIndex + 1} / {configItems.length}
-										</Text>
-									</Box>
-								</Collapse>
-							</Box>
-						)}
-					</ModalBody>
-				)}
-			</ModalContent>
-		</Modal>
+		<Dialog
+			open
+			onOpenChange={(open) => {
+				if (!open) onClose();
+			}}
+		>
+			<DialogContent className="max-h-[min(560px,calc(100dvh-10rem))] gap-0 overflow-hidden p-0 sm:max-w-md">
+				<DialogHeader className="border-b border-border px-6 py-4 pe-12 text-start sm:text-start">
+					<DialogTitle>{t("usersTable.qrCode")}</DialogTitle>
+					{qrCodeUsername && (
+						<DialogDescription dir="ltr" className="truncate text-start">
+							{qrCodeUsername}
+						</DialogDescription>
+					)}
+				</DialogHeader>
+				<div className="overflow-y-auto px-6 py-5">{renderBody()}</div>
+			</DialogContent>
+		</Dialog>
 	);
 };

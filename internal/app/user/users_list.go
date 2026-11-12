@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/rebeccapanel/rebecca/internal/app/jsonvalue"
+	"github.com/rebeccapanel/rebecca/internal/app/labels"
 	"github.com/rebeccapanel/rebecca/internal/app/online"
 	"github.com/rebeccapanel/rebecca/internal/app/outboundsub"
 	"github.com/rebeccapanel/rebecca/internal/app/searchmatch"
@@ -121,10 +122,20 @@ func (r Repository) UsersList(ctx context.Context, req UsersListRequest) (UsersR
 		serverIP = r.configServerIP(ctx)
 	}
 
+	userLabels, err := labels.NewStore(r.db, r.dialect).ForIDs(ctx, labels.TypeUser, userIDs)
+	if err != nil {
+		return UsersResponse{}, err
+	}
+
 	items := make([]UserListItem, 0, len(rows))
 	for _, row := range rows {
 		item := row.item
 		item.Links = []string{}
+		item.Group = userLabels[row.id].Group
+		item.Tags = userLabels[row.id].Tags
+		if item.Tags == nil {
+			item.Tags = []string{}
+		}
 		admin := AdminLinkSettings{}
 		if item.AdminID != nil {
 			admin = admins[*item.AdminID]
@@ -213,6 +224,9 @@ func (r Repository) usersFilter(req UsersListRequest) (usersFilter, error) {
 		filter.add("u.admin_id = ?", *req.Admin.ID)
 	} else if len(req.Owners) > 0 {
 		filter.add("u.admin_id IN (SELECT id FROM admins WHERE username IN ("+placeholders(len(req.Owners))+"))", stringArgs(req.Owners)...)
+	}
+	if clause, args := (labels.Filter{GroupIDs: req.GroupIDs, Tags: req.Tags, MatchAll: req.TagMatchAll}).SQL(labels.TypeUser, "u.id"); clause != "" {
+		filter.add(clause, args...)
 	}
 	if strings.TrimSpace(req.Search) != "" {
 		if err := r.addUsersSearchFilter(&filter, req.Search, searchmatch.Options{
@@ -479,12 +493,19 @@ func numericUserIDSearch(search string) (int64, bool) {
 
 func usersOrderSQL(sortOptions []SortOption) string {
 	columns := map[string]string{
-		"username":     "u.username",
-		"used_traffic": "u.used_traffic",
-		"data_limit":   "u.data_limit",
-		"expire":       "u.expire",
-		"created_at":   "u.created_at",
-		"id":           "u.id",
+		"username":              "u.username",
+		"used_traffic":          "u.used_traffic",
+		"data_limit":            "u.data_limit",
+		"expire":                "u.expire",
+		"created_at":            "u.created_at",
+		"id":                    "u.id",
+		"status":                "u.status",
+		"service":               "s.name",
+		"admin":                 "a.username",
+		"lifetime_used_traffic": "(COALESCE(u.used_traffic, 0) + COALESCE((SELECT SUM(uul.used_traffic_at_reset) FROM user_usage_logs uul WHERE uul.user_id = u.id), 0))",
+		"remaining_traffic":     "(CASE WHEN COALESCE(u.data_limit, 0) <= 0 THEN 9223372036854775807 WHEN COALESCE(u.data_limit, 0) - COALESCE(u.used_traffic, 0) < 0 THEN 0 ELSE COALESCE(u.data_limit, 0) - COALESCE(u.used_traffic, 0) END)",
+		"online":                "(SELECT up.online_at FROM user_presence up WHERE up.user_id = u.id)",
+		"last_connection":       "(SELECT up.online_at FROM user_presence up WHERE up.user_id = u.id)",
 	}
 	if len(sortOptions) == 0 {
 		return defaultUsersOrder

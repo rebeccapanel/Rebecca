@@ -1,5 +1,6 @@
-import { FormControl, FormHelperText, FormLabel } from "@chakra-ui/react";
 import { PanelSelect as Select } from "components/common/PanelSelect";
+import { Field, FieldDescription, FieldLabel } from "components/ui/field";
+import type { FC } from "react";
 import { useTranslation } from "react-i18next";
 
 export type BuildVersion = {
@@ -14,31 +15,34 @@ export type BuildCatalog = {
 	dev: BuildVersion[];
 };
 
-type BuildVersionSelectProps = {
+export type BuildVersionSelectProps = {
 	catalog?: BuildCatalog;
 	value: string;
 	onChange: (version: string) => void;
 	portalled?: boolean;
+	disabled?: boolean;
 };
 
-export const BuildVersionSelect = ({
+export const BuildVersionSelect: FC<BuildVersionSelectProps> = ({
 	catalog,
 	value,
 	onChange,
 	portalled = false,
-}: BuildVersionSelectProps) => {
+	disabled = false,
+}) => {
 	const { t } = useTranslation();
 	const builds = [...(catalog?.stable ?? []), ...(catalog?.dev ?? [])];
 	if (builds.length === 0) return null;
 
 	return (
-		<FormControl>
-			<FormLabel fontSize="12px" fontWeight="600" color="panel.textSecondary">
+		<Field className="flex flex-col gap-1.5">
+			<FieldLabel className="text-[12px] font-semibold text-panel-text-secondary">
 				{t("dashboard.maintenance.buildVersion")}
-			</FormLabel>
+			</FieldLabel>
 			<Select
 				size="sm"
 				portalled={portalled}
+				disabled={disabled}
 				value={value}
 				onChange={(event) => onChange(event.target.value)}
 			>
@@ -51,12 +55,14 @@ export const BuildVersionSelect = ({
 					</option>
 				))}
 			</Select>
-			<FormHelperText fontSize="11px" color="panel.textMuted">
-				{t("dashboard.maintenance.buildVersionFloor", {
-					version: catalog?.floor,
-				})}
-			</FormHelperText>
-		</FormControl>
+			{catalog?.floor && (
+				<FieldDescription className="text-[11px] leading-relaxed text-panel-text-muted">
+					{t("dashboard.maintenance.buildVersionFloor", {
+						version: catalog.floor,
+					})}
+				</FieldDescription>
+			)}
+		</Field>
 	);
 };
 

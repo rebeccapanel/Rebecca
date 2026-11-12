@@ -294,6 +294,7 @@ export interface RuntimeSettingsResponse {
 	record_node_user_usages: boolean;
 	subscription_read_only: boolean;
 	api_docs_enabled: boolean;
+	user_speed_limit_enabled: boolean;
 	phpmyadmin_enabled: boolean;
 	phpmyadmin_port: number;
 	phpmyadmin_path: string;
@@ -462,12 +463,17 @@ export const installExternalArchive = async (payload: {
 	});
 };
 
-export const installMirzaBot = async (payload: {
+type BotAppInstallPayload = {
 	domain: string;
 	bot_token: string;
 	admin_id: string;
 	database_backup?: File;
-}): Promise<ExternalAppRecord> => {
+};
+
+const installBotApp = async (
+	app: "mirzabot" | "faoxima",
+	payload: BotAppInstallPayload,
+): Promise<ExternalAppRecord> => {
 	const body = new FormData();
 	body.set("domain", payload.domain);
 	body.set("bot_token", payload.bot_token);
@@ -475,32 +481,16 @@ export const installMirzaBot = async (payload: {
 	if (payload.database_backup) {
 		body.set("database_backup", payload.database_backup);
 	}
-	return $fetch("/settings/external-apps/mirzabot", {
+	return $fetch(`/settings/external-apps/${app}`, {
 		method: "POST",
 		body,
 		timeout: 20 * 60 * 1000,
 	});
 };
 
-export const installFaoxima = async (payload: {
-	domain: string;
-	bot_token: string;
-	admin_id: string;
-	database_backup?: File;
-}): Promise<ExternalAppRecord> => {
-	const body = new FormData();
-	body.set("domain", payload.domain);
-	body.set("bot_token", payload.bot_token);
-	body.set("admin_id", payload.admin_id);
-	if (payload.database_backup) {
-		body.set("database_backup", payload.database_backup);
-	}
-	return $fetch("/settings/external-apps/faoxima", {
-		method: "POST",
-		body,
-		timeout: 20 * 60 * 1000,
-	});
-};
+export const installMirzaBot = (payload: BotAppInstallPayload) => installBotApp("mirzabot", payload);
+
+export const installFaoxima = (payload: BotAppInstallPayload) => installBotApp("faoxima", payload);
 
 export const setExternalAppEnabled = async (payload: {
 	id: string;
@@ -681,13 +671,117 @@ export const updatePanelSettings = async (
 	});
 };
 
+export type BackupExportPhase = "preparing" | "downloading" | "completed";
+
+export interface BackupExportProgress {
+	phase: BackupExportPhase;
+	percent: number;
+	loaded?: number;
+	total?: number;
+}
+
 export const exportRebeccaBackup = async (
 	scope: RebeccaBackupScope,
+	onProgress?: (progress: BackupExportProgress) => void,
 ): Promise<Blob> => {
-	return $fetch<Blob>(`/settings/backup/export?scope=${scope}`, {
-		responseType: "blob",
-		credentials: "include",
-	} as any);
+	return new Promise((resolve, reject) => {
+		const errorKey = "GET /settings/backup/export";
+		const xhr = new XMLHttpRequest();
+		const baseURL = (apiBaseURL || "/api").replace(/\/$/, "");
+		let currentPercent = 8;
+		let receivedBytes = false;
+		let prepareTimer: ReturnType<typeof setInterval> | null = null;
+		const stopTimer = () => {
+			if (prepareTimer !== null) {
+				globalThis.clearInterval(prepareTimer);
+				prepareTimer = null;
+			}
+		};
+		const fail = (error: Error) => {
+			stopTimer();
+			reportAPIError(errorKey, error);
+			reject(error);
+		};
+
+		xhr.open("GET", `${baseURL}/settings/backup/export?scope=${encodeURIComponent(scope)}`);
+		xhr.withCredentials = true;
+		xhr.responseType = "blob";
+
+		xhr.onprogress = (event) => {
+			receivedBytes = true;
+			stopTimer();
+			if (event.lengthComputable && event.total > 0) {
+				const downloadFraction = Math.min(1, event.loaded / event.total);
+				currentPercent = Math.max(50, Math.min(99, Math.round(50 + downloadFraction * 49)));
+				onProgress?.({
+					phase: "downloading",
+					percent: currentPercent,
+					loaded: event.loaded,
+					total: event.total,
+				});
+			} else {
+				currentPercent = Math.min(95, Math.max(52, currentPercent + 4));
+				onProgress?.({
+					phase: "downloading",
+					percent: currentPercent,
+					loaded: event.loaded,
+				});
+			}
+		};
+
+		xhr.onload = async () => {
+			stopTimer();
+			if (xhr.status >= 200 && xhr.status < 300 && xhr.response instanceof Blob) {
+				useAPIRequestErrors.getState().clear(errorKey);
+				onProgress?.({
+					phase: "completed",
+					percent: 100,
+					loaded: xhr.response.size,
+					total: xhr.response.size,
+				});
+				resolve(xhr.response);
+				return;
+			}
+			let detail = `Request failed (HTTP ${xhr.status})`;
+			if (xhr.response instanceof Blob) {
+				try {
+					const text = (await xhr.response.text()).trim();
+					if (text) {
+						const parsed = JSON.parse(text) as Record<string, unknown>;
+						if (typeof parsed?.detail === "string") detail = parsed.detail;
+						else if (typeof parsed?.message === "string") detail = parsed.message;
+					}
+				} catch {}
+			}
+			const error = new Error(detail);
+			(error as Error & { response?: unknown }).response = { status: xhr.status };
+			fail(error);
+		};
+
+		xhr.onerror = () =>
+			fail(new Error("Backup export failed; check your connection and retry"));
+		xhr.ontimeout = () =>
+			fail(new Error("Backup export timed out; retry with a stable connection"));
+		xhr.onabort = () => {
+			stopTimer();
+			reject(new Error("Backup export was cancelled"));
+		};
+
+		onProgress?.({ phase: "preparing", percent: currentPercent });
+		prepareTimer = globalThis.setInterval(() => {
+			if (receivedBytes) {
+				stopTimer();
+				return;
+			}
+			if (currentPercent < 46) {
+				const step = currentPercent < 25 ? 5 : currentPercent < 38 ? 3 : 1;
+				currentPercent = Math.min(46, currentPercent + step);
+				onProgress?.({ phase: "preparing", percent: currentPercent });
+			}
+		}, 450);
+
+		xhr.send();
+	});
 };
 
 export const importRebeccaBackup = async (

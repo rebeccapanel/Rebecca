@@ -29,7 +29,7 @@ type ServicesStore = {
 	summaryServices: ServiceSummary[];
 	serviceOptions: ServiceSummary[];
 	total: number;
-	isLoading: boolean;
+	loading: boolean;
 	isOptionsLoading: boolean;
 	isSaving: boolean;
 	serviceDetail: ServiceDetail | null;
@@ -68,7 +68,7 @@ export const useServicesStore = create<ServicesStore>((set, get) => ({
 	summaryServices: [],
 	serviceOptions: [],
 	total: 0,
-	isLoading: false,
+	loading: false,
 	isOptionsLoading: false,
 	isSaving: false,
 	serviceDetail: null,
@@ -76,7 +76,7 @@ export const useServicesStore = create<ServicesStore>((set, get) => ({
 	async fetchServices(params = {}) {
 		const requestId = ++servicesFetchSequence;
 		lastServiceListParams = { ...params };
-		set({ isLoading: true });
+		set({ loading: true });
 		try {
 			const response = await fetch<ServiceListResponse>("/v2/services", {
 				query: params,
@@ -100,7 +100,7 @@ export const useServicesStore = create<ServicesStore>((set, get) => ({
 			set({ services: response.services, total: response.total });
 		} finally {
 			if (requestId === servicesFetchSequence) {
-				set({ isLoading: false });
+				set({ loading: false });
 			}
 		}
 	},
@@ -144,7 +144,7 @@ export const useServicesStore = create<ServicesStore>((set, get) => ({
 
 	async fetchServiceDetail(id) {
 		const requestId = ++serviceDetailFetchSequence;
-		set({ isLoading: true });
+		set({ loading: true });
 		try {
 			const detail = await fetch<ServiceDetail>(`/v2/services/${id}`);
 			if (requestId !== serviceDetailFetchSequence) {
@@ -159,7 +159,7 @@ export const useServicesStore = create<ServicesStore>((set, get) => ({
 			throw error;
 		} finally {
 			if (requestId === serviceDetailFetchSequence) {
-				set({ isLoading: false });
+				set({ loading: false });
 			}
 		}
 	},
@@ -270,7 +270,7 @@ export const clearServicesCache = () => {
 		services: [],
 		serviceOptions: [],
 		total: 0,
-		isLoading: false,
+		loading: false,
 		isOptionsLoading: false,
 		isSaving: false,
 		serviceDetail: null,

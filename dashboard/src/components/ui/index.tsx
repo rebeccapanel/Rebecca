@@ -1,10 +1,8 @@
-import {
-	Box,
-	Button,
-	Flex,
-	Text,
-	type BoxProps,
-} from "@chakra-ui/react";
+import { Button } from "components/ui/button";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+
+import type { ComponentPropsWithoutRef } from "react";
+import { cn } from "lib/cn";
 import {
 	useEffect,
 	useRef,
@@ -32,7 +30,7 @@ export type {
 } from "./DataTable.types";
 
 type PageHeaderProps = PropsWithChildren<
-	Omit<BoxProps, "title"> & {
+	Omit<ComponentPropsWithoutRef<"div">, "title"> & {
 		title?: ReactNode;
 		description?: ReactNode;
 		actions?: ReactNode;
@@ -48,40 +46,31 @@ export const PageHeader: FC<PageHeaderProps> = ({
 }) => {
 	if (!title && !description && !actions) {
 		return (
-			<Box w="full" color="panel.text" {...props}>
+			<div {...props} className="w-full text-panel-text">
 				{children}
-			</Box>
+			</div>
 		);
 	}
 
 	return (
-		<Box w="full" color="panel.text" {...props}>
-			<Flex
-				align={{ base: "flex-start", md: "center" }}
-				justify="space-between"
-				gap={3}
-				flexWrap="wrap"
-			>
-				<Box minW={0}>
+		<div {...props} className="w-full text-panel-text">
+			<div className="flex items-start md:items-center justify-between gap-3 flex-wrap">
+				<div className="min-w-0!">
 					{title && (
-						<Text as="h1" fontSize="2xl" fontWeight="semibold">
+						<h1 className="text-[1.5rem] font-semibold">
 							{title}
-						</Text>
+						</h1>
 					)}
 					{description && (
-						<Text
-							fontSize="sm"
-							color="panel.textSecondary"
-							mt={title ? 1 : 0}
-						>
+						<p className={cn("text-[0.875rem] text-panel-text-secondary", title ? "mt-1" : "mt-0")}>
 							{description}
-						</Text>
+						</p>
 					)}
 					{children}
-				</Box>
-				{actions && <Box flexShrink={0}>{actions}</Box>}
-			</Flex>
-		</Box>
+				</div>
+				{actions && <div className="shrink-0">{actions}</div>}
+			</div>
+		</div>
 	);
 };
 
@@ -92,7 +81,7 @@ type PageTabItem = {
 	onClick?: () => void;
 };
 
-type TabSystemProps = BoxProps & {
+type TabSystemProps = ComponentPropsWithoutRef<"div"> & {
 	tabs: PageTabItem[];
 };
 
@@ -106,47 +95,13 @@ export const TabSystem: FC<TabSystemProps> = ({ tabs, ...props }) => {
 	}, [activeValue]);
 
 	return (
-		<Box
-			className="rb-tab-system"
-			display="flex"
-			gap={6}
-			minH="10"
-			px={{ base: 2, md: 3 }}
-			overflowX="auto"
-			overflowY="hidden"
-			maxW="full"
-			whiteSpace="nowrap"
-			role="tablist"
-			sx={{
-				WebkitOverflowScrolling: "touch",
-				scrollbarWidth: "none",
-				"&::-webkit-scrollbar": { display: "none" },
-				"& > button": { flex: "0 0 auto" },
-			}}
-			{...props}
-		>
+		<div role="tablist" {...props} className={"[webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&_>_button]:flex-[0_0_auto] flex gap-6 min-h-10 px-2 md:px-3 overflow-x-auto overflow-y-hidden max-w-full whitespace-nowrap rb-tab-system"}>
 			{tabs.map((tab) => (
-				<Button
-					key={tab.value}
-					ref={tab.isActive ? activeTabRef : undefined}
-					role="tab"
-					aria-selected={tab.isActive}
-					variant="ghost"
-					size="sm"
-					px={0}
-					h="10"
-					borderRadius="0"
-					borderBottomWidth="2px"
-					borderColor={tab.isActive ? "panel.accent" : "transparent"}
-					color={tab.isActive ? "panel.accent" : "panel.text"}
-					fontWeight="700"
-					_hover={{ bg: "transparent", color: "panel.accentHover" }}
-					onClick={tab.onClick}
-				>
+				<Button key={tab.value} ref={tab.isActive ? activeTabRef : undefined} role="tab" aria-selected={tab.isActive} onClick={tab.onClick} variant="ghost" size="sm" className={cn("px-0 h-10 rounded-[0px] border-b-2 font-bold hover:bg-transparent hover:text-panel-accent-hover", tab.isActive ? "border-panel-accent!" : "border-transparent!", tab.isActive ? "text-panel-accent" : "text-panel-text")}>
 					{tab.label}
 				</Button>
 			))}
-		</Box>
+		</div>
 	);
 };
 

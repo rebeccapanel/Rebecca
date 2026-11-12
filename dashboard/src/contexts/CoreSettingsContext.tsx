@@ -16,7 +16,7 @@ export type CoreConfigTarget = {
 };
 
 type CoreSettingsStore = {
-	isLoading: boolean;
+	loading: boolean;
 	isPostLoading: boolean;
 	fetchCoreSettings: (target?: string) => Promise<void>;
 	fetchConfigTargets: () => Promise<CoreConfigTarget[]>;
@@ -35,7 +35,7 @@ type CoreSettingsStore = {
 };
 
 export const useCoreSettings = create<CoreSettingsStore>((set, get) => ({
-	isLoading: true,
+	loading: true,
 	isPostLoading: false,
 	version: null,
 	started: false,
@@ -56,7 +56,7 @@ export const useCoreSettings = create<CoreSettingsStore>((set, get) => ({
 		coreFetchAbortController?.abort();
 		const abortController = new AbortController();
 		coreFetchAbortController = abortController;
-		set({ isLoading: true });
+		set({ loading: true });
 		try {
 			const [core, config] = await Promise.all([
 				get().runtimeLoaded
@@ -94,7 +94,7 @@ export const useCoreSettings = create<CoreSettingsStore>((set, get) => ({
 				if (coreFetchAbortController === abortController) {
 					coreFetchAbortController = null;
 				}
-				set({ isLoading: false });
+				set({ loading: false });
 			}
 		}
 	},

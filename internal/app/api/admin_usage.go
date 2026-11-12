@@ -11,6 +11,7 @@ import (
 	"time"
 
 	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
+	"github.com/rebeccapanel/rebecca/internal/app/labels"
 	"github.com/rebeccapanel/rebecca/internal/app/online"
 	"github.com/rebeccapanel/rebecca/internal/app/searchmatch"
 )
@@ -59,7 +60,18 @@ func (s *Server) handleAdminsList(w http.ResponseWriter, r *http.Request) {
 	}
 	offset := parseOptionalNonNegativeInt(r.URL.Query().Get("offset"), 0)
 	limit := parseOptionalNonNegativeInt(r.URL.Query().Get("limit"), 0)
-	sortField := adminSortClause(r.URL.Query().Get("sort"))
+	now := time.Now()
+	filterPredicate, filterArgs, filterOK := adminListFilterSQL(strings.TrimSpace(r.URL.Query().Get("role")), strings.TrimSpace(r.URL.Query().Get("status")), now)
+	if !filterOK {
+		writeError(w, http.StatusBadRequest, "invalid role or status")
+		return
+	}
+	sortField, sortArgs := adminSortClause(r.URL.Query().Get("sort"), now)
+	labelFilter, err := labelFilterFromQuery(r.URL.Query())
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 
 	admins := []map[string]any{}
 	total := 0
@@ -73,11 +85,19 @@ func (s *Server) handleAdminsList(w http.ResponseWriter, r *http.Request) {
 			where += ` AND ` + predicate
 			args = append(args, searchArgs...)
 		}
+		if filterPredicate != "" {
+			where += ` AND ` + filterPredicate
+			args = append(args, filterArgs...)
+		}
+		if clause, labelArgs := labelFilter.SQL(labels.TypeAdmin, "id"); clause != "" {
+			where += ` AND ` + clause
+			args = append(args, labelArgs...)
+		}
 		if err := tx.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM admins `+where, args...).Scan(&total); err != nil {
 			return err
 		}
 		query := `SELECT username FROM admins ` + where + ` ORDER BY ` + sortField
-		queryArgs := append([]any{}, args...)
+		queryArgs := append(append([]any{}, args...), sortArgs...)
 		if limit > 0 {
 			query += ` LIMIT ? OFFSET ?`
 			queryArgs = append(queryArgs, limit, offset)
@@ -114,6 +134,22 @@ func (s *Server) handleAdminsList(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeStatusError(w, err)
 		return
+	}
+	adminIDs := make([]int64, 0, len(admins))
+	for _, item := range admins {
+		if id, ok := item["id"].(int64); ok {
+			adminIDs = append(adminIDs, id)
+		}
+	}
+	adminLabels, err := s.labels.ForIDs(r.Context(), labels.TypeAdmin, adminIDs)
+	if err != nil {
+		writeStatusError(w, err)
+		return
+	}
+	for _, item := range admins {
+		id, _ := item["id"].(int64)
+		item["group"] = adminLabels[id].Group
+		item["tags"] = append([]string{}, adminLabels[id].Tags...)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"admins": admins, "total": total})
 }
@@ -307,32 +343,74 @@ func parseOptionalNonNegativeInt(value string, fallback int) int {
 	return parsed
 }
 
-func adminSortClause(value string) string {
+const (
+	adminEffectiveUsageSQL = `(CASE WHEN traffic_limit_mode = 'created_traffic' THEN COALESCE(created_traffic, 0) ELSE COALESCE(users_usage, 0) END)`
+	adminTimeLimitReason   = "admin_time_limit_exhausted"
+	adminDataLimitReason   = "admin_data_limit_exhausted"
+)
+
+func adminListFilterSQL(role, status string, now time.Time) (string, []any, bool) {
+	var clauses []string
+	var args []any
+	switch role {
+	case "":
+	case string(adminapp.RoleFullAccess), string(adminapp.RoleSudo), string(adminapp.RoleReseller), string(adminapp.RoleStandard):
+		clauses = append(clauses, "role = ?")
+		args = append(args, role)
+	default:
+		return "", nil, false
+	}
+	expired := `(COALESCE(disabled_reason, '') = ? OR (COALESCE(expire, 0) > 0 AND expire <= ?))`
+	limited := `(COALESCE(disabled_reason, '') = ? OR (COALESCE(data_limit, 0) > 0 AND ` + adminEffectiveUsageSQL + ` >= data_limit))`
+	switch status {
+	case "":
+	case string(adminapp.StatusActive):
+		clauses = append(clauses, "status = ?", "NOT "+expired, "NOT "+limited)
+		args = append(args, status, adminTimeLimitReason, now.Unix(), adminDataLimitReason)
+	case string(adminapp.StatusDisabled):
+		clauses = append(clauses, "status = ?")
+		args = append(args, status)
+	case "expired":
+		clauses = append(clauses, expired)
+		args = append(args, adminTimeLimitReason, now.Unix())
+	case "limited":
+		clauses = append(clauses, limited)
+		args = append(args, adminDataLimitReason)
+	default:
+		return "", nil, false
+	}
+	return strings.Join(clauses, " AND "), args, true
+}
+
+func adminSortClause(value string, now time.Time) (string, []any) {
 	desc := strings.HasPrefix(value, "-")
 	field := strings.TrimPrefix(strings.TrimSpace(value), "-")
-	column := "username"
+	expression := "username"
+	var args []any
 	switch field {
 	case "id":
-		column = "id"
-	case "username", "":
-		column = "username"
-	case "role":
-		column = "role"
-	case "status":
-		column = "status"
-	case "users_usage":
-		column = "users_usage"
-	case "data_limit":
-		column = "data_limit"
-	case "created_traffic":
-		column = "created_traffic"
-	default:
-		column = "username"
+		expression = "id"
+	case "role", "status", "users_usage", "data_limit", "created_traffic":
+		expression = field
+	case "data_usage":
+		expression = adminEffectiveUsageSQL
+	case "remaining_traffic":
+		expression = `(CASE WHEN COALESCE(data_limit, 0) <= 0 THEN 9223372036854775807 WHEN COALESCE(data_limit, 0) - ` + adminEffectiveUsageSQL + ` < 0 THEN 0 ELSE COALESCE(data_limit, 0) - ` + adminEffectiveUsageSQL + ` END)`
+	case "expire":
+		expression = `(CASE WHEN COALESCE(expire, 0) <= 0 THEN 9223372036854775807 ELSE expire END)`
+	case "users_count":
+		expression = `(SELECT COUNT(*) FROM users uc WHERE uc.admin_id = admins.id AND uc.status != 'deleted')`
+	case "services":
+		expression = `(SELECT COUNT(*) FROM service_admins sa WHERE sa.admin_id = admins.id)`
+	case "online":
+		cutoff := dbTimestamp(online.Cutoff(now))
+		expression = `(SELECT COUNT(*) FROM users u WHERE u.admin_id = admins.id AND u.status != 'deleted' AND ` + online.UserPredicate + `)`
+		args = []any{cutoff, cutoff, cutoff}
 	}
 	if desc {
-		return column + " DESC"
+		return expression + " DESC", args
 	}
-	return column + " ASC"
+	return expression + " ASC", args
 }
 
 func addAdminCountsTx(ctx context.Context, tx *sql.Tx, adminID int64, response map[string]any) error {

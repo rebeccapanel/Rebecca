@@ -1,31 +1,20 @@
-import {
-	Box,
-	Button,
-	chakra,
-	FormControl,
-	FormErrorMessage,
-	FormLabel,
-	HStack,
-	IconButton,
-	Modal,
-	ModalCloseButton,
-	ModalOverlay,
-	Switch,
-	Tab,
-	TabList,
-	TabPanel,
-	TabPanels,
-	Tabs,
-	Text,
-	Textarea,
-	useColorModeValue,
-	useToast,
-	VStack,
-} from "@chakra-ui/react";
-import {
-	MinusIcon as MinusIconOutline,
-	PlusIcon,
-} from "@heroicons/react/24/outline";
+import { Button } from "components/ui/button";
+import { Textarea } from "components/ui/textarea";
+import { toast } from "components/ui/sonner";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+import { withClass } from "lib/withClass";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "components/ui/dialog";
+import { FormField } from "components/ui/form-field";
+import { Input as UiInput } from "components/ui/input";
+import { NumberField } from "components/ui/number-field";
+import { SegmentedControl } from "components/ui/segmented-control";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "components/ui/tabs";
+import { ToggleRow } from "./ui/toggle-row";
+import { FormSection } from "components/ui/form-section";
+import { Send, SquarePen, Minus as MinusIconOutline, Plus } from "lucide-react";
+import type { ReactNode } from "react";
+
+import { cn } from "lib/cn";
 import { PanelInput as Input } from "components/common/PanelInput";
 import {
 	type FC,
@@ -36,6 +25,7 @@ import {
 	useState,
 } from "react";
 import { Controller, useFieldArray, useForm, useWatch } from "react-hook-form";
+import { EmojiShortcodeInput } from "components/common/EmojiShortcodeInput";
 import { useTranslation } from "react-i18next";
 import {
 	ALPN_OPTION,
@@ -60,17 +50,13 @@ import {
 } from "../utils/outbound";
 import { JsonEditor } from "./JsonEditor";
 import { SearchableTagSelect } from "./common/SearchableTagSelect";
-import {
-	XrayFieldGrid,
-	XrayModalBody,
-	XrayModalContent,
-	XrayModalFooter,
-	XrayModalHeader,
-} from "./xray/XrayDialog";
 import { PropagationTargets } from "./xray/PropagationTargets";
 
-const AddIcon = chakra(PlusIcon);
-const MinusIcon = chakra(MinusIconOutline);
+const outboundShell =
+	"flex max-h-[min(860px,calc(100dvh-4rem))] flex-col gap-0 overflow-hidden p-0 sm:max-w-5xl max-md:inset-x-3 max-md:w-auto max-md:top-[4.5rem] max-md:bottom-24 max-md:max-h-none max-md:max-w-none max-md:translate-x-0 max-md:translate-y-0";
+
+const AddIcon = withClass(Plus, "");
+const MinusIcon = withClass(MinusIconOutline, "");
 
 type ProtocolValue = (typeof Protocols)[keyof typeof Protocols];
 type StreamNetworkValue =
@@ -178,7 +164,7 @@ interface OutboundFormValues {
 }
 
 interface OutboundModalProps {
-	isOpen: boolean;
+	open: boolean;
 	onClose: () => void;
 	mode: "create" | "edit";
 	initialOutbound?: Record<string, unknown> | null;
@@ -573,7 +559,7 @@ const buildOutboundJson = (values: OutboundFormValues) => {
 };
 
 export const OutboundModal: FC<OutboundModalProps> = ({
-	isOpen,
+	open: isOpen,
 	onClose,
 	mode,
 	initialOutbound,
@@ -583,9 +569,9 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 	onSubmitOutbound,
 }) => {
 	const { t } = useTranslation();
-	const toast = useToast();
+	
 	const [targetIds, setTargetIds] = useState<string[]>([]);
-	const bgSubtle = useColorModeValue("gray.50", "whiteAlpha.100");
+	const bgSubtle = "bg-gray-50 dark:bg-whiteAlpha-100";
 	const {
 		control,
 		register,
@@ -1249,64 +1235,34 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 			const formatted = JSON.stringify(wg, null, 2);
 			setConfigInput("");
 			handleJsonEditorChange(formatted);
-			toast({
-				status: "success",
-				duration: 2000,
-				position: "top",
-				title: t("pages.outbound.configConvertedTitle"),
-				description: t("pages.outbound.configConvertedDesc"),
-			});
+			toast.success(t("pages.outbound.configConvertedTitle"), { description: t("pages.outbound.configConvertedDesc"), duration: 2000 });
 			return;
 		}
 		const outboundFromLink = Outbound.fromLink(trimmed);
 		if (!outboundFromLink) {
 			setJsonError(t("pages.outbound.invalidConfig"));
-			toast({
-				status: "error",
-				duration: 2500,
-				position: "top",
-				title: t("pages.outbound.configParseFailedTitle"),
-				description: t("pages.outbound.configParseFailedDesc"),
-			});
+			toast.error(t("pages.outbound.configParseFailedTitle"), { description: t("pages.outbound.configParseFailedDesc"), duration: 2500 });
 			return;
 		}
 		const json = outboundFromLink.toJson();
 		const formatted = JSON.stringify(json, null, 2);
 		setConfigInput("");
 		handleJsonEditorChange(formatted);
-		toast({
-			status: "success",
-			duration: 2000,
-			position: "top",
-			title: t("pages.outbound.configConvertedTitle"),
-			description: t("pages.outbound.configConvertedDesc"),
-		});
+		toast.success(t("pages.outbound.configConvertedTitle"), { description: t("pages.outbound.configConvertedDesc"), duration: 2000 });
 	};
 
 	const onSubmit = handleSubmit(async (values) => {
 		const outboundJson = buildOutboundJson(values);
 		try {
 			await onSubmitOutbound(outboundJson, targetIds);
-			toast({
-				title:
-					mode === "edit"
+			toast.success(mode === "edit"
 						? t("pages.xray.outbound.updated")
-						: t("pages.xray.outbound.addOutbound"),
-				status: "success",
-				duration: 2000,
-				position: "top",
-			});
+						: t("pages.xray.outbound.addOutbound"), { duration: 2000 });
 			onClose();
 		} catch (error: any) {
-			toast({
-				title:
-					error?.data?.detail ||
+			toast.error(error?.data?.detail ||
 					error?.message ||
-					t("pages.xray.outbound.saveFailed"),
-				status: "error",
-				duration: 3000,
-				position: "top",
-			});
+					t("pages.xray.outbound.saveFailed"), { duration: 3000 });
 		}
 	});
 
@@ -1325,945 +1281,395 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 		}
 	};
 
+	const fieldError = (name: keyof OutboundFormValues) =>
+		(errors as unknown as Record<string, { message?: string } | undefined>)[name]?.message;
+	const textField = (
+		name: keyof OutboundFormValues,
+		label: ReactNode,
+		placeholder?: string,
+		rules?: Parameters<typeof register>[1],
+	) => (
+		<FormField label={label} error={fieldError(name)}>
+			<UiInput placeholder={placeholder} {...register(name, rules as never)} />
+		</FormField>
+	);
+	const shortcodeTextField = (
+		name: keyof OutboundFormValues,
+		label: ReactNode,
+		placeholder?: string,
+		rules?: Parameters<typeof register>[1],
+	) => (
+		<FormField label={label} error={fieldError(name)}>
+			<Controller
+				control={control}
+				name={name}
+				rules={rules as never}
+				render={({ field }) => (
+					<EmojiShortcodeInput
+						ref={field.ref}
+						value={String(field.value ?? "")}
+						onChange={field.onChange}
+						onBlur={field.onBlur}
+						placeholder={placeholder}
+					/>
+				)}
+			/>
+		</FormField>
+	);
+	const numberField = (
+		name: keyof OutboundFormValues,
+		label: ReactNode,
+		options: { min?: number; max?: number; placeholder?: string; required?: boolean } = {},
+	) => (
+		<FormField label={label} error={fieldError(name)}>
+			<Controller
+				control={control}
+				name={name}
+				rules={{
+					required: options.required ? requiredMessage : false,
+					min: options.min === undefined ? undefined : { value: options.min, message: invalidPortMessage },
+					max: options.max === undefined ? undefined : { value: options.max, message: invalidPortMessage },
+				}}
+				render={({ field }) => (
+					<NumberField
+						inputMode="numeric"
+						min={options.min}
+						max={options.max}
+						placeholder={options.placeholder}
+						doneLabel={t("common.done")}
+						value={field.value === undefined || field.value === null || Number.isNaN(field.value) ? "" : String(field.value)}
+						onChange={(raw) => field.onChange(raw.trim() === "" ? undefined : Number(raw))}
+						invalid={Boolean(fieldError(name))}
+					/>
+				)}
+			/>
+		</FormField>
+	);
+	const switchRow = (name: keyof OutboundFormValues, title: ReactNode, hint?: ReactNode) => (
+		<Controller
+			control={control}
+			name={name}
+			render={({ field }) => (
+				<ToggleRow title={title} hint={hint} checked={Boolean(field.value)} onChange={(next) => field.onChange(next)} />
+			)}
+		/>
+	);
+	const selectField = (
+		name: keyof OutboundFormValues,
+		label: ReactNode,
+		options: (string | { value: string; label?: string; disabled?: boolean })[],
+		placeholder?: string,
+	) => (
+		<FormField label={label} error={fieldError(name)}>
+			<Controller
+				control={control}
+				name={name}
+				render={({ field }) => (
+					<SearchableTagSelect
+						mode="single"
+						options={options}
+						value={(field.value as string | undefined) ?? ""}
+						onChange={(value) => field.onChange(value as string)}
+						placeholder={placeholder ?? ""}
+						searchPlaceholder={t("search")}
+					/>
+				)}
+			/>
+		</FormField>
+	);
+
 	return (
-		<Modal
-			size="4xl"
-			isOpen={isOpen}
-			onClose={handleClose}
-			scrollBehavior="inside"
-		>
-			<ModalOverlay bg="blackAlpha.400" />
-			<XrayModalContent as="form" onSubmit={onSubmit}>
-				<XrayModalHeader>
-					{mode === "edit"
-						? t("pages.xray.outbound.editOutbound")
-						: t("pages.xray.outbound.addOutbound")}
-				</XrayModalHeader>
-				<ModalCloseButton />
-				<XrayModalBody>
-					<Tabs
-						isLazy
-						lazyBehavior="keepMounted"
-						className="xray-dialog-auto-sections"
-						variant="unstyled"
-						index={activeTab}
-						onChange={handleTabChange}
-					>
-						<TabList>
-							<Tab>{t("form")}</Tab>
-							<Tab>{t("json")}</Tab>
-							<Tab>{t("pages.xray.propagate.tab")}</Tab>
-						</TabList>
-						<TabPanels>
-							<TabPanel>
-								<VStack spacing={6} align="stretch">
-									<Box>
-										<Text fontWeight="semibold" mb={3}>
-											{t("pages.outbound.basicSettings")}
-										</Text>
-										<VStack spacing={3} align="stretch">
-											<FormControl isRequired isInvalid={Boolean(errors.tag)}>
-												<FormLabel>{t("pages.xray.outbound.tag")}</FormLabel>
-												<Input
-													size="sm"
-													placeholder="outbound-tag"
-													{...register("tag", {
-														validate: (value) => {
-															const tag = value.trim();
-															if (!tag) return requiredMessage;
-															const originalTag = String(
-																initialOutbound?.tag ?? "",
-															);
-															return (
-																!existingTags.includes(tag) ||
-																(mode === "edit" && tag === originalTag) ||
-																t("pages.xray.outbound.tagExists")
-															);
-														},
-													})}
-												/>
-												<FormErrorMessage>
-													{errors.tag?.message}
-												</FormErrorMessage>
-											</FormControl>
-											<XrayFieldGrid>
-												<FormControl isRequired>
-													<FormLabel>{t("protocol")}</FormLabel>
-													<Controller
-														control={control}
-														name="protocol"
-														render={({ field }) => (
-															<SearchableTagSelect
-																mode="single"
-																options={protocolOptions}
-																value={field.value ?? ""}
-																onChange={(value) =>
-																	field.onChange(value as string)
-																}
-																placeholder={t("protocol")}
-																searchPlaceholder={t("search")}
-															/>
-														)}
-													/>
-												</FormControl>
-												<FormControl>
-													<FormLabel>
-														{t("pages.xray.outbound.sendThrough")}
-													</FormLabel>
-													<Input
-														size="sm"
-														placeholder="0.0.0.0"
-														{...register("sendThrough")}
-													/>
-												</FormControl>
-											</XrayFieldGrid>
-										</VStack>
-									</Box>
+		<Dialog open={isOpen} onOpenChange={(next) => { if (!next) handleClose(); }}>
+			<DialogContent className={outboundShell}>
+				<form onSubmit={onSubmit} className="flex min-h-0 flex-1 flex-col">
+					<DialogHeader className="flex-row items-center gap-3 border-b px-5 py-3.5 pe-12 text-start sm:text-start">
+						<div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+							<Send className="size-4" />
+						</div>
+						<div className="min-w-0">
+							<DialogTitle className="truncate text-base">
+								{mode === "edit" ? t("pages.xray.outbound.editOutbound") : t("pages.xray.outbound.addOutbound")}
+							</DialogTitle>
+							<DialogDescription className="truncate">{String(typedProtocol ?? "").toUpperCase() || t("protocol")}</DialogDescription>
+						</div>
+					</DialogHeader>
 
-									{requiresEndpoint && (
-										<Box>
-											<Text fontWeight="semibold" mb={3}>
-												{t("pages.outbound.endpoint")}
-											</Text>
-											<VStack spacing={3} align="stretch">
-												<FormControl isRequired={requiresEndpoint}>
-													<FormLabel>{t("pages.outbound.address")}</FormLabel>
-													<Input
-														size="sm"
-														placeholder="example.com"
-														{...register("address", {
-															required: requiresEndpoint
-																? requiredMessage
-																: false,
-														})}
-													/>
-												</FormControl>
-												<HStack
-													flexWrap="wrap"
-													spacing={3}
-													alignItems="flex-end"
-												>
-													<FormControl isRequired={requiresEndpoint}>
-														<FormLabel>{t("port")}</FormLabel>
-														<Input
-															size="sm"
-															type="number"
-															min={1}
-															max={65535}
-															{...register("port", {
-																required: requiresEndpoint
-																	? requiredMessage
-																	: false,
-																valueAsNumber: true,
-																min: { value: 1, message: invalidPortMessage },
-																max: {
-																	value: 65535,
-																	message: invalidPortMessage,
-																},
-															})}
+					<Tabs value={String(activeTab)} onValueChange={(value) => handleTabChange(Number(value))} className="flex min-h-0 flex-1 flex-col">
+						<div className="border-b px-5 pt-2.5 pb-2.5">
+							<TabsList className="w-full">
+								<TabsTrigger value="0">
+									{t("form")}
+								</TabsTrigger>
+								<TabsTrigger value="1">
+									{t("json")}
+								</TabsTrigger>
+								<TabsTrigger value="2">
+									{t("pages.xray.propagate.tab")}
+								</TabsTrigger>
+							</TabsList>
+						</div>
+
+						<div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+							<TabsContent value="0" className="mt-0">
+								<div className="flex flex-col gap-5">
+									<FormSection title={t("pages.outbound.basicSettings")}>
+										<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+											{shortcodeTextField("tag", t("pages.xray.outbound.tag"), "outbound-tag", {
+												validate: (value: string) => {
+													const tag = value.trim();
+													if (!tag) return requiredMessage;
+													const originalTag = String(initialOutbound?.tag ?? "");
+													return (
+														!existingTags.includes(tag) ||
+														(mode === "edit" && tag === originalTag) ||
+														t("pages.xray.outbound.tagExists")
+													);
+												},
+											} as never)}
+											{selectField("protocol", t("protocol"), protocolOptions, t("protocol"))}
+											{textField("sendThrough", t("pages.xray.outbound.sendThrough"), "0.0.0.0")}
+										</div>
+									</FormSection>
+
+									{requiresEndpoint ? (
+										<FormSection title={t("pages.outbound.endpoint")}>
+											{textField("address", t("pages.outbound.address"), "example.com", {
+												required: requiresEndpoint ? requiredMessage : false,
+											})}
+											<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+												{numberField("port", t("port"), { min: 1, max: 65535, required: requiresEndpoint })}
+												{requiresId
+													? textField("id", "ID", "UUID", { required: requiresId ? requiredMessage : false })
+													: requiresPassword
+														? textField("password", t("password"), "password", { required: requiresPassword ? requiredMessage : false })
+														: typedProtocol === Protocols.Hysteria
+															? textField("hysteriaAuth", t("pages.outbound.hysteriaAuth"), "auth")
+															: supportsUserPass
+																? textField("user", t("username"), "username")
+																: textField("user", t("username"), "username")}
+											</div>
+											{supportsUserPass && !requiresId && !requiresPassword && typedProtocol !== Protocols.Hysteria ? (
+												<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+													{textField("pass", t("password"), "password")}
+												</div>
+											) : null}
+											{typedProtocol === Protocols.Shadowsocks ? (
+												<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+													<FormField label={t("pages.outbound.method")} error={fieldError("method")}>
+														<Controller
+															control={control}
+															name="method"
+															rules={{ required: requiresMethod ? requiredMessage : false }}
+															render={({ field }) => (
+																<SearchableTagSelect
+																	mode="single"
+																	options={Object.values(SSMethods)}
+																	value={field.value ?? ""}
+																	onChange={(value) => field.onChange(value as string)}
+																	placeholder={t("pages.outbound.method")}
+																	searchPlaceholder={t("search")}
+																/>
+															)}
 														/>
-													</FormControl>
-													{requiresId ? (
-														<FormControl isRequired={requiresId}>
-															<FormLabel>ID</FormLabel>
-															<Input
-																size="sm"
-																placeholder="UUID"
-																{...register("id", {
-																	required: requiresId
-																		? requiredMessage
-																		: false,
-																})}
-															/>
-														</FormControl>
-													) : requiresPassword ? (
-														<FormControl isRequired={requiresPassword}>
-															<FormLabel>{t("password")}</FormLabel>
-															<Input
-																size="sm"
-																placeholder="password"
-																{...register("password", {
-																	required: requiresPassword
-																		? requiredMessage
-																		: false,
-																})}
-															/>
-														</FormControl>
-													) : typedProtocol === Protocols.Hysteria ? (
-														<FormControl>
-															<FormLabel>
-																{t("pages.outbound.hysteriaAuth")}
-															</FormLabel>
-															<Input
-																size="sm"
-																placeholder="auth"
-																{...register("hysteriaAuth")}
-															/>
-														</FormControl>
-													) : supportsUserPass ? (
-														<HStack flex="1" spacing={3} flexWrap="wrap">
-															<FormControl minW="180px">
-																<FormLabel>{t("username")}</FormLabel>
-																<Input
-																	size="sm"
-																	placeholder="username"
-																	{...register("user")}
-																/>
-															</FormControl>
-															<FormControl minW="180px">
-																<FormLabel>{t("password")}</FormLabel>
-																<Input
-																	size="sm"
-																	placeholder="password"
-																	{...register("pass")}
-																/>
-															</FormControl>
-														</HStack>
-													) : (
-														<FormControl>
-															<FormLabel>{t("username")}</FormLabel>
-															<Input
-																size="sm"
-																placeholder="username"
-																{...register("user")}
-															/>
-														</FormControl>
-													)}
-												</HStack>
-												{typedProtocol === Protocols.Shadowsocks && (
-													<>
-														<FormControl isRequired={requiresMethod}>
-															<FormLabel>
-																{t("pages.outbound.method")}
-															</FormLabel>
-															<Controller
-																control={control}
-																name="method"
-																rules={{
-																	required: requiresMethod
-																		? requiredMessage
-																		: false,
-																}}
-																render={({ field }) => (
-																	<SearchableTagSelect
-																		mode="single"
-																		options={Object.values(SSMethods)}
-																		value={field.value ?? ""}
-																		onChange={(value) =>
-																			field.onChange(value as string)
-																		}
-																		placeholder={t("pages.outbound.method")}
-																		searchPlaceholder={t("search")}
-																	/>
-																)}
-															/>
-														</FormControl>
-														<FormControl
-															display="flex"
-															alignItems="center"
-															gap={2}
-														>
-															<Switch size="sm" {...register("ssIvCheck")} />
-															<FormLabel mb="0">
-																{t("pages.outbound.ivCheck")}
-															</FormLabel>
-														</FormControl>
-													</>
-												)}
-												{typedProtocol === Protocols.Hysteria && (
-													<HStack spacing={3} flexWrap="wrap">
-														<FormControl minW="180px">
-															<FormLabel>{t("redisVersion")}</FormLabel>
-															<Input
-																size="sm"
-																type="number"
-																min={1}
-																max={2}
-																{...register("hysteriaVersion", {
-																	valueAsNumber: true,
-																})}
-															/>
-														</FormControl>
-														<FormControl minW="180px">
-															<FormLabel>
-																{t("inbounds.hysteria.udpIdleTimeout")}
-															</FormLabel>
-															<Input
-																size="sm"
-																type="number"
-																min={2}
-																max={600}
-																{...register("hysteriaUdpIdleTimeout", {
-																	valueAsNumber: true,
-																})}
-															/>
-														</FormControl>
-													</HStack>
-												)}
-												{typedProtocol === Protocols.VLESS && (
-													<>
-														<FormControl>
-															<FormLabel>
-																{t("pages.outbound.encryption")}
-															</FormLabel>
-															<Input
-																size="sm"
-																placeholder="none"
-																{...register("encryption")}
-															/>
-														</FormControl>
-														{canTlsFlow && (
-															<FormControl>
-																<FormLabel>Flow</FormLabel>
-																<Input
-																	size="sm"
-																	placeholder="xtls-rprx-vision"
-																	{...register("flow")}
-																/>
-															</FormControl>
-														)}
-													</>
-												)}
-												{typedProtocol === Protocols.VMess && (
-													<FormControl>
-														<FormLabel>
-															{t("pages.outbound.security")}
-														</FormLabel>
-														<Input
-															size="sm"
-															placeholder="auto"
-															{...register("vnextEncryption")}
-														/>
-													</FormControl>
-												)}
-											</VStack>
-										</Box>
-									)}
+													</FormField>
+													{switchRow("ssIvCheck", t("pages.outbound.ivCheck"))}
+												</div>
+											) : null}
+											{typedProtocol === Protocols.Hysteria ? (
+												<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+													{numberField("hysteriaVersion", t("redisVersion"), { min: 1, max: 2 })}
+													{numberField("hysteriaUdpIdleTimeout", t("inbounds.hysteria.udpIdleTimeout"), { min: 2, max: 600 })}
+												</div>
+											) : null}
+											{typedProtocol === Protocols.VLESS ? (
+												<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+													{textField("encryption", t("pages.outbound.encryption"), "none")}
+													{canTlsFlow ? textField("flow", "Flow", "xtls-rprx-vision") : null}
+												</div>
+											) : null}
+											{typedProtocol === Protocols.VMess ? textField("vnextEncryption", t("pages.outbound.security"), "auto") : null}
+										</FormSection>
+									) : null}
 
-									{typedProtocol === Protocols.DNS && (
-										<Box>
-											<Text fontWeight="semibold" mb={3}>
-												{t("pages.outbound.dnsSettings")}
-											</Text>
-											<XrayFieldGrid>
-												<FormControl>
-													<FormLabel>{t("pages.outbound.network")}</FormLabel>
-													<Controller
-														control={control}
-														name="dnsNetwork"
-														render={({ field }) => (
-															<SearchableTagSelect
-																mode="single"
-																options={["udp", "tcp"]}
-																value={field.value ?? ""}
-																onChange={(value) =>
-																	field.onChange(value as string)
-																}
-																placeholder={t("pages.outbound.network")}
-																searchPlaceholder={t("search")}
-															/>
-														)}
-													/>
-												</FormControl>
-												<FormControl isRequired={requiresDnsServer}>
-													<FormLabel>{t("port")}</FormLabel>
-													<Input
-														size="sm"
-														type="number"
-														min={1}
-														max={65535}
-														{...register("dnsPort", {
-															required: requiresDnsServer
-																? requiredMessage
-																: false,
-															valueAsNumber: true,
-															min: { value: 1, message: invalidPortMessage },
-															max: {
-																value: 65535,
-																message: invalidPortMessage,
-															},
-														})}
-													/>
-												</FormControl>
-											</XrayFieldGrid>
-											<FormControl mt={3} isRequired={requiresDnsServer}>
-												<FormLabel>{t("pages.outbound.address")}</FormLabel>
-												<Input
-													size="sm"
-													placeholder="8.8.8.8"
-													{...register("dnsAddress", {
-														required: requiresDnsServer
-															? requiredMessage
-															: false,
-													})}
-												/>
-											</FormControl>
-										</Box>
-									)}
+									{typedProtocol === Protocols.DNS ? (
+										<FormSection title={t("pages.outbound.dnsSettings")}>
+											<div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+												{selectField("dnsNetwork", t("pages.outbound.network"), ["udp", "tcp"], t("pages.outbound.network"))}
+												{numberField("dnsPort", t("port"), { min: 1, max: 65535, required: requiresDnsServer })}
+												{textField("dnsAddress", t("pages.outbound.address"), "8.8.8.8", { required: requiresDnsServer ? requiredMessage : false })}
+											</div>
+										</FormSection>
+									) : null}
 
-									{typedProtocol === Protocols.Freedom && (
-										<Box>
-											<Text fontWeight="semibold" mb={3}>
-												{t("pages.outbound.freedom")}
-											</Text>
-											<FormControl>
-												<FormLabel>{t("pages.outbound.strategy")}</FormLabel>
-												<Input
-													size="sm"
-													placeholder="UseIP"
-													{...register("freedomStrategy")}
-												/>
-											</FormControl>
-										</Box>
-									)}
+									{typedProtocol === Protocols.Freedom ? (
+										<FormSection title={t("pages.outbound.freedom")}>
+											{textField("freedomStrategy", t("pages.outbound.strategy"), "UseIP")}
+										</FormSection>
+									) : null}
 
-									{typedProtocol === Protocols.Blackhole && (
-										<Box>
-											<Text fontWeight="semibold" mb={3}>
-												{t("pages.outbound.blackhole")}
-											</Text>
-											<FormControl>
-												<FormLabel>{t("pages.outbound.response")}</FormLabel>
-												<Input
-													size="sm"
-													placeholder="none"
-													{...register("blackholeResponse")}
-												/>
-											</FormControl>
-											{(watch("blackholeResponse") || "").toLowerCase() ===
-												"custom" && (
-												<FormControl
-													mt={3}
-													isInvalid={Boolean(
-														errors.blackholeCustomResponseData,
-													)}
-												>
-													<FormLabel>
-														Custom response data (Base64, Xray 26.9.8+)
-													</FormLabel>
-													<Input
-														size="sm"
-														{...register("blackholeCustomResponseData", {
+									{typedProtocol === Protocols.Blackhole ? (
+										<FormSection title={t("pages.outbound.blackhole")}>
+											<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+												{textField("blackholeResponse", t("pages.outbound.response"), "none")}
+												{(watch("blackholeResponse") || "").toLowerCase() === "custom"
+													? textField("blackholeCustomResponseData", "Custom response data (Base64, Xray 26.9.8+)", undefined, {
 															validate: (value) =>
-																/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
-																	value,
-																) || "Use standard Base64.",
-														})}
-													/>
-													<FormErrorMessage>
-														{errors.blackholeCustomResponseData?.message}
-													</FormErrorMessage>
-												</FormControl>
-											)}
-										</Box>
-									)}
+																/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(String(value ?? "")) || "Use standard Base64.",
+														})
+													: null}
+											</div>
+										</FormSection>
+									) : null}
 
-									{typedProtocol === Protocols.Wireguard && (
-										<Box>
-											<Text fontWeight="semibold" mb={3}>
-												{t("pages.outbound.wireguard")}
-											</Text>
-											<VStack spacing={3} align="stretch">
-												<FormControl>
-													<FormLabel>{t("pages.outbound.secretKey")}</FormLabel>
-													<Input size="sm" {...register("wireguardSecret")} />
-												</FormControl>
-												<FormControl>
-													<FormLabel>{t("pages.outbound.address")}</FormLabel>
-													<Input
-														size="sm"
-														placeholder="10.0.0.1/32"
-														{...register("wireguardAddress")}
-													/>
-												</FormControl>
-												<HStack align="flex-end">
-													<FormControl>
-														<FormLabel>MTU</FormLabel>
-														<Input
-															size="sm"
-															type="number"
-															{...register("wireguardMtu", {
-																valueAsNumber: true,
-															})}
-														/>
-													</FormControl>
-													<FormControl>
-														<FormLabel>Workers</FormLabel>
-														<Input
-															size="sm"
-															type="number"
-															{...register("wireguardWorkers", {
-																valueAsNumber: true,
-															})}
-														/>
-													</FormControl>
-												</HStack>
-												<FormControl>
-													<FormLabel>Domain Strategy</FormLabel>
+									{typedProtocol === Protocols.Wireguard ? (
+										<FormSection title={t("pages.outbound.wireguard")}>
+											<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+												{textField("wireguardSecret", t("pages.outbound.secretKey"))}
+												{textField("wireguardAddress", t("pages.outbound.address"), "10.0.0.1/32")}
+												{numberField("wireguardMtu", "MTU")}
+												{numberField("wireguardWorkers", "Workers")}
+												<FormField label="Domain Strategy">
 													<Controller
 														control={control}
 														name="wireguardDomainStrategy"
 														render={({ field }) => (
 															<SearchableTagSelect
 																mode="single"
-																options={[
-																	{
-																		value: "",
-																		label: t("userDialog.flow.none"),
-																	},
-																	...WireguardDomainStrategy,
-																]}
+																options={[{ value: "", label: t("userDialog.flow.none") }, ...WireguardDomainStrategy]}
 																value={field.value ?? ""}
-																onChange={(value) =>
-																	field.onChange(value as string)
-																}
+																onChange={(value) => field.onChange(value as string)}
 																placeholder={t("userDialog.flow.none")}
 																searchPlaceholder={t("search")}
 															/>
 														)}
 													/>
-												</FormControl>
-												<FormControl>
-													<FormLabel>Remote DNS (Xray 26.9.8+)</FormLabel>
-													<Input
-														size="sm"
-														placeholder="1.1.1.1,8.8.8.8"
-														{...register("wireguardRemoteDNS")}
-													/>
-												</FormControl>
-												<FormControl>
-													<FormLabel>Reserved</FormLabel>
-													<Input
-														size="sm"
-														placeholder="1,2,3"
-														{...register("wireguardReserved")}
-													/>
-												</FormControl>
-												<FormControl display="flex" alignItems="center" gap={2}>
-													<Switch
-														size="sm"
-														{...register("wireguardNoKernelTun")}
-													/>
-													<FormLabel mb="0">No Kernel Tun</FormLabel>
-												</FormControl>
-												<VStack spacing={3} align="stretch">
-													<HStack justify="space-between">
-														<Text fontWeight="semibold">
-															{t("pages.outbound.peer")}
-														</Text>
-														<IconButton
-															size="sm"
-															aria-label={t("add")}
-															icon={<AddIcon boxSize={3} />}
-															onClick={() =>
-																append({
-																	publicKey: "",
-																	allowedIPs: "0.0.0.0/0,::/0",
-																	endpoint: "",
-																	keepAlive: 0,
-																	presharedKey: "",
-																})
-															}
-														/>
-													</HStack>
-													{fields.map((field, index) => (
-														<Box
-															key={field.id}
-															borderWidth="1px"
-															borderRadius="md"
-															p={3}
-															bg={bgSubtle}
-														>
-															<HStack>
-																<FormControl>
-																	<FormLabel>
-																		{t("pages.outbound.publicKey")}
-																	</FormLabel>
-																	<Input
-																		size="sm"
-																		{...register(
-																			`wireguardPeers.${index}.publicKey` as const,
-																		)}
-																	/>
-																</FormControl>
-																{fields.length > 1 && (
-																	<IconButton
-																		mt={6}
-																		size="sm"
-																		aria-label={t("delete")}
-																		icon={<MinusIcon boxSize={3} />}
-																		onClick={() => remove(index)}
-																	/>
-																)}
-															</HStack>
-															<HStack mt={2}>
-																<FormControl>
-																	<FormLabel>
-																		{t("pages.outbound.allowedIPs")}
-																	</FormLabel>
-																	<Input
-																		size="sm"
-																		{...register(
-																			`wireguardPeers.${index}.allowedIPs` as const,
-																		)}
-																	/>
-																</FormControl>
-																<FormControl>
-																	<FormLabel>
-																		{t("pages.outbound.endpoint")}
-																	</FormLabel>
-																	<Input
-																		size="sm"
-																		{...register(
-																			`wireguardPeers.${index}.endpoint` as const,
-																		)}
-																	/>
-																</FormControl>
-															</HStack>
-															<FormControl mt={2}>
-																<FormLabel>
-																	{t("pages.outbound.keepAlive")}
-																</FormLabel>
-																<Input
-																	size="sm"
-																	type="number"
-																	{...register(
-																		`wireguardPeers.${index}.keepAlive` as const,
-																		{ valueAsNumber: true },
-																	)}
-																/>
-															</FormControl>
-															<FormControl mt={2}>
-																<FormLabel>
-																	{t("pages.outbound.presharedKey")}
-																</FormLabel>
-																<Input
-																	size="sm"
-																	{...register(
-																		`wireguardPeers.${index}.presharedKey` as const,
-																	)}
-																/>
-															</FormControl>
-														</Box>
-													))}
-												</VStack>
-											</VStack>
-										</Box>
-									)}
+												</FormField>
+												{textField("wireguardRemoteDNS", "Remote DNS (Xray 26.9.8+)", "1.1.1.1,8.8.8.8")}
+												{textField("wireguardReserved", "Reserved", "1,2,3")}
+											</div>
+											{switchRow("wireguardNoKernelTun", "No Kernel Tun")}
+											<div className="flex flex-col gap-3">
+												<div className="flex flex-row items-center justify-between gap-2">
+													<p className="text-sm font-semibold">{t("pages.outbound.peer")}</p>
+													<Button aria-label={t("add")} onClick={() => append({ publicKey: "", allowedIPs: "0.0.0.0/0,::/0", endpoint: "", keepAlive: 0, presharedKey: "" })} variant="outline" size="sm" className="size-8 p-0">
+														<AddIcon className="size-3" />
+													</Button>
+												</div>
+												{fields.map((field, index) => (
+													<div key={field.id} className={cn("flex flex-col gap-3 rounded-lg border border-panel-border! bg-card/40 p-3", bgSubtle)}>
+														<div className="flex flex-row items-end gap-2">
+															<div className="min-w-0 flex-1">
+																<FormField label={t("pages.outbound.publicKey")}>
+																	<UiInput {...register(`wireguardPeers.${index}.publicKey` as const)} />
+																</FormField>
+															</div>
+															{fields.length > 1 ? (
+																<Button aria-label={t("delete")} onClick={() => remove(index)} variant="ghost" size="sm" className="size-8 p-0">
+																	<MinusIcon className="size-3" />
+																</Button>
+															) : null}
+														</div>
+														<div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+															<FormField label={t("pages.outbound.allowedIPs")}>
+																<UiInput {...register(`wireguardPeers.${index}.allowedIPs` as const)} />
+															</FormField>
+															<FormField label={t("pages.outbound.endpoint")}>
+																<UiInput {...register(`wireguardPeers.${index}.endpoint` as const)} />
+															</FormField>
+															<FormField label={t("pages.outbound.keepAlive")}>
+																<UiInput type="number" {...register(`wireguardPeers.${index}.keepAlive` as const, { valueAsNumber: true })} />
+															</FormField>
+															<FormField label={t("pages.outbound.presharedKey")}>
+																<UiInput {...register(`wireguardPeers.${index}.presharedKey` as const)} />
+															</FormField>
+														</div>
+													</div>
+												))}
+											</div>
+										</FormSection>
+									) : null}
 
-									{canStream && (
-										<Box>
-											<Text fontWeight="semibold" mb={3}>
-												{t("pages.outbound.transport")}
-											</Text>
-											<VStack spacing={3} align="stretch">
-												<XrayFieldGrid>
-													<FormControl>
-														<FormLabel>{t("pages.outbound.network")}</FormLabel>
-														<Controller
-															control={control}
-															name="network"
-															render={({ field }) => (
-																<SearchableTagSelect
-																	mode="single"
-																	options={streamNetworkOptions}
-																	value={field.value ?? ""}
-																	onChange={(value) =>
-																		field.onChange(value as string)
-																	}
-																	placeholder={t("pages.outbound.network")}
-																	searchPlaceholder={t("search")}
-																/>
-															)}
-														/>
-													</FormControl>
-													{network === "tcp" && (
-														<FormControl>
-															<FormLabel>
-																{t("pages.outbound.tcpHeader")}
-															</FormLabel>
-															<Controller
-																control={control}
-																name="tcpType"
-																render={({ field }) => (
-																	<SearchableTagSelect
-																		mode="single"
-																		options={["none", "http"]}
-																		value={field.value ?? ""}
-																		onChange={(value) =>
-																			field.onChange(value as string)
-																		}
-																		placeholder={t("pages.outbound.tcpHeader")}
-																		searchPlaceholder={t("search")}
-																	/>
-																)}
-															/>
-														</FormControl>
-													)}
-													{network === "kcp" && (
-														<FormControl>
-															<FormLabel>
-																{t("pages.outbound.kcpHeader")}
-															</FormLabel>
-															<Controller
-																control={control}
-																name="kcpType"
-																render={({ field }) => (
-																	<SearchableTagSelect
-																		mode="single"
-																		options={[...KCP_HEADER_TYPE_OPTIONS]}
-																		value={field.value ?? ""}
-																		onChange={(value) =>
-																			field.onChange(value as string)
-																		}
-																		placeholder={t("pages.outbound.kcpHeader")}
-																		searchPlaceholder={t("search")}
-																	/>
-																)}
-															/>
-														</FormControl>
-													)}
-													{network === "xhttp" && (
-														<FormControl>
-															<FormLabel>Mode</FormLabel>
-															<Controller
-																control={control}
-																name="xhttpMode"
-																render={({ field }) => (
-																	<SearchableTagSelect
-																		mode="single"
-																		options={[
-																			{
-																				value: "",
-																				label: t("userDialog.flow.none"),
-																			},
-																			...XHTTP_MODE_OPTIONS,
-																		]}
-																		value={field.value ?? ""}
-																		onChange={(value) =>
-																			field.onChange(value as string)
-																		}
-																		placeholder={t("userDialog.flow.none")}
-																		searchPlaceholder={t("search")}
-																	/>
-																)}
-															/>
-														</FormControl>
-													)}
-												</XrayFieldGrid>
-												{network === "tcp" && tcpType === "http" && (
-													<XrayFieldGrid>
-														<FormControl>
-															<FormLabel>{t("host")}</FormLabel>
-															<Input size="sm" {...register("tcpHost")} />
-														</FormControl>
-														<FormControl>
-															<FormLabel>{t("path")}</FormLabel>
-															<Input size="sm" {...register("tcpPath")} />
-														</FormControl>
-													</XrayFieldGrid>
-												)}
-												{network === "kcp" && (
-													<XrayFieldGrid>
-														<FormControl>
-															<FormLabel>{t("inbounds.kcp.seed")}</FormLabel>
-															<Input size="sm" {...register("kcpSeed")} />
-														</FormControl>
-													</XrayFieldGrid>
-												)}
-												{network === "ws" && (
-													<XrayFieldGrid>
-														<FormControl>
-															<FormLabel>{t("host")}</FormLabel>
-															<Input size="sm" {...register("wsHost")} />
-														</FormControl>
-														<FormControl>
-															<FormLabel>{t("path")}</FormLabel>
-															<Input size="sm" {...register("wsPath")} />
-														</FormControl>
-													</XrayFieldGrid>
-												)}
-												{network === "grpc" && (
-													<>
-														<XrayFieldGrid>
-															<FormControl>
-																<FormLabel>{t("serviceName")}</FormLabel>
-																<Input
-																	size="sm"
-																	{...register("grpcServiceName")}
-																/>
-															</FormControl>
-															<FormControl>
-																<FormLabel>Authority</FormLabel>
-																<Input
-																	size="sm"
-																	{...register("grpcAuthority")}
-																/>
-															</FormControl>
-														</XrayFieldGrid>
-														<FormControl
-															display="flex"
-															alignItems="center"
-															gap={2}
-														>
-															<Switch
-																size="sm"
-																{...register("grpcMultiMode")}
-															/>
-															<FormLabel mb="0">
-																{t("inbounds.grpc.multiMode")}
-															</FormLabel>
-														</FormControl>
-													</>
-												)}
-												{network === "httpupgrade" && (
-													<XrayFieldGrid>
-														<FormControl>
-															<FormLabel>{t("host")}</FormLabel>
-															<Input
-																size="sm"
-																{...register("httpupgradeHost")}
-															/>
-														</FormControl>
-														<FormControl>
-															<FormLabel>{t("path")}</FormLabel>
-															<Input
-																size="sm"
-																{...register("httpupgradePath")}
-															/>
-														</FormControl>
-													</XrayFieldGrid>
-												)}
-												{network === "xhttp" && (
-													<VStack spacing={3} align="stretch">
-														<XrayFieldGrid>
-															<FormControl>
-																<FormLabel>{t("host")}</FormLabel>
-																<Input size="sm" {...register("xhttpHost")} />
-															</FormControl>
-															<FormControl>
-																<FormLabel>{t("path")}</FormLabel>
-																<Input size="sm" {...register("xhttpPath")} />
-															</FormControl>
-														</XrayFieldGrid>
-														{(formValues?.xhttpMode === "stream-up" ||
-															formValues?.xhttpMode === "stream-one") && (
-															<FormControl
-																display="flex"
-																alignItems="center"
-																gap={2}
-															>
-																<Switch
-																	size="sm"
-																	{...register("xhttpNoGRPCHeader")}
-																/>
-																<FormLabel mb="0">No gRPC Header</FormLabel>
-															</FormControl>
-														)}
-														{formValues?.xhttpMode === "packet-up" && (
-															<FormControl>
-																<FormLabel>Min Upload Interval (Ms)</FormLabel>
-																<Input
-																	size="sm"
-																	{...register("xhttpScMinPostsIntervalMs")}
-																/>
-															</FormControl>
-														)}
-														<XrayFieldGrid>
-															<FormControl>
-																<FormLabel>Max Concurrency</FormLabel>
-																<Input
-																	size="sm"
-																	{...register("xhttpXmuxMaxConcurrency")}
-																/>
-															</FormControl>
-															<FormControl>
-																<FormLabel>Max Connections</FormLabel>
-																<Input
-																	size="sm"
-																	type="number"
-																	{...register("xhttpXmuxMaxConnections", {
-																		valueAsNumber: true,
-																	})}
-																/>
-															</FormControl>
-														</XrayFieldGrid>
-														<XrayFieldGrid>
-															<FormControl>
-																<FormLabel>Max Reuse Times</FormLabel>
-																<Input
-																	size="sm"
-																	type="number"
-																	{...register("xhttpXmuxCMaxReuseTimes", {
-																		valueAsNumber: true,
-																	})}
-																/>
-															</FormControl>
-															<FormControl>
-																<FormLabel>Max Request Times</FormLabel>
-																<Input
-																	size="sm"
-																	{...register("xhttpXmuxHMaxRequestTimes")}
-																/>
-															</FormControl>
-														</XrayFieldGrid>
-														<XrayFieldGrid>
-															<FormControl>
-																<FormLabel>Max Reusable Secs</FormLabel>
-																<Input
-																	size="sm"
-																	{...register("xhttpXmuxHMaxReusableSecs")}
-																/>
-															</FormControl>
-															<FormControl>
-																<FormLabel>Keep Alive Period</FormLabel>
-																<Input
-																	size="sm"
-																	type="number"
-																	{...register("xhttpXmuxHKeepAlivePeriod", {
-																		valueAsNumber: true,
-																	})}
-																/>
-															</FormControl>
-														</XrayFieldGrid>
-													</VStack>
-												)}
-											</VStack>
-										</Box>
-									)}
+									{canStream ? (
+										<FormSection title={t("pages.outbound.transport")}>
+											<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+												{selectField("network", t("pages.outbound.network"), streamNetworkOptions, t("pages.outbound.network"))}
+												{network === "tcp" ? selectField("tcpType", t("pages.outbound.tcpHeader"), ["none", "http"], t("pages.outbound.tcpHeader")) : null}
+												{network === "kcp" ? selectField("kcpType", t("pages.outbound.kcpHeader"), [...KCP_HEADER_TYPE_OPTIONS], t("pages.outbound.kcpHeader")) : null}
+												{network === "xhttp"
+													? selectField("xhttpMode", "Mode", [{ value: "", label: t("userDialog.flow.none") }, ...XHTTP_MODE_OPTIONS], t("userDialog.flow.none"))
+													: null}
+											</div>
+											{network === "tcp" && tcpType === "http" ? (
+												<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+													{textField("tcpHost", t("host"))}
+													{textField("tcpPath", t("path"))}
+												</div>
+											) : null}
+											{network === "kcp" ? (
+												<div className="grid grid-cols-1 gap-4 md:grid-cols-2">{textField("kcpSeed", t("inbounds.kcp.seed"))}</div>
+											) : null}
+											{network === "ws" ? (
+												<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+													{textField("wsHost", t("host"))}
+													{textField("wsPath", t("path"))}
+												</div>
+											) : null}
+											{network === "grpc" ? (
+												<>
+													<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+														{textField("grpcServiceName", t("serviceName"))}
+														{textField("grpcAuthority", "Authority")}
+													</div>
+													{switchRow("grpcMultiMode", t("inbounds.grpc.multiMode"))}
+												</>
+											) : null}
+											{network === "httpupgrade" ? (
+												<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+													{textField("httpupgradeHost", t("host"))}
+													{textField("httpupgradePath", t("path"))}
+												</div>
+											) : null}
+											{network === "xhttp" ? (
+												<div className="flex flex-col gap-4">
+													<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+														{textField("xhttpHost", t("host"))}
+														{textField("xhttpPath", t("path"))}
+													</div>
+													{formValues?.xhttpMode === "stream-up" || formValues?.xhttpMode === "stream-one"
+														? switchRow("xhttpNoGRPCHeader", "No gRPC Header")
+														: null}
+													{formValues?.xhttpMode === "packet-up"
+														? textField("xhttpScMinPostsIntervalMs", "Min Upload Interval (Ms)")
+														: null}
+													<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+														{textField("xhttpXmuxMaxConcurrency", "Max Concurrency")}
+														{numberField("xhttpXmuxMaxConnections", "Max Connections")}
+														{numberField("xhttpXmuxCMaxReuseTimes", "Max Reuse Times")}
+														{textField("xhttpXmuxHMaxRequestTimes", "Max Request Times")}
+														{textField("xhttpXmuxHMaxReusableSecs", "Max Reusable Secs")}
+														{numberField("xhttpXmuxHKeepAlivePeriod", "Keep Alive Period")}
+													</div>
+												</div>
+											) : null}
+										</FormSection>
+									) : null}
 
-									{canAnySecurity && (
-										<Box>
-											<Text fontWeight="semibold" mb={3}>
-												{t("pages.outbound.security")}
-											</Text>
-											<FormControl maxW="260px">
-												<FormLabel mb={1}>
-													{t("pages.outbound.security")}
-												</FormLabel>
-												<SearchableTagSelect
-													mode="single"
+									{canAnySecurity ? (
+										<FormSection title={t("pages.outbound.security")}>
+											<FormField label={t("pages.outbound.security")}>
+												<SegmentedControl<string>
+													label={t("pages.outbound.security")}
+													value={realityEnabled && canReality ? "reality" : tlsEnabled && canTls ? "tls" : "none"}
 													options={[
 														{ value: "none", label: t("userDialog.flow.none") },
 														{ value: "tls", label: "TLS", disabled: !canTls },
-														{
-															value: "reality",
-															label: "Reality",
-															disabled: !canReality,
-														},
+														{ value: "reality", label: "Reality", disabled: !canReality },
 													]}
-													value={
-														realityEnabled && canReality
-															? "reality"
-															: tlsEnabled && canTls
-																? "tls"
-																: "none"
-													}
-													onChange={(value) => {
-														const next = value as OutboundSecurityValue;
-														setValue("tlsEnabled", next === "tls");
-														setValue("realityEnabled", next === "reality");
-														if (next !== "tls") {
+													onChange={(next) => {
+														const security = next as OutboundSecurityValue;
+														setValue("tlsEnabled", security === "tls");
+														setValue("realityEnabled", security === "reality");
+														if (security !== "tls") {
 															setValue("tlsServerName", "");
 															setValue("tlsFingerprint", "");
 															setValue("tlsAlpn", "");
@@ -2271,7 +1677,7 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 															setValue("tlsPinnedPeerCertSha256", "");
 															setValue("tlsVerifyPeerCertByName", "");
 														}
-														if (next !== "reality") {
+														if (security !== "reality") {
 															setValue("realityServerName", "");
 															setValue("realityFingerprint", "");
 															setValue("realityPublicKey", "");
@@ -2280,314 +1686,89 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 															setValue("realityMldsa65Verify", "");
 														}
 													}}
-													placeholder={t("pages.outbound.security")}
-													searchPlaceholder={t("search")}
 												/>
-											</FormControl>
-											{tlsEnabled && canTls && (
-												<VStack spacing={3} align="stretch" mt={3}>
-													<FormControl>
-														<FormLabel>SNI</FormLabel>
-														<Input
-															size="sm"
-															placeholder="example.com"
-															{...register("tlsServerName")}
-														/>
-													</FormControl>
-													<FormControl>
-														<FormLabel>uTLS</FormLabel>
-														<Controller
-															control={control}
-															name="tlsFingerprint"
-															render={({ field }) => (
-																<SearchableTagSelect
-																	mode="single"
-																	options={[
-																		{
-																			value: "",
-																			label: t("userDialog.flow.none"),
-																		},
-																		...TLS_FINGERPRINT_OPTIONS,
-																	]}
-																	value={field.value ?? ""}
-																	onChange={(value) =>
-																		field.onChange(value as string)
-																	}
-																	placeholder={t("userDialog.flow.none")}
-																	searchPlaceholder={t("search")}
-																/>
-															)}
-														/>
-													</FormControl>
-													<FormControl>
-														<FormLabel>ALPN</FormLabel>
-														<Input
-															size="sm"
-															placeholder={TLS_ALPN_OPTIONS.join(",")}
-															{...register("tlsAlpn")}
-														/>
-													</FormControl>
-													<FormControl>
-														<FormLabel>ECH Config List</FormLabel>
-														<Input
-															size="sm"
-															{...register("tlsEchConfigList")}
-														/>
-													</FormControl>
-													<FormControl>
-														<FormLabel>Certificate SHA-256 pin</FormLabel>
-														<Input
-															size="sm"
-															{...register("tlsPinnedPeerCertSha256")}
-														/>
-													</FormControl>
-													<FormControl>
-														<FormLabel>Verify certificate name</FormLabel>
-														<Input
-															size="sm"
-															placeholder="example.com"
-															{...register("tlsVerifyPeerCertByName")}
-														/>
-													</FormControl>
-												</VStack>
-											)}
-											{realityEnabled && canReality && (
-												<VStack spacing={3} align="stretch" mt={3}>
-													<FormControl>
-														<FormLabel>SNI</FormLabel>
-														<Input
-															size="sm"
-															{...register("realityServerName")}
-														/>
-													</FormControl>
-													<FormControl>
-														<FormLabel>uTLS</FormLabel>
-														<Controller
-															control={control}
-															name="realityFingerprint"
-															render={({ field }) => (
-																<SearchableTagSelect
-																	mode="single"
-																	options={[
-																		{
-																			value: "",
-																			label: t("userDialog.flow.none"),
-																		},
-																		...TLS_FINGERPRINT_OPTIONS,
-																	]}
-																	value={field.value ?? ""}
-																	onChange={(value) =>
-																		field.onChange(value as string)
-																	}
-																	placeholder={t("userDialog.flow.none")}
-																	searchPlaceholder={t("search")}
-																/>
-															)}
-														/>
-													</FormControl>
-													<FormControl>
-														<FormLabel>
-															{t("pages.outbound.publicKey")}
-														</FormLabel>
-														<Input
-															size="sm"
-															{...register("realityPublicKey")}
-														/>
-													</FormControl>
-													<FormControl>
-														<FormLabel>{t("pages.outbound.shortId")}</FormLabel>
-														<Input size="sm" {...register("realityShortId")} />
-													</FormControl>
-													<FormControl>
-														<FormLabel>SpiderX</FormLabel>
-														<Input size="sm" {...register("realitySpiderX")} />
-													</FormControl>
-													<FormControl>
-														<FormLabel>mldsa65 Verify</FormLabel>
-														<Textarea
-															size="sm"
-															rows={3}
-															{...register("realityMldsa65Verify")}
-														/>
-													</FormControl>
-												</VStack>
-											)}
-										</Box>
-									)}
+											</FormField>
+											{tlsEnabled && canTls ? (
+												<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+													{textField("tlsServerName", "SNI", "example.com")}
+													{selectField("tlsFingerprint", "uTLS", [{ value: "", label: t("userDialog.flow.none") }, ...TLS_FINGERPRINT_OPTIONS], t("userDialog.flow.none"))}
+													{textField("tlsAlpn", "ALPN", TLS_ALPN_OPTIONS.join(","))}
+													{textField("tlsEchConfigList", "ECH Config List")}
+													{textField("tlsPinnedPeerCertSha256", "Certificate SHA-256 pin")}
+													{textField("tlsVerifyPeerCertByName", "Verify certificate name", "example.com")}
+												</div>
+											) : null}
+											{realityEnabled && canReality ? (
+												<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+													{textField("realityServerName", "SNI")}
+													{selectField("realityFingerprint", "uTLS", [{ value: "", label: t("userDialog.flow.none") }, ...TLS_FINGERPRINT_OPTIONS], t("userDialog.flow.none"))}
+													{textField("realityPublicKey", t("pages.outbound.publicKey"))}
+													{textField("realityShortId", t("pages.outbound.shortId"))}
+													{textField("realitySpiderX", "SpiderX")}
+													<FormField label="mldsa65 Verify" error={fieldError("realityMldsa65Verify")}>
+														<Textarea rows={3} {...register("realityMldsa65Verify")} />
+													</FormField>
+												</div>
+											) : null}
+										</FormSection>
+									) : null}
 
-									{canMux && (
-										<Box>
-											<Text fontWeight="semibold" mb={3}>
-												{t("pages.outbound.mux")}
-											</Text>
-											<FormControl display="flex" alignItems="center">
-												<FormLabel mb="0">
-													{t("pages.outbound.enableMux")}
-												</FormLabel>
-												<Switch size="sm" {...register("muxEnabled")} />
-											</FormControl>
-											{muxEnabled && (
-												<VStack align="stretch" spacing={3} mt={3}>
-													<FormControl>
-														<FormLabel>
-															{t("pages.outbound.concurrency")}
-														</FormLabel>
-														<Input
-															size="sm"
-															type="number"
-															{...register("muxConcurrency", {
-																valueAsNumber: true,
-															})}
-														/>
-													</FormControl>
-													<FormControl>
-														<FormLabel>xudp Concurrency</FormLabel>
-														<Input
-															size="sm"
-															type="number"
-															{...register("muxXudpConcurrency", {
-																valueAsNumber: true,
-															})}
-														/>
-													</FormControl>
-													<FormControl>
-														<FormLabel>xudp UDP 443</FormLabel>
-														<Controller
-															control={control}
-															name="muxXudpProxyUdp443"
-															render={({ field }) => (
-																<SearchableTagSelect
-																	mode="single"
-																	options={["reject", "allow", "skip"]}
-																	value={field.value ?? ""}
-																	onChange={(value) =>
-																		field.onChange(value as string)
-																	}
-																	placeholder="reject"
-																	searchPlaceholder={t("search")}
-																/>
-															)}
-														/>
-													</FormControl>
-												</VStack>
-											)}
-										</Box>
-									)}
+									{canMux ? (
+										<FormSection title={t("pages.outbound.mux")}>
+											{switchRow("muxEnabled", t("pages.outbound.enableMux"))}
+											{muxEnabled ? (
+												<div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+													{numberField("muxConcurrency", t("pages.outbound.concurrency"))}
+													{numberField("muxXudpConcurrency", "xudp Concurrency")}
+													{selectField("muxXudpProxyUdp443", "xudp UDP 443", ["reject", "allow", "skip"], "reject")}
+												</div>
+											) : null}
+										</FormSection>
+									) : null}
 
-									<Box>
-										<Text fontWeight="semibold" mb={3}>
-											Sockopt
-										</Text>
-										<FormControl display="flex" alignItems="center">
-											<FormLabel mb="0">
-												{t("inbounds.sockopt.enable")}
-											</FormLabel>
-											<Switch size="sm" {...register("sockoptEnabled")} />
-										</FormControl>
-										{sockoptEnabled && (
-											<VStack align="stretch" spacing={3} mt={3}>
-												<FormControl display="flex" alignItems="center">
-													<FormLabel mb="0">
-														{t("inbounds.sockopt.tcpFastOpen")}
-													</FormLabel>
-													<Switch
-														size="sm"
-														{...register("sockoptTcpFastOpen")}
-													/>
-												</FormControl>
-												<FormControl display="flex" alignItems="center">
-													<FormLabel mb="0">
-														{t("inbounds.sockopt.tcpMptcp")}
-													</FormLabel>
-													<Switch size="sm" {...register("sockoptTcpMptcp")} />
-												</FormControl>
-												<FormControl display="flex" alignItems="center">
-													<FormLabel mb="0">
-														{t("inbounds.sockopt.penetrate")}
-													</FormLabel>
-													<Switch size="sm" {...register("sockoptPenetrate")} />
-												</FormControl>
-												<FormControl>
-													<FormLabel>
-														{t("inbounds.sockopt.dialerProxy")}
-													</FormLabel>
-													<Input size="sm" {...register("sockoptDialerProxy")} />
-												</FormControl>
-												<FormControl>
-													<FormLabel>
-														{t("inbounds.sockopt.tcpKeepAliveInterval")}
-													</FormLabel>
-													<Input
-														size="sm"
-														type="number"
-														{...register("sockoptTcpKeepAliveInterval", {
-															valueAsNumber: true,
-														})}
-													/>
-												</FormControl>
-												<FormControl>
-													<FormLabel>Address Port Strategy</FormLabel>
-													<Controller
-														control={control}
-														name="sockoptAddressPortStrategy"
-														render={({ field }) => (
-															<SearchableTagSelect
-																mode="single"
-																options={Object.values(Address_Port_Strategy)}
-																value={field.value ?? ""}
-																onChange={(value) =>
-																	field.onChange(value as string)
-																}
-																placeholder={Address_Port_Strategy.NONE}
-																searchPlaceholder={t("search")}
-															/>
-														)}
-													/>
-												</FormControl>
-											</VStack>
-										)}
-									</Box>
-								</VStack>
-							</TabPanel>
-							<TabPanel>
-								<VStack align="stretch" spacing={3}>
-									<FormControl>
-										<FormLabel>{t("pages.outbound.configToJson")}</FormLabel>
-										<HStack align="start" spacing={3}>
-											<Textarea
-												value={configInput}
-												onChange={(e) => setConfigInput(e.target.value)}
-												placeholder={t("pages.outbound.configPlaceholder")}
-												rows={3}
-												fontFamily="mono"
-												fontSize="sm"
-												spellCheck={false}
-												flex="1"
-											/>
-											<Button
-												size="sm"
-												colorScheme="primary"
-												onClick={handleConfigToJson}
-											>
-												{t("pages.outbound.convertConfig")}
-											</Button>
-										</HStack>
-									</FormControl>
-									<Box height="420px">
-										<JsonEditor
-											json={jsonData}
-											canonicalContext="outbound"
-											onChange={handleJsonEditorChange}
+									<FormSection title="Sockopt">
+										{switchRow("sockoptEnabled", t("inbounds.sockopt.enable"))}
+										{sockoptEnabled ? (
+											<div className="flex flex-col gap-3">
+												<div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+													{switchRow("sockoptTcpFastOpen", t("inbounds.sockopt.tcpFastOpen"))}
+													{switchRow("sockoptTcpMptcp", t("inbounds.sockopt.tcpMptcp"))}
+													{switchRow("sockoptPenetrate", t("inbounds.sockopt.penetrate"))}
+												</div>
+												<div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+													{textField("sockoptDialerProxy", t("inbounds.sockopt.dialerProxy"))}
+													{numberField("sockoptTcpKeepAliveInterval", t("inbounds.sockopt.tcpKeepAliveInterval"))}
+													{selectField("sockoptAddressPortStrategy", "Address Port Strategy", Object.values(Address_Port_Strategy), Address_Port_Strategy.NONE)}
+												</div>
+											</div>
+										) : null}
+									</FormSection>
+								</div>
+							</TabsContent>
+
+							<TabsContent value="1" className="mt-0">
+								<div className="flex flex-col gap-4">
+									<div className="flex h-11 items-center overflow-hidden rounded-lg border bg-card/40">
+										<span className="shrink-0 border-e px-3 text-sm font-medium text-muted-foreground">Link</span>
+										<UiInput
+											value={configInput}
+											onChange={(event) => setConfigInput(event.target.value)}
+											placeholder={t("pages.outbound.configPlaceholder")}
+											spellCheck={false}
+											className="h-full min-w-0 flex-1 border-0 bg-transparent px-3 font-mono text-sm shadow-none focus-visible:ring-0"
 										/>
-									</Box>
-									{jsonError && (
-										<Text fontSize="sm" color="red.500">
-											{jsonError}
-										</Text>
-									)}
-								</VStack>
-							</TabPanel>
-							<TabPanel>
+										<Button aria-label={t("pages.outbound.convertConfig")} onClick={handleConfigToJson} variant="ghost" size="sm" className={cn("size-8 p-0", "me-1")}>
+											<SquarePen className="w-[17px]" />
+										</Button>
+									</div>
+									<div className="h-[420px] overflow-hidden rounded-lg border">
+										<JsonEditor json={jsonData} canonicalContext="outbound" onChange={handleJsonEditorChange} />
+									</div>
+									{jsonError ? <p className="text-sm text-red-500">{jsonError}</p> : null}
+								</div>
+							</TabsContent>
+
+							<TabsContent value="2" className="mt-0">
 								<PropagationTargets
 									source={sourceTarget}
 									section="outbounds"
@@ -2596,19 +1777,20 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 									selectedIds={targetIds}
 									onChange={setTargetIds}
 								/>
-							</TabPanel>
-						</TabPanels>
+							</TabsContent>
+						</div>
 					</Tabs>
-				</XrayModalBody>
-				<XrayModalFooter justifyContent="flex-end">
-					<Button variant="outline" onClick={handleClose}>
-						{t("cancel")}
-					</Button>
-					<Button colorScheme="primary" type="submit" isDisabled={!isValid}>
-						{mode === "edit" ? t("save") : t("add")}
-					</Button>
-				</XrayModalFooter>
-			</XrayModalContent>
-		</Modal>
+
+					<DialogFooter className="flex-row flex-wrap items-center justify-end gap-2 border-t px-5 py-3">
+						<Button onClick={handleClose} variant="outline" size="sm">
+							{t("cancel")}
+						</Button>
+						<Button type="submit" disabled={!isValid} size="sm">
+							{mode === "edit" ? t("save") : t("add")}
+						</Button>
+					</DialogFooter>
+				</form>
+			</DialogContent>
+		</Dialog>
 	);
 };

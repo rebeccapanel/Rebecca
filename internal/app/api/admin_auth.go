@@ -107,7 +107,17 @@ func (s *Server) handleCurrentAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	principal, _ := r.Context().Value(adminContextKey).(adminPrincipal)
-	writeJSON(w, http.StatusOK, adminResponse(principal.Context.Admin))
+	response := adminResponse(principal.Context.Admin)
+	response["user_speed_limit_enabled"] = s.userSpeedLimitEnabled(r.Context())
+	writeJSON(w, http.StatusOK, response)
+}
+
+func (s *Server) userSpeedLimitEnabled(ctx context.Context) bool {
+	runtimeSettings, err := s.settingsRepo.RuntimeSettings(ctx)
+	if err != nil {
+		return true
+	}
+	return runtimeSettings.UserSpeedLimitEnabled
 }
 
 func (s *Server) handleInternalAdminValidate(w http.ResponseWriter, r *http.Request) {

@@ -1,12 +1,8 @@
-import {
-	Text,
-	VStack,
-} from "@chakra-ui/react";
 import { AdminDialog } from "components/AdminDialog";
 import { AdminsTable } from "components/AdminsTable";
-import { Filters, ReloadIcon } from "components/Filters";
+import { AdminsCreateButton, AdminsFilterBar } from "components/admins/AdminsFilterBar";
 import { Pagination } from "components/Pagination";
-import { PageHeader, ResourceRefreshButton } from "components/ui";
+import { PageHeader, PageLoadingSkeleton } from "components/ui";
 import { useAdminsStore } from "contexts/AdminsContext";
 import useGetUser from "hooks/useGetUser";
 import { type FC, useEffect } from "react";
@@ -15,9 +11,10 @@ import { useTranslation } from "react-i18next";
 export const AdminsPage: FC = () => {
 	const { t } = useTranslation();
 	const fetchAdmins = useAdminsStore((s) => s.fetchAdmins);
-	const adminsLoading = useAdminsStore((s) => s.loading);
+	const loading = useAdminsStore((s) => s.loading);
+	const lastFetchedAt = useAdminsStore((s) => s.lastFetchedAt);
 	const openAdminDialog = useAdminsStore((s) => s.openAdminDialog);
-	const { userData, getUserIsSuccess } = useGetUser();
+	const { userData, getUserIsPending, getUserIsSuccess } = useGetUser();
 	const canViewAdmins =
 		getUserIsSuccess && Boolean(userData.permissions?.sections.admins);
 	useEffect(() => {
@@ -35,37 +32,33 @@ export const AdminsPage: FC = () => {
 		}
 	}, [canViewAdmins, openAdminDialog]);
 
+	if (getUserIsPending || (canViewAdmins && loading && lastFetchedAt === null)) {
+		return <PageLoadingSkeleton />;
+	}
+
 	if (!canViewAdmins) {
 		return (
-			<VStack spacing={4} align="stretch">
+			<div className="flex flex-col gap-4 items-stretch">
 				<PageHeader
 					title={t("admins")}
 					description={t("admins.pageDescription")}
 				/>
-				<Text color="panel.textMuted">
+				<p className="text-panel-text-muted">
 					{t("admins.noPermission")}
-				</Text>
-			</VStack>
+				</p>
+			</div>
 		);
 	}
 
 	return (
-		<VStack spacing={4} align="stretch">
+		<div className="flex flex-col gap-4 items-stretch">
 			<AdminsTable
-				toolbar={<Filters for="admins" py={0} showRefresh={false} />}
-				footerActions={
-					<ResourceRefreshButton
-						aria-label={t("refresh")}
-						label={t("refresh")}
-						icon={<ReloadIcon />}
-						onClick={() => fetchAdmins(undefined, { force: true })}
-						isLoading={adminsLoading}
-					/>
-				}
+				toolbar={<AdminsFilterBar />}
+				headerActions={<AdminsCreateButton />}
 			/>
 			<Pagination for="admins" />
 			<AdminDialog />
-		</VStack>
+		</div>
 	);
 };
 

@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	externalapps "github.com/rebeccapanel/rebecca/internal/app/externalapps"
+	"github.com/rebeccapanel/rebecca/internal/app/notifications"
 )
 
 const (
@@ -76,6 +77,7 @@ func (s *Server) Handler() http.Handler {
 	r.HandleFunc("/hosts/*", s.requireAdmin(s.handleHostStatusPath))
 	r.HandleFunc("/hosts", s.requireAdmin(s.handleHostsRoot))
 	r.HandleFunc("/sub/*", s.handleSubscriptionPath)
+	r.Get(notifications.ServiceWorkerPath, s.handleNotificationPushServiceWorker)
 
 	r.Route("/api", func(r chi.Router) {
 		s.registerAdminRoutes(r)
@@ -92,6 +94,7 @@ func (s *Server) Handler() http.Handler {
 		s.registerNodeRoutes(r)
 		s.registerNotificationRoutes(r)
 		s.registerNoteRoutes(r)
+		s.registerLabelRoutes(r)
 	})
 
 	r.NotFound(s.handleHomeOrSubscriptionPath)
@@ -110,6 +113,7 @@ func (s *Server) registerAdminRoutes(r chi.Router) {
 	r.HandleFunc("/auth/sessions", s.requireSameOrigin(s.handleAuthSessions))
 	r.HandleFunc("/admin/token", s.handleAdminToken)
 	r.HandleFunc("/admin/permissions/standard/bulk", s.requireAdmin(s.handleBulkStandardPermissions))
+	r.HandleFunc("/admin/history/*", s.requireAdmin(s.handleAdminHistoryPath))
 	r.HandleFunc("/admin/usage/reset/*", s.requireAdmin(s.handleAdminUsageResetPath))
 	r.HandleFunc("/admin/usage/*", s.requireAdmin(s.handleAdminUsageValuePath))
 	r.HandleFunc("/admin/*", s.requireAdmin(s.handleAdminMutationPath))
@@ -244,6 +248,7 @@ func (s *Server) registerNodeRoutes(r chi.Router) {
 	r.HandleFunc("/haproxy/*", s.requireSudo(s.handleHAProxyPath))
 	r.HandleFunc("/haproxy", s.requireSudo(s.handleHAProxyRoot))
 	r.HandleFunc("/nodes/service/update", s.requireSudo(s.handleNodesServiceUpdate))
+	r.HandleFunc("/nodes/bulk", s.requireSudo(s.handleNodesBulk))
 	r.HandleFunc("/nodes/usage", s.requireSudo(s.handleNodesUsage))
 	r.HandleFunc("/nodes/metrics", s.requireSudo(s.handleNodesMetricsWebSocket))
 	r.HandleFunc("/nodes", s.requireSudo(s.handleNodes))

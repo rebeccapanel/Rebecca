@@ -94,6 +94,7 @@ type recentActionListFilter struct {
 	MatchWholeWord bool
 	ActionTypes    []string
 	ResourceTypes  []string
+	ResourceKey    string
 	Statuses       []string
 	CreatedFrom    string
 	CreatedBefore  string
@@ -268,12 +269,12 @@ SET snapshot = NULL, rollback_status = 'expired'
 WHERE snapshot IS NOT NULL AND rollback_status = 'available' AND snapshot_expires_at IS NOT NULL AND snapshot_expires_at <= ?`, dbTimestamp(now)); err != nil {
 		return err
 	}
-	_, err := tx.ExecContext(ctx, `DELETE FROM recent_actions WHERE created_at < ?`, dbTimestamp(now.Add(-recentActionHistoryLifetime)))
+	_, err := tx.ExecContext(ctx, `DELETE FROM recent_actions WHERE created_at < ? AND resource_type <> 'admin'`, dbTimestamp(now.Add(-recentActionHistoryLifetime)))
 	if err != nil {
 		return err
 	}
 	for {
-		rows, err := tx.QueryContext(ctx, `SELECT id FROM recent_actions ORDER BY id DESC LIMIT 250 OFFSET ?`, recentActionHistoryMaxRows)
+		rows, err := tx.QueryContext(ctx, `SELECT id FROM recent_actions WHERE resource_type <> 'admin' ORDER BY id DESC LIMIT 250 OFFSET ?`, recentActionHistoryMaxRows)
 		if err != nil {
 			return err
 		}
@@ -605,6 +606,10 @@ func (s *Server) listRecentActions(ctx context.Context, beforeID int64, limit in
 		}
 		addRecentActionListFilter(&clauses, &args, "action_type", filter.ActionTypes)
 		addRecentActionListFilter(&clauses, &args, "resource_type", filter.ResourceTypes)
+		if filter.ResourceKey != "" {
+			clauses = append(clauses, "resource_key = ?")
+			args = append(args, filter.ResourceKey)
+		}
 		addRecentActionListFilter(&clauses, &args, "rollback_status", filter.Statuses)
 		if filter.CreatedFrom != "" && filter.CreatedBefore != "" {
 			clauses = append(clauses, "created_at >= ? AND created_at < ?")

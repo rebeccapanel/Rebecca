@@ -1,11 +1,14 @@
-import {
-	Input as ChakraInput,
-	type InputProps as ChakraInputProps,
-} from "@chakra-ui/react";
+import { Input } from "components/ui/input";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+
+import type { ComponentPropsWithoutRef } from "react";
 import { forwardRef, type ChangeEvent } from "react";
 import { NumericInput } from "./NumericInput";
 
-export type PanelInputProps = ChakraInputProps;
+export type PanelInputProps = Omit<ComponentPropsWithoutRef<"input">, "size"> & {
+	size?: "xs" | "sm" | "md" | "lg";
+	disabled?: boolean;
+};
 
 export const PanelInput = forwardRef<HTMLInputElement, PanelInputProps>(
 	(
@@ -18,26 +21,14 @@ export const PanelInput = forwardRef<HTMLInputElement, PanelInputProps>(
 			max,
 			step,
 			size,
-			isDisabled,
+			disabled: isDisabled,
 			...props
 		},
 		ref,
 	) => {
 		if (type !== "number") {
 			return (
-				<ChakraInput
-					ref={ref}
-					type={type}
-					onChange={onChange}
-					value={value}
-					defaultValue={defaultValue}
-					min={min}
-					max={max}
-					step={step}
-					size={size}
-					isDisabled={isDisabled}
-					{...props}
-				/>
+				<Input ref={ref} type={type} onChange={onChange} value={value} defaultValue={defaultValue} min={min} max={max} step={step} disabled={isDisabled} {...props} />
 			);
 		}
 
@@ -56,7 +47,7 @@ export const PanelInput = forwardRef<HTMLInputElement, PanelInputProps>(
 				max={numericMax}
 				step={numericStep}
 				size={size}
-				isDisabled={isDisabled}
+				disabled={isDisabled}
 				fieldRef={ref}
 				fieldProps={{
 					...props,

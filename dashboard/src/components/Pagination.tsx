@@ -1,22 +1,11 @@
-import {
-	Box,
-	Button,
-	ButtonGroup,
-	chakra,
-	HStack,
-	Menu,
-	MenuButton,
-	MenuItem,
-	MenuList,
-	Portal,
-	Text,
-	useBreakpointValue,
-} from "@chakra-ui/react";
-import {
-	ArrowLongLeftIcon,
-	ArrowLongRightIcon,
-	ChevronDownIcon,
-} from "@heroicons/react/24/outline";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "components/ui/dropdown-menu";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+import { withClass } from "lib/withClass";
+import { MoveLeft, MoveRight, ChevronDown } from "lucide-react";
+import { Button as KitButton } from "components/ui/button";
+import { useBreakpointValue } from "hooks/useBreakpointValue";
+
+import { cn } from "lib/cn";
 import { useAdminsStore } from "contexts/AdminsContext";
 import { useDashboard } from "contexts/DashboardContext";
 import { type FC, useMemo } from "react";
@@ -27,24 +16,9 @@ import {
 	setUsersPerPageLimitSize,
 } from "utils/userPreferenceStorage";
 
-const PrevIcon = chakra(ArrowLongLeftIcon, {
-	baseStyle: {
-		w: 4,
-		h: 4,
-	},
-});
-const NextIcon = chakra(ArrowLongRightIcon, {
-	baseStyle: {
-		w: 4,
-		h: 4,
-	},
-});
-const ChevronIcon = chakra(ChevronDownIcon, {
-	baseStyle: {
-		w: 4,
-		h: 4,
-	},
-});
+const PrevIcon = withClass(MoveLeft, "w-4 h-4");
+const NextIcon = withClass(MoveRight, "w-4 h-4");
+const ChevronIcon = withClass(ChevronDown, "w-4 h-4");
 
 export type PaginationProps = {
 	for?: "users" | "admins" | "services";
@@ -183,134 +157,72 @@ export const Pagination: FC<PaginationProps> = ({
 	);
 
 	return (
-		<HStack
-			className="rb-data-table-pagination"
-			justifyContent="space-between"
-			mt={4}
-			w="full"
-			maxW="full"
-			display="flex"
-			columnGap={{ lg: 4, md: 0 }}
-			rowGap={{ md: 0, base: 4 }}
-			flexDirection={{ md: "row", base: "column" }}
-		>
-			<Box order={{ base: 2, md: 1 }} w={{ base: "full", md: "auto" }}>
-				<HStack justify={{ base: "center", md: "flex-start" }} minW={0}>
-					<Menu
-						placement={isRTL ? "top-end" : "top-start"}
-						strategy="fixed"
-						gutter={8}
-						isLazy
-					>
-						<MenuButton
-							as={Button}
-							size="sm"
-							variant="outline"
-							minW={{ base: "104px", md: "112px" }}
-							maxW={{ base: "104px", md: "120px" }}
-							rightIcon={<ChevronIcon />}
-							justifyContent="space-between"
-							px={3}
-						>
+		<div className="items-center gap-2 justify-between mt-4 w-full max-w-full flex lg:gap-x-4 md:gap-x-0 md:gap-y-0 gap-y-4 md:flex-row flex-col rb-data-table-pagination">
+			<div className="order-2 md:order-1 w-full md:w-auto">
+				<div className="flex flex-row items-center gap-2 justify-center md:justify-start min-w-0!">
+					<DropdownMenu>
+						<DropdownMenuTrigger asChild><KitButton size="sm" variant="outline" className="min-w-[104px]! md:min-w-[112px]! max-w-[104px] md:max-w-[120px] justify-between px-3">
 							{perPageNum}
-						</MenuButton>
-						<Portal>
-							<MenuList
-								dir={direction}
-								zIndex={1800}
-								minW={{ base: "104px", md: "112px" }}
-								maxW={{ base: "104px", md: "120px" }}
-								py={1}
-								borderRadius="lg"
-								boxShadow="2xl"
-								bg="panel.surface"
-								borderColor="panel.border"
-								overflow="hidden"
-							>
+						{<ChevronIcon />}</KitButton></DropdownMenuTrigger>
+						
+							<DropdownMenuContent className="z-[1800] min-w-[104px]! md:min-w-[112px]! max-w-[104px] md:max-w-[120px] py-1 rounded-lg shadow-2xl bg-panel-surface border-panel-border! overflow-hidden">
 								{PAGE_SIZE_OPTIONS.map((option) => {
 									const isSelected = option === perPageNum;
 									return (
-										<MenuItem
-											key={option}
-											onClick={() => handlePageSizeSelect(option)}
-											fontSize="sm"
-											fontWeight={isSelected ? "700" : "500"}
-											bg={isSelected ? "primary.500" : "transparent"}
-											color={isSelected ? "white" : "inherit"}
-											_hover={{
-												bg: isSelected ? "primary.600" : "panel.hover",
-											}}
-											_focus={{
-												bg: isSelected ? "primary.600" : "panel.hover",
-											}}
-										>
+										<DropdownMenuItem key={option} onSelect={() => handlePageSizeSelect(option)} className={cn("text-[0.875rem]", isSelected ? "font-bold" : "font-medium", isSelected ? "bg-primary-500" : "bg-transparent", isSelected ? "text-white" : "text-inherit", isSelected ? "hover:bg-primary-600" : "hover:bg-panel-hover", isSelected ? "focus:bg-primary-600" : "focus:bg-panel-hover")}>
 											{option}
-										</MenuItem>
+										</DropdownMenuItem>
 									);
 								})}
-							</MenuList>
-						</Portal>
-					</Menu>
-					<Text whiteSpace="nowrap" fontSize="sm">
+							</DropdownMenuContent>
+						
+					</DropdownMenu>
+					<p className="whitespace-nowrap text-[0.875rem]">
 						{t("itemsPerPage")}
-					</Text>
-				</HStack>
-			</Box>
+					</p>
+				</div>
+			</div>
 
 			{noPages > 1 && (
-				<ButtonGroup
-					size="sm"
-					isAttached
-					variant="outline"
-					order={{ base: 1, md: 2 }}
-					w={{ base: "full", md: "auto" }}
-					maxW="full"
-				>
-					<Button
-						leftIcon={isRTL ? <NextIcon /> : <PrevIcon />}
-						onClick={() => changePage(page - 1)}
-						isDisabled={!canPrev}
-						flex={{ base: "1 1 0", md: "0 0 auto" }}
-						px={{ base: 2, md: 3 }}
-					>
+				/* Pagination controls: the panel's own button row (Previous, numbered
+				   pages, Next), separated by the attached group's seams. */
+				<div className="order-1 md:order-2 w-full md:w-auto max-w-full inline-flex items-center gap-1">
+					<KitButton variant="outline" size="sm" onClick={() => changePage(page - 1)} disabled={!canPrev} className="rounded-md flex-[1_1_0] md:flex-[0_0_auto] px-2 md:px-3">
+						{isRTL ? <NextIcon /> : <PrevIcon />}
 						{t("previous")}
-					</Button>
+					</KitButton>
 
 					{isCompactPagination ? (
-						<Button
-							isDisabled
-							flex={{ base: "0 0 auto", md: "0 0 auto" }}
-							px={{ base: 3, md: 3 }}
-						>
+						<KitButton variant="outline" size="sm" disabled className="rounded-md flex-[0_0_auto] px-3">
 							{page + 1} / {noPages}
-						</Button>
+						</KitButton>
 					) : (
-						pages.map((pageIndex) => {
-							if (typeof pageIndex === "string")
-								return <Button key={pageIndex}>...</Button>;
-							return (
-								<Button
+						pages.map((pageIndex) =>
+							typeof pageIndex === "string" ? (
+								<KitButton variant="outline" size="sm" key={pageIndex} className="rounded-md" disabled>
+									…
+								</KitButton>
+							) : (
+								<KitButton
+									size="sm"
 									key={pageIndex}
-									variant={pageIndex === page ? "solid" : "outline"}
+									variant={pageIndex === page ? "default" : "outline"}
 									onClick={() => changePage(pageIndex)}
+									className="rounded-md"
 								>
 									{pageIndex + 1}
-								</Button>
-							);
-						})
+								</KitButton>
+							),
+						)
 					)}
 
-					<Button
-						rightIcon={isRTL ? <PrevIcon /> : <NextIcon />}
-						onClick={() => changePage(page + 1)}
-						isDisabled={!canNext}
-						flex={{ base: "1 1 0", md: "0 0 auto" }}
-						px={{ base: 2, md: 3 }}
-					>
+					<KitButton variant="outline" size="sm" onClick={() => changePage(page + 1)} disabled={!canNext} className="rounded-md flex-[1_1_0] md:flex-[0_0_auto] px-2 md:px-3">
 						{t("next")}
-					</Button>
-				</ButtonGroup>
+						{isRTL ? <PrevIcon /> : <NextIcon />}
+					</KitButton>
+				</div>
 			)}
-		</HStack>
+
+		</div>
 	);
 };

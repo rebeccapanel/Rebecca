@@ -1,14 +1,8 @@
-import {
-	Box,
-	chakra,
-	HStack,
-	Spinner,
-	Stack,
-	Text,
-	Tooltip,
-	useColorMode,
-	VStack,
-} from "@chakra-ui/react";
+import { Spinner } from "components/ui/spinner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "components/ui/tooltip";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+import { useColorMode } from "lib/color-mode";
+
 import {
 	buildUsageAreaOptions,
 	buildUsageDonutOptions,
@@ -447,60 +441,43 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 
 	if (serviceOptions.length === 0) {
 		return (
-			<VStack spacing={2} align="stretch" mt={4}>
-				<Text fontWeight="semibold">{t("services.usageAnalyticsTitle")}</Text>
-				<Box borderWidth="1px" borderRadius="md" p={6}>
-					<Text color="gray.500">{t("services.noServicesAvailable")}</Text>
-				</Box>
-			</VStack>
+			<div className="flex flex-col gap-2 items-stretch mt-4">
+				<p className="font-semibold">{t("services.usageAnalyticsTitle")}</p>
+				<div className="border rounded-md p-6">
+					<p className="text-gray-500">{t("services.noServicesAvailable")}</p>
+				</div>
+			</div>
 		);
 	}
 
 	return (
-		<VStack spacing={4} align="stretch">
-			<HStack
-				justify="space-between"
-				align={{ base: "stretch", md: "center" }}
-				flexDir={{ base: "column", md: "row" }}
-				gap={3}
-			>
-				<Text fontWeight="semibold" fontSize="lg">
+		<div className="flex flex-col gap-4 items-stretch">
+			<div className="flex justify-between items-stretch md:items-center flex-col md:flex-row gap-3">
+				<p className="font-semibold text-[1.125rem]">
 					{t("services.usageAnalyticsTitle")}
-				</Text>
-				<Stack
-					direction={{ base: "column", md: "row" }}
-					spacing={{ base: 3, md: 4 }}
-					align={{ base: "stretch", md: "center" }}
-				>
-					<Select
-						value={serviceId ?? ""}
-						onChange={(event) =>
+				</p>
+				<div className="flex flex-col md:flex-row gap-3 md:gap-4 items-stretch md:items-center">
+					<Select value={serviceId ?? ""} onChange={(event) =>
 							setServiceId(Number(event.target.value) || null)
-						}
-						minW={{ md: "220px" }}
-					>
+						} className="md:min-w-[220px]!">
 						{serviceOptions.map((service) => (
 							<option key={service.id} value={service.id}>
 								{service.name}
 							</option>
 						))}
 					</Select>
-				</Stack>
-			</HStack>
+				</div>
+			</div>
 
 			<ChartBox
 				title={t("services.usageOverTime")}
 				headerActions={
-					<Stack
-						direction={{ base: "column", lg: "row" }}
-						spacing={3}
-						align={{ base: "stretch", lg: "center" }}
-					>
-						<HStack fontSize="sm" color="gray.500">
+					<div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
+						<div className="flex flex-row items-center gap-2 text-[0.875rem] text-gray-500">
 							<InfoIcon />
-							<Text>
+							<p>
 								{t("usage.selectedRangeTotal")}{" "}
-								<chakra.span fontWeight="medium">
+								<span className="font-medium">
 									{formatBytes(
 										timeseries.reduce(
 											(acc, item) => acc + (item.used_traffic || 0),
@@ -508,65 +485,51 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 										),
 										2,
 									)}
-								</chakra.span>
-							</Text>
-						</HStack>
+								</span>
+							</p>
+						</div>
 						<DateRangePicker
 							value={rangeStateToDateRangeValue(serviceTimeseriesRange)}
 							onChange={handleServiceTimeseriesRangeChange}
 							presets={dateRangePresets}
 							defaultPreset="30d"
 						/>
-					</Stack>
+					</div>
 				}
 			>
 				{loadingTimeseries ? (
-					<VStack spacing={3} py={10}>
+					<div className="flex flex-col items-center gap-3 py-10">
 						<Spinner />
-						<Text fontSize="sm" color="gray.500">
+						<p className="text-[0.875rem] text-gray-500">
 							{t("loading")}
-						</Text>
-					</VStack>
+						</p>
+					</div>
 				) : timeseries.length ? (
-					<ReactApexChart
-						type="area"
-						height={360}
-						options={areaOptions}
-						series={areaSeries}
-					/>
+					<ReactApexChart type="area" height={360} options={areaOptions} series={areaSeries} />
 				) : (
-					<Text textAlign="center" color="gray.500">
+					<p className="text-center text-gray-500">
 						{t("noData")}
-					</Text>
+					</p>
 				)}
 			</ChartBox>
 
 			<ChartBox
 				title={
-					<Tooltip
-						label={t("services.adminUsageTrendHint")}
-						placement="top"
-						fontSize="sm"
-					>
-						<HStack spacing={2} align="center">
-							<Text fontWeight="semibold">{t("services.adminUsageTrend")}</Text>
-							<InfoIcon color="gray.500" aria-label="info" cursor="help" />
-						</HStack>
-					</Tooltip>
+					<Tooltip>
+<TooltipTrigger asChild>
+						<div className="flex flex-row gap-2 items-center">
+							<p className="font-semibold">{t("services.adminUsageTrend")}</p>
+							<InfoIcon aria-label="info" className="text-gray-500 cursor-help" />
+						</div>
+					</TooltipTrigger>
+<TooltipContent>{t("services.adminUsageTrendHint")}</TooltipContent>
+</Tooltip>
 				}
 				headerActions={
-					<Stack
-						direction={{ base: "column", lg: "row" }}
-						spacing={3}
-						align={{ base: "stretch", lg: "center" }}
-					>
-						<Select
-							size="sm"
-							minW={{ md: "200px" }}
-							value={
+					<div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
+						<Select size="sm" value={
 								selectedAdminId === null ? "null" : String(selectedAdminId)
-							}
-							onChange={(event) => {
+							} onChange={(event) => {
 								const value = event.target.value;
 								if (value === "null") {
 									setSelectedAdminId(null);
@@ -574,9 +537,7 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 								}
 								const parsed = Number(value);
 								setSelectedAdminId(Number.isNaN(parsed) ? null : parsed);
-							}}
-							isDisabled={adminSelectOptions.length === 0}
-						>
+							}} disabled={adminSelectOptions.length === 0} className="md:min-w-[200px]!">
 							{adminSelectOptions.map((option) => (
 								<option key={option.value} value={option.value}>
 									{option.label}
@@ -589,120 +550,95 @@ export const ServiceUsageAnalytics: FC<ServiceUsageAnalyticsProps> = ({
 							presets={dateRangePresets}
 							defaultPreset="30d"
 						/>
-					</Stack>
+					</div>
 				}
 			>
-				<VStack align="start" spacing={1} mb={4}>
-					<Text fontSize="sm" color="gray.500">
+				<div className="flex flex-col items-start gap-1 mb-4">
+					<p className="text-[0.875rem] text-gray-500">
 						{t("admins.admin")}:{" "}
-						<chakra.span fontWeight="medium">
+						<span className="font-medium">
 							{adminDisplayLabel || adminTimeseriesUsername || "-"}
-						</chakra.span>{" "}
+						</span>{" "}
 						{t("usage.selectedRangeTotal")}:{" "}
-						<chakra.span fontWeight="medium">
+						<span className="font-medium">
 							{formatBytes(adminTimeseriesTotal || 0, 2)}
-						</chakra.span>
-					</Text>
-				</VStack>
+						</span>
+					</p>
+				</div>
 				{loadingAdminTimeseries ? (
-					<VStack spacing={3} py={10}>
+					<div className="flex flex-col items-center gap-3 py-10">
 						<Spinner />
-						<Text fontSize="sm" color="gray.500">
+						<p className="text-[0.875rem] text-gray-500">
 							{t("loading")}
-						</Text>
-					</VStack>
+						</p>
+					</div>
 				) : adminTimeseriesSeries[0]?.data?.length ? (
-					<ReactApexChart
-						type="area"
-						height={360}
-						options={adminTimeseriesOptions}
-						series={adminTimeseriesSeries}
-					/>
+					<ReactApexChart type="area" height={360} options={adminTimeseriesOptions} series={adminTimeseriesSeries} />
 				) : (
-					<Text textAlign="center" color="gray.500">
+					<p className="text-center text-gray-500">
 						{t("noData")}
-					</Text>
+					</p>
 				)}
 			</ChartBox>
 
 			<ChartBox
 				title={t("services.adminUsageDistribution")}
 				headerActions={
-					<Stack
-						direction={{ base: "column", lg: "row" }}
-						spacing={3}
-						align={{ base: "stretch", lg: "center" }}
-					>
-						<HStack fontSize="sm" color="gray.500">
+					<div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
+						<div className="flex flex-row items-center gap-2 text-[0.875rem] text-gray-500">
 							<InfoIcon />
-							<Text>
+							<p>
 								{t("usage.selectedRangeTotal")}{" "}
-								<chakra.span fontWeight="medium">
+								<span className="font-medium">
 									{formatBytes(adminTotal, 2)}
-								</chakra.span>
-							</Text>
-						</HStack>
+								</span>
+							</p>
+						</div>
 						<DateRangePicker
 							value={rangeStateToDateRangeValue(adminDistributionRange)}
 							onChange={handleAdminDistributionRangeChange}
 							presets={dateRangePresets}
 							defaultPreset="30d"
 						/>
-					</Stack>
+					</div>
 				}
 			>
-				<Stack
-					direction={{ base: "column", lg: "row" }}
-					spacing={6}
-					align={{ base: "stretch", lg: "center" }}
-				>
-					<Box flex="1">
+				<div className="flex flex-col lg:flex-row gap-6 items-stretch lg:items-center">
+					<div className="flex-1">
 						{loadingAdmins ? (
-							<VStack spacing={3} py={8}>
+							<div className="flex flex-col items-center gap-3 py-8">
 								<Spinner />
-								<Text fontSize="sm" color="gray.500">
+								<p className="text-[0.875rem] text-gray-500">
 									{t("loading")}
-								</Text>
-							</VStack>
+								</p>
+							</div>
 						) : adminUsage.length && adminTotal > 0 ? (
-							<ReactApexChart
-								type="donut"
-								height={320}
-								options={donutOptions}
-								series={donutSeries}
-							/>
+							<ReactApexChart type="donut" height={320} options={donutOptions} series={donutSeries} />
 						) : (
-							<Text textAlign="center" color="gray.500">
+							<p className="text-center text-gray-500">
 								{t("noData")}
-							</Text>
+							</p>
 						)}
-					</Box>
-					<VStack flex="1" align="stretch" spacing={2}>
+					</div>
+					<div className="flex flex-col flex-1 items-stretch gap-2">
 						{adminUsage.length ? (
 							adminUsage.map((item) => (
-								<HStack
-									key={`${item.admin_id ?? "na"}-${item.username}`}
-									justify="space-between"
-									borderWidth="1px"
-									borderRadius="md"
-									px={3}
-									py={2}
-								>
-									<Text fontWeight="medium">
+								<div key={`${item.admin_id ?? "na"}-${item.username}`} className="flex flex-row items-center gap-2 justify-between border rounded-md px-3 py-2">
+									<p className="font-medium">
 										{item.username || t("services.unassignedAdmin")}
-									</Text>
-									<Text fontSize="sm" color="gray.500">
+									</p>
+									<p className="text-[0.875rem] text-gray-500">
 										{formatBytes(item.used_traffic || 0, 2)}
-									</Text>
-								</HStack>
+									</p>
+								</div>
 							))
 						) : (
-							<Text color="gray.500">{t("noData")}</Text>
+							<p className="text-gray-500">{t("noData")}</p>
 						)}
-					</VStack>
-				</Stack>
+					</div>
+				</div>
 			</ChartBox>
-		</VStack>
+		</div>
 	);
 };
 

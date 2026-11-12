@@ -85,6 +85,8 @@ export type User = {
 	service_host_orders: Record<number, number>;
 	auto_delete_in_days: number | null;
 	next_plans: NextPlan[];
+	group?: { id: number; name: string } | null;
+	tags?: string[];
 };
 
 export type UserListItem = {
@@ -108,6 +110,8 @@ export type UserListItem = {
 	links?: string[];
 	subscription_url: string;
 	subscription_urls: Record<string, string>;
+	group?: { id: number; name: string } | null;
+	tags?: string[];
 };
 
 export type UserCreate = Pick<
@@ -129,6 +133,8 @@ export type UserCreate = Pick<
 	| "auto_delete_in_days"
 > & {
 	next_plans?: NextPlan[];
+	group_id?: number | null;
+	tags?: string[];
 };
 
 export type UserCreateWithService = Pick<
@@ -150,11 +156,14 @@ export type UserCreateWithService = Pick<
 	auto_delete_in_days?: number | null;
 	next_plans?: NextPlan[];
 	credential_key?: string;
+	group_id?: number | null;
+	tags?: string[];
 };
 
 export type UserApi = {
 	role: AdminRole;
 	permissions: AdminPermissions;
+	user_speed_limit_enabled?: boolean;
 	telegram_id: number | string;
 	username: string;
 	users_usage?: number | null;
@@ -210,12 +219,21 @@ export type AdvancedUserActionType =
 	| "activate_users"
 	| "disable_users"
 	| "change_service"
-	| "delete_users";
+	| "delete_users"
+	| "multiply_expire"
+	| "divide_expire"
+	| "multiply_traffic"
+	| "divide_traffic"
+	| "set_group"
+	| "clear_group"
+	| "add_tags"
+	| "remove_tags";
 
 export type AdvancedUserActionPayload = {
 	action: AdvancedUserActionType;
 	days?: number;
 	gigabytes?: number;
+	factor?: number;
 	statuses?: AdvancedUserActionStatus[];
 	scope?: AdvancedUserActionScopeStatus[];
 	admin_username?: string | null;
@@ -226,6 +244,11 @@ export type AdvancedUserActionPayload = {
 	last_online_days?: number;
 	status_age_days?: number;
 	created_before_days?: number;
+	group_ids?: number[];
+	tags?: string[];
+	tag_match?: "any" | "all";
+	target_group_id?: number;
+	target_tags?: string[];
 	dry_run?: boolean;
 };
 

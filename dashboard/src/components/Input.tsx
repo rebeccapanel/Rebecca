@@ -1,36 +1,21 @@
-import {
-	Input as ChakraInput,
-	type InputProps as ChakraInputProps,
-	chakra,
-	FormControl,
-	FormErrorMessage,
-	FormLabel,
-	InputGroup,
-	InputLeftAddon,
-	InputRightAddon,
-	InputRightElement,
-	NumberDecrementStepper,
-	NumberIncrementStepper,
-	NumberInput,
-	NumberInputField,
-	NumberInputStepper,
-} from "@chakra-ui/react";
-import { XMarkIcon } from "@heroicons/react/24/outline";
-import classNames from "classnames";
+import { Input as FieldInput } from "components/ui/input";
+import { Field, FieldError, FieldLabel } from "components/ui/field";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+import { withClass } from "lib/withClass";
+import { X } from "lucide-react";
 import React, {
 	type ChangeEvent,
+	type ComponentPropsWithoutRef,
 	type FocusEvent,
 	type MouseEvent,
 	type PropsWithChildren,
 	type ReactNode,
 } from "react";
+import { cn } from "lib/cn";
 
-const ClearIcon = chakra(XMarkIcon, {
-	baseStyle: {
-		w: 4,
-		h: 4,
-	},
-});
+const ClearIcon = withClass(X, "w-4 h-4");
+
+type FieldSize = "xs" | "sm" | "md" | "lg";
 
 export type InputProps = PropsWithChildren<
 	{
@@ -54,13 +39,19 @@ export type InputProps = PropsWithChildren<
 		label?: string;
 		clearable?: boolean;
 		precision?: number;
-	} & ChakraInputProps
+		size?: FieldSize;
+		readOnly?: boolean;
+		required?: boolean;
+	} & Omit<ComponentPropsWithoutRef<"input">, "size">
 >;
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
 	(
 		{
-			disabled,
+			disabled: disabledProp,
+			disabled: isDisabled,
+			readOnly: isReadOnly,
+			required: isRequired,
 			step,
 			label,
 			className,
@@ -74,12 +65,13 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
 			value,
 			onClick,
 			error,
-			clearable = false,
-			precision = 5,
+			clearable = false, precision = 5,
+			size = "md",
 			...props
 		},
 		ref,
 	) => {
+		const disabled = disabledProp ?? isDisabled;
 		const clear = () => {
 			if (onChange)
 				onChange({
@@ -89,136 +81,48 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
 					},
 				});
 		};
-		const { size = "md" } = props;
-		const Component = type === "number" ? NumberInputField : ChakraInput;
-		const Wrapper = type === "number" ? NumberInput : React.Fragment;
-		const wrapperProps =
-			type === "number"
-				? {
-						keepWithinRange: true,
-						precision,
-						format: (value: string | number) => {
-							return Number.isNaN(parseFloat(String(value)))
-								? value
-								: Number(parseFloat(String(value)).toFixed(precision)) === 0
-									? value
-									: Number(parseFloat(String(value)).toFixed(precision));
-						},
-						min:
-							typeof props.min === "number"
-								? props.min
-								: props.min !== undefined
-									? Number(props.min)
-									: 0,
-						step,
-						name,
-						type,
-						placeholder,
-						defaultValue:
-							typeof props.defaultValue === "string" ||
-							typeof props.defaultValue === "number"
-								? props.defaultValue
-								: typeof value === "string" || typeof value === "number"
-									? value
-									: 0,
-						onBlur,
-						onClick,
-						disabled,
-						flexGrow: 1,
-						role: "group",
-						size,
-						onChange: (valueAsString: string, valueAsNumber: number) => {
-							if (!onChange) return;
-							onChange({
-								target: {
-									value: valueAsString,
-									valueAsNumber,
-									name,
-								},
-							});
-						},
-					}
-				: {};
+		const isNumber = type === "number";
+		const fieldClassName = cn(
+			"focus-visible:outline-none focus-visible:border-t-transparent! focus-visible:border-e-transparent! focus-visible:border-b-transparent! disabled:cursor-not-allowed",
+			isNumber && "pe-8",
+			startAdornment ? "rounded-s-none" : "rounded-md",
+			endAdornment ? "rounded-e-none" : "rounded-md",
+			className,
+		);
+		const field = isNumber ? (
+			<>
+				
+				
+					
+					
+				
+			</>
+		) : (
+			<FieldInput ref={ref} name={name} step={step} type={type} onChange={onChange} onBlur={onBlur} value={value} onClick={onClick} disabled={disabled} readOnly={isReadOnly} {...props} className={fieldClassName} />
+		);
 		return (
-			<FormControl isInvalid={!!error}>
-				{label && <FormLabel>{label}</FormLabel>}
-				<InputGroup
-					size={size}
-					w="full"
-					rounded="md"
-					_focusWithin={{
-						outline: "2px solid",
-						outlineColor: "primary.200",
-					}}
-					bg={disabled ? "gray.100" : "transparent"}
-					_dark={{ bg: disabled ? "gray.600" : "transparent" }}
-				>
-					{startAdornment && <InputLeftAddon>{startAdornment}</InputLeftAddon>}
-					<Wrapper {...wrapperProps}>
-						{/* @ts-ignore */}
-						<Component
-							name={name}
-							ref={ref}
-							step={step}
-							className={classNames(className)}
-							type={type}
-							placeholder={placeholder}
-							onChange={type === "number" ? undefined : onChange}
-							onBlur={onBlur}
-							value={type === "number" ? undefined : value}
-							onClick={onClick}
-							disabled={disabled}
-							flexGrow={1}
-							_focusVisible={{
-								outline: "none",
-								borderTopColor: "transparent",
-								borderRightColor: "transparent",
-								borderBottomColor: "transparent",
-							}}
-							_disabled={{
-								cursor: "not-allowed",
-							}}
-							{...props}
-							pr={type === "number" ? props.pr ?? "2rem" : props.pr}
-							roundedLeft={startAdornment ? "0" : "md"}
-							roundedRight={endAdornment ? "0" : "md"}
-						/>
-						{type === "number" && (
-							<NumberInputStepper
-								opacity={0}
-								pointerEvents="none"
-								transition="opacity 0.15s ease"
-								_groupHover={{ opacity: 1, pointerEvents: "auto" }}
-								_groupFocusWithin={{ opacity: 1, pointerEvents: "auto" }}
-							>
-								<NumberIncrementStepper />
-								<NumberDecrementStepper />
-							</NumberInputStepper>
-						)}
-					</Wrapper>
+			<Field data-invalid={!!error}>
+				{label && <FieldLabel>{label}</FieldLabel>}
+				<div className={cn("relative flex w-full items-center", cn(
+						"w-full rounded-md focus-within:[outline:2px_solid] focus-within:outline-primary-200",
+						disabled ? "bg-gray-100" : "bg-transparent",
+						disabled ? "dark:bg-gray-600" : "dark:bg-transparent",
+					))}>
+					{startAdornment && <div className="flex items-center rounded-s-md border border-e-0 border-input bg-muted px-3 text-sm">{startAdornment}</div>}
+					{field}
 					{endAdornment && (
-						<InputRightAddon
-							borderLeftRadius={0}
-							borderRightRadius="6px"
-							bg="transparent"
-						>
+						<div className={cn("flex items-center rounded-e-md border border-s-0 border-input bg-muted px-3 text-sm", "rounded-s-[0] rounded-e-[6px] bg-transparent")}>
 							{endAdornment}
-						</InputRightAddon>
+						</div>
 					)}
 					{clearable && value && value.length && (
-						<InputRightElement
-							borderLeftRadius={0}
-							borderRightRadius="6px"
-							bg="transparent"
-							onClick={clear}
-							cursor="pointer"
-						>
+						<div onClick={clear} className={cn("absolute inset-y-0 end-0 z-10 flex items-center pe-3", "rounded-s-[0] rounded-e-[6px] bg-transparent cursor-pointer")}>
 							<ClearIcon />
-						</InputRightElement>
+						</div>
 					)}
-				</InputGroup>
-				{!!error && <FormErrorMessage>{error}</FormErrorMessage>}
-			</FormControl>
+				</div>
+				{!!error && <FieldError>{error}</FieldError>}
+			</Field>
 		);
 	},
 );

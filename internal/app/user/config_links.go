@@ -29,6 +29,7 @@ var proxyProtocols = map[string]struct{}{
 	"trojan":      {},
 	"shadowsocks": {},
 	"hysteria":    {},
+	"masque":      {},
 	"ssh":         {},
 }
 
@@ -60,6 +61,20 @@ type configHost struct {
 type queryParam struct {
 	key   string
 	value any
+}
+
+func inboundLinkPorts(inbound ResolvedInbound) []any {
+	text, isText := inbound["port"].(string)
+	if !isText || !strings.Contains(text, ",") {
+		return []any{inbound["port"]}
+	}
+	ports := make([]any, 0, strings.Count(text, ",")+1)
+	for _, part := range strings.Split(text, ",") {
+		if port, err := strconv.Atoi(strings.TrimSpace(part)); err == nil {
+			ports = append(ports, port)
+		}
+	}
+	return ports
 }
 
 func BuildConfigLinks(
@@ -143,6 +158,9 @@ func BuildConfigLinks(
 			if _, exists := bindings[tag]; !exists {
 				perInbound := cloneJSONMap(settings)
 				delete(perInbound, "flow")
+				if protocol == "masque" {
+					perInbound["email"] = RuntimeInboundEmail(item.ID, item.Username, tag)
+				}
 				if protocol == "vless" {
 					flow := item.Flow // Compatibility for unmigrated, conflicting legacy services only.
 					if value, configured := inbound["flow"]; configured {
@@ -200,13 +218,17 @@ func BuildConfigLinks(
 		if !ok {
 			continue
 		}
-		link, err := buildShareLink(remark, address, effective, binding.settings)
-		if err != nil {
-			return ConfigLinksResponse{}, err
-		}
-		if link != "" {
-			links = append(links, link)
-			metadata = append(metadata, configLinkMetadata(effective))
+		for _, port := range inboundLinkPorts(effective) {
+			variant := copyInbound(effective)
+			variant["port"] = port
+			link, err := buildShareLink(remark, address, variant, binding.settings)
+			if err != nil {
+				return ConfigLinksResponse{}, err
+			}
+			if link != "" {
+				links = append(links, link)
+				metadata = append(metadata, configLinkMetadata(variant))
+			}
 		}
 	}
 
@@ -409,7 +431,11 @@ func effectiveInboundForHost(wildcardSalt string, variables map[string]string, i
 	}
 
 	sniRaw := selectHostRotationValue(host.ID, "sni", hostOverrideList(host.SNI, joinStringList(inbound["sni"])), host.SNIOptions, host.SNIMode, host.SNITTL)
-	hostRaw := selectHostRotationValue(host.ID, "host", hostOverrideList(host.Host, joinStringList(inbound["host"])), host.HostOptions, host.HostMode, host.HostTTL)
+	hostValue := hostOverrideList(host.Host, joinStringList(inbound["host"]))
+	hostRaw := pairedHostRotationValue(sniRaw, hostValue, host.HostOptions)
+	if hostRaw == "" {
+		hostRaw = selectHostRotationValue(host.ID, "host", hostValue, host.HostOptions, host.HostMode, host.HostTTL)
+	}
 	sni := applyWildcard(applyFormat(sniRaw, variables), wildcardSalt)
 	requestHost := applyWildcard(applyFormat(hostRaw, variables), wildcardSalt)
 	if host.UseSNIAsHost && sni != "" {
@@ -841,7 +867,7 @@ func runtimeProxySettings(settings map[string]any, protocol string, credentialKe
 		} else {
 			return nil, fmt.Errorf("UUID is required for proxy type %s", protocol)
 		}
-	case "trojan", "shadowsocks", "hysteria", "ssh":
+	case "trojan", "shadowsocks", "hysteria", "masque", "ssh":
 		if jsonvalue.String(data["password"]) == "" {
 			if normalizedKey != "" {
 				data["password"] = keyToPassword(normalizedKey, protocol)
@@ -1049,6 +1075,8 @@ func buildShareLink(remark string, address string, inbound ResolvedInbound, sett
 		return shadowsocksShareLink(remark, formatIPForURL(address), inbound, settings), nil
 	case "hysteria":
 		return hysteriaShareLink(remark, formatIPForURL(address), inbound, settings)
+	case "masque":
+		return masqueShareLink(remark, formatIPForURL(address), inbound, settings), nil
 	case "ssh":
 		return sshShareLink(remark, formatIPForURL(address), inbound, settings), nil
 	default:
@@ -1610,6 +1638,37 @@ func hysteriaShareLink(remark string, address string, inbound ResolvedInbound, s
 	return link + "#" + percentEncode(remark, "/", false), nil
 }
 
+func masqueShareLink(remark string, address string, inbound ResolvedInbound, settings map[string]any) string {
+	userinfo := url.UserPassword(jsonvalue.String(settings["email"]), jsonvalue.String(settings["password"])).String()
+	params := []queryParam{{"security", "tls"}}
+	if path := jsonvalue.String(inbound["path"]); path != "" {
+		params = append(params, queryParam{"path", path})
+	}
+	if sni := jsonvalue.FirstNonEmpty(inbound["sni"], inbound["serverName"]); sni != "" {
+		params = append(params, queryParam{"sni", sni})
+	}
+	if alpn := jsonvalue.String(inbound["alpn"]); alpn != "" {
+		params = append(params, queryParam{"alpn", alpn})
+	}
+	if fp := jsonvalue.String(inbound["fp"]); fp != "" {
+		params = append(params, queryParam{"fp", fp})
+	}
+	if vcn := jsonvalue.FirstNonEmpty(inbound["vcn"], inbound["verifyPeerCertByName"]); vcn != "" {
+		params = append(params, queryParam{"vcn", vcn})
+	}
+	if pin := jsonvalue.FirstNonEmpty(inbound["pcs"], inbound["pinnedPeerCertSha256"]); pin != "" {
+		params = append(params, queryParam{"pcs", pin})
+	}
+	if truthy(firstNonEmptyValue(inbound["ais"], inbound["allowinsecure"])) {
+		params = append(params, queryParam{"insecure", 1})
+	}
+	link := "masque://" + userinfo + "@" + address + ":" + portString(inbound["port"])
+	if query := urlencodeOrdered(params); query != "" {
+		link += "?" + query
+	}
+	return link + "#" + percentEncode(remark, "/", false)
+}
+
 func sshShareLink(remark string, address string, inbound ResolvedInbound, settings map[string]any) string {
 	userinfo := url.UserPassword(jsonvalue.String(settings["username"]), jsonvalue.String(settings["password"])).String()
 	return "ssh://" + userinfo + "@" + address + ":" + portString(inbound["port"]) + "#" + percentEncode(remark, "/", false)
@@ -1963,6 +2022,10 @@ func resolveInbound(inbound map[string]any) (ResolvedInbound, error) {
 	network := jsonvalue.String(resolved["network"])
 	networkSettings := mapValue(stream[xrayconfig.NetworkSettingsKey(network)])
 	switch network {
+	case "masque":
+		if path := jsonvalue.String(networkSettings["path"]); path != "" {
+			resolved["path"] = path
+		}
 	case "hysteria":
 		hysteriaSettings := mapValue(stream["hysteriaSettings"])
 		if version := jsonvalue.Int(firstNonEmptyValue(settings["version"], hysteriaSettings["version"])); version > 0 {
@@ -2331,6 +2394,19 @@ func selectHostRotationValue(hostID int64, field string, value string, options [
 		return choices[int((bucket+offset)%int64(len(choices)))]
 	}
 	return choices[randomHostOptionIndex(len(choices))]
+}
+
+func pairedHostRotationValue(sni, value string, options []string) string {
+	sni = strings.TrimSpace(sni)
+	if sni == "" {
+		return ""
+	}
+	for _, choice := range normalizeHostOptionList(append([]string{value}, options...)) {
+		if strings.EqualFold(choice, sni) {
+			return choice
+		}
+	}
+	return ""
 }
 
 func randomHostOptionIndex(length int) int {

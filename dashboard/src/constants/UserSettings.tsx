@@ -1,25 +1,15 @@
-import { type ChakraComponent, chakra } from "@chakra-ui/react";
-import {
-	ClockIcon,
-	ExclamationCircleIcon,
-	NoSymbolIcon,
-	WifiIcon,
-} from "@heroicons/react/24/outline";
-import type { ForwardRefExoticComponent, SVGProps } from "react";
+import { CircleCheck, Info, TriangleAlert } from "lucide-react";
+import { withClass } from "lib/withClass";
+import { Clock, CircleAlert, Ban, Wifi } from "lucide-react";
+
+import type { ComponentType } from "react";
 import type { DataLimitResetStrategy } from "types/User";
 
-const iconProps = {
-	baseStyle: {
-		strokeWidth: "2px",
-		w: 4,
-		h: 4,
-	},
-};
-const ActiveStatusIcon = chakra(WifiIcon, iconProps);
-const DisabledStatusIcon = chakra(NoSymbolIcon, iconProps);
-const LimitedStatusIcon = chakra(ExclamationCircleIcon, iconProps);
-const ExpiredStatusIcon = chakra(ClockIcon, iconProps);
-const On_holdStatusIcon = chakra(ClockIcon, iconProps);
+const ActiveStatusIcon = withClass(Wifi, "[stroke-width:2px] w-4 h-4");
+const DisabledStatusIcon = withClass(Ban, "[stroke-width:2px] w-4 h-4");
+const LimitedStatusIcon = withClass(CircleAlert, "[stroke-width:2px] w-4 h-4");
+const ExpiredStatusIcon = withClass(Clock, "[stroke-width:2px] w-4 h-4");
+const On_holdStatusIcon = withClass(Clock, "[stroke-width:2px] w-4 h-4");
 
 export const resetStrategy: { title: string; value: DataLimitResetStrategy }[] =
 	[
@@ -49,7 +39,7 @@ export const statusColors: {
 	[key: string]: {
 		statusColor: string;
 		bandWidthColor: string;
-		icon: ChakraComponent<ForwardRefExoticComponent<SVGProps<SVGSVGElement>>>;
+		icon: ComponentType<{ className?: string }>;
 	};
 } = {
 	active: {

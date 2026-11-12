@@ -11,7 +11,7 @@ type PendingRequest = { resolve: (value: unknown) => void };
 describe("fetchHosts", () => {
 	afterEach(() => {
 		vi.clearAllMocks();
-		useHosts.setState({ isLoading: false, hosts: {} });
+		useHosts.setState({ loading: false, hosts: {} });
 	});
 
 	it("keeps the newest hosts response when requests finish out of order", async () => {
@@ -32,6 +32,6 @@ describe("fetchHosts", () => {
 		await first;
 
 		expect(useHosts.getState().hosts).toEqual({ fresh: [] });
-		expect(useHosts.getState().isLoading).toBe(false);
+		expect(useHosts.getState().loading).toBe(false);
 	});
 });

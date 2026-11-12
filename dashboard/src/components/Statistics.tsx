@@ -1,64 +1,67 @@
-import {
-	Box,
-	type BoxProps,
-	Button,
-	Flex,
-	HStack,
-	Modal,
-	ModalBody,
-	ModalCloseButton,
-	ModalContent,
-	ModalHeader,
-	ModalOverlay,
-	Progress,
-	SimpleGrid,
-	Spinner,
-	Stack,
-	Text,
-	VStack,
-	useColorMode,
-	useColorModeValue,
-} from "@chakra-ui/react";
-import {
-	ArrowDownTrayIcon,
-	ArrowUpTrayIcon,
-	CircleStackIcon,
-	ClockIcon,
-	CpuChipIcon,
-	ServerStackIcon,
-	ShieldCheckIcon,
-	SignalIcon,
-	UserGroupIcon,
-} from "@heroicons/react/24/outline";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ApexOptions } from "apexcharts";
+import { PageLoadingSkeleton } from "components/ui";
+import { Button } from "components/ui/button";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogHeader,
+	DialogTitle,
+} from "components/ui/dialog";
+import { Spinner } from "components/ui/spinner";
 import { useDashboard } from "contexts/DashboardContext";
 import { AnimatePresence, motion } from "framer-motion";
 import useGetUser from "hooks/useGetUser";
 import type { TFunction } from "i18next";
+import { cn } from "lib/cn";
+import { useColorMode } from "lib/color-mode";
 import {
+	ArrowDownLeft,
+	ArrowUpRight,
+	ChartColumn,
+	Clock,
+	Cpu,
+	Database,
+	HardDrive,
+	Server,
+	ShieldCheck,
+	Signal,
+	Users,
+	X,
+} from "lucide-react";
+import {
+	type ComponentPropsWithoutRef,
+	type CSSProperties,
 	type FC,
 	lazy,
+	type MouseEvent as ReactMouseEvent,
 	type ReactNode,
 	Suspense,
+	useCallback,
 	useEffect,
+	useLayoutEffect,
 	useMemo,
 	useRef,
 	useState,
 } from "react";
 import { useTranslation } from "react-i18next";
-import { useQuery, useQueryClient } from "react-query";
 import { fetch, reportAPIError, useAPIRequestErrors } from "service/http";
 import { AdminRole } from "types/Admin";
 import type { SystemStats } from "types/System";
 import type { UsersListResponse } from "types/User";
-import { formatBytes, numberWithCommas } from "utils/formatByte";
-import { mergeLiveSystemStats } from "utils/systemMetrics";
 import { dashboardDiagnostics } from "utils/diagnostics";
+import { formatBytes, numberWithCommas } from "utils/formatByte";
+import {
+	getTotalNetworkHistory,
+	mergeLiveSystemStats,
+	recordTotalNetworkSample,
+} from "utils/systemMetrics";
 import { getAPIWebSocketURL } from "utils/websocket";
 import { DashboardMaintenanceControls } from "./DashboardMaintenanceControls";
 import { SystemDiagnostics, useSystemDiagnostics } from "./SystemDiagnostics";
 
-export const StatisticsQueryKey = "statistics-query-key";
+export const StatisticsQueryKey = ["statistics-query-key"] as const;
 
 const HistoryChart = lazy(() => import("react-apexcharts"));
 
@@ -80,6 +83,73 @@ type MaintenanceInfo = {
 	} | null;
 };
 
+type BandwidthScope = "master" | "total";
+
+const canUseInteractiveHover = () =>
+	typeof window !== "undefined" &&
+	window.innerWidth > 768 &&
+	Boolean(window.matchMedia?.("(hover: hover) and (pointer: fine)").matches);
+
+const useCardProximity = () => {
+	const leaveTimersRef = useRef<WeakMap<HTMLElement, number>>(new WeakMap());
+
+	const handleMouseMove = useCallback((e: ReactMouseEvent<HTMLElement>) => {
+		if (!canUseInteractiveHover()) return;
+		const card = e.currentTarget;
+		const rect = card.getBoundingClientRect();
+		card.style.setProperty("--mouse-x", `${e.clientX - rect.left}px`);
+		card.style.setProperty("--mouse-y", `${e.clientY - rect.top}px`);
+		card.style.setProperty("--mouse-opacity", "1");
+
+		const swappables = card.querySelectorAll<HTMLElement>(
+			"[data-rb-icon], [data-rb-swap], [data-rb-progress]",
+		);
+		const radius = 210;
+		for (const el of swappables) {
+			const pendingTimer = leaveTimersRef.current.get(el);
+			if (pendingTimer) {
+				window.clearTimeout(pendingTimer);
+				leaveTimersRef.current.delete(el);
+			}
+			el.style.removeProperty("transition");
+			const elRect = el.getBoundingClientRect();
+			const dx = Math.max(elRect.left - e.clientX, 0, e.clientX - elRect.right);
+			const dy = Math.max(elRect.top - e.clientY, 0, e.clientY - elRect.bottom);
+			const dist = Math.hypot(dx, dy);
+			if (dist < radius) {
+				const t = 1 - dist / radius;
+				const proximity = t ** 1.15;
+				el.style.setProperty("--proximity", proximity.toFixed(3));
+			} else {
+				el.style.removeProperty("--proximity");
+			}
+		}
+	}, []);
+
+	const handleMouseLeave = useCallback((e: ReactMouseEvent<HTMLElement>) => {
+		if (typeof window === "undefined" || window.innerWidth <= 768) return;
+		const card = e.currentTarget;
+		card.style.setProperty("--mouse-opacity", "0");
+		const swappables = card.querySelectorAll<HTMLElement>(
+			"[data-rb-icon], [data-rb-swap], [data-rb-progress]",
+		);
+		for (const el of swappables) {
+			el.style.setProperty(
+				"transition",
+				"background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease, filter 0.25s ease",
+			);
+			el.style.removeProperty("--proximity");
+			const timer = window.setTimeout(() => {
+				el.style.removeProperty("transition");
+				leaveTimersRef.current.delete(el);
+			}, 260);
+			leaveTimersRef.current.set(el, timer);
+		}
+	}, []);
+
+	return { handleMouseMove, handleMouseLeave };
+};
+
 const formatDurationText = (seconds: number, t: TFunction): string => {
 	if (!seconds || seconds <= 0) {
 		return `0 ${t("dashboard.system.durationSeconds")}`;
@@ -99,37 +169,77 @@ const formatDurationText = (seconds: number, t: TFunction): string => {
 	};
 
 	if (days > 0) {
-		const parts: string[] = [formatUnit(days, "dashboard.system.durationDay", "dashboard.system.durationDays")];
+		const parts: string[] = [
+			formatUnit(
+				days,
+				"dashboard.system.durationDay",
+				"dashboard.system.durationDays",
+			),
+		];
 		if (hours > 0) {
-			parts.push(formatUnit(hours, "dashboard.system.durationHour", "dashboard.system.durationHours"));
+			parts.push(
+				formatUnit(
+					hours,
+					"dashboard.system.durationHour",
+					"dashboard.system.durationHours",
+				),
+			);
 		}
 		if (minutes > 0) {
-			parts.push(formatUnit(minutes, "dashboard.system.durationMinute", "dashboard.system.durationMinutes"));
+			parts.push(
+				formatUnit(
+					minutes,
+					"dashboard.system.durationMinute",
+					"dashboard.system.durationMinutes",
+				),
+			);
 		}
 		if (parts.length === 1) return parts[0];
 		if (parts.length === 2) return parts.join(andWord);
-		return parts.slice(0, -1).join(commaWord) + andWord + parts[parts.length - 1];
+		return (
+			parts.slice(0, -1).join(commaWord) + andWord + parts[parts.length - 1]
+		);
 	}
 
 	if (hours > 0) {
-		const hStr = formatUnit(hours, "dashboard.system.durationHour", "dashboard.system.durationHours");
+		const hStr = formatUnit(
+			hours,
+			"dashboard.system.durationHour",
+			"dashboard.system.durationHours",
+		);
 		if (minutes > 0) {
-			const mStr = formatUnit(minutes, "dashboard.system.durationMinute", "dashboard.system.durationMinutes");
+			const mStr = formatUnit(
+				minutes,
+				"dashboard.system.durationMinute",
+				"dashboard.system.durationMinutes",
+			);
 			return `${hStr}${andWord}${mStr}`;
 		}
 		return hStr;
 	}
 
 	if (minutes > 0) {
-		const mStr = formatUnit(minutes, "dashboard.system.durationMinute", "dashboard.system.durationMinutes");
+		const mStr = formatUnit(
+			minutes,
+			"dashboard.system.durationMinute",
+			"dashboard.system.durationMinutes",
+		);
 		if (remSeconds > 0) {
-			const sStr = formatUnit(remSeconds, "dashboard.system.durationSecond", "dashboard.system.durationSeconds");
+			const sStr = formatUnit(
+				remSeconds,
+				"dashboard.system.durationSecond",
+				"dashboard.system.durationSeconds",
+			);
 			return `${mStr}${andWord}${sStr}`;
 		}
 		return mStr;
 	}
 
-	return formatUnit(remSeconds, "dashboard.system.durationSecond", "dashboard.system.durationSeconds");
+	return formatUnit(
+		remSeconds,
+		"dashboard.system.durationSecond",
+		"dashboard.system.durationSeconds",
+	);
 };
 
 const formatLocalizedDuration = (
@@ -139,16 +249,12 @@ const formatLocalizedDuration = (
 ): ReactNode => {
 	const text = formatDurationText(seconds, t);
 	return (
-		<Text
-			fontSize="13px"
-			fontWeight="700"
-			letterSpacing="-0.01em"
-			color="panel.text"
+		<p
 			dir={isRTL ? "rtl" : "ltr"}
-			sx={{ unicodeBidi: "isolate", fontVariantNumeric: "tabular-nums" }}
+			className="text-[13px] font-bold tracking-[-0.01em] text-panel-text tabular-nums [unicode-bidi:isolate]"
 		>
 			{text}
-		</Text>
+		</p>
 	);
 };
 
@@ -165,6 +271,12 @@ const useSystemMetricsStream = (enabled = true) => {
 		const connect = () => {
 			ws = new WebSocket(url);
 			ws.onmessage = (event) => {
+				if (
+					typeof document !== "undefined" &&
+					document.visibilityState === "hidden"
+				) {
+					return;
+				}
 				try {
 					const payload = JSON.parse(event.data);
 					if (payload?.error) {
@@ -172,7 +284,9 @@ const useSystemMetricsStream = (enabled = true) => {
 						return;
 					}
 					const stats = payload?.stats ?? payload;
-					if (!stats || typeof stats !== "object" || !("version" in stats)) return;
+					if (!stats || typeof stats !== "object" || !("version" in stats)) {
+						return;
+					}
 					useAPIRequestErrors.getState().clear("STREAM /system/metrics");
 					queryClient.setQueryData<SystemStats>(StatisticsQueryKey, (current) =>
 						mergeLiveSystemStats(current, stats),
@@ -203,23 +317,32 @@ const toFiniteNumber = (value: unknown, fallback = 0) => {
 
 const safeHistory = (value: unknown): SystemStats["cpu_history"] =>
 	Array.isArray(value)
-		? value.map((entry) => ({
-				timestamp: toFiniteNumber((entry as any)?.timestamp),
-				value: toFiniteNumber((entry as any)?.value),
-			}))
+		? value.map((entry) => {
+				const item = entry as Record<string, unknown> | null;
+				return {
+					timestamp: toFiniteNumber(item?.timestamp),
+					value: toFiniteNumber(item?.value),
+				};
+			})
 		: [];
 
 const safeNetworkHistory = (value: unknown): SystemStats["network_history"] =>
 	Array.isArray(value)
-		? value.map((entry) => ({
-				timestamp: toFiniteNumber((entry as any)?.timestamp),
-				incoming: toFiniteNumber((entry as any)?.incoming),
-				outgoing: toFiniteNumber((entry as any)?.outgoing),
-			}))
+		? value.map((entry) => {
+				const item = entry as Record<string, unknown> | null;
+				return {
+					timestamp: toFiniteNumber(item?.timestamp),
+					incoming: toFiniteNumber(item?.incoming),
+					outgoing: toFiniteNumber(item?.outgoing),
+				};
+			})
 		: [];
 
 const safeUsageStats = (value: unknown): SystemStats["memory"] => {
-	const raw = value && typeof value === "object" ? (value as any) : {};
+	const raw =
+		value && typeof value === "object"
+			? (value as Record<string, unknown>)
+			: {};
 	return {
 		current: toFiniteNumber(raw.current),
 		total: toFiniteNumber(raw.total),
@@ -227,9 +350,20 @@ const safeUsageStats = (value: unknown): SystemStats["memory"] => {
 	};
 };
 
-const sanitizeSystemStats = (value: SystemStats | undefined): SystemStats | null => {
+const sanitizeSystemStats = (
+	value: SystemStats | undefined,
+): SystemStats | null => {
 	if (!value || typeof value !== "object") return null;
-	const raw = value as any;
+	const raw = value as unknown as Record<string, unknown>;
+	const rawPersonal =
+		raw.personal_usage && typeof raw.personal_usage === "object"
+			? (raw.personal_usage as Record<string, unknown>)
+			: null;
+	const rawAdmin =
+		raw.admin_overview && typeof raw.admin_overview === "object"
+			? (raw.admin_overview as Record<string, unknown>)
+			: null;
+
 	return {
 		...value,
 		version: String(raw.version ?? ""),
@@ -242,7 +376,9 @@ const sanitizeSystemStats = (value: SystemStats | undefined): SystemStats | null
 		online_users: toFiniteNumber(raw.online_users),
 		online_users_usage: toFiniteNumber(raw.online_users_usage),
 		online_users_upload_speed: toFiniteNumber(raw.online_users_upload_speed),
-		online_users_download_speed: toFiniteNumber(raw.online_users_download_speed),
+		online_users_download_speed: toFiniteNumber(
+			raw.online_users_download_speed,
+		),
 		users_active: toFiniteNumber(raw.users_active),
 		users_on_hold: toFiniteNumber(raw.users_on_hold),
 		users_disabled: toFiniteNumber(raw.users_disabled),
@@ -253,17 +389,24 @@ const sanitizeSystemStats = (value: SystemStats | undefined): SystemStats | null
 		panel_total_bandwidth: toFiniteNumber(raw.panel_total_bandwidth),
 		incoming_bandwidth_speed: toFiniteNumber(raw.incoming_bandwidth_speed),
 		outgoing_bandwidth_speed: toFiniteNumber(raw.outgoing_bandwidth_speed),
-		total_incoming_bandwidth_speed: toFiniteNumber(raw.total_incoming_bandwidth_speed),
-		total_outgoing_bandwidth_speed: toFiniteNumber(raw.total_outgoing_bandwidth_speed),
+		total_incoming_bandwidth_speed: toFiniteNumber(
+			raw.total_incoming_bandwidth_speed,
+		),
+		total_outgoing_bandwidth_speed: toFiniteNumber(
+			raw.total_outgoing_bandwidth_speed,
+		),
 		memory: safeUsageStats(raw.memory),
 		swap: safeUsageStats(raw.swap),
 		disk: safeUsageStats(raw.disk),
-		load_avg: Array.isArray(raw.load_avg) ? raw.load_avg.map((item: unknown) => toFiniteNumber(item)) : [],
+		load_avg: Array.isArray(raw.load_avg)
+			? raw.load_avg.map((item: unknown) => toFiniteNumber(item))
+			: [],
 		uptime_seconds: toFiniteNumber(raw.uptime_seconds),
 		panel_uptime_seconds: toFiniteNumber(raw.panel_uptime_seconds),
 		xray_uptime_seconds: toFiniteNumber(raw.xray_uptime_seconds),
 		xray_running: Boolean(raw.xray_running),
-		xray_version: raw.xray_version ?? null,
+		xray_version:
+			typeof raw.xray_version === "string" ? raw.xray_version : null,
 		app_memory: toFiniteNumber(raw.app_memory),
 		app_threads: toFiniteNumber(raw.app_threads),
 		panel_cpu_percent: toFiniteNumber(raw.panel_cpu_percent),
@@ -275,52 +418,56 @@ const sanitizeSystemStats = (value: SystemStats | undefined): SystemStats | null
 		network_history: safeNetworkHistory(raw.network_history),
 		panel_cpu_history: safeHistory(raw.panel_cpu_history),
 		panel_memory_history: safeHistory(raw.panel_memory_history),
-		personal_usage:
-			raw.personal_usage && typeof raw.personal_usage === "object"
-				? {
-						total_users: toFiniteNumber(raw.personal_usage.total_users),
-						consumed_bytes: toFiniteNumber(raw.personal_usage.consumed_bytes),
-						built_bytes: toFiniteNumber(raw.personal_usage.built_bytes),
-						reset_bytes: toFiniteNumber(raw.personal_usage.reset_bytes),
-						traffic_basis: raw.personal_usage.traffic_basis,
-					}
-				: {
-						total_users: 0,
-						consumed_bytes: 0,
-						built_bytes: 0,
-						reset_bytes: 0,
-						traffic_basis: "used_traffic",
-					},
-		admin_overview:
-			raw.admin_overview && typeof raw.admin_overview === "object"
-				? {
-						total_admins: toFiniteNumber(raw.admin_overview.total_admins),
-						sudo_admins: toFiniteNumber(raw.admin_overview.sudo_admins),
-						full_access_admins: toFiniteNumber(
-							raw.admin_overview.full_access_admins,
-						),
-						standard_admins: toFiniteNumber(raw.admin_overview.standard_admins),
-						top_admin_username: raw.admin_overview.top_admin_username ?? null,
-						top_admin_usage: toFiniteNumber(raw.admin_overview.top_admin_usage),
-					}
-				: {
-						total_admins: 0,
-						sudo_admins: 0,
-						full_access_admins: 0,
-						standard_admins: 0,
-						top_admin_username: null,
-						top_admin_usage: 0,
-					},
+		personal_usage: rawPersonal
+			? {
+					total_users: toFiniteNumber(rawPersonal.total_users),
+					consumed_bytes: toFiniteNumber(rawPersonal.consumed_bytes),
+					built_bytes: toFiniteNumber(rawPersonal.built_bytes),
+					reset_bytes: toFiniteNumber(rawPersonal.reset_bytes),
+					traffic_basis:
+						rawPersonal.traffic_basis === "created_traffic"
+							? "created_traffic"
+							: "used_traffic",
+				}
+			: {
+					total_users: 0,
+					consumed_bytes: 0,
+					built_bytes: 0,
+					reset_bytes: 0,
+					traffic_basis: "used_traffic",
+				},
+		admin_overview: rawAdmin
+			? {
+					total_admins: toFiniteNumber(rawAdmin.total_admins),
+					sudo_admins: toFiniteNumber(rawAdmin.sudo_admins),
+					full_access_admins: toFiniteNumber(rawAdmin.full_access_admins),
+					standard_admins: toFiniteNumber(rawAdmin.standard_admins),
+					top_admin_username:
+						typeof rawAdmin.top_admin_username === "string"
+							? rawAdmin.top_admin_username
+							: null,
+					top_admin_usage: toFiniteNumber(rawAdmin.top_admin_usage),
+				}
+			: {
+					total_admins: 0,
+					sudo_admins: 0,
+					full_access_admins: 0,
+					standard_admins: 0,
+					top_admin_username: null,
+					top_admin_usage: 0,
+				},
 	};
 };
 
 const formatNumberValue = (value?: number | null) => numberWithCommas(value);
-const formatPercent = (val: number, _isRTL = false): string => {
+
+const formatPercent = (val: number): string => {
 	if (!Number.isFinite(val)) return "0%";
 	const rounded = Math.round(val * 10) / 10;
 	const formatted = rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(1);
 	return `${formatted}%`;
 };
+
 const clampPercent = (value: number) => Math.min(100, Math.max(0, value));
 
 const HISTORY_INTERVALS = [
@@ -330,10 +477,12 @@ const HISTORY_INTERVALS = [
 	{ labelKey: "dashboard.history.interval.1h", seconds: 3600 },
 	{ labelKey: "dashboard.history.interval.3h", seconds: 10800 },
 	{ labelKey: "dashboard.history.interval.5h", seconds: 18000 },
-];
+] as const;
+
+type HistoryMetricType = "cpu" | "memory" | "network" | "panel";
 
 type HistoryModalPayload = {
-	type: "cpu" | "memory" | "network" | "panel" | "panelCpu" | "panelMemory";
+	type: HistoryMetricType;
 	title: string;
 	metricLabel?: string;
 	entries?: Array<{ timestamp: number; value: number }>;
@@ -345,48 +494,74 @@ type HistoryModalPayload = {
 const expandShortData = <T extends { timestamp: number }>(entries: T[]): T[] => {
 	if (entries.length === 1) {
 		const single = entries[0];
-		const synthesizedBefore = { ...single, timestamp: single.timestamp - 2 };
-		return [synthesizedBefore, single];
+		return [{ ...single, timestamp: single.timestamp - 2 }, single];
 	}
 	return entries;
 };
 
 const HistoryModal: FC<{
-	isOpen: boolean;
+	open: boolean;
 	onClose: () => void;
 	payload: HistoryModalPayload | null;
 	intervalSeconds: number;
 	onIntervalChange: (value: number) => void;
+	bandwidthScope: BandwidthScope;
+	onBandwidthScopeChange: (scope: BandwidthScope) => void;
+	canSeeGlobal: boolean;
 	t: TFunction;
 	isRTL?: boolean;
-}> = ({ isOpen, onClose, payload, intervalSeconds, onIntervalChange, t, isRTL = false }) => {
+}> = ({
+	open: isOpen,
+	onClose,
+	payload,
+	intervalSeconds,
+	onIntervalChange,
+	bandwidthScope,
+	onBandwidthScopeChange,
+	canSeeGlobal,
+	t,
+	isRTL = false,
+}) => {
 	const { colorMode } = useColorMode();
 	const [isSwitchingInterval, setIsSwitchingInterval] = useState(false);
-	const tabRefs = useRef<(HTMLDivElement | null)[]>([]);
-	const [pillStyle, setPillStyle] = useState<{ left: number; width: number }>({ left: 4, width: 0 });
-	const gridColor = useColorModeValue("rgba(0,0,0,0.06)", "rgba(255,255,255,0.06)");
-	const mutedTextColor = useColorModeValue("#64748b", "#94a3b8");
-
-	const activeIntervalIndex = HISTORY_INTERVALS.findIndex((i) => i.seconds === intervalSeconds);
+	const [isChartReady, setIsChartReady] = useState(false);
 
 	useEffect(() => {
-		if (!isOpen) return;
-		const timer = setTimeout(() => {
-			const targetEl = tabRefs.current[activeIntervalIndex];
-			if (targetEl) {
-				setPillStyle({
-					left: targetEl.offsetLeft,
-					width: targetEl.offsetWidth,
-				});
-			}
-		}, 50);
-		return () => clearTimeout(timer);
-	}, [activeIntervalIndex, isOpen]);
+		if (!isOpen) {
+			setIsChartReady(false);
+			return;
+		}
+		const timer = window.setTimeout(() => setIsChartReady(true), 220);
+		return () => window.clearTimeout(timer);
+	}, [isOpen]);
+
+	const gridColor =
+		colorMode === "dark" ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.06)";
+	const mutedTextColor = colorMode === "dark" ? "#94a3b8" : "#64748b";
+
+	const MetricIcon = useMemo(() => {
+		switch (payload?.type) {
+			case "cpu":
+				return Cpu;
+			case "memory":
+				return Database;
+			case "network":
+				return Signal;
+			case "panel":
+				return Server;
+			default:
+				return ChartColumn;
+		}
+	}, [payload?.type]);
 
 	const { latestTimestamp, availableSpan } = useMemo(() => {
 		if (!payload) {
 			const now = Math.floor(Date.now() / 1000);
-			return { latestTimestamp: now, earliestTimestamp: now - 120, availableSpan: 120 };
+			return {
+				latestTimestamp: now,
+				earliestTimestamp: now - 120,
+				availableSpan: 120,
+			};
 		}
 		let timestamps: number[] = [];
 		if (payload.type === "network" && payload.networkEntries?.length) {
@@ -401,28 +576,47 @@ const HistoryModal: FC<{
 
 		if (!timestamps.length) {
 			const now = Math.floor(Date.now() / 1000);
-			return { latestTimestamp: now, earliestTimestamp: now - 120, availableSpan: 120 };
+			return {
+				latestTimestamp: now,
+				earliestTimestamp: now - 120,
+				availableSpan: 120,
+			};
 		}
 		const maxT = Math.max(...timestamps);
 		const minT = Math.min(...timestamps);
-		return { latestTimestamp: maxT, earliestTimestamp: minT, availableSpan: Math.max(1, maxT - minT) };
+		return {
+			latestTimestamp: maxT,
+			earliestTimestamp: minT,
+			availableSpan: Math.max(1, maxT - minT),
+		};
 	}, [payload]);
 
 	const effectiveSpan =
 		intervalSeconds === 120
 			? Math.min(120, availableSpan)
-			: Math.max(intervalSeconds * 0.5, Math.min(intervalSeconds, availableSpan));
+			: Math.max(
+					intervalSeconds * 0.5,
+					Math.min(intervalSeconds, availableSpan),
+				);
 
 	const cutoff = latestTimestamp - effectiveSpan;
 
 	const { chartSeries, actualMinTs, actualMaxTs } = useMemo(() => {
-		if (!payload) return { chartSeries: [], actualMinTs: cutoff, actualMaxTs: latestTimestamp };
+		if (!payload) {
+			return {
+				chartSeries: [],
+				actualMinTs: cutoff,
+				actualMaxTs: latestTimestamp,
+			};
+		}
 
 		let seriesList: { name: string; data: [number, number][] }[] = [];
 		let allTs: number[] = [];
 
 		if (payload.type === "network" && payload.networkEntries) {
-			const filtered = payload.networkEntries.filter((e) => e.timestamp >= cutoff);
+			const filtered = payload.networkEntries.filter(
+				(e) => e.timestamp >= cutoff,
+			);
 			const rawData = filtered.length >= 1 ? filtered : payload.networkEntries;
 			const finalData = expandShortData(rawData);
 			allTs = finalData.map((e) => e.timestamp);
@@ -437,20 +631,29 @@ const HistoryModal: FC<{
 				},
 			];
 		} else if (payload.type === "panel") {
-			const filteredCpu = (payload.cpuEntries || []).filter((e) => e.timestamp >= cutoff);
-			const filteredMem = (payload.memoryEntries || []).filter((e) => e.timestamp >= cutoff);
-			const rawCpu = filteredCpu.length >= 1 ? filteredCpu : payload.cpuEntries || [];
-			const rawMem = filteredMem.length >= 1 ? filteredMem : payload.memoryEntries || [];
+			const filteredCpu = (payload.cpuEntries || []).filter(
+				(e) => e.timestamp >= cutoff,
+			);
+			const filteredMem = (payload.memoryEntries || []).filter(
+				(e) => e.timestamp >= cutoff,
+			);
+			const rawCpu =
+				filteredCpu.length >= 1 ? filteredCpu : payload.cpuEntries || [];
+			const rawMem =
+				filteredMem.length >= 1 ? filteredMem : payload.memoryEntries || [];
 			const finalCpu = expandShortData(rawCpu);
 			const finalMem = expandShortData(rawMem);
-			allTs = [...finalCpu.map((e) => e.timestamp), ...finalMem.map((e) => e.timestamp)];
+			allTs = [
+				...finalCpu.map((e) => e.timestamp),
+				...finalMem.map((e) => e.timestamp),
+			];
 			seriesList = [
 				{
-					name: `${t("dashboard.system.cpuUsage")} (Panel CPU %)`,
+					name: t("dashboard.system.panelCpuUsage"),
 					data: finalCpu.map((e) => [e.timestamp * 1000, e.value]),
 				},
 				{
-					name: `${t("dashboard.system.memoryUsage")} (Panel RAM %)`,
+					name: t("dashboard.system.panelMemoryUsage"),
 					data: finalMem.map((e) => [e.timestamp * 1000, e.value]),
 				},
 			];
@@ -481,10 +684,18 @@ const HistoryModal: FC<{
 		if (!payload) return false;
 		let totalPoints = 0;
 		if (payload.type === "network" && payload.networkEntries) {
-			totalPoints = payload.networkEntries.filter((e) => e.timestamp >= cutoff).length;
-		} else if (payload.type === "panel") {
-			const cLen = (payload.cpuEntries || []).filter((e) => e.timestamp >= cutoff).length;
-			const mLen = (payload.memoryEntries || []).filter((e) => e.timestamp >= cutoff).length;
+			totalPoints = payload.networkEntries.filter(
+				(e) => e.timestamp >= cutoff,
+			).length;
+			return totalPoints >= 1;
+		}
+		if (payload.type === "panel") {
+			const cLen = (payload.cpuEntries || []).filter(
+				(e) => e.timestamp >= cutoff,
+			).length;
+			const mLen = (payload.memoryEntries || []).filter(
+				(e) => e.timestamp >= cutoff,
+			).length;
 			totalPoints = Math.max(cLen, mLen);
 		} else if (payload.entries) {
 			totalPoints = payload.entries.filter((e) => e.timestamp >= cutoff).length;
@@ -527,9 +738,9 @@ const HistoryModal: FC<{
 				animations: {
 					enabled: true,
 					easing: "easeinout",
-					speed: 300,
-					animateGradually: { enabled: true, delay: 50 },
-					dynamicAnimation: { enabled: true, speed: 250 },
+					speed: 260,
+					animateGradually: { enabled: true, delay: 40 },
+					dynamicAnimation: { enabled: true, speed: 220 },
 				},
 				toolbar: { show: false },
 				zoom: { enabled: false },
@@ -538,13 +749,13 @@ const HistoryModal: FC<{
 				sparkline: { enabled: false },
 			},
 			colors: isNetwork
-				? ["#3b82f6", "#10b981"]
+				? ["#2563eb", "#10b981"]
 				: ["var(--rb-panel-accent)", "#8b5cf6", "#f59e0b", "#ec4899"],
 			fill: {
 				type: "gradient",
 				gradient: {
 					shadeIntensity: 1,
-					opacityFrom: 0.28,
+					opacityFrom: 0.26,
 					opacityTo: 0.02,
 					stops: [0, 100],
 				},
@@ -572,7 +783,11 @@ const HistoryModal: FC<{
 				axisBorder: { show: false },
 				axisTicks: { show: false },
 				labels: {
-					style: { colors: mutedTextColor, fontSize: "11px", fontFamily: "inherit" },
+					style: {
+						colors: mutedTextColor,
+						fontSize: "11px",
+						fontFamily: "inherit",
+					},
 					hideOverlappingLabels: true,
 					formatter: (val: string, timestamp?: number) => {
 						const num = timestamp !== undefined ? timestamp : Number(val);
@@ -592,7 +807,11 @@ const HistoryModal: FC<{
 				tickAmount: 5,
 				labels: {
 					offsetX: 0,
-					style: { colors: mutedTextColor, fontSize: "11px", fontFamily: "inherit" },
+					style: {
+						colors: mutedTextColor,
+						fontSize: "11px",
+						fontFamily: "inherit",
+					},
 					formatter: (val: number) => {
 						if (!Number.isFinite(val)) return "0";
 						if (isNetwork) {
@@ -607,28 +826,20 @@ const HistoryModal: FC<{
 				offsetY: 0,
 				labels: { colors: mutedTextColor },
 				itemMargin: { horizontal: 8, vertical: 6 },
-				markers: {
-					offsetX: 0,
-					offsetY: 0,
-				},
-				formatter: (seriesName: string) => seriesName,
-				onItemClick: {
-					toggleDataSeries: true,
-				},
-				onItemHover: {
-					highlightDataSeries: true,
-				},
 			},
 			tooltip: {
 				custom: ({ series, seriesIndex, dataPointIndex, w }) => {
 					const timestamp = w.globals.seriesX[seriesIndex]?.[dataPointIndex];
 					const dateStr = timestamp
-						? new Date(timestamp).toLocaleTimeString(isRTL ? "fa-IR" : "en-US", {
-								hour12: false,
-								hour: "2-digit",
-								minute: "2-digit",
-								second: "2-digit",
-							})
+						? new Date(timestamp).toLocaleTimeString(
+								isRTL ? "fa-IR" : "en-US",
+								{
+									hour12: false,
+									hour: "2-digit",
+									minute: "2-digit",
+									second: "2-digit",
+								},
+							)
 						: "";
 
 					const linesHtml = w.globals.seriesNames
@@ -636,39 +847,14 @@ const HistoryModal: FC<{
 							const val = series[i]?.[dataPointIndex];
 							if (val === undefined || Number.isNaN(val)) return "";
 							const color = w.globals.colors[i] || "var(--rb-panel-accent)";
-							const displayVal = isNetwork ? `${formatBytes(val, 2)}/s` : `${Math.round(val * 10) / 10}%`;
-							return `
-								<div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px;">
-									<div style="display: flex; align-items: center; gap: 6px;">
-										<span style="width: 7px; height: 7px; border-radius: 50%; background: ${color}; box-shadow: 0 0 6px ${color}88; flex-shrink: 0;"></span>
-										<span style="color: var(--chakra-colors-panel-textSecondary, #94a3b8); font-size: 11px; font-weight: 500;">${name}</span>
-									</div>
-									<span style="color: var(--chakra-colors-panel-text, #ffffff); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; direction: ltr;">${displayVal}</span>
-								</div>
-							`;
+							const displayVal = isNetwork
+								? `${formatBytes(val, 2)}/s`
+								: `${Math.round(val * 10) / 10}%`;
+							return `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:4px;"><div style="display:flex;align-items:center;gap:6px;"><span style="width:7px;height:7px;border-radius:50%;background:${color};flex-shrink:0;"></span><span style="color:var(--rb-panel-text-secondary,#94a3b8);font-size:11px;font-weight:500;">${name}</span></div><span style="color:var(--rb-panel-text,#ffffff);font-size:11px;font-weight:700;font-variant-numeric:tabular-nums;direction:ltr;">${displayVal}</span></div>`;
 						})
 						.join("");
 
-					return `
-						<div style="
-							background: rgba(22, 23, 28, 0.92);
-							backdrop-filter: blur(16px);
-							-webkit-backdrop-filter: blur(16px);
-							border: 1px solid rgba(255, 255, 255, 0.12);
-							border-radius: 12px;
-							background-clip: padding-box;
-							padding: 8px 12px;
-							box-shadow: 0 8px 24px -4px rgba(0, 0, 0, 0.6);
-							direction: ${isRTL ? "rtl" : "ltr"};
-							font-family: inherit;
-							min-width: 140px;
-						">
-							<div style="color: var(--chakra-colors-panel-textMuted, #64748b); font-size: 10px; font-weight: 600; direction: ltr; text-align: ${isRTL ? "right" : "left"}; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 4px; margin-bottom: 4px;">
-								${dateStr}
-							</div>
-							${linesHtml}
-						</div>
-					`;
+					return `<div style="background:var(--rb-panel-surface,#16171c);border:1px solid var(--rb-panel-border,rgba(255,255,255,0.12));border-radius:12px;padding:8px 12px;box-shadow:0 12px 28px -6px rgba(0,0,0,0.55);direction:${isRTL ? "rtl" : "ltr"};font-family:inherit;min-width:148px;"><div style="color:var(--rb-panel-text-muted,#64748b);font-size:10px;font-weight:600;direction:ltr;text-align:${isRTL ? "right" : "left"};border-bottom:1px solid var(--rb-panel-border,rgba(255,255,255,0.08));padding-bottom:4px;margin-bottom:4px;">${dateStr}</div>${linesHtml}</div>`;
 				},
 			},
 		}),
@@ -687,202 +873,158 @@ const HistoryModal: FC<{
 	);
 
 	return (
-		<Modal isOpen={isOpen} onClose={onClose} size="2xl" scrollBehavior="inside" isCentered>
-			<ModalOverlay bg="blackAlpha.700" backdropFilter="blur(16px)" />
-			<ModalContent
-				bg="panel.surface"
-				borderWidth="1px"
-				borderColor="panel.border"
-				borderRadius="20px"
-				boxShadow="inset 0 1px 1px 0 rgba(255, 255, 255, 0.08), 0 32px 80px rgba(0,0,0,0.6)"
-				mx={{ base: 3, sm: 6 }}
-				overflow="hidden"
+		<Dialog
+			open={isOpen}
+			onOpenChange={(open) => {
+				if (!open) onClose();
+			}}
+		>
+			<DialogContent
+				dir={isRTL ? "rtl" : "ltr"}
+				showCloseButton={false}
+				className="flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-1.5rem)] max-w-[780px] flex-col gap-0 overflow-hidden rounded-[20px] border border-panel-border! bg-panel-surface p-0 text-panel-text shadow-[0_24px_64px_-12px_rgba(0,0,0,0.48)] sm:w-full sm:max-w-[780px]"
 			>
-				<ModalHeader
-					display="flex"
-					alignItems="center"
-					justifyContent="space-between"
-					px={{ base: 4, md: 6 }}
-					py={{ base: 3.5, md: 4 }}
-					borderBottomWidth="1px"
-					borderColor="panel.border"
-					fontSize="sm"
-					fontWeight="700"
-				>
-					<Text color="panel.text">{t("dashboard.history.modalTitle", { metric: payload?.title ?? "" })}</Text>
-					<ModalCloseButton position="static" size="sm" />
-				</ModalHeader>
-				<ModalBody px={{ base: 4, md: 6 }} py={{ base: 4, md: 5 }}>
-					<Stack spacing={4}>
-						{hasEnoughPoints && (
-							<Box
-								p={1}
-								borderRadius="full"
-								bg="panel.elevated"
-								w={{ base: "full", md: "fit-content" }}
-								maxW="100%"
-								overflowX="auto"
-								position="relative"
-								display="inline-flex"
-								alignItems="center"
-								sx={{
-									"&::-webkit-scrollbar": {
-										display: "none",
-									},
-									scrollbarWidth: "none",
-								}}
-							>
-								{pillStyle.width > 0 && (
-									<motion.div
-										animate={{
-											left: pillStyle.left,
-											width: pillStyle.width,
-										}}
-										transition={{
-											type: "tween",
-											ease: [0.16, 1, 0.3, 1],
-											duration: 0.32,
-										}}
-										style={{
-											position: "absolute",
-											top: 4,
-											bottom: 4,
-											borderRadius: "9999px",
-											backgroundColor: "var(--chakra-colors-panel-surface)",
-											boxShadow: "0 1px 3px rgba(0, 0, 0, 0.15)",
-											zIndex: 1,
-											pointerEvents: "none",
-										}}
-									/>
-								)}
-								{HISTORY_INTERVALS.map((interval, idx) => {
-									const isAvailable = idx === 0 || availableSpan >= interval.seconds * 0.5;
-									const isActive = intervalSeconds === interval.seconds;
-									return (
-										<Box
-											key={interval.seconds}
-											ref={(el: HTMLDivElement | null) => {
-												tabRefs.current[idx] = el;
-											}}
-											flex={{ base: "1 1 0", md: "none" }}
-											position="relative"
-											display="inline-flex"
-											alignItems="center"
-											justifyContent="center"
-										>
-											<Button
-												size="xs"
-												h="26px"
-												w="full"
-												px={{ base: 1, sm: 3.5 }}
-												borderRadius="full"
-												variant="ghost"
-												bg="transparent !important"
-												color={isActive ? "panel.text" : "panel.textMuted"}
-												fontWeight={isActive ? "700" : "500"}
-												fontSize={{ base: "10px", sm: "11px" }}
-												whiteSpace="nowrap"
-												position="relative"
-												zIndex={2}
-												opacity={isAvailable ? 1 : 0.4}
-												cursor={isAvailable ? "pointer" : "not-allowed"}
-												_hover={{
-													md: {
-														color: "panel.text",
-													},
-												}}
-												_focusVisible={{
-													outline: "2px solid var(--rb-panel-accent)",
-													outlineOffset: "2px",
-												}}
-												onClick={() => {
-													if (isAvailable && intervalSeconds !== interval.seconds) {
-														setIsSwitchingInterval(true);
-														onIntervalChange(interval.seconds);
-														setTimeout(() => setIsSwitchingInterval(false), 300);
-													}
-												}}
-											>
-												{t(interval.labelKey)}
-											</Button>
-										</Box>
-									);
+				<DialogHeader className="flex flex-row items-center justify-between gap-3 border-b border-panel-border/75! px-4 py-3.5 text-start min-[769px]:px-6">
+					<div className="flex min-w-0 items-center gap-2.5">
+						<MetricIcon className="size-4 shrink-0 text-panel-text-secondary" />
+						<div className="min-w-0">
+							<DialogTitle className="truncate text-[14px] font-bold tracking-[-0.01em] text-panel-text">
+								{t("dashboard.history.modalTitle", {
+									metric: payload?.title ?? "",
 								})}
-							</Box>
+							</DialogTitle>
+							<DialogDescription className="sr-only">
+								{payload?.title ?? ""}
+							</DialogDescription>
+						</div>
+					</div>
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-sm"
+						onClick={onClose}
+						aria-label={t("close")}
+						className="size-8 shrink-0 rounded-[10px] text-panel-text-muted transition-[background-color,color,transform] duration-150 active:scale-[0.95] min-[769px]:hover:bg-panel-elevated min-[769px]:hover:text-panel-text"
+					>
+						<X className="size-4" />
+					</Button>
+				</DialogHeader>
+
+				<div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 min-[769px]:px-6 min-[769px]:py-5">
+					<div className="flex flex-col gap-4">
+						{(hasEnoughPoints || (isNetwork && canSeeGlobal)) && (
+							<div
+								className={cn(
+									"flex-wrap items-center justify-between gap-2.5",
+									hasEnoughPoints ? "flex" : "hidden min-[769px]:flex",
+								)}
+							>
+								{hasEnoughPoints ? (
+									<div className="inline-flex w-full max-w-full items-center gap-1 overflow-x-auto rounded-[12px] border border-panel-border! bg-panel-elevated p-1 min-[769px]:w-fit [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+										{HISTORY_INTERVALS.map((interval, idx) => {
+											const isAvailable =
+												idx === 0 || availableSpan >= interval.seconds * 0.5;
+											const isActive = intervalSeconds === interval.seconds;
+											return (
+												<div
+													key={interval.seconds}
+													className="relative inline-flex flex-1 items-center justify-center min-[769px]:flex-none"
+												>
+													{isActive && (
+														<motion.div
+															layoutId="historyIntervalActivePill"
+															transition={{
+																type: "tween",
+																ease: [0.22, 1, 0.36, 1],
+																duration: 0.24,
+															}}
+															className="pointer-events-none absolute inset-0 rounded-[9px] bg-panel-accent shadow-[0_2px_8px_color-mix(in_srgb,var(--rb-panel-accent)_35%,transparent)]"
+														/>
+													)}
+													<Button
+														type="button"
+														onClick={() => {
+															if (
+																isAvailable &&
+																intervalSeconds !== interval.seconds
+															) {
+																setIsSwitchingInterval(true);
+																onIntervalChange(interval.seconds);
+																window.setTimeout(
+																	() => setIsSwitchingInterval(false),
+																	240,
+																);
+															}
+														}}
+														variant="ghost"
+														size="xs"
+														className={cn(
+															"relative z-10 h-7 w-full rounded-[9px] bg-transparent! px-2.5 text-[11px] whitespace-nowrap transition-colors duration-150 sm:px-3.5",
+															isActive
+																? "font-bold text-white! min-[769px]:hover:text-white!"
+																: "font-semibold text-panel-text-muted min-[769px]:hover:text-panel-text",
+															isAvailable
+																? "cursor-pointer opacity-100"
+																: "cursor-not-allowed opacity-40",
+														)}
+													>
+														{t(interval.labelKey)}
+													</Button>
+												</div>
+											);
+										})}
+									</div>
+								) : (
+									<div />
+								)}
+
+								{isNetwork && canSeeGlobal && (
+									<div className="relative hidden items-center gap-0.5 rounded-[10px] border border-panel-border! bg-panel-elevated p-0.5 min-[769px]:flex">
+										{(["master", "total"] as const).map((scope) => {
+											const active = bandwidthScope === scope;
+											return (
+												<div key={scope} className="relative">
+													{active && (
+														<motion.div
+															layoutId="historyBandwidthScopePill"
+															transition={{
+																type: "tween",
+																ease: [0.22, 1, 0.36, 1],
+																duration: 0.22,
+															}}
+															className="pointer-events-none absolute inset-0 rounded-[8px] bg-panel-accent shadow-[0_1px_4px_color-mix(in_srgb,var(--rb-panel-accent)_35%,transparent)]"
+														/>
+													)}
+													<Button
+														type="button"
+														onClick={() => onBandwidthScopeChange(scope)}
+														title={
+															scope === "total"
+																? t("dashboard.system.bandwidthScope.totalHint")
+																: undefined
+														}
+														variant="ghost"
+														size="xs"
+														className={cn(
+															"relative z-10 h-6 rounded-[8px] bg-transparent! px-2.5 text-[11px] font-semibold transition-colors",
+															active
+																? "text-white! min-[769px]:hover:text-white!"
+																: "text-panel-text-secondary min-[769px]:hover:text-panel-text",
+														)}
+													>
+														{t(`dashboard.system.bandwidthScope.${scope}`)}
+													</Button>
+												</div>
+											);
+										})}
+									</div>
+								)}
+							</div>
 						)}
-						<Box
-							minH="300px"
-							w="100%"
-							position="relative"
+
+						<div
 							dir="ltr"
-							pb={2}
-							sx={{
-								"& .apexcharts-canvas": {
-									direction: "ltr !important",
-								},
-								"& .apexcharts-yaxis-label": {
-									direction: "ltr !important",
-								},
-								"& .apexcharts-legend": {
-									direction: "ltr !important",
-									display: "flex !important",
-									justifyContent: "center !important",
-									gap: "18px !important",
-								},
-								"& .apexcharts-legend-series": {
-									display: "inline-flex !important",
-									alignItems: "center !important",
-									flexDirection: isRTL ? "row !important" : "row !important",
-									gap: "6px !important",
-									margin: "0 !important",
-								},
-								"& .apexcharts-legend-marker": {
-									order: isRTL ? 2 : 1,
-									margin: "0 !important",
-									position: "relative !important",
-									top: "auto !important",
-									left: "auto !important",
-									right: "auto !important",
-									bottom: "auto !important",
-									transform: "none !important",
-								},
-								"& .apexcharts-legend-text": {
-									order: isRTL ? 1 : 2,
-									margin: "0 !important",
-									padding: "0 !important",
-									position: "relative !important",
-									top: "auto !important",
-									left: "auto !important",
-									right: "auto !important",
-									bottom: "auto !important",
-								},
-								"& .apexcharts-tooltip": {
-									background: "transparent !important",
-									border: "none !important",
-									boxShadow: "none !important",
-									overflow: "visible !important",
-								},
-								"& .apexcharts-tooltip.apexcharts-theme-light": {
-									background: "transparent !important",
-									border: "none !important",
-									boxShadow: "none !important",
-								},
-								"& .apexcharts-tooltip.apexcharts-theme-dark": {
-									background: "transparent !important",
-									border: "none !important",
-									boxShadow: "none !important",
-								},
-								"& .apexcharts-legend-series.apexcharts-inactive-legend": {
-									opacity: "0.45 !important",
-									pointerEvents: "auto",
-								},
-								"& .apexcharts-legend-series.apexcharts-inactive-legend:hover": {
-									opacity: "0.75 !important",
-								},
-								"& .apexcharts-canvas:has(.apexcharts-inactive-legend:hover) .apexcharts-series": {
-									opacity: "1 !important",
-								},
-							}}
+							className="relative min-h-[300px] w-full rounded-[16px] border border-panel-border! bg-panel-elevated/35 p-2 sm:p-3 [&_.apexcharts-canvas]:[flex-direction:ltr]! [&_.apexcharts-legend]:flex! [&_.apexcharts-legend]:justify-center! [&_.apexcharts-legend]:gap-4! [&_.apexcharts-tooltip]:border-none! [&_.apexcharts-tooltip]:bg-transparent! [&_.apexcharts-tooltip]:shadow-none! [&_.apexcharts-yaxis-label]:[flex-direction:ltr]!"
 						>
 							<AnimatePresence>
 								{isSwitchingInterval && (
@@ -890,41 +1032,32 @@ const HistoryModal: FC<{
 										initial={{ opacity: 0 }}
 										animate={{ opacity: 1 }}
 										exit={{ opacity: 0 }}
-										transition={{ duration: 0.15, ease: "easeInOut" }}
-										style={{
-											position: "absolute",
-											top: 0,
-											left: 0,
-											right: 0,
-											bottom: 0,
-											backgroundColor: "rgba(10, 12, 16, 0.7)",
-											backdropFilter: "blur(6px)",
-											borderRadius: "16px",
-											zIndex: 10,
-											display: "flex",
-											alignItems: "center",
-											justifyContent: "center",
-										}}
+										transition={{ duration: 0.15, ease: "easeOut" }}
+										className="absolute inset-0 z-10 flex items-center justify-center rounded-[16px] bg-panel-surface/80"
 									>
-										<Spinner size="md" color="panel.accent" thickness="2.5px" />
+										<Spinner className="text-panel-accent" />
 									</motion.div>
 								)}
 							</AnimatePresence>
 							<motion.div
 								animate={{ opacity: isSwitchingInterval ? 0 : 1 }}
-								transition={{ duration: 0.25, ease: "easeInOut" }}
-								style={{ width: "100%", height: "100%" }}
+								transition={{ duration: 0.2, ease: "easeOut" }}
+								className="h-full w-full"
 							>
 								<Suspense
 									fallback={
-										<Flex h="280px" align="center" justify="center">
-											<Spinner size="md" color="panel.accent" />
-										</Flex>
+										<div className="flex h-[280px] items-center justify-center">
+											<Spinner className="text-panel-accent" />
+										</div>
 									}
 								>
-									{hasEnoughPoints && isOpen ? (
+									{hasEnoughPoints && isOpen && !isChartReady ? (
+										<div className="flex h-[300px] items-center justify-center">
+											<Spinner className="text-panel-accent" />
+										</div>
+									) : hasEnoughPoints && isOpen ? (
 										<HistoryChart
-											key={`${payload?.title}-${intervalSeconds}-${colorMode}`}
+											key={`${payload?.type}-${bandwidthScope}-${intervalSeconds}-${colorMode}`}
 											options={options}
 											series={chartSeries}
 											type="area"
@@ -932,19 +1065,19 @@ const HistoryModal: FC<{
 											width="100%"
 										/>
 									) : (
-										<Flex h="300px" align="center" justify="center" direction="column" gap={2}>
-											<Text fontSize="13px" color="panel.textMuted">
+										<div className="flex h-[300px] flex-col items-center justify-center gap-2 px-4 text-center">
+											<p className="text-[13px] font-medium text-panel-text-muted">
 												{t("noData")}
-											</Text>
-										</Flex>
+											</p>
+										</div>
 									)}
 								</Suspense>
 							</motion.div>
-						</Box>
-					</Stack>
-				</ModalBody>
-			</ModalContent>
-		</Modal>
+						</div>
+					</div>
+				</div>
+			</DialogContent>
+		</Dialog>
 	);
 };
 
@@ -952,6 +1085,7 @@ const average = (values: number[]) =>
 	values.length
 		? values.reduce((total, value) => total + value, 0) / values.length
 		: 0;
+
 const peak = (values: number[]) => (values.length ? Math.max(...values) : 0);
 
 const ResourceCard: FC<{
@@ -983,224 +1117,130 @@ const ResourceCard: FC<{
 	historyLabel,
 	isRTL = false,
 }) => {
-	const { colorMode } = useColorMode();
+	const { handleMouseMove, handleMouseLeave } = useCardProximity();
 	const safe = clampPercent(percent);
-	const accent = "var(--rb-panel-accent)";
-	const criticalColor = safe >= 90 ? "#ef4444" : safe >= 75 ? "#f59e0b" : accent;
+	const criticalColor =
+		safe >= 90
+			? "#ef4444"
+			: safe >= 75
+				? "#f59e0b"
+				: "var(--rb-panel-accent)";
 
 	return (
-		<Box
-			role="group"
-			bg="panel.surface"
-			borderWidth="1px"
-			borderColor="panel.border"
-			borderRadius="20px"
-			p={{ base: 4, sm: 5 }}
-			position="relative"
-			overflow="hidden"
-			display="flex"
-			flexDirection="column"
-			justifyContent="space-between"
-			boxShadow="inset 0 1px 1px 0 rgba(255, 255, 255, 0.05), 0 8px 24px -6px rgba(0, 0, 0, 0.12)"
-			transition="border-color 0.25s ease, background-color 0.25s ease, box-shadow 0.25s ease"
-			_hover={{
-				md: {
-					borderColor: "panel.borderStrong",
-					bg: "panel.elevated",
-					boxShadow: "inset 0 1px 1px 0 rgba(255, 255, 255, 0.08), 0 12px 32px -4px rgba(0, 0, 0, 0.22)",
-				},
-			}}
+		<article
+			onMouseMove={handleMouseMove}
+			onMouseLeave={handleMouseLeave}
+			style={{ "--rb-spotlight-size": "420px" } as CSSProperties}
+			className="rb-stat-card flex flex-col justify-between p-4 sm:p-5"
 		>
-			<Box>
-				<Flex justify="space-between" align="center" mb={3}>
-					<HStack spacing={2.5} align="center">
-						<Flex
-							w="32px"
-							h="32px"
-							align="center"
-							justify="center"
-							borderRadius="9px"
-							bg="panel.elevated"
-							color="panel.textSecondary"
-							flexShrink={0}
+			<div aria-hidden="true" className="rb-stat-spotlight" />
+			<div className="relative z-[1] w-full">
+				<div className="mb-3 flex items-center justify-between gap-2">
+					<div className="flex min-w-0 items-center gap-2.5">
+						<span
+							data-rb-icon=""
+							className="flex size-8 shrink-0 items-center justify-center rounded-[10px] bg-panel-elevated text-panel-text-secondary"
 						>
 							{icon}
-						</Flex>
-						<Text fontSize="13px" fontWeight="600" color="panel.textSecondary" noOfLines={1}>
+						</span>
+						<p className="truncate text-[13px] font-semibold text-panel-text-secondary">
 							{label}
-						</Text>
-					</HStack>
+						</p>
+					</div>
 					{onHistory && (
-						<Button
-							size="xs"
-							h="22px"
-							px={2}
-							fontSize="11px"
-							variant="ghost"
-							borderRadius="full"
-							bg="panel.elevated"
-							color={colorMode === "light" ? "panel.textSecondary" : "panel.textMuted"}
-							fontWeight={colorMode === "light" ? "600" : "500"}
-							transition="all 0.2s ease"
-							_groupHover={{
-								md: {
-									bg: "panel.surface",
-									color: colorMode === "light" ? "panel.text" : "panel.textSecondary",
-								},
-							}}
-							_hover={{
-								md: {
-									bg: "panel.border !important",
-									color: "panel.text !important",
-								},
-							}}
-							_active={{
-								bg: "panel.borderStrong !important",
-							}}
-							_focusVisible={{
-								outline: "2px solid var(--rb-panel-accent)",
-								outlineOffset: "2px",
-							}}
-							position="relative"
-							_after={{
-								content: '""',
-								position: "absolute",
-								top: "-10px",
-								bottom: "-10px",
-								left: "-10px",
-								right: "-10px",
-							}}
+						<button
+							type="button"
 							onClick={onHistory}
+							data-rb-swap=""
+							data-rb-swap-text=""
+							className="relative inline-flex h-[22px] shrink-0 cursor-pointer items-center justify-center rounded-full bg-panel-elevated px-2.5 text-[11px] font-semibold text-panel-text-secondary select-none outline-none transition-transform duration-150 focus-visible:ring-2 focus-visible:ring-panel-accent/50 active:scale-[0.97] after:absolute after:-inset-2.5 after:content-['']"
 						>
 							{historyLabel}
-						</Button>
+						</button>
 					)}
-				</Flex>
+				</div>
 
-				<Flex align="baseline" gap={1.5} mb={1} wrap="nowrap" justify="flex-start">
+				<div className="mb-1 flex flex-nowrap items-baseline justify-start gap-1.5">
 					{totalValue ? (
-						<Flex
+						<div
 							dir="ltr"
-							align="baseline"
-							gap={1.5}
-							sx={{ unicodeBidi: "isolate" }}
+							className="flex items-baseline gap-1.5 [unicode-bidi:isolate]"
 						>
-							<Text
-								fontSize={{ base: "20px", sm: "22px" }}
-								fontWeight="800"
-								color="panel.text"
-								letterSpacing="-0.02em"
-								lineHeight="1.1"
-								sx={{ fontVariantNumeric: "tabular-nums" }}
-							>
+							<p className="text-[20px] leading-[1.1] font-extrabold tracking-[-0.02em] text-panel-text tabular-nums sm:text-[22px]">
 								{value}
-							</Text>
-							<Text
-								fontSize="13px"
-								fontWeight="600"
-								color="panel.textMuted"
-								sx={{ fontVariantNumeric: "tabular-nums" }}
-							>
+							</p>
+							<p className="text-[13px] font-semibold text-panel-text-muted tabular-nums">
 								/ {totalValue}
-							</Text>
-						</Flex>
+							</p>
+						</div>
 					) : (
-						<Flex align="baseline" gap={1.5} wrap="wrap">
-							<Text
-								fontSize={{ base: "20px", sm: "22px" }}
-								fontWeight="800"
-								color="panel.text"
-								letterSpacing="-0.02em"
-								lineHeight="1.1"
+						<div className="flex flex-wrap items-baseline gap-1.5">
+							<p
 								dir="ltr"
-								sx={{ fontVariantNumeric: "tabular-nums", unicodeBidi: "isolate" }}
+								className="text-[20px] leading-[1.1] font-extrabold tracking-[-0.02em] text-panel-text tabular-nums [unicode-bidi:isolate] sm:text-[22px]"
 							>
 								{value}
-							</Text>
+							</p>
 							{metaValue !== undefined && metaUnit && (
-								<Flex
-									align="center"
+								<div
 									dir={isRTL ? "rtl" : "ltr"}
-									gap={1}
-									sx={{ unicodeBidi: "isolate" }}
+									className="flex items-center gap-1 [unicode-bidi:isolate]"
 								>
-									<Text
-										fontSize="13px"
-										fontWeight="600"
-										color="panel.textMuted"
+									<p
 										dir="ltr"
-										sx={{ fontVariantNumeric: "tabular-nums", unicodeBidi: "isolate" }}
+										className="text-[12px] font-semibold text-panel-text-muted tabular-nums [unicode-bidi:isolate]"
 									>
 										{metaValue}
-									</Text>
-									<Text fontSize="12px" fontWeight="600" color="panel.textMuted">
+									</p>
+									<p className="text-[12px] font-semibold text-panel-text-muted">
 										{metaUnit}
-									</Text>
-								</Flex>
+									</p>
+								</div>
 							)}
-						</Flex>
+						</div>
 					)}
-				</Flex>
-				{subMeta && (
-					<Box mt={0.5}>
-						{subMeta}
-					</Box>
-				)}
-			</Box>
+				</div>
 
-			<Box mt={3}>
-				<Flex justify="space-between" align="center" mb={1.5}>
-					<Text
-						fontSize="11px"
-						fontWeight="600"
-						color="panel.textMuted"
+				{subMeta && <div className="mt-1">{subMeta}</div>}
+			</div>
+
+			<div className="relative z-[1] mt-3.5 w-full">
+				<div className="mb-1.5 flex items-center justify-between">
+					<p
 						dir="ltr"
-						sx={{ unicodeBidi: "isolate", fontVariantNumeric: "tabular-nums" }}
+						className="text-[11px] font-bold text-panel-text-secondary tabular-nums [unicode-bidi:isolate]"
 					>
-						{formatPercent(safe, false)}
-					</Text>
-				</Flex>
-				<Progress
-					value={safe}
-					size="xs"
-					borderRadius="full"
-					bg="panel.elevated"
-					transition="background-color 0.25s ease"
-					_hover={{
-						md: {
-							bg: "panel.surface",
-						},
-					}}
-					_groupHover={{
-						md: {
-							bg: "panel.surface",
-						},
-					}}
-					sx={{
-						"& > div": {
-							bg: criticalColor,
-							transition: "width 0.6s ease, background-color 0.4s ease",
-							borderRadius: "full",
-						},
-					}}
-				/>
+						{formatPercent(safe)}
+					</p>
+				</div>
+				<div
+					role="progressbar"
+					aria-valuenow={Math.round(safe)}
+					aria-valuemin={0}
+					aria-valuemax={100}
+					data-rb-progress=""
+					className="h-[6px] w-full overflow-hidden rounded-full bg-panel-elevated"
+				>
+					<div
+						className="h-full rounded-full"
+						style={{
+							width: `${safe}%`,
+							backgroundColor: criticalColor,
+							color: criticalColor,
+						}}
+					/>
+				</div>
 				{(footerLeft || footerRight) && (
-					<Flex
-						justify="space-between"
-						align="center"
-						mt={2}
-						fontSize="11px"
-						fontWeight="500"
-						color="panel.textMuted"
+					<div
 						dir={isRTL ? "rtl" : "ltr"}
-						sx={{ unicodeBidi: "isolate", fontVariantNumeric: "tabular-nums" }}
+						className="mt-2.5 flex items-center justify-between gap-2 border-t border-panel-border/70! pt-2 text-[11px] font-medium text-panel-text-muted tabular-nums [unicode-bidi:isolate]"
 					>
-						<Text noOfLines={1}>{footerLeft}</Text>
-						<Text noOfLines={1}>{footerRight}</Text>
-					</Flex>
+						<p className="truncate">{footerLeft}</p>
+						<p className="truncate">{footerRight}</p>
+					</div>
 				)}
-			</Box>
-		</Box>
+			</div>
+		</article>
 	);
 };
 
@@ -1212,146 +1252,113 @@ const StatRow: FC<{
 	tag?: string;
 	tagColor?: string;
 	helper?: string;
-}> = ({ label, value, dimLabel, accent, tag, tagColor, helper }) => {
-	const accentColor = "var(--rb-panel-accent)";
-	return (
-		<Flex
-			align="center"
-			justify="space-between"
-			py={2.5}
-			borderBottomWidth="1px"
-			borderColor="panel.border"
-			_last={{ borderBottomWidth: 0 }}
-			gap={3}
-		>
-			<HStack spacing={3} minW={0} flexWrap="nowrap">
-				{tagColor && (
-					<Box
-						flexShrink={0}
-						w="7px"
-						h="7px"
-						borderRadius="full"
-						bg={tagColor}
-						me="3px"
-						boxShadow={`0 0 6px ${tagColor}88`}
-					/>
+}> = ({ label, value, dimLabel, accent, tag, tagColor, helper }) => (
+	<div className="flex items-center justify-between gap-3 border-b border-panel-border/80! py-2.5 last:border-b-0">
+		<div className="flex min-w-0 flex-nowrap items-center gap-2.5">
+			{tagColor && (
+				<span
+					style={{
+						backgroundColor: tagColor,
+						boxShadow: `0 0 8px ${tagColor}66`,
+					}}
+					className="size-[7px] shrink-0 rounded-full"
+				/>
+			)}
+			<p
+				className={cn(
+					"truncate text-[13px] font-semibold",
+					dimLabel ? "text-panel-text-muted" : "text-panel-text-secondary",
 				)}
-				<Text
-					fontSize="13px"
-					fontWeight="600"
-					color={dimLabel ? "panel.textMuted" : "panel.textSecondary"}
-					noOfLines={1}
-				>
-					{label}
-				</Text>
-				{tag && (
-					<Flex
-						as="span"
-						align="center"
-						justify="center"
-						fontSize="10px"
-						px={1.5}
-						py={0.5}
-						borderRadius="md"
-						bg="panel.elevated"
-						color="panel.textMuted"
-						fontWeight="600"
-						dir="ltr"
-						transition="all 0.25s ease"
-						_groupHover={{
-							md: {
-								bg: "panel.surface",
-								color: "panel.textSecondary",
-							},
-						}}
-					>
-						<Text as="span" dir="ltr" sx={{ fontVariantNumeric: "tabular-nums" }}>
-							{tag.endsWith("%") ? `${tag.slice(0, -1)}%` : tag}
-						</Text>
-					</Flex>
-				)}
-			</HStack>
-			<VStack align="flex-end" spacing={0} flexShrink={0}>
-				<Text
-					fontSize="13px"
-					fontWeight="700"
-					color={accent ? accentColor : "panel.text"}
+			>
+				{label}
+			</p>
+			{tag && (
+				<span
 					dir="ltr"
-					sx={{ fontVariantNumeric: "tabular-nums", unicodeBidi: "isolate" }}
+					data-rb-swap=""
+					data-rb-swap-text=""
+					className="inline-flex items-center justify-center rounded-full bg-panel-elevated px-2 py-0.5 text-[10px] font-bold text-panel-text-secondary tabular-nums [unicode-bidi:isolate]"
 				>
-					{typeof value === "number" ? formatNumberValue(value) : value}
-				</Text>
-				{helper && (
-					<Text
-						fontSize="10px"
-						color="panel.textMuted"
-						dir="ltr"
-						sx={{ fontVariantNumeric: "tabular-nums", unicodeBidi: "isolate" }}
-					>
-						{helper}
-					</Text>
+					{tag.endsWith("%") ? `${tag.slice(0, -1)}%` : tag}
+				</span>
+			)}
+		</div>
+		<div className="flex shrink-0 flex-col items-end">
+			<p
+				dir="ltr"
+				className={cn(
+					"text-[13px] font-bold tabular-nums [unicode-bidi:isolate]",
+					accent ? "text-panel-accent" : "text-panel-text",
 				)}
-			</VStack>
-		</Flex>
-	);
-};
+			>
+				{typeof value === "number" ? formatNumberValue(value) : value}
+			</p>
+			{helper && (
+				<p
+					dir="ltr"
+					className="text-[10px] font-medium text-panel-text-muted tabular-nums [unicode-bidi:isolate]"
+				>
+					{helper}
+				</p>
+			)}
+		</div>
+	</div>
+);
 
 const SectionCard: FC<{
 	children: ReactNode;
 	title?: ReactNode;
 	action?: ReactNode;
 	noHover?: boolean;
-	roleGroup?: boolean;
+	headerClassName?: string;
+	contentClassName?: string;
 }> = ({
 	children,
 	title,
 	action,
 	noHover = false,
-	roleGroup = true,
-}) => (
-	<Box
-		role={roleGroup ? "group" : undefined}
-		bg="panel.surface"
-		borderWidth="1px"
-		borderColor="panel.border"
-		borderRadius="20px"
-		overflow="hidden"
-		boxShadow="inset 0 1px 1px 0 rgba(255, 255, 255, 0.05), 0 8px 24px -6px rgba(0, 0, 0, 0.12)"
-		transition="border-color 0.25s ease, background-color 0.25s ease, box-shadow 0.25s ease"
-		_hover={
-			noHover
-				? undefined
-				: {
-						md: {
-							borderColor: "panel.borderStrong",
-							bg: "panel.elevated",
-							boxShadow: "inset 0 1px 1px 0 rgba(255, 255, 255, 0.08), 0 12px 32px -4px rgba(0, 0, 0, 0.22)",
-						},
-					}
-		}
-	>
-		{(title || action) && (
-			<Flex
-				px={{ base: 4, sm: 5, md: 6 }}
-				py={3.5}
-				align="center"
-				justify="space-between"
-				borderBottomWidth="1px"
-				borderColor="panel.border"
-			>
-				{title && (
-					<Text fontSize="13px" fontWeight="700" color="panel.text" letterSpacing="-0.01em">
-						{title}
-					</Text>
+	headerClassName,
+	contentClassName,
+}) => {
+	const { handleMouseMove, handleMouseLeave } = useCardProximity();
+
+	return (
+		<article
+			onMouseMove={noHover ? undefined : handleMouseMove}
+			onMouseLeave={noHover ? undefined : handleMouseLeave}
+			style={{ "--rb-spotlight-size": "550px" } as CSSProperties}
+			className={cn(
+				"rb-stat-card flex h-full flex-col",
+				noHover && "hover:border-panel-border!",
+			)}
+		>
+			{!noHover && <div aria-hidden="true" className="rb-stat-spotlight" />}
+			{(title || action) && (
+				<div
+					className={cn(
+						"relative z-[1] flex flex-wrap items-center justify-between gap-2.5 border-b border-panel-border! px-4 py-3.5 sm:px-5 min-[769px]:px-6",
+						headerClassName,
+					)}
+				>
+					{title && (
+						<div className="min-w-0 text-[13px] font-bold tracking-[-0.01em] text-panel-text">
+							{title}
+						</div>
+					)}
+					{action}
+				</div>
+			)}
+			<div
+				className={cn(
+					"relative z-[1] flex-1 px-4 py-4 sm:px-5 min-[769px]:px-6",
+					contentClassName,
 				)}
-				{action}
-			</Flex>
-		)}
-		<Box px={{ base: 4, sm: 5, md: 6 }} py={4}>
-			{children}
-		</Box>
-	</Box>
-);
+			>
+				{children}
+			</div>
+		</article>
+	);
+};
 
 const AnimatedHeightWrapper: FC<{
 	children: ReactNode;
@@ -1361,26 +1368,25 @@ const AnimatedHeightWrapper: FC<{
 	const [height, setHeight] = useState<number | "auto">("auto");
 
 	useEffect(() => {
-		if (containerRef.current) {
-			const resizeObserver = new ResizeObserver((entries) => {
-				for (const entry of entries) {
-					const newHeight = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
-					if (newHeight > 0) {
-						setHeight(newHeight);
-					}
+		if (!containerRef.current) return;
+		const resizeObserver = new ResizeObserver((entries) => {
+			for (const entry of entries) {
+				const newHeight =
+					entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
+				if (newHeight > 0) {
+					setHeight(newHeight);
 				}
-			});
-
-			resizeObserver.observe(containerRef.current);
-			return () => resizeObserver.disconnect();
-		}
+			}
+		});
+		resizeObserver.observe(containerRef.current);
+		return () => resizeObserver.disconnect();
 	}, []);
 
 	return (
 		<motion.div
 			animate={{ height }}
 			transition={{
-				duration: 0.7,
+				duration: 0.35,
 				ease: [0.22, 1, 0.36, 1],
 			}}
 			style={{ overflow: "hidden" }}
@@ -1393,7 +1399,7 @@ const AnimatedHeightWrapper: FC<{
 						animate={{ opacity: 1 }}
 						exit={{ opacity: 0 }}
 						transition={{
-							opacity: { duration: 0.12, ease: "linear" },
+							opacity: { duration: 0.14, ease: "linear" },
 						}}
 					>
 						{children}
@@ -1408,32 +1414,29 @@ const SpeedItem: FC<{
 	icon: ReactNode;
 	label: string;
 	value: string;
-}> = ({ icon, label, value }) => {
-	return (
-		<Flex align="center" justify="space-between" gap={3}>
-			<HStack spacing={2.5} color="panel.textMuted">
-				<Flex w="28px" h="28px" align="center" justify="center" borderRadius="8px" bg="panel.elevated" flexShrink={0}>
-					{icon}
-				</Flex>
-				<Text fontSize="13px" fontWeight="600" color="panel.textSecondary">
-					{label}
-				</Text>
-			</HStack>
-			<Text
-				fontSize="13px"
-				fontWeight="700"
-				letterSpacing="-0.01em"
-				color="panel.text"
-				dir="ltr"
-				sx={{ fontVariantNumeric: "tabular-nums", unicodeBidi: "isolate" }}
+}> = ({ icon, label, value }) => (
+	<div className="flex items-center justify-between gap-3">
+		<div className="flex min-w-0 items-center gap-2.5">
+			<span
+				data-rb-icon=""
+				className="flex size-7 shrink-0 items-center justify-center rounded-[10px] bg-panel-elevated text-panel-text-secondary"
 			>
-				{value}
-			</Text>
-		</Flex>
-	);
-};
+				{icon}
+			</span>
+			<p className="truncate text-[13px] font-semibold text-panel-text-secondary">
+				{label}
+			</p>
+		</div>
+		<p
+			dir="ltr"
+			className="shrink-0 text-[13px] font-bold tracking-[-0.01em] text-panel-text tabular-nums [unicode-bidi:isolate]"
+		>
+			{value}
+		</p>
+	</div>
+);
 
-export const Statistics: FC<BoxProps> = (props) => {
+export const Statistics: FC<ComponentPropsWithoutRef<"div">> = (props) => {
 	const { version } = useDashboard();
 	const { userData } = useGetUser();
 	const { t, i18n } = useTranslation();
@@ -1442,1074 +1445,718 @@ export const Statistics: FC<BoxProps> = (props) => {
 	const { data: rawSystemData } = useQuery<SystemStats>({
 		queryKey: StatisticsQueryKey,
 		queryFn: () => fetch("/system"),
-		onSuccess: (stats) => {
-			const currentVersion = stats?.version;
-			if (currentVersion && version !== currentVersion) {
-				useDashboard.setState({ version: currentVersion });
-			}
-		},
 	});
 
-	const { data: maintenanceInfo } = useQuery<MaintenanceInfo>(
-		["dashboard-maintenance-info"],
-		() => fetch<MaintenanceInfo>("/maintenance/info", { timeout: 8000 }),
-		{
-			refetchOnWindowFocus: false,
-			staleTime: 5 * 60 * 1000,
-			retry: false,
-		},
-	);
+	const fetchedVersion = rawSystemData?.version;
+	useEffect(() => {
+		if (fetchedVersion && version !== fetchedVersion) {
+			useDashboard.setState({ version: fetchedVersion });
+		}
+	}, [fetchedVersion, version]);
 
-	const { data: myUsersData } = useQuery<UsersListResponse>(
-		["dashboard-my-users-stats", userData.username],
-		() =>
+	const { data: maintenanceInfo } = useQuery<MaintenanceInfo>({
+		queryKey: ["dashboard-maintenance-info"],
+		queryFn: () =>
+			fetch<MaintenanceInfo>("/maintenance/info", { timeout: 8000 }),
+		refetchOnWindowFocus: false,
+		staleTime: 5 * 60 * 1000,
+		retry: false,
+	});
+
+	const { data: myUsersData } = useQuery<UsersListResponse>({
+		queryKey: ["dashboard-my-users-stats", userData.username],
+		queryFn: () =>
 			fetch<UsersListResponse>("/users", {
 				query: { admin: userData.username, limit: 1000 },
 			}),
-		{
-			enabled: Boolean(userData.username),
-			staleTime: 10_000,
-			refetchInterval: 15_000,
-		},
-	);
+		enabled: Boolean(userData.username),
+		staleTime: 10_000,
+		refetchInterval: 15_000,
+	});
 
-	const systemData = useMemo(() => sanitizeSystemStats(rawSystemData), [rawSystemData]);
+	const systemData = useMemo(
+		() => sanitizeSystemStats(rawSystemData),
+		[rawSystemData],
+	);
 	useSystemMetricsStream(true);
 
-	useEffect(() => {
-		if (systemData?.version && version !== systemData.version) {
-			useDashboard.setState({ version: systemData.version });
-		}
-	}, [systemData?.version, version]);
-
-	const [historyPayload, setHistoryPayload] = useState<HistoryModalPayload | null>(null);
-	const [historyInterval, setHistoryInterval] = useState(HISTORY_INTERVALS[0].seconds);
-	const [userTab, setUserTab] = useState<"all" | "mine">("all");
-	const [bandwidthScope, setBandwidthScope] = useState<"master" | "total">("total");
-	const { colorMode } = useColorMode();
-
-	const canSeeGlobal = userData.role === AdminRole.Sudo || userData.role === AdminRole.FullAccess;
-	const showTotalBandwidth = canSeeGlobal && bandwidthScope === "total";
-	const diagnosticsQuery = useSystemDiagnostics(canSeeGlobal);
-	const criticalIssues = dashboardDiagnostics(diagnosticsQuery.data || [], diagnosticsQuery.isSuccess ? undefined : systemData || undefined);
-	const hasXrayError = criticalIssues.some((issue) =>
-		issue.resource_type === "node" || issue.resource_type === "node_service" && issue.resource === "xray",
+	const [totalNetworkHistory, setTotalNetworkHistory] = useState(() =>
+		getTotalNetworkHistory(),
 	);
 
-	const openHistory = (payload: HistoryModalPayload) => {
+	useEffect(() => {
+		if (!systemData) return;
+		setTotalNetworkHistory(
+			recordTotalNetworkSample(
+				systemData.total_incoming_bandwidth_speed ?? 0,
+				systemData.total_outgoing_bandwidth_speed ?? 0,
+			),
+		);
+	}, [systemData]);
+
+	const [activeHistoryType, setActiveHistoryType] =
+		useState<HistoryMetricType | null>(null);
+	const [historyInterval, setHistoryInterval] = useState<number>(
+		HISTORY_INTERVALS[0].seconds,
+	);
+	const [userTab, setUserTab] = useState<"all" | "mine">("all");
+	const [bandwidthScope, setBandwidthScope] = useState<BandwidthScope>("total");
+	const [inlineStatusWithTitle, setInlineStatusWithTitle] = useState(false);
+	const overviewHeaderRef = useRef<HTMLDivElement | null>(null);
+	const overviewTitleRef = useRef<HTMLHeadingElement | null>(null);
+	const overviewStatusRef = useRef<HTMLDivElement | null>(null);
+	const overviewControlsRef = useRef<HTMLDivElement | null>(null);
+
+	const canSeeGlobal =
+		userData.role === AdminRole.Sudo || userData.role === AdminRole.FullAccess;
+	const showTotalBandwidth = canSeeGlobal && bandwidthScope === "total";
+	const diagnosticsQuery = useSystemDiagnostics(canSeeGlobal);
+	const criticalIssues = dashboardDiagnostics(
+		diagnosticsQuery.data || [],
+		diagnosticsQuery.isSuccess ? undefined : systemData || undefined,
+	);
+	const hasXrayError = criticalIssues.some(
+		(issue) =>
+			issue.resource_type === "node" ||
+			(issue.resource_type === "node_service" && issue.resource === "xray"),
+	);
+
+	const checkOverviewHeaderFit = useCallback(() => {
+		const rowEl = overviewHeaderRef.current;
+		const titleEl = overviewTitleRef.current;
+		const statusEl = overviewStatusRef.current;
+		const controlsEl = overviewControlsRef.current;
+		if (!rowEl || !titleEl || !statusEl) return;
+		const innerWidth = Math.max(0, rowEl.clientWidth - 8);
+		const titleWidth = Math.ceil(titleEl.scrollWidth);
+		const statusWrapped = statusEl.offsetHeight > 24;
+		const statusWidth = Math.ceil(statusEl.scrollWidth);
+		const controlsWidth = controlsEl ? controlsEl.offsetWidth : 0;
+		const isMobileViewport =
+			typeof window !== "undefined" && window.innerWidth <= 768;
+		const buttonsWrapped =
+			controlsWidth > 0 &&
+			(isMobileViewport ||
+				Math.max(titleWidth, statusWidth) + 12 + controlsWidth > innerWidth);
+		const canShareTopRow =
+			!statusWrapped && titleWidth + 16 + statusWidth <= innerWidth;
+		const nextInline = buttonsWrapped && canShareTopRow;
+		setInlineStatusWithTitle((prev) =>
+			prev !== nextInline ? nextInline : prev,
+		);
+	}, []);
+
+	useLayoutEffect(() => {
+		checkOverviewHeaderFit();
+		const rowEl = overviewHeaderRef.current;
+		if (!rowEl || typeof ResizeObserver === "undefined") return;
+		const observer = new ResizeObserver(checkOverviewHeaderFit);
+		observer.observe(rowEl);
+		if (overviewTitleRef.current) {
+			observer.observe(overviewTitleRef.current);
+		}
+		if (overviewStatusRef.current) {
+			observer.observe(overviewStatusRef.current);
+		}
+		if (overviewControlsRef.current) {
+			observer.observe(overviewControlsRef.current);
+		}
+		return () => observer.disconnect();
+	}, [checkOverviewHeaderFit]);
+
+	const openHistory = (type: HistoryMetricType) => {
 		setHistoryInterval(HISTORY_INTERVALS[0].seconds);
-		setHistoryPayload(payload);
+		setActiveHistoryType(type);
 	};
+
+	const activeHistoryPayload = useMemo<HistoryModalPayload | null>(() => {
+		if (!activeHistoryType || !systemData) return null;
+		switch (activeHistoryType) {
+			case "cpu":
+				return {
+					type: "cpu",
+					title: t("dashboard.system.cpuUsage"),
+					metricLabel: t("dashboard.system.cpuUsage"),
+					entries: systemData.cpu_history,
+				};
+			case "memory":
+				return {
+					type: "memory",
+					title: t("dashboard.system.memoryUsage"),
+					metricLabel: t("dashboard.system.memoryUsage"),
+					entries: systemData.memory_history,
+				};
+			case "network":
+				return {
+					type: "network",
+					title: t("dashboard.system.bandwidthSpeed"),
+					networkEntries: showTotalBandwidth
+						? totalNetworkHistory
+						: systemData.network_history,
+				};
+			case "panel":
+				return {
+					type: "panel",
+					title: t("dashboard.system.panelUsage"),
+					cpuEntries: systemData.panel_cpu_history,
+					memoryEntries: systemData.panel_memory_history,
+				};
+		}
+	}, [
+		activeHistoryType,
+		showTotalBandwidth,
+		systemData,
+		t,
+		totalNetworkHistory,
+	]);
 
 	if (!systemData) {
 		return (
-			<Stack
-				spacing={{ base: 4, md: 5 }}
-				w="full"
+			<div
 				dir={isRTL ? "rtl" : "ltr"}
-				sx={{
-					"@keyframes shimmer": {
-						"0%": { opacity: 0.35 },
-						"50%": { opacity: 0.75 },
-						"100%": { opacity: 0.35 },
-					},
-					"& .shimmer-box": {
-						animation: "shimmer 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite",
-					},
-				}}
+				className="flex w-full flex-col gap-4 min-[769px]:gap-5"
 			>
-				{canSeeGlobal && <SystemDiagnostics issues={criticalIssues} criticalOnly />}
-				<Flex
-					align="center"
-					justify="space-between"
-					px={1}
-					flexWrap="wrap"
-					gap={3}
-					sx={{
-						"@media screen and (max-width: 767px)": {
-							"& > div:last-child": {
-								width: "100%",
-								justifyContent: "flex-start",
-							},
-						},
-					}}
-				>
-					<Flex
-						wrap="wrap"
-						gap={{ base: 2.5, md: 1 }}
-						sx={{
-							flexDirection: "column",
-							alignItems: "flex-start",
-							"@media screen and (max-width: 767px)": {
-								flexDirection: "row",
-								alignItems: "center",
-							},
-							"@media screen and (min-width: 768px) and (max-width: 991px)": {
-								"body:has([data-sidebar-collapsed='true']) &": {
-									flexDirection: "row",
-									alignItems: "center",
-								},
-								"body:not(:has([data-sidebar-collapsed='true'])) &": {
-									flexDirection: "column",
-									alignItems: "flex-start",
-								},
-							},
-							"@media screen and (min-width: 992px)": {
-								flexDirection: "column",
-								alignItems: "flex-start",
-							},
-						}}
-					>
-						<Box className="shimmer-box" w={{ base: "140px", sm: "170px" }} h="24px" bg="panel.surface" borderRadius="8px" borderWidth="1px" borderColor="panel.border" />
-						<HStack spacing={1.5}>
-							<Box className="shimmer-box" w="65px" h="18px" bg="panel.surface" borderRadius="full" borderWidth="1px" borderColor="panel.border" />
-							<Box className="shimmer-box" w="85px" h="18px" bg="panel.surface" borderRadius="full" borderWidth="1px" borderColor="panel.border" />
-							<Box className="shimmer-box" w="75px" h="18px" bg="panel.surface" borderRadius="full" borderWidth="1px" borderColor="panel.border" />
-						</HStack>
-					</Flex>
-					<Box w={{ base: "full", sm: "auto" }} flexShrink={0}>
-						<HStack display={{ base: "none", sm: "flex" }} spacing={2} align="center" justify="flex-end">
-							<Box className="shimmer-box" w="118px" h="32px" bg="panel.surface" borderRadius="full" borderWidth="1px" borderColor="panel.border" />
-							<Box className="shimmer-box" w="100px" h="32px" bg="panel.surface" borderRadius="full" borderWidth="1px" borderColor="panel.border" />
-							<Box className="shimmer-box" w="114px" h="32px" bg="panel.surface" borderRadius="full" borderWidth="1px" borderColor="panel.border" />
-						</HStack>
-						<Stack display={{ base: "flex", sm: "none" }} spacing={2} w="full">
-							<Box className="shimmer-box" w="full" h="32px" bg="panel.surface" borderRadius="full" borderWidth="1px" borderColor="panel.border" />
-							<Flex gap={2} w="full" align="center">
-								<Box className="shimmer-box" flex="1 1 50%" h="32px" bg="panel.surface" borderRadius="full" borderWidth="1px" borderColor="panel.border" />
-								<Box className="shimmer-box" flex="1 1 50%" h="32px" bg="panel.surface" borderRadius="full" borderWidth="1px" borderColor="panel.border" />
-							</Flex>
-						</Stack>
-					</Box>
-				</Flex>
-
-				<SimpleGrid
-					columns={{ base: 1, sm: 2, xl: 4 }}
-					gap={{ base: 3, md: 4 }}
-					sx={{
-						"@media screen and (min-width: 768px) and (max-width: 910px)": {
-							"body:not(:has([data-sidebar-collapsed='true'])) &": {
-								gridTemplateColumns: "1fr !important",
-							},
-						},
-					}}
-				>
-					{[1, 2, 3, 4].map((i) => (
-						<Box
-							key={i}
-							className="shimmer-box"
-							bg="panel.surface"
-							borderRadius="20px"
-							borderWidth="1px"
-							borderColor="panel.border"
-							p={{ base: 4, sm: 5 }}
-							display="flex"
-							flexDirection="column"
-							justifyContent="space-between"
-							boxShadow="inset 0 1px 1px 0 rgba(255, 255, 255, 0.05), 0 8px 24px -6px rgba(0, 0, 0, 0.12)"
-						>
-							<Box>
-								<Flex justify="space-between" align="center" mb={3}>
-									<HStack spacing={2.5} align="center">
-										<Box w="32px" h="32px" borderRadius="9px" bg="panel.elevated" flexShrink={0} />
-										<Box w="90px" h="16px" borderRadius="md" bg="panel.elevated" />
-									</HStack>
-									{i <= 2 && <Box w="75px" h="22px" borderRadius="full" bg="panel.elevated" />}
-								</Flex>
-								<Flex align="baseline" gap={1.5} mb={1}>
-									<Box w="65px" h="24px" borderRadius="md" bg="panel.elevated" />
-									<Box w={i === 1 ? "45px" : "60px"} h="16px" borderRadius="md" bg="panel.elevated" />
-								</Flex>
-								{i === 1 && (
-									<Box mt={0.5}>
-										<Box w="150px" h="14px" borderRadius="md" bg="panel.elevated" />
-									</Box>
-								)}
-							</Box>
-							<Box mt={3}>
-								<Flex justify="space-between" align="center" mb={1.5}>
-									<Box w="35px" h="13px" borderRadius="sm" bg="panel.elevated" />
-								</Flex>
-								<Box w="full" h="4px" borderRadius="full" bg="panel.elevated" />
-								<Flex justify="space-between" align="center" mt={2.5} pt={2.5} borderTopWidth="1px" borderColor="panel.border">
-									<Box w="80px" h="14px" borderRadius="sm" bg="panel.elevated" />
-									<Box w="70px" h="14px" borderRadius="sm" bg="panel.elevated" />
-								</Flex>
-							</Box>
-						</Box>
-					))}
-				</SimpleGrid>
-
-				<SimpleGrid
-					columns={{ base: 1, md: 2 }}
-					gap={{ base: 3, md: 4 }}
-					sx={{
-						"@media screen and (min-width: 768px) and (max-width: 910px)": {
-							"body:not(:has([data-sidebar-collapsed='true'])) &": {
-								gridTemplateColumns: "1fr !important",
-							},
-						},
-					}}
-				>
-					<Box
-						className="shimmer-box"
-						bg="panel.surface"
-						borderRadius="20px"
-						borderWidth="1px"
-						borderColor="panel.border"
-						overflow="hidden"
-						boxShadow="inset 0 1px 1px 0 rgba(255, 255, 255, 0.05), 0 8px 24px -6px rgba(0, 0, 0, 0.12)"
-					>
-						<Flex px={{ base: 4, sm: 5, md: 6 }} py={3.5} justify="space-between" align="center" borderBottomWidth="1px" borderColor="panel.border">
-							<HStack spacing={2.5}>
-								<Box w="26px" h="26px" borderRadius="7px" bg="panel.elevated" />
-								<Box w="110px" h="16px" borderRadius="md" bg="panel.elevated" />
-							</HStack>
-							<Box w="75px" h="22px" borderRadius="full" bg="panel.elevated" />
-						</Flex>
-						<Box p={{ base: 4, sm: 5, md: 6 }}>
-							<Stack spacing={3}>
-								<Flex justify="space-between" align="center" gap={3}>
-									<HStack spacing={2.5}>
-										<Box w="28px" h="28px" borderRadius="8px" bg="panel.elevated" flexShrink={0} />
-										<Box w="85px" h="15px" borderRadius="md" bg="panel.elevated" />
-									</HStack>
-									<Box w="80px" h="16px" borderRadius="md" bg="panel.elevated" />
-								</Flex>
-								<Flex justify="space-between" align="center" gap={3}>
-									<HStack spacing={2.5}>
-										<Box w="28px" h="28px" borderRadius="8px" bg="panel.elevated" flexShrink={0} />
-										<Box w="90px" h="15px" borderRadius="md" bg="panel.elevated" />
-									</HStack>
-									<Box w="80px" h="16px" borderRadius="md" bg="panel.elevated" />
-								</Flex>
-							</Stack>
-						</Box>
-					</Box>
-
-					<Box
-						className="shimmer-box"
-						bg="panel.surface"
-						borderRadius="20px"
-						borderWidth="1px"
-						borderColor="panel.border"
-						overflow="hidden"
-						boxShadow="inset 0 1px 1px 0 rgba(255, 255, 255, 0.05), 0 8px 24px -6px rgba(0, 0, 0, 0.12)"
-					>
-						<Flex px={{ base: 4, sm: 5, md: 6 }} py={3.5} justify="space-between" align="center" borderBottomWidth="1px" borderColor="panel.border">
-							<HStack spacing={2.5}>
-								<Box w="26px" h="26px" borderRadius="7px" bg="panel.elevated" />
-								<Box w="90px" h="16px" borderRadius="md" bg="panel.elevated" />
-							</HStack>
-						</Flex>
-						<Box p={{ base: 4, sm: 5, md: 6 }}>
-							<Stack spacing={3}>
-								<Flex justify="space-between" align="center" gap={3}>
-									<HStack spacing={2.5}>
-										<Box w="28px" h="28px" borderRadius="8px" bg="panel.elevated" flexShrink={0} />
-										<Box w="95px" h="15px" borderRadius="md" bg="panel.elevated" />
-									</HStack>
-									<Box w="110px" h="16px" borderRadius="md" bg="panel.elevated" />
-								</Flex>
-								<Flex justify="space-between" align="center" gap={3}>
-									<HStack spacing={2.5}>
-										<Box w="28px" h="28px" borderRadius="8px" bg="panel.elevated" flexShrink={0} />
-										<Box w="90px" h="15px" borderRadius="md" bg="panel.elevated" />
-									</HStack>
-									<Box w="95px" h="16px" borderRadius="md" bg="panel.elevated" />
-								</Flex>
-							</Stack>
-						</Box>
-					</Box>
-				</SimpleGrid>
-
-				<Box
-					className="shimmer-box"
-					bg="panel.surface"
-					borderRadius="20px"
-					borderWidth="1px"
-					borderColor="panel.border"
-					overflow="hidden"
-					boxShadow="inset 0 1px 1px 0 rgba(255, 255, 255, 0.05), 0 8px 24px -6px rgba(0, 0, 0, 0.12)"
-				>
-					<Flex px={{ base: 4, sm: 5, md: 6 }} py={3.5} justify="space-between" align="center" borderBottomWidth="1px" borderColor="panel.border">
-						<HStack spacing={2.5}>
-							<Box w="26px" h="26px" borderRadius="7px" bg="panel.elevated" />
-							<Box w="110px" h="16px" borderRadius="md" bg="panel.elevated" />
-						</HStack>
-						<Box w="75px" h="22px" borderRadius="full" bg="panel.elevated" />
-					</Flex>
-					<Box p={{ base: 4, sm: 5, md: 6 }}>
-						<SimpleGrid columns={{ base: 1, sm: 2 }} gap={{ base: 3, md: 4 }}>
-							{[1, 2].map((i) => (
-								<Box
-									key={i}
-									bg="panel.surface"
-									borderRadius="20px"
-									borderWidth="1px"
-									borderColor="panel.border"
-									p={{ base: 4, sm: 5 }}
-									display="flex"
-									flexDirection="column"
-									justifyContent="space-between"
-									boxShadow="inset 0 1px 1px 0 rgba(255, 255, 255, 0.05), 0 8px 24px -6px rgba(0, 0, 0, 0.12)"
-								>
-									<Box>
-										<Flex justify="space-between" align="center" mb={3}>
-											<HStack spacing={2.5} align="center">
-												<Box w="32px" h="32px" borderRadius="9px" bg="panel.elevated" flexShrink={0} />
-												<Box w={i === 1 ? "120px" : "130px"} h="16px" borderRadius="md" bg="panel.elevated" />
-											</HStack>
-										</Flex>
-										<Flex align="baseline" gap={1.5} mb={1}>
-											<Box w="55px" h="24px" borderRadius="md" bg="panel.elevated" />
-											<Box w="45px" h="16px" borderRadius="md" bg="panel.elevated" />
-										</Flex>
-									</Box>
-									<Box mt={3}>
-										<Flex justify="space-between" align="center" mb={1.5}>
-											<Box w="32px" h="13px" borderRadius="sm" bg="panel.elevated" />
-										</Flex>
-										<Box w="full" h="4px" borderRadius="full" bg="panel.elevated" />
-										<Flex justify="space-between" align="center" mt={2.5} pt={2.5} borderTopWidth="1px" borderColor="panel.border">
-											<Box w="75px" h="14px" borderRadius="sm" bg="panel.elevated" />
-											<Box w="70px" h="14px" borderRadius="sm" bg="panel.elevated" />
-										</Flex>
-									</Box>
-								</Box>
-							))}
-						</SimpleGrid>
-					</Box>
-				</Box>
-
-				<Box
-					className="shimmer-box"
-					bg="panel.surface"
-					borderRadius="20px"
-					borderWidth="1px"
-					borderColor="panel.border"
-					overflow="hidden"
-					boxShadow="inset 0 1px 1px 0 rgba(255, 255, 255, 0.05), 0 8px 24px -6px rgba(0, 0, 0, 0.12)"
-				>
-					<Flex px={{ base: 4, sm: 5, md: 6 }} py={3.5} justify="space-between" align="center" borderBottomWidth="1px" borderColor="panel.border">
-						<HStack spacing={2.5}>
-							<Box w="26px" h="26px" borderRadius="7px" bg="panel.elevated" />
-							<Box w="90px" h="16px" borderRadius="md" bg="panel.elevated" />
-						</HStack>
-						<HStack spacing={0.5} bg="panel.elevated" p={0.5} borderRadius="8px">
-							<Box w="65px" h="22px" borderRadius="6px" bg="panel.surface" />
-							<Box w="60px" h="22px" borderRadius="6px" bg="transparent" />
-						</HStack>
-					</Flex>
-					<Box p={{ base: 4, sm: 5, md: 6 }}>
-						<Stack spacing={0}>
-							{[
-								{ id: "skel-u-total", hasTag: false, hasHelper: false, labelW: "55px", valW: "35px" },
-								{ id: "skel-u-active", hasTag: true, hasHelper: false, labelW: "55px", valW: "35px" },
-								{ id: "skel-u-online", hasTag: true, hasHelper: true, labelW: "55px", valW: "35px" },
-								{ id: "skel-u-onhold", hasTag: false, hasHelper: false, labelW: "65px", valW: "30px" },
-								{ id: "skel-u-limited", hasTag: false, hasHelper: false, labelW: "70px", valW: "30px" },
-								{ id: "skel-u-expired", hasTag: false, hasHelper: false, labelW: "75px", valW: "30px" },
-							].map((row, idx) => (
-								<Flex
-									key={row.id}
-									justify="space-between"
-									align="center"
-									py={2.5}
-									borderBottomWidth={idx === 5 ? "0" : "1px"}
-									borderColor="panel.border"
-								>
-									<HStack spacing={3} minW={0}>
-										<Box w="7px" h="7px" borderRadius="full" bg="panel.elevated" me="3px" flexShrink={0} />
-										<Box w={row.labelW} h="14px" borderRadius="md" bg="panel.elevated" />
-										{row.hasTag && <Box w="36px" h="18px" borderRadius="md" bg="panel.elevated" />}
-									</HStack>
-									<VStack align="flex-end" spacing={0.5} flexShrink={0}>
-										<Box w={row.valW} h="16px" borderRadius="md" bg="panel.elevated" />
-										{row.hasHelper && <Box w="100px" h="12px" borderRadius="sm" bg="panel.elevated" mt={0.5} />}
-									</VStack>
-								</Flex>
-							))}
-						</Stack>
-					</Box>
-				</Box>
-
 				{canSeeGlobal && (
-					<Box
-						className="shimmer-box"
-						bg="panel.surface"
-						borderRadius="20px"
-						borderWidth="1px"
-						borderColor="panel.border"
-						overflow="hidden"
-						boxShadow="inset 0 1px 1px 0 rgba(255, 255, 255, 0.05), 0 8px 24px -6px rgba(0, 0, 0, 0.12)"
-					>
-						<Flex px={{ base: 4, sm: 5, md: 6 }} py={3.5} justify="space-between" align="center" borderBottomWidth="1px" borderColor="panel.border">
-							<HStack spacing={2.5}>
-								<Box w="26px" h="26px" borderRadius="7px" bg="panel.elevated" />
-								<Box w="85px" h="16px" borderRadius="md" bg="panel.elevated" />
-							</HStack>
-						</Flex>
-						<Box p={{ base: 4, sm: 5, md: 6 }}>
-							<Stack spacing={0}>
-								{[
-									{ id: "skel-a-total", labelW: "75px", valW: "40px" },
-									{ id: "skel-a-full", labelW: "85px", valW: "40px" },
-									{ id: "skel-a-sudo", labelW: "65px", valW: "40px" },
-									{ id: "skel-a-standard", labelW: "80px", valW: "40px" },
-									{ id: "skel-a-top", labelW: "75px", valW: "120px" },
-								].map((row, idx) => (
-									<Flex
-										key={row.id}
-										justify="space-between"
-										align="center"
-										py={2.5}
-										borderBottomWidth={idx === 4 ? "0" : "1px"}
-										borderColor="panel.border"
-									>
-										<HStack spacing={3} minW={0}>
-											<Box w="7px" h="7px" borderRadius="full" bg="panel.elevated" me="3px" flexShrink={0} />
-											<Box w={row.labelW} h="14px" borderRadius="md" bg="panel.elevated" />
-										</HStack>
-										<Box w={row.valW} h="16px" borderRadius="md" bg="panel.elevated" />
-									</Flex>
-								))}
-							</Stack>
-						</Box>
-					</Box>
+					<SystemDiagnostics issues={criticalIssues} criticalOnly />
 				)}
-			</Stack>
+				<PageLoadingSkeleton
+					variant="dashboard"
+					canSeeGlobal={canSeeGlobal}
+					isRTL={isRTL}
+				/>
+			</div>
 		);
 	}
 
 	const activePercent =
 		systemData.total_user > 0
-			? formatPercent((systemData.users_active / systemData.total_user) * 100, isRTL)
-			: formatPercent(0, isRTL);
+			? formatPercent((systemData.users_active / systemData.total_user) * 100)
+			: formatPercent(0);
 	const onlinePercent =
 		systemData.total_user > 0
-			? formatPercent((systemData.online_users / systemData.total_user) * 100, isRTL)
-			: formatPercent(0, isRTL);
+			? formatPercent((systemData.online_users / systemData.total_user) * 100)
+			: formatPercent(0);
 
-	const myTotalUsers = myUsersData?.total ?? systemData.personal_usage?.total_users ?? 0;
-	const myActiveUsers = myUsersData?.active_total ?? myUsersData?.status_breakdown?.active ?? myTotalUsers;
+	const myTotalUsers =
+		myUsersData?.total ?? systemData.personal_usage?.total_users ?? 0;
+	const myActiveUsers =
+		myUsersData?.active_total ??
+		myUsersData?.status_breakdown?.active ??
+		myTotalUsers;
 	const myOnlineUsers = myUsersData?.online_total ?? 0;
 
 	const myActivePercent =
 		myTotalUsers > 0
-			? formatPercent((myActiveUsers / myTotalUsers) * 100, isRTL)
-			: formatPercent(0, isRTL);
+			? formatPercent((myActiveUsers / myTotalUsers) * 100)
+			: formatPercent(0);
 	const myOnlinePercent =
 		myTotalUsers > 0
-			? formatPercent((myOnlineUsers / myTotalUsers) * 100, isRTL)
-			: formatPercent(0, isRTL);
+			? formatPercent((myOnlineUsers / myTotalUsers) * 100)
+			: formatPercent(0);
 
 	const myUsersList = myUsersData?.users ?? [];
-	const myOnHoldUsers = myUsersData?.status_breakdown?.on_hold ?? myUsersList.filter((u) => u.status === "on_hold").length;
-	const myLimitedUsers = myUsersData?.status_breakdown?.limited ?? myUsersList.filter((u) => u.status === "limited").length;
-	const myExpiredUsers = myUsersData?.status_breakdown?.expired ?? myUsersList.filter((u) => u.status === "expired").length;
-	const myOnlineUploadSpeed = myUsersList.reduce((sum, u) => sum + (Number(u.upload_speed) || 0), 0);
-	const myOnlineDownloadSpeed = myUsersList.reduce((sum, u) => sum + (Number(u.download_speed) || 0), 0);
-	const myActiveUsersUsedTraffic = myUsersList.reduce((sum, u) => sum + (Number(u.used_traffic) || 0), 0);
+	const myOnHoldUsers =
+		myUsersData?.status_breakdown?.on_hold ??
+		myUsersList.filter((u) => u.status === "on_hold").length;
+	const myLimitedUsers =
+		myUsersData?.status_breakdown?.limited ??
+		myUsersList.filter((u) => u.status === "limited").length;
+	const myExpiredUsers =
+		myUsersData?.status_breakdown?.expired ??
+		myUsersList.filter((u) => u.status === "expired").length;
+	const myOnlineUploadSpeed = myUsersList.reduce(
+		(sum, u) => sum + (Number(u.upload_speed) || 0),
+		0,
+	);
+	const myOnlineDownloadSpeed = myUsersList.reduce(
+		(sum, u) => sum + (Number(u.download_speed) || 0),
+		0,
+	);
+	const myActiveUsersUsedTraffic = myUsersList.reduce(
+		(sum, u) => sum + (Number(u.used_traffic) || 0),
+		0,
+	);
 
 	const panelInfo = maintenanceInfo?.panel;
 	const exactVersion =
 		panelInfo?.tag ||
 		panelInfo?.update?.current ||
-		(systemData.channel?.toLowerCase() === "dev" ? "dev" : systemData.version) ||
+		(systemData.channel?.toLowerCase() === "dev"
+			? "dev"
+			: systemData.version) ||
 		"-";
 
+	const isHealthy = systemData.xray_running && !hasXrayError;
+
 	return (
-		<Stack
-			spacing={{ base: 4, md: 5 }}
-			w="full"
+		<div
 			dir={isRTL ? "rtl" : "ltr"}
 			{...props}
+			className="flex w-full flex-col gap-4 min-[769px]:gap-5"
 		>
-			{canSeeGlobal && <SystemDiagnostics issues={criticalIssues} criticalOnly />}
-			<Flex align="center" justify="space-between" flexWrap="wrap" gap={3} px={1}>
-				<Flex
-					wrap="wrap"
-					gap={{ base: 2.5, md: 1 }}
-					sx={{
-						flexDirection: "column",
-						alignItems: "flex-start",
-						"@media screen and (max-width: 767px)": {
-							flexDirection: "row",
-							alignItems: "center",
-						},
-						"@media screen and (min-width: 768px) and (max-width: 991px)": {
-							"body:has([data-sidebar-collapsed='true']) &": {
-								flexDirection: "row",
-								alignItems: "center",
-							},
-							"body:not(:has([data-sidebar-collapsed='true'])) &": {
-								flexDirection: "column",
-								alignItems: "flex-start",
-							},
-						},
-						"@media screen and (min-width: 992px)": {
-							flexDirection: "column",
-							alignItems: "flex-start",
-						},
-					}}
+			{canSeeGlobal && (
+				<SystemDiagnostics issues={criticalIssues} criticalOnly />
+			)}
+
+			<div
+				ref={overviewHeaderRef}
+				className="rb-dashboard-header flex flex-wrap items-center justify-between gap-3 px-1"
+			>
+				<div
+					className={cn(
+						"rb-dashboard-header-meta flex min-w-0",
+						inlineStatusWithTitle
+							? "w-full flex-row items-center justify-start gap-3"
+							: "flex-col items-start gap-1.5",
+					)}
 				>
-					<Text fontSize={{ base: "18px", md: "20px" }} fontWeight="700" color="panel.text" letterSpacing="-0.02em">
+					<h1
+						ref={overviewTitleRef}
+						className="shrink-0 text-[18px] font-bold tracking-[-0.02em] whitespace-nowrap text-panel-text min-[769px]:text-[20px]"
+					>
 						{t("dashboard.system.overview")}
-					</Text>
-					<Flex align="center" gap={2} direction="row">
-						<Box
-							w="7px"
-							h="7px"
-							borderRadius="full"
-							bg={systemData.xray_running && !hasXrayError ? "#22c55e" : "#ef4444"}
-							sx={{
-								animation: systemData.xray_running && !hasXrayError ? "livePulse 3.5s ease-in-out infinite" : "none",
-								boxShadow: systemData.xray_running && !hasXrayError
+					</h1>
+					<div
+						ref={overviewStatusRef}
+						className={cn(
+							"flex items-center gap-2",
+							inlineStatusWithTitle
+								? "shrink-0 pt-[2px] whitespace-nowrap"
+								: "flex-wrap",
+						)}
+					>
+						<span
+							style={{
+								animation: isHealthy
+									? "livePulse 3.5s ease-in-out infinite"
+									: "none",
+								boxShadow: isHealthy
 									? "0 0 5px rgba(34, 197, 94, 0.4)"
 									: "0 0 5px rgba(239, 68, 68, 0.4)",
-								"@keyframes livePulse": {
-									"0%, 100%": { opacity: 0.65, transform: "scale(1)" },
-									"50%": { opacity: 1, transform: "scale(1.08)", boxShadow: "0 0 8px rgba(34, 197, 94, 0.6)" },
-								},
 							}}
+							className={cn(
+								"size-[7px] shrink-0 rounded-full",
+								isHealthy ? "bg-[#22c55e]" : "bg-[#ef4444]",
+							)}
 						/>
-						<Text fontSize="12px" color="panel.textSecondary" fontWeight="600">
-							{hasXrayError ? t("diagnostics.statusError") : systemData.xray_running ? t("dashboard.system.statusRunning") : t("dashboard.system.statusStopped")}
-						</Text>
-						{systemData.os && (
-							<HStack spacing={1.5} align="center" color="panel.textSecondary" fontSize="12px" fontWeight="600">
-								<Text as="span">·</Text>
-								<Text as="span" dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-									{systemData.os}
-								</Text>
-							</HStack>
-						)}
-						{exactVersion && exactVersion !== "-" && (
-							<HStack spacing={1.5} align="center" color="panel.textSecondary" fontSize="12px" fontWeight="600">
-								<Text as="span">·</Text>
-								<Text as="span" dir="ltr" sx={{ unicodeBidi: "isolate" }}>
-									{exactVersion}
-								</Text>
-							</HStack>
-						)}
-					</Flex>
-				</Flex>
-				<DashboardMaintenanceControls channel={systemData.channel} version={systemData.version} />
-			</Flex>
+						<span className="text-[12px] font-semibold text-panel-text-secondary">
+							{hasXrayError
+								? t("diagnostics.statusError")
+								: systemData.xray_running
+									? t("dashboard.system.statusRunning")
+									: t("dashboard.system.statusStopped")}
+						</span>
 
-			<SimpleGrid
-				columns={{ base: 1, sm: 2, xl: 4 }}
-				gap={{ base: 3, md: 4 }}
-				sx={{
-					"@media screen and (min-width: 768px) and (max-width: 910px)": {
-						"body:not(:has([data-sidebar-collapsed='true'])) &": {
-							gridTemplateColumns: "1fr !important",
-						},
-					},
-				}}
-			>
+						{systemData.os && (
+							<span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-panel-text-secondary">
+								<span>·</span>
+								<span dir="ltr" className="[unicode-bidi:isolate]">
+									{systemData.os}
+								</span>
+							</span>
+						)}
+
+						{exactVersion && exactVersion !== "-" && (
+							<span className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-panel-text-secondary tabular-nums">
+								<span>·</span>
+								<span dir="ltr" className="[unicode-bidi:isolate]">
+									{exactVersion}
+								</span>
+							</span>
+						)}
+					</div>
+				</div>
+
+				<div
+					ref={overviewControlsRef}
+					className="w-full min-[769px]:w-auto shrink-0"
+				>
+					<DashboardMaintenanceControls
+						channel={systemData.channel}
+						version={systemData.version}
+					/>
+				</div>
+			</div>
+
+			<div className="rb-dashboard-grid-guard grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 xl:grid-cols-4 min-[769px]:gap-4">
 				<ResourceCard
 					label={t("dashboard.system.cpuUsage")}
-					icon={<CpuChipIcon width={16} />}
-					value={formatPercent(systemData.cpu_usage, false)}
+					icon={<Cpu className="size-4" />}
+					value={formatPercent(systemData.cpu_usage)}
 					percent={systemData.cpu_usage}
 					metaValue={formatNumberValue(systemData.cpu_cores)}
 					metaUnit={t("dashboard.system.core")}
 					subMeta={
 						systemData.load_avg && systemData.load_avg.length >= 3 ? (
-							<Flex
-								align="center"
-								gap={1.5}
-								fontSize="11px"
-								fontWeight="500"
-								color="panel.textMuted"
+							<div
 								dir={isRTL ? "rtl" : "ltr"}
+								className="flex items-center gap-1.5 text-[11px] font-medium text-panel-text-muted"
 							>
-								<Text as="span">{t("loadAverage")}:</Text>
-								<Text
-									as="span"
+								<span>{t("loadAverage")}:</span>
+								<span
 									dir="ltr"
-									sx={{ fontVariantNumeric: "tabular-nums", unicodeBidi: "isolate" }}
+									className="tabular-nums [unicode-bidi:isolate]"
 								>
-									{systemData.load_avg.slice(0, 3).map((v) => v.toFixed(2)).join(" · ")}
-								</Text>
-							</Flex>
+									{systemData.load_avg
+										.slice(0, 3)
+										.map((v) => v.toFixed(2))
+										.join(" · ")}
+								</span>
+							</div>
 						) : undefined
 					}
-					footerLeft={`${t("dashboard.system.average")}: ${formatPercent(average(systemData.cpu_history.map((e) => e.value)), isRTL)}`}
-					footerRight={`${t("dashboard.system.peak")}: ${formatPercent(peak(systemData.cpu_history.map((e) => e.value)), isRTL)}`}
+					footerLeft={`${t("dashboard.system.average")}: ${formatPercent(average(systemData.cpu_history.map((e) => e.value)))}`}
+					footerRight={`${t("dashboard.system.peak")}: ${formatPercent(peak(systemData.cpu_history.map((e) => e.value)))}`}
 					historyLabel={t("dashboard.system.viewHistory")}
 					isRTL={isRTL}
-					onHistory={() =>
-						openHistory({
-							type: "cpu",
-							title: t("dashboard.system.cpuUsage"),
-							metricLabel: t("dashboard.system.cpuUsage"),
-							entries: systemData.cpu_history,
-						})
-					}
+					onHistory={() => openHistory("cpu")}
 				/>
 				<ResourceCard
 					label={t("dashboard.system.memoryUsage")}
-					icon={<ServerStackIcon width={16} />}
+					icon={<Server className="size-4" />}
 					value={formatBytes(systemData.memory.current, 1)}
 					totalValue={formatBytes(systemData.memory.total, 1)}
 					percent={systemData.memory.percent}
-					footerLeft={`${t("dashboard.system.average")}: ${formatPercent(average(systemData.memory_history.map((e) => e.value)), isRTL)}`}
-					footerRight={`${t("dashboard.system.peak")}: ${formatPercent(peak(systemData.memory_history.map((e) => e.value)), isRTL)}`}
+					footerLeft={`${t("dashboard.system.average")}: ${formatPercent(average(systemData.memory_history.map((e) => e.value)))}`}
+					footerRight={`${t("dashboard.system.peak")}: ${formatPercent(peak(systemData.memory_history.map((e) => e.value)))}`}
 					historyLabel={t("dashboard.system.viewHistory")}
 					isRTL={isRTL}
-					onHistory={() =>
-						openHistory({
-							type: "memory",
-							title: t("dashboard.system.memoryUsage"),
-							metricLabel: t("dashboard.system.memoryUsage"),
-							entries: systemData.memory_history,
-						})
-					}
+					onHistory={() => openHistory("memory")}
 				/>
 				<ResourceCard
 					label={t("dashboard.system.swapUsage")}
-					icon={<CircleStackIcon width={16} />}
+					icon={<Database className="size-4" />}
 					value={formatBytes(systemData.swap.current, 1)}
 					totalValue={formatBytes(systemData.swap.total, 1)}
 					percent={systemData.swap.percent}
-					footerLeft={`${t("dashboard.system.average")}: ${formatPercent(average(systemData.swap_history.map((e) => e.value)), isRTL)}`}
-					footerRight={`${t("dashboard.system.peak")}: ${formatPercent(peak(systemData.swap_history.map((e) => e.value)), isRTL)}`}
+					footerLeft={`${t("dashboard.system.average")}: ${formatPercent(average(systemData.swap_history.map((e) => e.value)))}`}
+					footerRight={`${t("dashboard.system.peak")}: ${formatPercent(peak(systemData.swap_history.map((e) => e.value)))}`}
 					isRTL={isRTL}
 				/>
 				<ResourceCard
 					label={t("dashboard.system.diskUsage")}
-					icon={<CircleStackIcon width={16} />}
+					icon={<HardDrive className="size-4" />}
 					value={formatBytes(systemData.disk.current, 1)}
 					totalValue={formatBytes(systemData.disk.total, 1)}
 					percent={systemData.disk.percent}
 					footerLeft={`${t("dashboard.system.free")}: ${formatBytes(Math.max(0, systemData.disk.total - systemData.disk.current), 1)}`}
-					footerRight={`${t("dashboard.system.average")}: ${formatPercent(average(systemData.disk_history.map((e) => e.value)), isRTL)}`}
+					footerRight={`${t("dashboard.system.average")}: ${formatPercent(average(systemData.disk_history.map((e) => e.value)))}`}
 					isRTL={isRTL}
 				/>
-			</SimpleGrid>
+			</div>
 
-			<SimpleGrid
-				columns={{ base: 1, md: 2 }}
-				gap={{ base: 3, md: 4 }}
-				sx={{
-					"@media screen and (min-width: 768px) and (max-width: 910px)": {
-						"body:not(:has([data-sidebar-collapsed='true'])) &": {
-							gridTemplateColumns: "1fr !important",
-						},
-					},
-				}}
-			>
+			<div className="rb-dashboard-grid-guard grid grid-cols-1 gap-3 min-[769px]:grid-cols-2 min-[769px]:gap-4">
 				<SectionCard
+					headerClassName="flex-nowrap items-center justify-between gap-2 px-3.5 sm:px-5 min-[769px]:px-6"
 					title={
-						<HStack spacing={2.5}>
-							<Flex w="26px" h="26px" align="center" justify="center" borderRadius="7px" bg="panel.elevated" color="panel.textSecondary">
-								<SignalIcon width={14} />
-							</Flex>
-							<span>{t("dashboard.system.bandwidthSpeed")}</span>
-						</HStack>
+						<div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
+							<span
+								data-rb-icon=""
+								className="flex size-6 shrink-0 items-center justify-center rounded-[8px] bg-panel-elevated text-panel-text-secondary sm:size-7 sm:rounded-[9px]"
+							>
+								<Signal className="size-3.5" />
+							</span>
+							<span className="truncate text-[12px] sm:text-[13px]">
+								{t("dashboard.system.bandwidthSpeed")}
+							</span>
+						</div>
 					}
 					action={
-						<HStack spacing={2}>
-							{canSeeGlobal ? (
-								<HStack spacing={0.5} bg="panel.elevated" p={0.5} borderRadius="8px" position="relative" transition="all 0.25s ease">
-									<Box position="relative">
-										{bandwidthScope === "master" && (
-											<motion.div
-												layoutId="bandwidthScopeTabPill"
-												style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: "6px", backgroundColor: "var(--rb-panel-accent)", border: "1px solid var(--rb-panel-accent)", boxShadow: "0 1px 3px rgba(0,0,0,0.12)", zIndex: 1 }}
-												transition={{ type: "tween", ease: "easeInOut", duration: 0.25 }}
-											/>
-										)}
-										<Button
-											size="xs"
-											h="22px"
-											px={2.5}
-											borderRadius="6px"
-											fontSize="11px"
-											fontWeight="600"
-											variant="ghost"
-											bg="transparent !important"
-											color={bandwidthScope === "master" ? "white" : "panel.text"}
-											position="relative"
-											zIndex={2}
-											transition="all 0.2s ease"
-											_focusVisible={{ outline: "2px solid var(--rb-panel-accent)", outlineOffset: "2px" }}
-											onClick={() => setBandwidthScope("master")}
-										>
-											{t("dashboard.system.bandwidthScope.master")}
-										</Button>
-									</Box>
-									<Box position="relative">
-										{bandwidthScope === "total" && (
-											<motion.div
-												layoutId="bandwidthScopeTabPill"
-												style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, borderRadius: "6px", backgroundColor: "var(--rb-panel-accent)", border: "1px solid var(--rb-panel-accent)", boxShadow: "0 1px 3px rgba(0,0,0,0.12)", zIndex: 1 }}
-												transition={{ type: "tween", ease: "easeInOut", duration: 0.25 }}
-											/>
-										)}
-										<Button
-											size="xs"
-											h="22px"
-											px={2.5}
-											borderRadius="6px"
-											fontSize="11px"
-											fontWeight="600"
-											variant="ghost"
-											bg="transparent !important"
-											color={bandwidthScope === "total" ? "white" : "panel.text"}
-											position="relative"
-											zIndex={2}
-											transition="all 0.2s ease"
-											_focusVisible={{ outline: "2px solid var(--rb-panel-accent)", outlineOffset: "2px" }}
-											onClick={() => setBandwidthScope("total")}
-											title={t("dashboard.system.bandwidthScope.totalHint")}
-										>
-											{t("dashboard.system.bandwidthScope.total")}
-										</Button>
-									</Box>
-								</HStack>
-							) : null}
-							{!showTotalBandwidth ? (
-								<Button
-									size="xs"
-									h="22px"
-									px={2.5}
-									fontSize="11px"
-									variant="ghost"
-									borderRadius="full"
-									bg="panel.elevated"
-									color={colorMode === "light" ? "panel.textSecondary" : "panel.textMuted"}
-									fontWeight={colorMode === "light" ? "600" : "500"}
-									transition="all 0.2s ease"
-									_groupHover={{
-										md: {
-											bg: "panel.surface",
-											color: colorMode === "light" ? "panel.text" : "panel.textSecondary",
-										},
-									}}
-									_hover={{
-										md: {
-											bg: "panel.border !important",
-											color: "panel.text !important",
-										},
-									}}
-									_active={{
-										bg: "panel.borderStrong !important",
-									}}
-									_focusVisible={{
-										outline: "2px solid var(--rb-panel-accent)",
-										outlineOffset: "2px",
-									}}
-									position="relative"
-									_after={{
-										content: '""',
-										position: "absolute",
-										top: "-10px",
-										bottom: "-10px",
-										left: "-10px",
-										right: "-10px",
-									}}
-									onClick={() =>
-										openHistory({
-											type: "network",
-											title: t("dashboard.system.bandwidthSpeed"),
-											networkEntries: systemData.network_history,
-										})
-									}
+						<div className="flex shrink-0 flex-nowrap items-center gap-1.5 sm:gap-2">
+							{canSeeGlobal && (
+								<div
+									data-rb-swap=""
+									className="relative flex h-[22px] shrink-0 items-center gap-0.5 rounded-[9px] bg-panel-elevated p-[1.5px]"
 								>
-									{t("dashboard.system.viewHistory")}
-								</Button>
-							) : null}
-						</HStack>
+									{(["master", "total"] as const).map((scope) => {
+										const active = bandwidthScope === scope;
+										return (
+											<div
+												key={scope}
+												className="relative flex h-[19px] items-center"
+											>
+												{active && (
+													<motion.div
+														layoutId="bandwidthScopeTabPill"
+														transition={{
+															type: "tween",
+															ease: [0.16, 1, 0.3, 1],
+															duration: 0.22,
+														}}
+														className="pointer-events-none absolute inset-0 z-[1] rounded-[7px] border border-panel-accent! bg-panel-accent shadow-[0_1px_4px_color-mix(in_srgb,var(--rb-panel-accent)_35%,transparent)]"
+													/>
+												)}
+												<Button
+													type="button"
+													onClick={() => setBandwidthScope(scope)}
+													title={
+														scope === "total"
+															? t("dashboard.system.bandwidthScope.totalHint")
+															: undefined
+													}
+													variant="ghost"
+													size="xs"
+													className={cn(
+														"relative z-[2] h-[19px] min-h-0 rounded-[7px] bg-transparent! px-1.5 text-[10px] font-semibold leading-none transition-colors active:scale-[0.97] sm:px-2 sm:text-[10.5px]",
+														active
+															? "text-white! min-[769px]:hover:text-white!"
+															: "text-panel-text-secondary min-[769px]:hover:text-panel-text",
+													)}
+												>
+													<span
+														className={cn(
+															"inline-flex items-center leading-none",
+															isRTL && "translate-y-[1.5px]",
+														)}
+													>
+														{t(`dashboard.system.bandwidthScope.${scope}`)}
+													</span>
+												</Button>
+											</div>
+										);
+									})}
+								</div>
+							)}
+							<button
+								type="button"
+								onClick={() => openHistory("network")}
+								data-rb-swap=""
+								data-rb-swap-text=""
+								className="relative inline-flex h-[22px] shrink-0 cursor-pointer items-center justify-center rounded-full bg-panel-elevated px-2 text-[10.5px] font-semibold text-panel-text-secondary select-none outline-none transition-transform duration-150 focus-visible:ring-2 focus-visible:ring-panel-accent/50 active:scale-[0.97] sm:px-2.5 sm:text-[11px] after:absolute after:-inset-2.5 after:content-['']"
+							>
+								{t("dashboard.system.viewHistory")}
+							</button>
+						</div>
 					}
 				>
-					<Stack spacing={3}>
+					<div className="flex flex-col gap-3">
 						<SpeedItem
-							icon={<ArrowDownTrayIcon width={13} />}
+							icon={<ArrowDownLeft className="size-3.5" />}
 							label={t("dashboard.system.incomingSpeed")}
 							value={`${formatBytes(showTotalBandwidth ? (systemData.total_incoming_bandwidth_speed ?? 0) : systemData.incoming_bandwidth_speed)}/s`}
 						/>
 						<SpeedItem
-							icon={<ArrowUpTrayIcon width={13} />}
+							icon={<ArrowUpRight className="size-3.5" />}
 							label={t("dashboard.system.outgoingSpeed")}
 							value={`${formatBytes(showTotalBandwidth ? (systemData.total_outgoing_bandwidth_speed ?? 0) : systemData.outgoing_bandwidth_speed)}/s`}
 						/>
-					</Stack>
+					</div>
 				</SectionCard>
 
 				<SectionCard
 					title={
-						<HStack spacing={2.5}>
-							<Flex w="26px" h="26px" align="center" justify="center" borderRadius="7px" bg="panel.elevated" color="panel.textSecondary">
-								<ClockIcon width={14} />
-							</Flex>
+						<div className="flex items-center gap-2.5">
+							<span
+								data-rb-icon=""
+								className="flex size-7 shrink-0 items-center justify-center rounded-[9px] bg-panel-elevated text-panel-text-secondary"
+							>
+								<Clock className="size-3.5" />
+							</span>
 							<span>{t("dashboard.system.uptime")}</span>
-						</HStack>
+						</div>
 					}
 				>
-					<Stack spacing={3}>
-						<Flex align="center" justify="space-between" gap={3}>
-							<HStack spacing={2.5} color="panel.textMuted">
-								<Flex w="28px" h="28px" align="center" justify="center" borderRadius="8px" bg="panel.elevated" flexShrink={0}>
-									<ServerStackIcon width={13} />
-								</Flex>
-								<Text fontSize="13px" fontWeight="600" color="panel.textSecondary">
+					<div className="flex flex-col gap-3">
+						<div className="flex items-center justify-between gap-3">
+							<div className="flex min-w-0 items-center gap-2.5">
+								<span
+									data-rb-icon=""
+									className="flex size-7 shrink-0 items-center justify-center rounded-[10px] bg-panel-elevated text-panel-text-secondary"
+								>
+									<Server className="size-3.5" />
+								</span>
+								<p className="truncate text-[13px] font-semibold text-panel-text-secondary">
 									{t("dashboard.system.systemUptime")}
-								</Text>
-							</HStack>
+								</p>
+							</div>
 							{formatLocalizedDuration(systemData.uptime_seconds, t, isRTL)}
-						</Flex>
-						<Flex align="center" justify="space-between" gap={3}>
-							<HStack spacing={2.5} color="panel.textMuted">
-								<Flex w="28px" h="28px" align="center" justify="center" borderRadius="8px" bg="panel.elevated" flexShrink={0}>
-									<CircleStackIcon width={13} />
-								</Flex>
-								<Text fontSize="13px" fontWeight="600" color="panel.textSecondary">
+						</div>
+						<div className="flex items-center justify-between gap-3">
+							<div className="flex min-w-0 items-center gap-2.5">
+								<span
+									data-rb-icon=""
+									className="flex size-7 shrink-0 items-center justify-center rounded-[10px] bg-panel-elevated text-panel-text-secondary"
+								>
+									<Database className="size-3.5" />
+								</span>
+								<p className="truncate text-[13px] font-semibold text-panel-text-secondary">
 									{t("dashboard.system.panelUptime")}
-								</Text>
-							</HStack>
-							{formatLocalizedDuration(systemData.panel_uptime_seconds, t, isRTL)}
-						</Flex>
-					</Stack>
+								</p>
+							</div>
+							{formatLocalizedDuration(
+								systemData.panel_uptime_seconds,
+								t,
+								isRTL,
+							)}
+						</div>
+					</div>
 				</SectionCard>
-			</SimpleGrid>
+			</div>
 
 			<SectionCard
 				noHover
-				roleGroup={false}
 				title={
-					<HStack spacing={2.5}>
-						<Flex w="26px" h="26px" align="center" justify="center" borderRadius="7px" bg="panel.elevated" color="panel.textSecondary">
-							<CpuChipIcon width={14} />
-						</Flex>
+					<div className="flex items-center gap-2.5">
+						<span
+							data-rb-icon=""
+							className="flex size-7 shrink-0 items-center justify-center rounded-[9px] bg-panel-elevated text-panel-text-secondary"
+						>
+							<Cpu className="size-3.5" />
+						</span>
 						<span>{t("dashboard.system.panelUsage")}</span>
-					</HStack>
+					</div>
 				}
 				action={
-					<Button
-						size="xs"
-						h="22px"
-						px={2.5}
-						fontSize="11px"
-						variant="ghost"
-						borderRadius="full"
-						bg="panel.elevated"
-						color={colorMode === "light" ? "panel.textSecondary" : "panel.textMuted"}
-						fontWeight={colorMode === "light" ? "600" : "500"}
-						transition="all 0.2s ease"
-						_hover={{
-							bg: "panel.border !important",
-							color: "panel.text !important",
-						}}
-						_active={{
-							bg: "panel.borderStrong !important",
-						}}
-						_focusVisible={{
-							outline: "2px solid var(--rb-panel-accent)",
-							outlineOffset: "2px",
-						}}
-						position="relative"
-						_after={{
-							content: '""',
-							position: "absolute",
-							top: "-10px",
-							bottom: "-10px",
-							left: "-10px",
-							right: "-10px",
-						}}
-						onClick={() =>
-							openHistory({
-								type: "panel",
-								title: t("dashboard.system.panelUsage"),
-								cpuEntries: systemData.panel_cpu_history,
-								memoryEntries: systemData.panel_memory_history,
-							})
-						}
+					<button
+						type="button"
+						onClick={() => openHistory("panel")}
+						data-rb-swap=""
+						data-rb-swap-text=""
+						className="relative inline-flex h-[22px] shrink-0 cursor-pointer items-center justify-center rounded-full bg-panel-elevated px-2.5 text-[11px] font-semibold text-panel-text-secondary select-none outline-none transition-transform duration-150 focus-visible:ring-2 focus-visible:ring-panel-accent/50 active:scale-[0.97] after:absolute after:-inset-2.5 after:content-['']"
 					>
 						{t("dashboard.system.viewHistory")}
-					</Button>
+					</button>
 				}
 			>
-				<SimpleGrid columns={{ base: 1, sm: 2 }} gap={{ base: 3, md: 4 }}>
+				<div className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 min-[769px]:gap-4">
 					<ResourceCard
-						label={`${t("dashboard.system.cpuUsage")} (Panel)`}
-						icon={<CpuChipIcon width={16} />}
-						value={formatPercent(systemData.panel_cpu_percent, false)}
+						label={t("dashboard.system.panelCpuUsage")}
+						icon={<Cpu className="size-4" />}
+						value={formatPercent(systemData.panel_cpu_percent)}
 						percent={systemData.panel_cpu_percent}
 						metaValue={formatNumberValue(systemData.app_threads)}
 						metaUnit={t("dashboard.system.thread")}
-						footerLeft={`${t("dashboard.system.average")}: ${formatPercent(average(systemData.panel_cpu_history.map((e) => e.value)), isRTL)}`}
-						footerRight={`${t("dashboard.system.peak")}: ${formatPercent(peak(systemData.panel_cpu_history.map((e) => e.value)), isRTL)}`}
+						footerLeft={`${t("dashboard.system.average")}: ${formatPercent(average(systemData.panel_cpu_history.map((e) => e.value)))}`}
+						footerRight={`${t("dashboard.system.peak")}: ${formatPercent(peak(systemData.panel_cpu_history.map((e) => e.value)))}`}
 						isRTL={isRTL}
 					/>
 					<ResourceCard
-						label={`${t("dashboard.system.memoryUsage")} (Panel)`}
-						icon={<ServerStackIcon width={16} />}
+						label={t("dashboard.system.panelMemoryUsage")}
+						icon={<Server className="size-4" />}
 						value={formatBytes(systemData.app_memory, 1)}
 						totalValue={formatBytes(systemData.memory.total, 1)}
 						percent={systemData.panel_memory_percent}
-						footerLeft={`${t("dashboard.system.average")}: ${formatPercent(average(systemData.panel_memory_history.map((e) => e.value)), isRTL)}`}
-						footerRight={`${t("dashboard.system.peak")}: ${formatPercent(peak(systemData.panel_memory_history.map((e) => e.value)), isRTL)}`}
+						footerLeft={`${t("dashboard.system.average")}: ${formatPercent(average(systemData.panel_memory_history.map((e) => e.value)))}`}
+						footerRight={`${t("dashboard.system.peak")}: ${formatPercent(peak(systemData.panel_memory_history.map((e) => e.value)))}`}
 						isRTL={isRTL}
 					/>
-				</SimpleGrid>
+				</div>
 			</SectionCard>
 
 			<SectionCard
 				title={
-					<HStack spacing={2.5}>
-						<Flex w="26px" h="26px" align="center" justify="center" borderRadius="7px" bg="panel.elevated" color="panel.textSecondary">
-							<UserGroupIcon width={14} />
-						</Flex>
+					<div className="flex items-center gap-2.5">
+						<span
+							data-rb-icon=""
+							className="flex size-7 shrink-0 items-center justify-center rounded-[9px] bg-panel-elevated text-panel-text-secondary"
+						>
+							<Users className="size-3.5" />
+						</span>
 						<span>{t("dashboard.users")}</span>
-					</HStack>
+					</div>
 				}
 				action={
 					canSeeGlobal ? (
-						<HStack
-							spacing={0.5}
-							bg="panel.elevated"
-							p={0.5}
-							borderRadius="8px"
-							position="relative"
-							transition="all 0.25s ease"
-							_groupHover={{
-								md: {
-									bg: "panel.surface",
-								},
-							}}
+						<div
+							data-rb-swap=""
+							className="relative flex items-center gap-0.5 rounded-[10px] bg-panel-elevated p-0.5"
 						>
-							<Box position="relative">
-								{userTab === "all" && (
-									<motion.div
-										layoutId="usersOverviewTabPill"
-										style={{
-											position: "absolute",
-											top: 0,
-											left: 0,
-											right: 0,
-											bottom: 0,
-											borderRadius: "6px",
-											backgroundColor: "var(--rb-panel-accent)",
-											border: "1px solid var(--rb-panel-accent)",
-											boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
-											zIndex: 1,
-										}}
-										transition={{
-											type: "tween",
-											ease: "easeInOut",
-											duration: 0.25,
-										}}
-									/>
-								)}
-								<Button
-									size="xs"
-									h="22px"
-									px={2.5}
-									borderRadius="6px"
-									fontSize="11px"
-									fontWeight="600"
-									variant="ghost"
-									bg="transparent !important"
-									color={userTab === "all" ? "white" : "panel.text"}
-									position="relative"
-									zIndex={2}
-									transition="all 0.2s ease"
-									_hover={{
-										md: {
-											color: userTab === "all" ? "white" : "panel.text",
-										},
-									}}
-									_focusVisible={{
-										outline: "2px solid var(--rb-panel-accent)",
-										outlineOffset: "2px",
-									}}
-									onClick={() => setUserTab("all")}
-								>
-									{t("dashboard.users.allUsers")}
-								</Button>
-							</Box>
-							<Box position="relative">
-								{userTab === "mine" && (
-									<motion.div
-										layoutId="usersOverviewTabPill"
-										style={{
-											position: "absolute",
-											top: 0,
-											left: 0,
-											right: 0,
-											bottom: 0,
-											borderRadius: "6px",
-											backgroundColor: "var(--rb-panel-accent)",
-											border: "1px solid var(--rb-panel-accent)",
-											boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
-											zIndex: 1,
-										}}
-										transition={{
-											type: "tween",
-											ease: "easeInOut",
-											duration: 0.25,
-										}}
-									/>
-								)}
-								<Button
-									size="xs"
-									h="22px"
-									px={2.5}
-									borderRadius="6px"
-									fontSize="11px"
-									fontWeight="600"
-									variant="ghost"
-									bg="transparent !important"
-									color={userTab === "mine" ? "white" : "panel.text"}
-									position="relative"
-									zIndex={2}
-									transition="all 0.2s ease"
-									_hover={{
-										md: {
-											color: userTab === "mine" ? "white" : "panel.text",
-										},
-									}}
-									_focusVisible={{
-										outline: "2px solid var(--rb-panel-accent)",
-										outlineOffset: "2px",
-									}}
-									onClick={() => setUserTab("mine")}
-								>
-									{t("dashboard.users.myUsers")}
-								</Button>
-							</Box>
-						</HStack>
+							{(
+								[
+									{ id: "all" as const, label: t("dashboard.users.allUsers") },
+									{ id: "mine" as const, label: t("dashboard.users.myUsers") },
+								] as const
+							).map((tab) => {
+								const active = userTab === tab.id;
+								return (
+									<div key={tab.id} className="relative">
+										{active && (
+											<motion.div
+												layoutId="usersOverviewTabPill"
+												transition={{
+													type: "tween",
+													ease: [0.16, 1, 0.3, 1],
+													duration: 0.22,
+												}}
+												className="pointer-events-none absolute inset-0 z-[1] rounded-[8px] border border-panel-accent! bg-panel-accent shadow-[0_1px_4px_color-mix(in_srgb,var(--rb-panel-accent)_35%,transparent)]"
+											/>
+										)}
+										<Button
+											type="button"
+											onClick={() => setUserTab(tab.id)}
+											variant="ghost"
+											size="xs"
+											className={cn(
+												"relative z-[2] h-[22px] rounded-[8px] bg-transparent! px-2.5 text-[11px] font-semibold transition-colors active:scale-[0.97]",
+												active
+													? "text-white! min-[769px]:hover:text-white!"
+													: "text-panel-text-secondary min-[769px]:hover:text-panel-text",
+											)}
+										>
+											{tab.label}
+										</Button>
+									</div>
+								);
+							})}
+						</div>
 					) : undefined
 				}
 			>
 				<AnimatedHeightWrapper activeKey={userTab}>
 					{canSeeGlobal && userTab === "all" ? (
-						<Stack spacing={0}>
-							<StatRow label={t("dashboard.users.total")} value={systemData.total_user} tagColor="#3b82f6" />
-							<StatRow label={t("dashboard.users.active")} value={systemData.users_active} tag={activePercent} tagColor="#22c55e" />
+						<div className="flex flex-col">
+							<StatRow
+								label={t("dashboard.users.total")}
+								value={systemData.total_user}
+								tagColor="#3b82f6"
+							/>
+							<StatRow
+								label={t("dashboard.users.active")}
+								value={systemData.users_active}
+								tag={activePercent}
+								tagColor="#22c55e"
+							/>
 							<StatRow
 								label={t("dashboard.users.online")}
 								value={systemData.online_users}
 								tag={onlinePercent}
 								tagColor="#06b6d4"
 								helper={
-									systemData.online_users_upload_speed || systemData.online_users_download_speed
+									systemData.online_users_upload_speed ||
+									systemData.online_users_download_speed
 										? `↑ ${formatBytes(systemData.online_users_upload_speed)}/s · ↓ ${formatBytes(systemData.online_users_download_speed)}/s`
 										: undefined
 								}
 							/>
-							<StatRow label={t("dashboard.users.onHold")} value={systemData.users_on_hold} tagColor="#a855f7" />
-							<StatRow label={t("dashboard.users.limited")} value={systemData.users_limited} tagColor="#f59e0b" />
-							<StatRow label={t("dashboard.users.expired")} value={systemData.users_expired} tagColor="#f97316" />
-						</Stack>
+							<StatRow
+								label={t("dashboard.users.onHold")}
+								value={systemData.users_on_hold}
+								tagColor="#a855f7"
+							/>
+							<StatRow
+								label={t("dashboard.users.limited")}
+								value={systemData.users_limited}
+								tagColor="#f59e0b"
+							/>
+							<StatRow
+								label={t("dashboard.users.expired")}
+								value={systemData.users_expired}
+								tagColor="#f97316"
+							/>
+						</div>
 					) : (
-						<Stack spacing={0}>
-							<StatRow label={t("dashboard.users.total")} value={myTotalUsers} tagColor="#3b82f6" />
-							<StatRow label={t("dashboard.users.active")} value={myActiveUsers} tag={myActivePercent} tagColor="#22c55e" />
+						<div className="flex flex-col">
+							<StatRow
+								label={t("dashboard.users.total")}
+								value={myTotalUsers}
+								tagColor="#3b82f6"
+							/>
+							<StatRow
+								label={t("dashboard.users.active")}
+								value={myActiveUsers}
+								tag={myActivePercent}
+								tagColor="#22c55e"
+							/>
 							<StatRow
 								label={t("dashboard.users.online")}
 								value={myOnlineUsers}
@@ -2521,9 +2168,21 @@ export const Statistics: FC<BoxProps> = (props) => {
 										: undefined
 								}
 							/>
-							<StatRow label={t("dashboard.users.onHold")} value={myOnHoldUsers} tagColor="#a855f7" />
-							<StatRow label={t("dashboard.users.limited")} value={myLimitedUsers} tagColor="#f59e0b" />
-							<StatRow label={t("dashboard.users.expired")} value={myExpiredUsers} tagColor="#f97316" />
+							<StatRow
+								label={t("dashboard.users.onHold")}
+								value={myOnHoldUsers}
+								tagColor="#a855f7"
+							/>
+							<StatRow
+								label={t("dashboard.users.limited")}
+								value={myLimitedUsers}
+								tagColor="#f59e0b"
+							/>
+							<StatRow
+								label={t("dashboard.users.expired")}
+								value={myExpiredUsers}
+								tagColor="#f97316"
+							/>
 							<StatRow
 								label={t("dashboard.users.currentUserUsage")}
 								value={formatBytes(myActiveUsersUsedTraffic, 1)}
@@ -2536,7 +2195,7 @@ export const Statistics: FC<BoxProps> = (props) => {
 									tagColor="#f59e0b"
 								/>
 							) : null}
-						</Stack>
+						</div>
 					)}
 				</AnimatedHeightWrapper>
 			</SectionCard>
@@ -2544,19 +2203,38 @@ export const Statistics: FC<BoxProps> = (props) => {
 			{canSeeGlobal && systemData.admin_overview && (
 				<SectionCard
 					title={
-						<HStack spacing={2.5}>
-							<Flex w="26px" h="26px" align="center" justify="center" borderRadius="7px" bg="panel.elevated" color="panel.textSecondary">
-								<ShieldCheckIcon width={14} />
-							</Flex>
+						<div className="flex items-center gap-2.5">
+							<span
+								data-rb-icon=""
+								className="flex size-7 shrink-0 items-center justify-center rounded-[9px] bg-panel-elevated text-panel-text-secondary"
+							>
+								<ShieldCheck className="size-3.5" />
+							</span>
 							<span>{t("dashboard.admins")}</span>
-						</HStack>
+						</div>
 					}
 				>
-					<Stack spacing={0}>
-						<StatRow label={t("dashboard.admins.total")} value={systemData.admin_overview.total_admins} tagColor="#3b82f6" />
-						<StatRow label={t("dashboard.admins.fullAccess")} value={systemData.admin_overview.full_access_admins} tagColor="#f59e0b" />
-						<StatRow label={t("dashboard.admins.sudo")} value={systemData.admin_overview.sudo_admins} tagColor="#a855f7" />
-						<StatRow label={t("dashboard.admins.standard")} value={systemData.admin_overview.standard_admins} tagColor="#22c55e" />
+					<div className="flex flex-col">
+						<StatRow
+							label={t("dashboard.admins.total")}
+							value={systemData.admin_overview.total_admins}
+							tagColor="#3b82f6"
+						/>
+						<StatRow
+							label={t("dashboard.admins.fullAccess")}
+							value={systemData.admin_overview.full_access_admins}
+							tagColor="#f59e0b"
+						/>
+						<StatRow
+							label={t("dashboard.admins.sudo")}
+							value={systemData.admin_overview.sudo_admins}
+							tagColor="#a855f7"
+						/>
+						<StatRow
+							label={t("dashboard.admins.standard")}
+							value={systemData.admin_overview.standard_admins}
+							tagColor="#22c55e"
+						/>
 						{systemData.admin_overview.top_admin_username && (
 							<StatRow
 								label={t("dashboard.admins.topAdmin")}
@@ -2565,19 +2243,22 @@ export const Statistics: FC<BoxProps> = (props) => {
 								accent
 							/>
 						)}
-					</Stack>
+					</div>
 				</SectionCard>
 			)}
 
 			<HistoryModal
-				isOpen={Boolean(historyPayload)}
-				onClose={() => setHistoryPayload(null)}
-				payload={historyPayload}
+				open={Boolean(activeHistoryPayload)}
+				onClose={() => setActiveHistoryType(null)}
+				payload={activeHistoryPayload}
 				intervalSeconds={historyInterval}
 				onIntervalChange={setHistoryInterval}
+				bandwidthScope={bandwidthScope}
+				onBandwidthScopeChange={setBandwidthScope}
+				canSeeGlobal={canSeeGlobal}
 				t={t}
 				isRTL={isRTL}
 			/>
-		</Stack>
+		</div>
 	);
 };

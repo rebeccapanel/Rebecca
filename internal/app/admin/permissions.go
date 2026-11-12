@@ -19,6 +19,8 @@ func RoleDefaultPermissions(role AdminRole) AdminPermissions {
 		AdvancedActions:      true,
 		SetFlow:              false,
 		AllowCustomKey:       false,
+		ManageSpeedLimit:     true,
+		ManageIPLimit:        true,
 	}
 	baseAdminManagement := AdminManagementPermissions{}
 	baseSections := SectionPermissionSettings{
@@ -114,7 +116,7 @@ func defaultSelfPermissions() map[string]bool {
 func allSudoPermissions() SudoPermissionSettings {
 	return SudoPermissionSettings{
 		Nodes: true, Xray: true, Settings: true, Subscriptions: true,
-		Backups: true, Maintenance: true, PHPMyAdmin: true,
+		Backups: true, Maintenance: true, PHPMyAdmin: true, Notes: true,
 	}
 }
 

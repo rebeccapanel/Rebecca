@@ -23,6 +23,7 @@ import (
 	adminapp "github.com/rebeccapanel/rebecca/internal/app/admin"
 	backupapp "github.com/rebeccapanel/rebecca/internal/app/backup"
 	certificateapp "github.com/rebeccapanel/rebecca/internal/app/certificates"
+	"github.com/rebeccapanel/rebecca/internal/app/labels"
 	nodeapp "github.com/rebeccapanel/rebecca/internal/app/node"
 	"github.com/rebeccapanel/rebecca/internal/app/nodecontroller"
 	settingsapp "github.com/rebeccapanel/rebecca/internal/app/settings"
@@ -288,6 +289,7 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 			t.Fatalf("exec %q: %v", statement, err)
 		}
 	}
+	createLabelTables(t, db)
 
 	repo := adminapp.NewRepository(db, "sqlite")
 	warpRepo := warpapp.NewRepository(db, "sqlite")
@@ -298,6 +300,7 @@ func testAdminServer(t *testing.T) (*Server, *sql.DB) {
 		},
 		db:             db,
 		dialect:        "sqlite",
+		labels:         labels.NewStore(db, "sqlite"),
 		adminRepo:      repo,
 		adminAuth:      adminapp.NewAuthenticator(repo),
 		nodeController: nodecontroller.NewController(nodecontroller.NewRepository(db, "sqlite")),

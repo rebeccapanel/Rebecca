@@ -1,4 +1,3 @@
-import { Box, Text } from "@chakra-ui/react";
 import type { FC, PropsWithChildren } from "react";
 
 export type IconType = {
@@ -6,6 +5,7 @@ export type IconType = {
 	size?: number;
 };
 
+/** A rounded tile in the palette colour, with two soft layers behind it. */
 export const Icon: FC<PropsWithChildren<IconType>> = ({
 	children,
 	color,
@@ -13,55 +13,11 @@ export const Icon: FC<PropsWithChildren<IconType>> = ({
 }) => {
 	const baseSize = `${size}px`;
 	return (
-		<Box
-			position="relative"
-			width={baseSize}
-			height={baseSize}
-			display="flex"
-			justifyContent="center"
-			alignItems="center"
-			_before={{
-				content: '""',
-				display: "block",
-				position: "absolute",
-				top: "0",
-				left: "0",
-				width: "calc(100%)",
-				height: "calc(100%)",
-				bg: `${color}.400`,
-				opacity: ".5",
-				borderRadius: "5px",
-				zIndex: "1",
-				_dark: {
-					bg: `${color}.400`,
-				},
-			}}
-			_after={{
-				content: '""',
-				display: "block",
-				position: "absolute",
-				top: "0",
-				left: "0",
-				width: "calc(100% + 10px)",
-				height: "calc(100% + 10px)",
-				transform: "translate(-5px, -5px)",
-				bg: `${color}.400`,
-				opacity: ".4",
-				borderRadius: "8px",
-				zIndex: "1",
-				_dark: {
-					bg: `${color}.400`,
-				},
-			}}
+		<div
+			style={{ width: baseSize, height: baseSize }}
+			className={`relative flex justify-center items-center before:absolute before:inset-0 before:z-[1] before:block before:rounded-[5px] before:opacity-50 before:bg-${color}-400 dark:before:bg-${color}-400 after:absolute after:start-0 after:top-0 after:z-[1] after:block after:w-[calc(100%+10px)] after:h-[calc(100%+10px)] after:[transform:translate(-5px,-5px)] after:rounded-[8px] after:opacity-40 after:bg-${color}-400 dark:after:bg-${color}-400`}
 		>
-			<Text
-				color={`${color}.500`}
-				_dark={{ color: `${color}.900` }}
-				position="relative"
-				zIndex="2"
-			>
-				{children}
-			</Text>
-		</Box>
+			<p className={`relative z-[2] text-${color}-500 dark:text-${color}-900`}>{children}</p>
+		</div>
 	);
 };

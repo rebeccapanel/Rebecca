@@ -1,15 +1,8 @@
-import {
-	Box,
-	Button,
-	chakra,
-	HStack,
-	Spinner,
-	Stack,
-	Text,
-	Tooltip,
-	useColorMode,
-	VStack,
-} from "@chakra-ui/react";
+import { Spinner } from "components/ui/spinner";
+import { Button } from "components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "components/ui/tooltip";
+import { useColorMode } from "lib/color-mode";
+
 import { InfoIcon } from "components/common/InfoIcon";
 import { PanelSelect as Select } from "components/common/PanelSelect";
 import { ChartBox } from "components/common/ChartBox";
@@ -389,25 +382,15 @@ const AdminsUsage: FC = () => {
 	);
 
 	return (
-		<VStack spacing={4} align="stretch">
+		<div className="flex flex-col gap-4 items-stretch">
 			<ChartBox
 				title={t("admins.serviceUsageTitle")}
 				headerActions={
-					<Stack
-						direction={{ base: "column", lg: "row" }}
-						spacing={3}
-						align={{ base: "stretch", lg: "center" }}
-					>
-						<Select
-							value={selectedServiceId ?? ""}
-							onChange={(event: ChangeEvent<HTMLSelectElement>) => {
+					<div className="flex flex-col lg:flex-row gap-3 items-stretch lg:items-center">
+						<Select value={selectedServiceId ?? ""} onChange={(event: ChangeEvent<HTMLSelectElement>) => {
 								const value = Number(event.target.value);
 								setSelectedServiceId(Number.isNaN(value) ? null : value);
-							}}
-							minW={{ sm: "220px" }}
-							placeholder={t("admins.selectService")}
-							isDisabled={!serviceOptions.length}
-						>
+							}} placeholder={t("admins.selectService")} disabled={!serviceOptions.length} className="sm:min-w-[220px]!">
 							{serviceOptions.map((service) => (
 								<option key={service.id} value={service.id}>
 									{service.name}
@@ -420,66 +403,39 @@ const AdminsUsage: FC = () => {
 							presets={dateRangePresets}
 							defaultPreset="1m"
 						/>
-						<HStack
-							fontSize="sm"
-							color="gray.500"
-							_dark={{ color: "gray.400" }}
-						>
+						<div className="flex flex-row items-center gap-2 text-[0.875rem] text-gray-500 dark:text-gray-400">
 							<InfoIcon />
-							<Text>
+							<p>
 								{t("usage.selectedRangeTotal")}:{" "}
-								<chakra.span fontWeight="medium">
+								<span className="font-medium">
 									{formatBytes(serviceUsageTotal, 2)}
-								</chakra.span>
-							</Text>
-						</HStack>
-					</Stack>
+								</span>
+							</p>
+						</div>
+					</div>
 				}
 			>
-				<Text
-					fontSize="sm"
-					color="gray.500"
-					_dark={{ color: "gray.400" }}
-					mb={4}
-				>
+				<p className="text-[0.875rem] text-gray-500 dark:text-gray-400 mb-4">
 					{t("admins.serviceUsageHint")}
-				</Text>
-				<Stack
-					mt={6}
-					direction={{ base: "column", lg: "row" }}
-					spacing={{ base: 4, lg: 6 }}
-					align={{ base: "stretch", lg: "center" }}
-				>
-					<Box flex="1">
+				</p>
+				<div className="flex mt-6 flex-col lg:flex-row gap-4 lg:gap-6 items-stretch lg:items-center">
+					<div className="flex-1">
 						{loadingServiceUsage ? (
-							<VStack spacing={3} py={8}>
+							<div className="flex flex-col items-center gap-3 py-8">
 								<Spinner />
-								<Text
-									fontSize="sm"
-									color="gray.500"
-									_dark={{ color: "gray.400" }}
-								>
+								<p className="text-[0.875rem] text-gray-500 dark:text-gray-400">
 									{t("loading")}
-								</Text>
-							</VStack>
+								</p>
+							</div>
 						) : serviceAdminUsage.length && serviceUsageTotal > 0 ? (
-							<ReactApexChart
-								type="donut"
-								height={320}
-								options={serviceDonutOptions}
-								series={serviceDonutSeries}
-							/>
+							<ReactApexChart type="donut" height={320} options={serviceDonutOptions} series={serviceDonutSeries} />
 						) : (
-							<Text
-								textAlign="center"
-								color="gray.500"
-								_dark={{ color: "gray.400" }}
-							>
+							<p className="text-center text-gray-500 dark:text-gray-400">
 								{t("noData")}
-							</Text>
+							</p>
 						)}
-					</Box>
-					<VStack flex="1" align="stretch" spacing={2}>
+					</div>
+					<div className="flex flex-col flex-1 items-stretch gap-2">
 						{serviceAdminUsage.length ? (
 							serviceAdminUsage.map((item) => {
 								const username = item.username || t("services.unassignedAdmin");
@@ -487,136 +443,99 @@ const AdminsUsage: FC = () => {
 								const isActive =
 									selectedAdmin === item.username && isSelectable;
 								return (
-									<Button
-										key={`${item.admin_id ?? "na"}-${username}`}
-										size="sm"
-										variant={isActive ? "solid" : "outline"}
-										colorScheme="primary"
-										justifyContent="space-between"
-										onClick={() => {
+									<Button key={`${item.admin_id ?? "na"}-${username}`} onClick={() => {
 											if (isSelectable && item.username) {
 												setSelectedAdmin(item.username);
 											}
-										}}
-										isDisabled={!isSelectable}
-									>
-										<HStack justify="space-between" w="full">
-											<Text>{username}</Text>
-											<Text
-												fontSize="sm"
-												color="gray.500"
-												_dark={{ color: "gray.300" }}
-											>
+										}} disabled={!isSelectable} size="sm" className="justify-between" variant={isActive ? "default" : "outline"}>
+										<div className="flex flex-row items-center gap-2 justify-between w-full">
+											<p>{username}</p>
+											<p className="text-[0.875rem] text-gray-500 dark:text-gray-300">
 												{formatBytes(item.used_traffic || 0, 2)}
-											</Text>
-										</HStack>
+											</p>
+										</div>
 									</Button>
 								);
 							})
 						) : (
-							<Text color="gray.500" _dark={{ color: "gray.400" }}>
+							<p className="text-gray-500 dark:text-gray-400">
 								{t("noData")}
-							</Text>
+							</p>
 						)}
-					</VStack>
-				</Stack>
+					</div>
+				</div>
 			</ChartBox>
 			<ChartBox
 				title={
-					<HStack spacing={2} align="center">
-						<Text fontWeight="semibold">
+					<div className="flex flex-row gap-2 items-center">
+						<p className="font-semibold">
 							{isCreatedTrafficBasis
 								? t("myaccount.dailyCreatedTraffic")
 								: t("admins.dailyUsage")}
-						</Text>
-						<Tooltip
-							label={
+						</p>
+						<Tooltip>
+<TooltipTrigger asChild>
+							<InfoIcon aria-label="info" className="text-gray-500 dark:text-gray-400 cursor-help" />
+						</TooltipTrigger>
+<TooltipContent>{
 								isCreatedTrafficBasis
 									? t("admins.dailyCreatedTrafficTooltip")
 									: t("admins.dailyUsageTooltip")
-							}
-						>
-							<InfoIcon
-								color="gray.500"
-								_dark={{ color: "gray.400" }}
-								aria-label="info"
-								cursor="help"
-							/>
-						</Tooltip>
-					</HStack>
+							}</TooltipContent>
+</Tooltip>
+					</div>
 				}
 				headerActions={
-					<Stack
-						direction={{ base: "column", md: "row" }}
-						spacing={{ base: 3, md: 4 }}
-						alignItems={{ base: "stretch", md: "center" }}
-						justifyContent="flex-end"
-						w="full"
-					>
+					<div className="flex flex-col md:flex-row gap-3 md:gap-4 items-stretch md:items-center justify-end w-full">
 						<DateRangePicker
 							value={adminUsageRange}
 							onChange={setAdminUsageRange}
 							presets={dateRangePresets}
 							defaultPreset="1m"
 						/>
-						<Select
-							value={selectedAdmin ?? ""}
-							onChange={(e: ChangeEvent<HTMLSelectElement>) =>
+						<Select value={selectedAdmin ?? ""} onChange={(e: ChangeEvent<HTMLSelectElement>) =>
 								setSelectedAdmin(e.target.value || null)
-							}
-							w={{ base: "full", sm: "auto", md: "220px" }}
-							minW={{ md: "200px" }}
-							isDisabled={!filteredAdmins.length}
-						>
+							} disabled={!filteredAdmins.length} className="w-full sm:w-auto md:w-[220px] md:min-w-[200px]!">
 							{filteredAdmins.map((a) => (
 								<option key={a.username} value={a.username}>
 									{a.username}
 								</option>
 							))}
 						</Select>
-					</Stack>
+					</div>
 				}
 			>
-				<VStack align="start" spacing={1} mb={4}>
-					<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+				<div className="flex flex-col items-start gap-1 mb-4">
+					<p className="text-[0.875rem] text-gray-500 dark:text-gray-400">
 						{t("admins.selectedAdmin")}:{" "}
-						<chakra.span fontWeight="medium">
+						<span className="font-medium">
 							{selectedAdmin ?? "-"}
-						</chakra.span>{" "}
+						</span>{" "}
 						{isCreatedTrafficBasis
 							? t("myaccount.totalCreatedTraffic")
 							: t("nodes.totalLabel")}
 						:{" "}
-						<chakra.span fontWeight="medium">
+						<span className="font-medium">
 							{formatBytes(total || 0, 2)}
-						</chakra.span>
-					</Text>
-				</VStack>
+						</span>
+					</p>
+				</div>
 				{loading ? (
-					<VStack spacing={3}>
+					<div className="flex flex-col items-center gap-3">
 						<Spinner />
-						<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.400" }}>
+						<p className="text-[0.875rem] text-gray-500 dark:text-gray-400">
 							{t("loading")}
-						</Text>
-					</VStack>
+						</p>
+					</div>
 				) : chartConfig.series[0]?.data?.length ? (
-					<ReactApexChart
-						options={chartConfig.options}
-						series={chartConfig.series}
-						type="area"
-						height={360}
-					/>
+					<ReactApexChart options={chartConfig.options} series={chartConfig.series} type="area" height={360} />
 				) : (
-					<Text
-						textAlign="center"
-						color="gray.500"
-						_dark={{ color: "gray.400" }}
-					>
+					<p className="text-center text-gray-500 dark:text-gray-400">
 						{t("noData")}
-					</Text>
+					</p>
 				)}
 			</ChartBox>
-		</VStack>
+		</div>
 	);
 };
 

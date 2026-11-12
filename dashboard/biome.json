@@ -1,12 +1,15 @@
 {
 	"$schema": "https://biomejs.dev/schemas/2.3.15/schema.json",
 	"files": {
-		"includes": ["src/**"]
+		"includes": [
+			"src/**"
+		]
 	},
 	"linter": {
 		"rules": {
 			"suspicious": {
-				"noExplicitAny": "off"
+				"noExplicitAny": "off",
+				"noArrayIndexKey": "warn"
 			},
 			"style": {
 				"noNonNullAssertion": "off"
@@ -19,8 +22,31 @@
 			"correctness": {
 				"noUnusedImports": "warn",
 				"noUnusedVariables": "warn",
-				"noUnusedFunctionParameters": "warn"
+				"noUnusedFunctionParameters": "warn",
+				"useExhaustiveDependencies": "warn"
+			},
+			"a11y": {
+				"noLabelWithoutControl": {
+					"level": "error",
+					"options": {
+						"inputComponents": [
+							"Checkbox",
+							"RadioGroupItem",
+							"Switch",
+							"UiSwitch"
+						]
+					}
+				},
+				"useSemanticElements": "warn",
+				"useKeyWithClickEvents": "warn",
+				"useFocusableInteractive": "warn",
+				"noStaticElementInteractions": "warn"
 			}
+		}
+	},
+	"css": {
+		"parser": {
+			"tailwindDirectives": true
 		}
 	}
 }

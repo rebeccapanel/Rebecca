@@ -1,23 +1,15 @@
-import {
-	Badge,
-	Box,
-	Button,
-	Flex,
-	HStack,
-	Icon,
-	Input,
-	Spinner,
-	Stack,
-	StackDivider,
-	Text,
-	useDisclosure,
-	useToast,
-} from "@chakra-ui/react";
-import {
-	ArrowRightStartOnRectangleIcon,
-	KeyIcon,
-	ShieldCheckIcon,
-} from "@heroicons/react/24/outline";
+import { toneClass } from "lib/tone";
+import { createElement } from "react";
+import { Button } from "components/ui/button";
+import { Badge } from "components/ui/badge";
+import { Spinner } from "components/ui/spinner";
+import { Input } from "components/ui/input";
+import { toast } from "components/ui/sonner";
+import { LogIn, Key, ShieldCheck } from "lucide-react";
+
+import { useDisclosure } from "hooks/useDisclosure";
+
+import { cn } from "lib/cn";
 import { ChartBox } from "components/common/ChartBox";
 import { AppDialog } from "components/dialogs/AppDialog";
 import dayjs from "dayjs";
@@ -37,7 +29,7 @@ import {
 } from "react-icons/fa";
 import { FiGlobe, FiMonitor, FiSmartphone, FiTablet } from "react-icons/fi";
 import { SiOpera, SiSamsung } from "react-icons/si";
-import { useMutation, useQuery, useQueryClient } from "react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	confirm2FASetup,
 	disable2FA,
@@ -83,7 +75,7 @@ const parseSessionClient = (userAgent = ""): SessionClient => {
 	let os: AgentDetail = {
 		name: "Unknown OS",
 		icon: FiMonitor,
-		color: "gray.400",
+		color: "var(--color-gray-400)",
 	};
 	if (/windows/i.test(ua)) {
 		os = { name: "Windows", icon: FaWindows, color: "#0078D4" };
@@ -91,7 +83,7 @@ const parseSessionClient = (userAgent = ""): SessionClient => {
 		os = {
 			name: /ipad/i.test(ua) ? "iPadOS" : "iOS",
 			icon: FaApple,
-			color: "panel.text",
+			color: "var(--rb-panel-text)",
 		};
 	} else if (/android/i.test(ua)) {
 		os = {
@@ -103,7 +95,7 @@ const parseSessionClient = (userAgent = ""): SessionClient => {
 		os = {
 			name: "macOS",
 			icon: FaApple,
-			color: "panel.text",
+			color: "var(--rb-panel-text)",
 		};
 	} else if (/linux/i.test(ua)) {
 		os = { name: "Linux", icon: FaLinux, color: "#FCC624" };
@@ -112,7 +104,7 @@ const parseSessionClient = (userAgent = ""): SessionClient => {
 	let browser: AgentDetail = {
 		name: "Unknown browser",
 		icon: FiGlobe,
-		color: "gray.400",
+		color: "var(--color-gray-400)",
 	};
 	if (/Edg(?:A|iOS)?\//i.test(ua) || /\bEdge\b/i.test(ua)) {
 		browser = {
@@ -179,7 +171,7 @@ export const AccountSecurity = ({
 	onChangePassword,
 }: Props) => {
 	const { t } = useTranslation();
-	const toast = useToast();
+	
 	const queryClient = useQueryClient();
 	const setupDialog = useDisclosure();
 	const disableDialog = useDisclosure();
@@ -187,11 +179,8 @@ export const AccountSecurity = ({
 	const [code, setCode] = useState("");
 	const [password, setPassword] = useState("");
 	const [twoFactorLoading, setTwoFactorLoading] = useState(false);
-	const sessions = useQuery(["admin-sessions"], listSessions, {
-		enabled: canManageSessions,
-	});
-	const revoke = useMutation(revokeSession, {
-		onSuccess: (_, id) => {
+	const sessions = useQuery({ queryKey: ["admin-sessions"], queryFn: listSessions, enabled: canManageSessions, });
+	const revoke = useMutation({ mutationFn: revokeSession, onSuccess: (_, id) => {
 			const current = sessions.data?.find(
 				(session) => session.id === id,
 			)?.current;
@@ -201,8 +190,7 @@ export const AccountSecurity = ({
 				return;
 			}
 			sessions.refetch();
-		},
-	});
+		}, });
 
 	const beginSetup = async () => {
 		setTwoFactorLoading(true);
@@ -224,11 +212,8 @@ export const AccountSecurity = ({
 			setupDialog.onClose();
 			setSetup(null);
 			setCode("");
-			queryClient.invalidateQueries("current-admin");
-			toast({
-				title: t("myaccount.twoFactorEnabled"),
-				status: "success",
-			});
+			queryClient.invalidateQueries({ queryKey: ["current-admin"] });
+			toast.success(t("myaccount.twoFactorEnabled"));
 		} catch (error) {
 			generateErrorMessage(error, toast);
 		} finally {
@@ -248,11 +233,8 @@ export const AccountSecurity = ({
 				window.location.reload();
 				return;
 			}
-			queryClient.invalidateQueries("current-admin");
-			toast({
-				title: t("myaccount.twoFactorDisabled"),
-				status: "success",
-			});
+			queryClient.invalidateQueries({ queryKey: ["current-admin"] });
+			toast.success(t("myaccount.twoFactorDisabled"));
 		} catch (error) {
 			generateErrorMessage(error, toast);
 		} finally {
@@ -261,122 +243,72 @@ export const AccountSecurity = ({
 	};
 
 	return (
-		<Stack spacing={4} w="full" maxW="960px" mx="auto">
+		<div className="flex flex-col gap-4 w-full max-w-[960px] mx-auto">
 			{(canChangePassword || canManage2FA) && (
 				<ChartBox title={t("myaccount.securityControls")}>
-					<Stack
-						spacing={0}
-						divider={<StackDivider borderColor="panel.border" />}
-					>
+					<div className="flex flex-col gap-0 divide-y divide-panel-border">
 						{canChangePassword && (
-							<Flex
-								align={{ base: "stretch", sm: "center" }}
-								justify="space-between"
-								direction={{ base: "column", sm: "row" }}
-								gap={3}
-								py={2}
-							>
-								<HStack minW={0} spacing={3} align="start">
-									<Flex
-										align="center"
-										justify="center"
-										w="9"
-										h="9"
-										flexShrink={0}
-										borderRadius="6px"
-										bg="panel.elevated"
-										color="panel.accent"
-										aria-hidden="true"
-									>
-										<KeyIcon width={18} />
-									</Flex>
-									<Box minW={0}>
-										<Text fontWeight="semibold" fontSize="sm">
+							<div className="flex-col sm:flex-row flex items-stretch sm:items-center justify-between gap-3 py-2">
+								<div className="flex flex-row min-w-0! gap-3 items-start">
+									<div aria-hidden="true" className="flex items-center justify-center w-9 h-9 shrink-0 rounded-[6px] bg-panel-elevated text-panel-accent">
+										<Key className="w-[18px]" />
+									</div>
+									<div className="min-w-0!">
+										<p className="font-semibold text-[0.875rem]">
 											{t("myaccount.changePasswordCard")}
-										</Text>
-										<Text color="panel.textSecondary" fontSize="xs" mt={0.5}>
+										</p>
+										<p className="text-panel-text-secondary text-[0.75rem] mt-0.5">
 											{t("myaccount.changePasswordHint")}
-										</Text>
-									</Box>
-								</HStack>
-								<Button
-									size="sm"
-									h="10"
-									variant="outline"
-									onClick={onChangePassword}
-									alignSelf={{ base: "flex-end", sm: "center" }}
-								>
+										</p>
+									</div>
+								</div>
+								<Button onClick={onChangePassword} variant="outline" size="sm" className="h-10 self-end sm:self-center">
 									{t("myaccount.changePassword")}
 								</Button>
-							</Flex>
+							</div>
 						)}
 
 						{canManage2FA && (
-							<Flex
-								align={{ base: "stretch", sm: "center" }}
-								justify="space-between"
-								direction={{ base: "column", sm: "row" }}
-								gap={3}
-								py={2}
-							>
-								<HStack minW={0} spacing={3} align="start">
-									<Flex
-										align="center"
-										justify="center"
-										w="9"
-										h="9"
-										flexShrink={0}
-										borderRadius="6px"
-										bg="panel.elevated"
-										color={totpEnabled ? "green.400" : "panel.textMuted"}
-										aria-hidden="true"
-									>
-										<ShieldCheckIcon width={18} />
-									</Flex>
-									<Box minW={0}>
-										<HStack spacing={2} flexWrap="wrap">
-											<Text fontWeight="semibold" fontSize="sm">
+							<div className="flex-col sm:flex-row flex items-stretch sm:items-center justify-between gap-3 py-2">
+								<div className="flex flex-row min-w-0! gap-3 items-start">
+									<div aria-hidden="true" className={cn("flex items-center justify-center w-9 h-9 shrink-0 rounded-[6px] bg-panel-elevated", totpEnabled ? "text-green-400" : "text-panel-text-muted")}>
+										<ShieldCheck className="w-[18px]" />
+									</div>
+									<div className="min-w-0!">
+										<div className="flex flex-row items-center gap-2 flex-wrap">
+											<p className="font-semibold text-[0.875rem]">
 												{t("myaccount.twoFactor")}
-											</Text>
-											<Badge colorScheme={totpEnabled ? "green" : "gray"}>
+											</p>
+											<Badge className={toneClass(totpEnabled ? "green" : "gray")}>
 												{totpEnabled
 													? t("nodes.enabled")
 													: t("disabled")}
 											</Badge>
-										</HStack>
-										<Text color="panel.textSecondary" fontSize="xs" mt={0.5}>
+										</div>
+										<p className="text-panel-text-secondary text-[0.75rem] mt-0.5">
 											{totpEnabled
 												? t("myaccount.twoFactorEnabledHint")
 												: t("myaccount.twoFactorDisabledHint")}
-										</Text>
-									</Box>
-								</HStack>
-								<Button
-									size="sm"
-									h="10"
-									minW={{ sm: "112px" }}
-									variant="outline"
-									colorScheme={totpEnabled ? "red" : "primary"}
-									isLoading={twoFactorLoading}
-									onClick={totpEnabled ? disableDialog.onOpen : beginSetup}
-									alignSelf={{ base: "flex-end", sm: "center" }}
-								>
+										</p>
+									</div>
+								</div>
+								<Button onClick={totpEnabled ? disableDialog.onOpen : beginSetup} variant={totpEnabled ? "destructive" : "default"} size="sm" loading={twoFactorLoading} className="h-10 sm:min-w-[112px]! self-end sm:self-center">
 									{totpEnabled
 										? t("myaccount.disableTwoFactor")
 										: t("myaccount.enableTwoFactor")}
 								</Button>
-							</Flex>
+							</div>
 						)}
-					</Stack>
+					</div>
 				</ChartBox>
 			)}
 			{canManageSessions && (
 				<ChartBox title={t("myaccount.sessions")}>
-					<Stack spacing={3}>
+					<div className="flex flex-col gap-3">
 						{sessions.isLoading && (
-							<Flex justify="center" py={6}>
-								<Spinner size="sm" />
-							</Flex>
+							<div className="flex justify-center py-6">
+								<Spinner />
+							</div>
 						)}
 						{sessions.data?.map((session) => {
 							const client = parseSessionClient(session.user_agent);
@@ -387,171 +319,98 @@ export const AccountSecurity = ({
 								? `${client.os.name} ${client.os.version}`
 								: client.os.name;
 							return (
-								<Box
-									as="article"
-									key={session.id}
-									borderWidth="1px"
-									borderColor="panel.border"
-									borderRadius="6px"
-									p={3}
-								>
-									<Flex
-										justify="space-between"
-										align={{ base: "stretch", sm: "center" }}
-										gap={3}
-										direction={{ base: "column", sm: "row" }}
-									>
-										<HStack minW={0} spacing={3} align="start">
-											<Flex
-												align="center"
-												justify="center"
-												w="10"
-												h="10"
-												flexShrink={0}
-												borderRadius="6px"
-												bg="panel.elevated"
-												color={client.os.color}
-												aria-hidden="true"
-											>
-												<Icon as={iconAs(client.os.icon)} boxSize={5} />
-											</Flex>
-											<Box minW={0}>
-												<HStack spacing={2} flexWrap="wrap">
-													<Icon
-														as={iconAs(client.browser.icon)}
-														boxSize={4}
-														color={client.browser.color}
-														aria-hidden="true"
-													/>
-													<Text fontWeight="700" fontSize="md">
+								<article key={session.id} className="border border-panel-border! rounded-[6px] p-3">
+									<div className="flex-col sm:flex-row flex justify-between items-stretch sm:items-center gap-3">
+										<div className="flex flex-row min-w-0! gap-3 items-start">
+											<div style={{ color: client.os.color }} aria-hidden="true" className="flex items-center justify-center w-10 h-10 shrink-0 rounded-[6px] bg-panel-elevated">
+												{createElement(iconAs(client.os.icon), { className: "size-5" })}
+											</div>
+											<div className="min-w-0!">
+												<div className="flex flex-row items-center gap-2 flex-wrap">
+													{createElement(iconAs(client.browser.icon), { style: { color: client.browser.color }, "aria-hidden": "true", className: "size-4" })}
+													<p className="font-bold text-[1rem]">
 														{browserLabel}
-													</Text>
+													</p>
 													{session.current && (
-														<Badge colorScheme="green">
+														<Badge className="bg-green-600 text-white">
 															{t("current")}
 														</Badge>
 													)}
-												</HStack>
-												<HStack
-													spacing={1.5}
-													color="panel.textSecondary"
-													fontSize="sm"
-													flexWrap="wrap"
-												>
-													<Icon
-														as={iconAs(client.deviceIcon)}
-														aria-hidden="true"
-													/>
-													<Text>{osLabel}</Text>
-													<Text aria-hidden="true">·</Text>
-													<Text>
+												</div>
+												<div className="flex flex-row items-center gap-1.5 text-panel-text-secondary text-[0.875rem] flex-wrap">
+													{createElement(iconAs(client.deviceIcon), { "aria-hidden": "true" })}
+													<p>{osLabel}</p>
+													<p aria-hidden="true">·</p>
+													<p>
 														{t(
 															`myaccount.device.${client.device}`,
 															client.device,
 														)}
-													</Text>
-												</HStack>
-												<Text color="panel.textMuted" fontSize="xs" mt={1}>
+													</p>
+												</div>
+												<p className="text-panel-text-muted text-[0.75rem] mt-1">
 													{session.ip_address || "-"} ·{" "}
 													{t("myaccount.lastSeen")}{" "}
 													{dayjs(session.last_seen_at).format(
 														"YYYY-MM-DD HH:mm",
 													)}
-												</Text>
-											</Box>
-										</HStack>
-										<Button
-											colorScheme="red"
-											isLoading={
-												revoke.isLoading && revoke.variables === session.id
-											}
-											onClick={() => revoke.mutate(session.id)}
-											size="sm"
-											variant="ghost"
-											leftIcon={<ArrowRightStartOnRectangleIcon width={16} />}
-											alignSelf={{ base: "flex-end", sm: "center" }}
-											aria-label={`${t("header.logout")} ${browserLabel}`}
-										>
+												</p>
+											</div>
+										</div>
+										<Button onClick={() => revoke.mutate(session.id)} aria-label={`${t("header.logout")} ${browserLabel}`} variant="ghost" size="sm" loading={
+												revoke.isPending && revoke.variables === session.id
+											} className={cn("text-destructive hover:bg-destructive/10", "self-end sm:self-center")}>{<LogIn className="w-[16px]" />}
 											{t("header.logout")}
 										</Button>
-									</Flex>
-								</Box>
+									</div>
+								</article>
 							);
 						})}
 						{!sessions.isLoading && !sessions.data?.length && (
-							<Text color="gray.500">{t("noData")}</Text>
+							<p className="text-gray-500">{t("noData")}</p>
 						)}
-					</Stack>
+					</div>
 				</ChartBox>
 			)}
 
 			<AppDialog
-				isOpen={setupDialog.isOpen}
+				open={setupDialog.isOpen}
 				onClose={setupDialog.onClose}
 				title={t("myaccount.enableTwoFactor")}
 				footer={
-					<Button
-						colorScheme="primary"
-						isDisabled={code.length !== 6}
-						isLoading={twoFactorLoading}
-						onClick={confirmSetup}
-					>
+					<Button disabled={code.length !== 6} onClick={confirmSetup} loading={twoFactorLoading}>
 						{t("confirm")}
 					</Button>
 				}
 			>
-				<Stack align="center" spacing={4}>
+				<div className="flex flex-col items-center gap-4">
 					{setup && (
-						<Box bg="white" p={3} borderRadius="md">
+						<div className="bg-white p-3 rounded-md">
 							<QRCodeCanvas value={setup.uri} size={200} />
-						</Box>
+						</div>
 					)}
-					<Text fontFamily="mono" fontSize="xs" wordBreak="break-all">
+					<p className="font-mono text-[0.75rem] break-all">
 						{setup?.secret}
-					</Text>
-					<Input
-						autoComplete="one-time-code"
-						inputMode="numeric"
-						maxLength={6}
-						textAlign="center"
-						value={code}
-						onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
-					/>
-				</Stack>
+					</p>
+					<Input autoComplete="one-time-code" inputMode="numeric" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} className="text-center" />
+				</div>
 			</AppDialog>
 
 			<AppDialog
-				isOpen={disableDialog.isOpen}
+				open={disableDialog.isOpen}
 				onClose={disableDialog.onClose}
 				title={t("myaccount.disableTwoFactor")}
 				footer={
-					<Button
-						colorScheme="red"
-						isDisabled={!password || code.length !== 6}
-						isLoading={twoFactorLoading}
-						onClick={confirmDisable}
-					>
+					<Button disabled={!password || code.length !== 6} onClick={confirmDisable} variant="destructive" loading={twoFactorLoading}>
 						{t("phpmyadmin.disableAction")}
 					</Button>
 				}
 			>
-				<Stack spacing={3}>
-					<Input
-						type="password"
-						placeholder={t("myaccount.currentPassword")}
-						value={password}
-						onChange={(event) => setPassword(event.target.value)}
-					/>
-					<Input
-						autoComplete="one-time-code"
-						inputMode="numeric"
-						maxLength={6}
-						placeholder={t("login.authenticationCode")}
-						value={code}
-						onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
-					/>
-				</Stack>
+				<div className="flex flex-col gap-3">
+					<Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} />
+					<Input autoComplete="one-time-code" inputMode="numeric" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} />
+				</div>
 			</AppDialog>
-		</Stack>
+		</div>
 	);
 };

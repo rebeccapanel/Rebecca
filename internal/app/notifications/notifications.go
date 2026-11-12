@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 )
@@ -79,6 +80,7 @@ type Rule struct {
 	Body             string   `json:"body"`
 	Unit             string   `json:"unit"`
 	Recipients       string   `json:"recipients"`
+	Mandatory        bool     `json:"mandatory"`
 	DefaultEnabled   bool     `json:"default_enabled"`
 	DefaultThreshold int64    `json:"default_threshold"`
 	DefaultTitle     string   `json:"default_title"`
@@ -95,6 +97,7 @@ type RuleUpdate struct {
 
 type ruleDefinition struct {
 	key          string
+	mandatory    bool
 	enabled      bool
 	threshold    int64
 	unit         string
@@ -106,13 +109,13 @@ type ruleDefinition struct {
 
 var ruleDefinitions = []ruleDefinition{
 	{
-		key: RuleAdminTraffic, enabled: true, threshold: 80, unit: unitPercent, recipients: RecipientsAdmin,
+		key: RuleAdminTraffic, mandatory: true, enabled: true, threshold: 80, unit: unitPercent, recipients: RecipientsAdmin,
 		title:        "Traffic usage warning",
 		body:         "Your traffic usage has reached {percent}% of its limit ({usage} of {limit}).",
 		placeholders: []string{"username", "percent", "usage", "limit"},
 	},
 	{
-		key: RuleAdminExpiry, enabled: true, threshold: 3, unit: unitDays, recipients: RecipientsAdmin,
+		key: RuleAdminExpiry, mandatory: true, enabled: true, threshold: 3, unit: unitDays, recipients: RecipientsAdmin,
 		title:        "Admin account expires soon",
 		body:         "Your admin account expires in {days} day(s), on {expire_date}.",
 		placeholders: []string{"username", "days", "expire_date"},
@@ -132,9 +135,10 @@ var ruleDefinitions = []ruleDefinition{
 }
 
 type Service struct {
-	db      *sql.DB
-	dialect string
-	now     func() time.Time
+	db         *sql.DB
+	dialect    string
+	now        func() time.Time
+	pushClient *http.Client
 }
 
 func NewService(db *sql.DB, dialect string) Service {
@@ -171,7 +175,7 @@ func (s Service) ListRules(ctx context.Context) ([]Rule, error) {
 	for _, definition := range ruleDefinitions {
 		rule := definition.rule()
 		if override, ok := overrides[definition.key]; ok {
-			rule.Enabled = override.Enabled
+			rule.Enabled = override.Enabled || definition.mandatory
 			rule.Threshold = override.Threshold
 			rule.Title = override.Title
 			rule.Body = override.Body
@@ -184,6 +188,7 @@ func (s Service) ListRules(ctx context.Context) ([]Rule, error) {
 func (d ruleDefinition) rule() Rule {
 	return Rule{
 		Key:              d.key,
+		Mandatory:        d.mandatory,
 		Enabled:          d.enabled,
 		Threshold:        d.threshold,
 		Title:            d.title,
@@ -211,6 +216,9 @@ func (s Service) SaveRule(ctx context.Context, key string, update RuleUpdate) (R
 	definition, ok := definitionFor(key)
 	if !ok {
 		return Rule{}, ErrUnknownRule
+	}
+	if definition.mandatory && !update.Enabled {
+		return Rule{}, fmt.Errorf("%w: this notification cannot be turned off", ErrInvalid)
 	}
 	title := strings.TrimSpace(update.Title)
 	body := strings.TrimSpace(update.Body)
@@ -275,6 +283,9 @@ func (s Service) Send(ctx context.Context, sender Sender, title string, body str
 		id, err = s.createTx(ctx, tx, KindManual, title, body, sender.ID, sender.Username, recipients)
 		return err
 	})
+	if err == nil {
+		s.deliverPush(ctx, []pushJob{{recipients: recipients, title: title, body: body, id: id}})
+	}
 	return id, len(recipients), err
 }
 

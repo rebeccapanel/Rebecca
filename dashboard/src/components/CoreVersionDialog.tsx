@@ -1,25 +1,21 @@
-import {
-	Alert,
-	AlertDescription,
-	AlertIcon,
-	Button,
-	Checkbox,
-	FormControl,
-	FormLabel,
-	Input,
-	Spinner,
-	Stack,
-	Text,
-} from "@chakra-ui/react";
+import { Button } from "components/ui/button";
+import { Field, FieldLabel } from "components/ui/field";
+import { Spinner } from "components/ui/spinner";
+import { Input } from "components/ui/input";
+import { Checkbox } from "components/ui/checkbox";
+import { Alert, AlertDescription } from "components/ui/alert";
+import { CircleAlert, TriangleAlert } from "lucide-react";
+
+
 import { PanelSelect as Select } from "components/common/PanelSelect";
 import { AppDialog } from "components/dialogs/AppDialog";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useQuery } from "react-query";
+import { useQuery } from "@tanstack/react-query";
 import { fetch as apiFetch } from "service/http";
 
 type CoreVersionDialogProps = {
-	isOpen: boolean;
+	open: boolean;
 	title: string;
 	description?: string;
 	currentVersion?: string | null;
@@ -32,7 +28,7 @@ type CoreVersionDialogProps = {
 const RELEASE_LIMIT = 10;
 
 export const CoreVersionDialog = ({
-	isOpen,
+	open: isOpen,
 	title,
 	description,
 	currentVersion,
@@ -46,17 +42,11 @@ export const CoreVersionDialog = ({
 	const [persist, setPersist] = useState(false);
 	const [submissionError, setSubmissionError] = useState<string | null>(null);
 
-	const releasesQuery = useQuery(
-		["core-xray-releases"],
-		() =>
+	const releasesQuery = useQuery({ queryKey: ["core-xray-releases"], queryFn: () =>
 			apiFetch<{ tags: string[] }>("/core/xray/releases", {
 				query: { limit: RELEASE_LIMIT },
-			}),
-		{
-			enabled: isOpen,
-			staleTime: 5 * 60 * 1000,
-		},
-	);
+			}), enabled: isOpen,
+			staleTime: 5 * 60 * 1000, });
 
 	useEffect(() => {
 		if (isOpen) {
@@ -100,40 +90,31 @@ export const CoreVersionDialog = ({
 
 	return (
 		<AppDialog
-			isOpen={isOpen}
+			open={isOpen}
 			onClose={onClose}
-			isCentered
 			size="lg"
 			title={title}
 			footer={
 				<>
-					<Button variant="ghost" mr={3} onClick={onClose}>
+					<Button onClick={onClose} variant="ghost" className="me-3">
 						{t("cancel")}
 					</Button>
-					<Button
-						colorScheme="primary"
-						onClick={handleSubmit}
-						isLoading={isSubmitting}
-					>
+					<Button onClick={handleSubmit} loading={isSubmitting}>
 						{t("nodes.coreVersionDialog.confirmUpdate")}
 					</Button>
 				</>
 			}
 		>
-					<Stack spacing={4}>
+					<div className="flex flex-col gap-4">
 						{description && (
-							<Text
-								fontSize="sm"
-								color="gray.600"
-								_dark={{ color: "gray.300" }}
-							>
+							<p className="text-[0.875rem] text-gray-600 dark:text-gray-300">
 								{description}
-							</Text>
+							</p>
 						)}
-						<FormControl>
-							<FormLabel>
+						<Field>
+							<FieldLabel>
 								{t("nodes.coreVersionDialog.latestReleases")}
-							</FormLabel>
+							</FieldLabel>
 							<Select
 								placeholder={
 									isLoadingReleases
@@ -144,7 +125,7 @@ export const CoreVersionDialog = ({
 									version && releaseOptions.includes(version) ? version : ""
 								}
 								onChange={handleSelectChange}
-								isDisabled={isLoadingReleases || releaseOptions.length === 0}
+								disabled={isLoadingReleases || releaseOptions.length === 0}
 								size="sm"
 							>
 								{releaseOptions.map((item) => (
@@ -154,59 +135,38 @@ export const CoreVersionDialog = ({
 								))}
 							</Select>
 							{isLoadingReleases && (
-								<Stack direction="row" align="center" spacing={2} mt={2}>
-									<Spinner size="sm" />
-									<Text
-										fontSize="xs"
-										color="gray.500"
-										_dark={{ color: "gray.400" }}
-									>
+								<div className="flex flex-row items-center gap-2 mt-2">
+									<Spinner />
+									<p className="text-[0.75rem] text-gray-500 dark:text-gray-400">
 										{t("nodes.coreVersionDialog.fetchingFromGithub")}
-									</Text>
-								</Stack>
+									</p>
+								</div>
 							)}
 							{releasesQuery.isError && (
-								<Text fontSize="xs" color="red.500" mt={1}>
+								<p className="text-[0.75rem] text-red-500 mt-1">
 									{t("nodes.coreVersionDialog.failedToLoadReleases")}
-								</Text>
+								</p>
 							)}
-						</FormControl>
-						<FormControl isRequired>
-							<FormLabel>
+						</Field>
+						<Field>
+							<FieldLabel>
 								{t("nodes.coreVersionDialog.customVersionLabel")}
-							</FormLabel>
-							<Input
-								value={version}
-								placeholder={t(
-									"nodes.coreVersionDialog.customVersionPlaceholder",
-								)}
-								onChange={handleInputChange}
-								size="sm"
-							/>
-							<Text
-								fontSize="xs"
-								color="gray.500"
-								_dark={{ color: "gray.400" }}
-								mt={1}
-							>
+							</FieldLabel>
+							<Input value={version} onChange={handleInputChange} />
+							<p className="text-[0.75rem] text-gray-500 dark:text-gray-400 mt-1">
 								{t("nodes.coreVersionDialog.customVersionHelper")}
-							</Text>
-						</FormControl>
+							</p>
+						</Field>
 						{allowPersist && (
-							<Checkbox
-								isChecked={persist}
-								onChange={(event) => setPersist(event.target.checked)}
-							>
-								{t("nodes.coreVersionDialog.persistExecutable")}
-							</Checkbox>
+							<label htmlFor="core-version-persist" className="flex cursor-pointer items-center gap-2 text-sm"><Checkbox id="core-version-persist" checked={persist} onCheckedChange={(checked: boolean) => setPersist(checked)} /><span>{t("nodes.coreVersionDialog.persistExecutable")}</span></label>
 						)}
 						{submissionError && (
-							<Alert status="error" borderRadius="md" fontSize="sm">
-								<AlertIcon />
+							<Alert variant="destructive" className="rounded-md text-[0.875rem]">
+								<CircleAlert className="size-4" aria-hidden="true" />
 								<AlertDescription>{submissionError}</AlertDescription>
 							</Alert>
 						)}
-					</Stack>
+					</div>
 		</AppDialog>
 	);
 };

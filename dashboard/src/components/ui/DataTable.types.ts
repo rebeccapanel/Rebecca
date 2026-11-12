@@ -1,13 +1,14 @@
 import type { SortingState } from "@tanstack/react-table";
-import type { BoxProps, TableProps, Td, Th } from "@chakra-ui/react";
+import type { ComponentPropsWithoutRef } from "react";
 import type { ReactElement, ReactNode } from "react";
-import type { ComponentProps } from "react";
 
 export type DataTableColumnAlign = "start" | "center" | "end";
 export type DataTableColumnSize =
 	| string
 	| number
 	| Partial<Record<"base" | "sm" | "md" | "lg" | "xl", string | number>>;
+
+export type DataTableSortType = "number" | "text" | "date" | "boolean";
 
 export type DataTableColumn<TData> = {
 	id: string;
@@ -17,6 +18,7 @@ export type DataTableColumn<TData> = {
 	mobileDetailCell?: (row: TData) => ReactNode;
 	sortValue?: (row: TData) => unknown;
 	sortable?: boolean;
+	sortType?: DataTableSortType;
 	size?: DataTableColumnSize;
 	minSize?: DataTableColumnSize;
 	maxSize?: DataTableColumnSize;
@@ -42,11 +44,13 @@ export type DataTableColumn<TData> = {
 	hideOnMobile?: boolean;
 	mobilePriority?: number;
 	mobileLabel?: ReactNode;
+	/** Human label for the column-visibility menu. */
+	menuLabel?: string;
 	isPrimary?: boolean;
 	isMeta?: boolean;
 	meta?: Record<string, unknown>;
-	headerProps?: ComponentProps<typeof Th>;
-	cellProps?: ComponentProps<typeof Td>;
+	headerProps?: ComponentPropsWithoutRef<"th">;
+	cellProps?: ComponentPropsWithoutRef<"td">;
 };
 
 export type DataTableRowAction<TData> = {
@@ -54,10 +58,11 @@ export type DataTableRowAction<TData> = {
 	label: ReactNode;
 	icon?: ReactElement;
 	onClick?: (row: TData) => void;
-	render?: (row: TData, onClose: () => void) => ReactNode;
-	isDisabled?: boolean | ((row: TData) => boolean);
+	disabled?: boolean | ((row: TData) => boolean);
+	disabledReason?: string | ((row: TData) => string | undefined);
 	isDanger?: boolean;
 	color?: string;
+	pinned?: boolean;
 };
 
 export type DataTableBulkAction<TData> = {
@@ -65,8 +70,8 @@ export type DataTableBulkAction<TData> = {
 	label: ReactNode;
 	icon?: ReactElement;
 	onClick?: (rows: TData[], rowIds: string[]) => void;
-	isDisabled?: boolean | ((rows: TData[], rowIds: string[]) => boolean);
-	isLoading?: boolean;
+	disabled?: boolean | ((rows: TData[], rowIds: string[]) => boolean);
+	loading?: boolean;
 	isDanger?: boolean;
 	variant?: string;
 };
@@ -75,7 +80,7 @@ export type DataTableProps<TData> = {
 	data: TData[];
 	columns: DataTableColumn<TData>[];
 	getRowId: (row: TData, index: number) => string;
-	isLoading?: boolean;
+	loading?: boolean;
 	loadingRows?: number;
 	error?: ReactNode;
 	emptyState?: ReactNode;
@@ -102,10 +107,13 @@ export type DataTableProps<TData> = {
 	sorting?: SortingState;
 	onSortingChange?: (sorting: SortingState) => void;
 	manualSorting?: boolean;
+	showSortMenu?: boolean;
 	pagination?: ReactNode;
 	dir?: "ltr" | "rtl";
-	tableProps?: TableProps;
-	containerProps?: BoxProps;
+	tableProps?: ComponentPropsWithoutRef<"table">;
+	containerProps?: ComponentPropsWithoutRef<"div">;
 	mobileBreakpoint?: "md" | "lg";
 	ariaLabel?: string;
+	/** `{ [columnId]: false }` hides a column. Columns default to visible. */
+	columnVisibility?: Record<string, boolean>;
 };

@@ -17,6 +17,7 @@ import (
 	backupapp "github.com/rebeccapanel/rebecca/internal/app/backup"
 	certificateapp "github.com/rebeccapanel/rebecca/internal/app/certificates"
 	externalapps "github.com/rebeccapanel/rebecca/internal/app/externalapps"
+	"github.com/rebeccapanel/rebecca/internal/app/labels"
 	"github.com/rebeccapanel/rebecca/internal/app/logging"
 	"github.com/rebeccapanel/rebecca/internal/app/migrations"
 	nodeapp "github.com/rebeccapanel/rebecca/internal/app/node"
@@ -46,6 +47,7 @@ type Server struct {
 	maintenance          *systemapp.MaintenanceService
 	usageService         usage.Service
 	userService          userapp.Service
+	labels               labels.Store
 	warpService          warpapp.Service
 	nordService          nordvpnapp.Service
 	outboundSubs         outboundsubapp.Service
@@ -64,6 +66,7 @@ type Server struct {
 	backgroundOnce       sync.Once
 	nodeOperationsKick   chan struct{}
 	userOpsKickMu        sync.Mutex
+	nodesBulkMu          sync.Mutex
 	userOpsKicking       bool
 	userOpsKickUserIDs   map[int64]struct{}
 	liveUserSpeedsMu     sync.RWMutex
@@ -132,6 +135,7 @@ func New(cfg Config) (*Server, error) {
 		maintenance:    systemapp.NewMaintenanceService(),
 		usageService:   usage.NewService(usageRepo),
 		userService:    userapp.NewServiceWithTemplates(userRepo, settingsRepo),
+		labels:         labels.NewStore(pool.DB, pool.Dialect),
 		warpService:    warpapp.NewService(warpRepo, warpapp.NewClient("")),
 		nordService:    nordvpnapp.NewService(nordRepo, nordvpnapp.NewClient("")),
 		outboundSubs:   outboundSubs,
@@ -317,33 +321,21 @@ func (s *Server) handleNodesServiceUpdate(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) updateNodeServices(targets []nodeServiceUpdateTarget) {
-	workers := 4
-	if len(targets) < workers {
-		workers = len(targets)
+	s.nodesBulkMu.Lock()
+	defer s.nodesBulkMu.Unlock()
+	for index, target := range targets {
+		if index > 0 {
+			time.Sleep(nodesBulkDefaultGap)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		_, err := s.nodeController.UpdateService(ctx, nodecontroller.Request{
+			NodeID: target.ID, Channel: target.Channel, Version: target.Version,
+		})
+		cancel()
+		if err != nil {
+			logging.Warnf(logging.ComponentNode, "update service on node %d: %v", target.ID, err)
+		}
 	}
-	jobs := make(chan nodeServiceUpdateTarget)
-	var group sync.WaitGroup
-	for range workers {
-		group.Add(1)
-		go func() {
-			defer group.Done()
-			for target := range jobs {
-				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-				_, err := s.nodeController.UpdateService(ctx, nodecontroller.Request{
-					NodeID: target.ID, Channel: target.Channel, Version: target.Version,
-				})
-				cancel()
-				if err != nil {
-					logging.Warnf(logging.ComponentNode, "update service on node %d: %v", target.ID, err)
-				}
-			}
-		}()
-	}
-	for _, target := range targets {
-		jobs <- target
-	}
-	close(jobs)
-	group.Wait()
 }
 
 func (s *Server) handleNodesUsage(w http.ResponseWriter, r *http.Request) {
@@ -606,6 +598,7 @@ func (s *Server) handleNodeUsageDaily(w http.ResponseWriter, r *http.Request, no
 func (s *Server) handleNodeRuntimeUpdate(w http.ResponseWriter, r *http.Request, nodeID int64) {
 	var payload struct {
 		Version string `json:"version"`
+		Wait    bool   `json:"wait"`
 	}
 	if err := decodeOptionalJSON(r, &payload); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -616,6 +609,21 @@ func (s *Server) handleNodeRuntimeUpdate(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	version := strings.TrimSpace(payload.Version)
+	if payload.Wait {
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
+		defer cancel()
+		result, err := s.nodeController.UpdateRuntime(ctx, nodecontroller.Request{
+			NodeID:  nodeID,
+			Version: version,
+		})
+		if err != nil {
+			writeControllerError(w, err)
+			return
+		}
+		s.recordNodeRuntimeAction(r.Context(), nodeID, "node.runtime_update", "Updated node core")
+		writeJSON(w, http.StatusOK, flattenRuntimeResult(result))
+		return
+	}
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()

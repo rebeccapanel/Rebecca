@@ -1,0 +1,322 @@
+/**
+ * Tailwind v4 for the dashboard.
+ *
+ * Preflight is imported, so Tailwind owns the base reset now that Chakra is
+ * being removed. Utilities are emitted into their own cascade layer, so the
+ * unlayered rules in index.scss still take precedence while both run.
+ *
+ * The palettes, shadows and breakpoints below are copied from the Chakra
+ * theme they replace, so migrated screens keep the same values.
+ */
+@import "tailwindcss" source("../src");
+
+/* `dark:` follows the panel's own theme class, not the OS preference. */
+@custom-variant dark (&:where(.rb-theme-dark, .rb-theme-dark *));
+@custom-variant light (&:where(.rb-theme-light, .rb-theme-light *));
+
+/*
+ * Colour names that the kit builds at runtime (`bg-${colorScheme}-500`) never
+ * appear as whole classes in the source, so Tailwind has to be told about them.
+ */
+@source inline("{bg,text,border,accent}-{primary,red,blue,green,orange,yellow,purple,teal,cyan,pink,gray}-{50,100,200,300,400,500,600,700,800}");
+@source inline("{hover:,active:,peer-checked:,aria-selected:,dark:,dark:hover:,dark:active:,dark:aria-selected:}{bg,text,border}-{primary,red,blue,green,orange,yellow,purple,teal,cyan,pink,gray}-{50,100,200,300,400,500,600,700,800}");
+@source inline("{dark:,dark:hover:,dark:active:}{bg,text}-{primary,red,blue,green,orange,yellow,purple,teal,cyan,pink,gray}-200/{12,16,24,36}");
+
+/* Chakra's breakpoints: sm starts at 480px and lg at 992px. md, xl and 2xl match Tailwind. */
+@theme {
+  --breakpoint-sm: 30em;
+  --breakpoint-lg: 62em;
+
+  /* Chakra's default heading stack. The body font is the panel's own stack. */
+  --font-heading: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+
+  /* Chakra's shadow scale. */
+  --shadow-xs: 0 0 0 1px rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  --shadow-dark-lg: rgba(0, 0, 0, 0.1) 0px 0px 0px 1px, rgba(0, 0, 0, 0.2) 0px 5px 10px, rgba(0, 0, 0, 0.4) 0px 15px 40px;
+
+  /* Chakra's default palettes, so `gray.600` becomes `text-gray-600` with the same value. */
+  --color-gray-50: #F7FAFC;
+  --color-gray-100: #EDF2F7;
+  --color-gray-200: #E2E8F0;
+  --color-gray-300: #CBD5E0;
+  --color-gray-400: #A0AEC0;
+  --color-gray-500: #718096;
+  --color-gray-600: #4A5568;
+  --color-gray-700: #2D3748;
+  --color-gray-800: #1A202C;
+  --color-gray-900: #171923;
+  --color-red-50: #FFF5F5;
+  --color-red-100: #FED7D7;
+  --color-red-200: #FEB2B2;
+  --color-red-300: #FC8181;
+  --color-red-400: #F56565;
+  --color-red-500: #E53E3E;
+  --color-red-600: #C53030;
+  --color-red-700: #9B2C2C;
+  --color-red-800: #822727;
+  --color-red-900: #63171B;
+  --color-blue-50: #ebf8ff;
+  --color-blue-100: #bee3f8;
+  --color-blue-200: #90cdf4;
+  --color-blue-300: #63b3ed;
+  --color-blue-400: #4299e1;
+  --color-blue-500: #3182ce;
+  --color-blue-600: #2b6cb0;
+  --color-blue-700: #2c5282;
+  --color-blue-800: #2a4365;
+  --color-blue-900: #1A365D;
+  --color-green-50: #F0FFF4;
+  --color-green-100: #C6F6D5;
+  --color-green-200: #9AE6B4;
+  --color-green-300: #68D391;
+  --color-green-400: #48BB78;
+  --color-green-500: #38A169;
+  --color-green-600: #2F855A;
+  --color-green-700: #276749;
+  --color-green-800: #22543D;
+  --color-green-900: #1C4532;
+  --color-orange-50: #FFFAF0;
+  --color-orange-100: #FEEBC8;
+  --color-orange-200: #FBD38D;
+  --color-orange-300: #F6AD55;
+  --color-orange-400: #ED8936;
+  --color-orange-500: #DD6B20;
+  --color-orange-600: #C05621;
+  --color-orange-700: #9C4221;
+  --color-orange-800: #7B341E;
+  --color-orange-900: #652B19;
+  --color-yellow-50: #FFFFF0;
+  --color-yellow-100: #FEFCBF;
+  --color-yellow-200: #FAF089;
+  --color-yellow-300: #F6E05E;
+  --color-yellow-400: #ECC94B;
+  --color-yellow-500: #D69E2E;
+  --color-yellow-600: #B7791F;
+  --color-yellow-700: #975A16;
+  --color-yellow-800: #744210;
+  --color-yellow-900: #5F370E;
+  --color-purple-50: #FAF5FF;
+  --color-purple-100: #E9D8FD;
+  --color-purple-200: #D6BCFA;
+  --color-purple-300: #B794F4;
+  --color-purple-400: #9F7AEA;
+  --color-purple-500: #805AD5;
+  --color-purple-600: #6B46C1;
+  --color-purple-700: #553C9A;
+  --color-purple-800: #44337A;
+  --color-purple-900: #322659;
+  --color-teal-50: #E6FFFA;
+  --color-teal-100: #B2F5EA;
+  --color-teal-200: #81E6D9;
+  --color-teal-300: #4FD1C5;
+  --color-teal-400: #38B2AC;
+  --color-teal-500: #319795;
+  --color-teal-600: #2C7A7B;
+  --color-teal-700: #285E61;
+  --color-teal-800: #234E52;
+  --color-teal-900: #1D4044;
+  --color-cyan-50: #EDFDFD;
+  --color-cyan-100: #C4F1F9;
+  --color-cyan-200: #9DECF9;
+  --color-cyan-300: #76E4F7;
+  --color-cyan-400: #0BC5EA;
+  --color-cyan-500: #00B5D8;
+  --color-cyan-600: #00A3C4;
+  --color-cyan-700: #0987A0;
+  --color-cyan-800: #086F83;
+  --color-cyan-900: #065666;
+  --color-pink-50: #FFF5F7;
+  --color-pink-100: #FED7E2;
+  --color-pink-200: #FBB6CE;
+  --color-pink-300: #F687B3;
+  --color-pink-400: #ED64A6;
+  --color-pink-500: #D53F8C;
+  --color-pink-600: #B83280;
+  --color-pink-700: #97266D;
+  --color-pink-800: #702459;
+  --color-pink-900: #521B41;
+  --color-whiteAlpha-50: rgba(255, 255, 255, 0.04);
+  --color-whiteAlpha-100: rgba(255, 255, 255, 0.06);
+  --color-whiteAlpha-200: rgba(255, 255, 255, 0.08);
+  --color-whiteAlpha-300: rgba(255, 255, 255, 0.16);
+  --color-whiteAlpha-400: rgba(255, 255, 255, 0.24);
+  --color-whiteAlpha-500: rgba(255, 255, 255, 0.36);
+  --color-whiteAlpha-600: rgba(255, 255, 255, 0.48);
+  --color-whiteAlpha-700: rgba(255, 255, 255, 0.64);
+  --color-whiteAlpha-800: rgba(255, 255, 255, 0.80);
+  --color-whiteAlpha-900: rgba(255, 255, 255, 0.92);
+  --color-blackAlpha-50: rgba(0, 0, 0, 0.04);
+  --color-blackAlpha-100: rgba(0, 0, 0, 0.06);
+  --color-blackAlpha-200: rgba(0, 0, 0, 0.08);
+  --color-blackAlpha-300: rgba(0, 0, 0, 0.16);
+  --color-blackAlpha-400: rgba(0, 0, 0, 0.24);
+  --color-blackAlpha-500: rgba(0, 0, 0, 0.36);
+  --color-blackAlpha-600: rgba(0, 0, 0, 0.48);
+  --color-blackAlpha-700: rgba(0, 0, 0, 0.64);
+  --color-blackAlpha-800: rgba(0, 0, 0, 0.80);
+  --color-blackAlpha-900: rgba(0, 0, 0, 0.92);
+  --color-gray-750: #222c3b;
+  --color-light-border: #d2d2d4;
+}
+
+@layer base {
+  /* shadcn/ui's own base rule. Blocks use a bare `border` and expect the
+     border token, not currentColor. Component CSS in index.scss is unlayered
+     and still wins wherever it sets a border colour explicitly. */
+  *,
+  ::after,
+  ::before {
+    border-color: var(--color-border);
+  }
+}
+
+@theme inline {
+  --font-sans: var(--rb-font-stack);
+
+  --color-panel-app: var(--rb-panel-bg);
+  --color-panel-main: var(--rb-panel-main);
+  --color-panel-sidebar: var(--rb-panel-sidebar);
+  --color-panel-surface: var(--rb-panel-surface);
+  --color-panel-elevated: var(--rb-panel-elevated);
+  --color-panel-border: var(--rb-panel-border);
+  --color-panel-border-strong: var(--rb-panel-border-strong);
+  --color-panel-text: var(--rb-panel-text);
+  --color-panel-text-secondary: var(--rb-panel-text-secondary);
+  --color-panel-text-muted: var(--rb-panel-text-muted);
+  --color-panel-accent: var(--rb-panel-accent);
+  --color-panel-accent-hover: var(--rb-panel-accent-hover);
+  --color-panel-row-hover: var(--rb-panel-row-hover);
+  --color-panel-success: #22c55e;
+  --color-panel-warning: #f59e0b;
+  --color-panel-danger: #ef4444;
+  --color-panel-info: #38bdf8;
+
+  /* ---------------------------------------------------------------- */
+  /* shadcn aliases                                                     */
+  /*                                                                    */
+  /* Stock shadcn/ui blocks style themselves with bg-background,        */
+  /* text-muted-foreground, border-border, bg-primary… Mapping those    */
+  /* names onto the panel tokens lets a block be pasted in unchanged    */
+  /* and still look like this dashboard.                                */
+  /* ---------------------------------------------------------------- */
+  --color-background: var(--rb-panel-main);
+  --color-foreground: var(--rb-panel-text);
+  --color-card: var(--rb-panel-surface);
+  --color-card-foreground: var(--rb-panel-text);
+  --color-popover: var(--rb-panel-surface);
+  --color-popover-foreground: var(--rb-panel-text);
+  --color-primary: var(--rb-panel-accent);
+  --color-primary-foreground: #ffffff;
+  --color-secondary: var(--rb-panel-elevated);
+  --color-secondary-foreground: var(--rb-panel-text);
+  --color-muted: var(--rb-panel-elevated);
+  --color-muted-foreground: var(--rb-panel-text-muted);
+  --color-accent: var(--rb-panel-elevated);
+  --color-accent-foreground: var(--rb-panel-text);
+  --color-destructive: var(--color-panel-danger);
+  --color-destructive-foreground: #ffffff;
+  --color-border: var(--rb-panel-border);
+  --color-input: var(--rb-panel-border);
+  --color-ring: var(--rb-panel-accent);
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+
+  /* The accent palette is set per accent by ThemeSelector on :root. */
+  --color-primary-50: var(--primary-50);
+  --color-primary-100: var(--primary-100);
+  --color-primary-200: var(--primary-200);
+  --color-primary-300: var(--primary-300);
+  --color-primary-400: var(--primary-400);
+  --color-primary-500: var(--primary-500);
+  --color-primary-600: var(--primary-600);
+  --color-primary-700: var(--primary-700);
+  --color-primary-800: var(--primary-800);
+  --color-primary-900: var(--primary-900);
+
+  --color-surface-light: var(--surface-light);
+  --color-surface-dark: var(--surface-dark);
+  --color-bg-light: var(--bg-light);
+  --color-bg-dark: var(--bg-dark);
+}
+
+@layer utilities {
+  /* Numerals in tables and stat blocks must align across scripts. */
+  .rb-tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+}
+
+@theme {
+  --animate-rb-fade-in: rb-fade-in 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  --animate-rb-fade-out: rb-fade-out 180ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  --animate-rb-pop-in: rb-pop-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  --animate-rb-pop-out: rb-pop-out 160ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  --animate-rb-dock-in: rb-dock-in 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  --animate-rb-dock-out: rb-dock-out 160ms cubic-bezier(0.23, 1, 0.32, 1) both;
+  --animate-rb-slide-in-right: rb-slide-in-right 320ms cubic-bezier(0.32, 0.72, 0, 1) backwards;
+  --animate-rb-slide-out-right: rb-slide-out-right 220ms cubic-bezier(0.32, 0.72, 0, 1) forwards;
+  --animate-rb-slide-in-left: rb-slide-in-left 320ms cubic-bezier(0.32, 0.72, 0, 1) backwards;
+  --animate-rb-slide-out-left: rb-slide-out-left 220ms cubic-bezier(0.32, 0.72, 0, 1) forwards;
+  --animate-rb-slide-in-top: rb-slide-in-top 300ms cubic-bezier(0.32, 0.72, 0, 1) backwards;
+  --animate-rb-slide-out-top: rb-slide-out-top 200ms cubic-bezier(0.32, 0.72, 0, 1) forwards;
+  --animate-rb-slide-in-bottom: rb-slide-in-bottom 300ms cubic-bezier(0.32, 0.72, 0, 1) backwards;
+  --animate-rb-slide-out-bottom: rb-slide-out-bottom 200ms cubic-bezier(0.32, 0.72, 0, 1) forwards;
+
+  @keyframes rb-fade-in {
+    from { opacity: 0; }
+  }
+  @keyframes rb-fade-out {
+    to { opacity: 0; }
+  }
+  @keyframes rb-pop-in {
+    from { opacity: 0; transform: translateY(-6px) scale(0.96); }
+  }
+  @keyframes rb-pop-out {
+    to { opacity: 0; transform: translateY(-6px) scale(0.96); }
+  }
+  @keyframes rb-dock-in {
+    from { opacity: 0; transform: translate3d(0, 10px, 0) scale(0.97); }
+    to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  }
+  @keyframes rb-dock-out {
+    from { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+    to { opacity: 0; transform: translate3d(0, 10px, 0) scale(0.97); }
+  }
+  @keyframes rb-slide-in-right {
+    from { transform: translate3d(100%, 0, 0); }
+    to { transform: translate3d(0, 0, 0); }
+  }
+  @keyframes rb-slide-out-right {
+    to { transform: translate3d(100%, 0, 0); }
+  }
+  @keyframes rb-slide-in-left {
+    from { transform: translate3d(-100%, 0, 0); }
+    to { transform: translate3d(0, 0, 0); }
+  }
+  @keyframes rb-slide-out-left {
+    to { transform: translate3d(-100%, 0, 0); }
+  }
+  @keyframes rb-slide-in-top {
+    from { transform: translate3d(0, -100%, 0); }
+    to { transform: translate3d(0, 0, 0); }
+  }
+  @keyframes rb-slide-out-top {
+    to { transform: translate3d(0, -100%, 0); }
+  }
+  @keyframes rb-slide-in-bottom {
+    from { transform: translate3d(0, 100%, 0); }
+    to { transform: translate3d(0, 0, 0); }
+  }
+  @keyframes rb-slide-out-bottom {
+    to { transform: translate3d(0, 100%, 0); }
+  }
+}

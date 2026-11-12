@@ -1,76 +1,47 @@
-import {
-	Box,
-	type BoxProps,
-	Flex,
-	Text,
-	useColorModeValue,
-} from "@chakra-ui/react";
+import type { ComponentPropsWithoutRef } from "react";
 import type { FC, ReactNode } from "react";
+import { cn } from "lib/cn";
 
-export type ChartBoxProps = Omit<BoxProps, "title"> & {
+export type ChartBoxProps = Omit<ComponentPropsWithoutRef<"div">, "title"> & {
 	title?: ReactNode;
 	children: ReactNode;
 	headerActions?: ReactNode;
 };
 
+/**
+ * The panel's card, built on the shadcn Card primitives.
+ *
+ * ChartBox is used by every analytics screen, so it keeps its own API
+ * (title / headerActions / children) and only the internals moved to the
+ * registry component: same surface, border and radius as before.
+ */
 export const ChartBox: FC<ChartBoxProps> = ({
 	title,
 	children,
 	headerActions,
+	className,
 	...props
 }) => {
-	const borderColor = useColorModeValue("panel.border", "panel.border");
-	const bg = useColorModeValue("panel.surface", "panel.surface");
-	const headerBg = useColorModeValue("transparent", "transparent");
-
 	return (
-		<Box
-			borderWidth="1px"
-			borderColor={borderColor}
-			borderRadius="xl"
-			bg={bg}
-			overflow="hidden"
-			transition="box-shadow 0.2s ease, border-color 0.2s ease"
-			sx={{
-				"@media (prefers-reduced-motion: reduce)": {
-					transition: "none",
-				},
-			}}
-			_hover={{
-				"@media (min-width: 768px)": {
-					boxShadow: "sm",
-					borderColor: "panel.borderStrong",
-				},
-			}}
+		<div
 			{...props}
+			data-slot="chart-box"
+			className={cn(
+				"flex flex-col gap-0 overflow-hidden rounded-xl border border-panel-border bg-panel-surface shadow-sm transition-[box-shadow,border-color] duration-200 hover:border-panel-border-strong",
+				className,
+			)}
 		>
 			{(title || headerActions) && (
-				<Flex
-					px={{ base: 4, md: 5 }}
-					py={4}
-					borderBottomWidth="1px"
-					borderBottomColor={borderColor}
-					bg={headerBg}
-					justifyContent="space-between"
-					alignItems={{ base: "stretch", md: "center" }}
-					gap={3}
-					flexWrap="wrap"
-				>
-					{title && (
-						<Text
-							fontWeight="bold"
-							fontSize={{ base: "md", md: "lg" }}
-							color="panel.text"
-							flex="1"
-							minW={{ base: "full", md: "220px" }}
-						>
+				<div className="flex flex-wrap items-stretch justify-between gap-3 border-b border-panel-border px-4 py-4 md:items-center md:px-5">
+					{title ? (
+						<p className="min-w-full! flex-1 text-[1rem] font-bold text-panel-text md:min-w-[220px]! md:text-[1.125rem]">
 							{title}
-						</Text>
-					)}
-					{headerActions && <Box maxW="full">{headerActions}</Box>}
-				</Flex>
+						</p>
+					) : null}
+					{headerActions ? <div className="max-w-full">{headerActions}</div> : null}
+				</div>
 			)}
-			<Box p={{ base: 4, md: 5 }}>{children}</Box>
-		</Box>
+			<div className="flex-1 p-4 md:p-5">{children}</div>
+		</div>
 	);
 };

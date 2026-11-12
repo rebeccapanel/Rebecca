@@ -59,6 +59,11 @@ func (r Repository) GroupedInbounds(ctx context.Context) (map[string][]map[strin
 			} else if message := routingErrors[jsonvalue.String(inbound["tag"])]; message != "" {
 				resolved["validation_error"] = message
 			}
+			if resolved["validation_error"] == nil {
+				if warning := InboundCompatibilityWarning(inbound); warning != "" {
+					resolved["compatibility_warning"] = warning
+				}
+			}
 			protocol := normalizeProxyProtocol(jsonvalue.String(inbound["protocol"]))
 			byProtocol[protocol] = append(byProtocol[protocol], resolved)
 		}
@@ -90,6 +95,11 @@ func (r Repository) GroupedInbounds(ctx context.Context) (map[string][]map[strin
 		}
 	}
 	for protocol := range auxiliaryInboundProtocols {
+		if _, ok := grouped[protocol]; !ok {
+			grouped[protocol] = []map[string]any{}
+		}
+	}
+	for protocol := range xrayServiceInboundProtocols {
 		if _, ok := grouped[protocol]; !ok {
 			grouped[protocol] = []map[string]any{}
 		}
@@ -636,6 +646,9 @@ func (r Repository) prepareInboundPayload(payload map[string]any, enforceTag str
 		}
 		return inbound, nil
 	}
+	if IsXrayServiceInboundProtocol(protocol) {
+		return normalizeXrayServiceInbound(tag, protocol, inbound)
+	}
 	if IsAuxiliaryInboundProtocol(protocol) {
 		inbound["tag"] = tag
 		inbound["protocol"] = protocol
@@ -679,12 +692,19 @@ func (r Repository) prepareInboundPayload(payload map[string]any, enforceTag str
 		stream["hysteriaSettings"] = hysteriaSettings
 		inbound["streamSettings"] = stream
 	}
+	if protocol == MasqueProtocol {
+		inbound["tag"] = tag
+		if err := normalizeMasqueInbound(inbound, settings); err != nil {
+			return nil, err
+		}
+	}
 	inbound["settings"] = settings
 	inbound["tag"] = tag
 	inbound["protocol"] = protocol
 	if err := normalizeRealitySettings(inbound); err != nil {
 		return nil, err
 	}
+	canonicalizeXDriveService(inbound)
 	if err := validateExecutableInbound(inbound); err != nil {
 		return nil, err
 	}
@@ -814,8 +834,8 @@ func validatePortAvailable(config map[string]any, inbound map[string]any, skipTa
 
 func inboundRuntimePorts(inbound map[string]any) []int {
 	ports := make([]int, 0, 2)
-	if port, err := parseConfigPort(inbound["port"]); err == nil && port > 0 {
-		ports = append(ports, port)
+	if listed, err := parseConfigPortList(inbound["port"]); err == nil {
+		ports = append(ports, listed...)
 	}
 	protocol := normalizeProxyProtocol(jsonvalue.String(inbound["protocol"]))
 	if protocol == "web" {

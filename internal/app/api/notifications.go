@@ -26,6 +26,11 @@ func (s *Server) registerNotificationRoutes(r chi.Router) {
 	r.HandleFunc("/notifications/recipients", s.requireAdmin(s.handleNotificationRecipients))
 	r.HandleFunc("/notifications/rules", s.requireAdmin(s.handleNotificationRules))
 	r.HandleFunc("/notifications/rules/*", s.requireAdmin(s.handleNotificationRule))
+	r.Get("/notifications/push/config", s.requireAdmin(s.handleNotificationPushConfig))
+	r.Get("/notifications/push/manifest", s.handleNotificationPushManifest)
+	r.Post("/notifications/push/subscribe", s.requireSameOrigin(s.requireAdmin(s.handleNotificationPushSubscribe)))
+	r.Post("/notifications/push/unsubscribe", s.requireSameOrigin(s.requireAdmin(s.handleNotificationPushUnsubscribe)))
+	r.Post("/notifications/push/status", s.requireSameOrigin(s.requireAdmin(s.handleNotificationPushStatus)))
 }
 
 func (s *Server) notificationService() notifications.Service {

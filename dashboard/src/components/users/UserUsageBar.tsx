@@ -1,4 +1,4 @@
-import { Box, chakra, Flex, HStack, Stack, Text } from "@chakra-ui/react";
+import { cn } from "lib/cn";
 import type { FC } from "react";
 import { formatBytes } from "utils/formatByte";
 import { getUsageTone, usageToneGradients } from "./userColors";
@@ -53,88 +53,43 @@ export const UserUsageBar: FC<UserUsageBarProps> = ({
 	const percentLabel = isUnlimited ? "∞" : `${Math.round(percent)}%`;
 
 	const track = (
-		<Box className="rb-user-usage-track" flex="1 1 auto" minW={0}>
-			<Box
-				className="rb-user-usage-fill"
-				style={{
+		<div className="flex-[1_1_auto] min-w-0! rb-user-usage-track">
+			<div style={{
 					width: fillWidth,
 					backgroundImage: usageToneGradients[tone],
-				}}
-			/>
-		</Box>
+				}} className="rb-user-usage-fill" />
+		</div>
 	);
 
 	if (variant === "compact") {
 		return (
-			<Stack
-				className="rb-user-usage"
-				data-tone={tone}
-				data-variant={variant}
-				spacing={1}
-				w="full"
-				maxW="full"
-				justify="center"
-				overflow="hidden"
-			>
+			<div data-tone={tone} data-variant={variant} className="flex flex-col gap-1 w-full max-w-full justify-center overflow-hidden rb-user-usage">
 				{track}
-				<HStack
-					justify="space-between"
-					spacing={2}
-					fontSize="xs"
-					dir="ltr"
-					w="full"
-					minW={0}
-					whiteSpace="nowrap"
-				>
-					<Text
-						className="rb-user-usage-pair"
-						noOfLines={1}
-						minW={0}
-						sx={{ unicodeBidi: "isolate" }}
-					>
+				<div dir="ltr" className="flex flex-row items-center justify-between gap-2 text-[0.75rem] w-full min-w-0! whitespace-nowrap">
+					<p className="truncate min-w-0! [unicode-bidi:isolate] rb-user-usage-pair">
 						{formatUsagePair(used, total)}
-					</Text>
-					<Text className="rb-user-usage-percent" flexShrink={0}>
+					</p>
+					<p className="shrink-0 rb-user-usage-percent">
 						{percentLabel}
-					</Text>
-				</HStack>
-			</Stack>
+					</p>
+				</div>
+			</div>
 		);
 	}
 
 	if (variant === "stacked") {
 		return (
-			<Stack
-				className="rb-user-usage"
-				data-tone={tone}
-				data-variant={variant}
-				spacing={1}
-				w="full"
-				minW={0}
-				dir="ltr"
-			>
+			<div data-tone={tone} data-variant={variant} dir="ltr" className="flex flex-col gap-1 w-full min-w-0! rb-user-usage">
 				{track}
-				<Flex
-					align="center"
-					justify="space-between"
-					gap={3}
-					h="16px"
-					fontSize="xs"
-					whiteSpace="nowrap"
-				>
-					<Text className="rb-user-usage-pair" noOfLines={1}>
+				<div className="flex items-center justify-between gap-3 h-[16px] text-[0.75rem] whitespace-nowrap">
+					<p className="truncate rb-user-usage-pair">
 						{formatBytes(used)}
-					</Text>
-					<Text
-						className="rb-user-usage-pair"
-						color="panel.textMuted"
-						fontSize={isUnlimited ? "md" : undefined}
-						noOfLines={1}
-					>
+					</p>
+					<p className={cn("text-panel-text-muted truncate", isUnlimited ? "text-[1rem]" : "", "rb-user-usage-pair")}>
 						{isUnlimited ? "∞" : formatBytes(total)}
-					</Text>
-				</Flex>
-			</Stack>
+					</p>
+				</div>
+			</div>
 		);
 	}
 
@@ -145,66 +100,30 @@ export const UserUsageBar: FC<UserUsageBarProps> = ({
 	// the left and lifetime usage on the right, wrapping gracefully if the
 	// column gets too narrow to fit both on one line.
 	return (
-		<Stack
-			className="rb-user-usage"
-			data-tone={tone}
-			data-variant={variant}
-			spacing={0.5}
-			w="full"
-			maxW="full"
-			overflow="hidden"
-		>
-			<Flex align="center" gap={0} w="full" minW={0}>
+		<div data-tone={tone} data-variant={variant} className="flex flex-col gap-0.5 w-full max-w-full overflow-hidden rb-user-usage">
+			<div className="flex items-center gap-0 w-full min-w-0!">
 				{track}
-				<Text
-					className="rb-user-usage-percent"
-					flex={`0 0 ${PERCENT_SLOT_WIDTH}`}
-					textAlign="start"
-					dir="ltr"
-				>
+				<p dir="ltr" style={{ flex: `0 0 ${PERCENT_SLOT_WIDTH}` }} className="text-start rb-user-usage-percent">
 					{percentLabel}
-				</Text>
-			</Flex>
-			<Flex align="center" w="full" minW={0} gap={2}>
-				<Flex
-					align="center"
-					flex="1 1 auto"
-					minW={0}
-					flexWrap="wrap"
-					columnGap={3}
-					rowGap={0.5}
-					fontSize="xs"
-					dir="ltr"
-				>
-					<Text
-						className="rb-user-usage-pair"
-						noOfLines={1}
-						minW={0}
-						flex="0 1 auto"
-						textAlign="start"
-						sx={{ unicodeBidi: "isolate" }}
-					>
+				</p>
+			</div>
+			<div className="flex items-center w-full min-w-0! gap-2">
+				<div dir="ltr" className="flex items-center flex-[1_1_auto] min-w-0! flex-wrap gap-x-3 gap-y-0.5 text-[0.75rem]">
+					<p className="truncate min-w-0! flex-[0_1_auto] text-start [unicode-bidi:isolate] rb-user-usage-pair">
 						{formatUsagePair(used, total)}
 						{resetLabel ? ` · ${resetLabel}` : ""}
-					</Text>
+					</p>
 					{lifetimeUsed !== undefined && (
-						<Text
-							color="panel.textMuted"
-							noOfLines={1}
-							flexShrink={0}
-							ms="auto"
-							textAlign="end"
-							sx={{ unicodeBidi: "isolate" }}
-						>
+						<p className="text-panel-text-muted truncate shrink-0 ms-auto text-end [unicode-bidi:isolate]">
 							{lifetimeLabel ? `${lifetimeLabel}: ` : ""}
-							<chakra.span fontWeight="semibold" color="panel.textSecondary">
+							<span className="font-semibold text-panel-text-secondary">
 								{formatBytes(lifetimeUsed)}
-							</chakra.span>
-						</Text>
+							</span>
+						</p>
 					)}
-				</Flex>
-				<Box flex={`0 0 ${PERCENT_SLOT_WIDTH}`} aria-hidden />
-			</Flex>
-		</Stack>
+				</div>
+				<div aria-hidden style={{ flex: `0 0 ${PERCENT_SLOT_WIDTH}` }} />
+			</div>
+		</div>
 	);
 };

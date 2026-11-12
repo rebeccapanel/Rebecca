@@ -1,53 +1,32 @@
-import {
-	Box,
-	Button,
-	Collapse,
-	chakra,
-	Flex,
-	HStack,
-	IconButton,
-	Input,
-	InputGroup,
-	InputRightElement,
-	Modal,
-	ModalBody,
-	ModalCloseButton,
-	ModalContent,
-	ModalFooter,
-	ModalHeader,
-	ModalOverlay,
-	SimpleGrid,
-	Stack,
-	type TableProps,
-	Text,
-	Textarea,
-	Tooltip,
-	useBreakpointValue,
-	useColorModeValue,
-	useDisclosure,
-	useToast,
-} from "@chakra-ui/react";
-import {
-	AdjustmentsHorizontalIcon,
-	ArrowPathIcon,
-	ChevronRightIcon,
-	KeyIcon,
-	PencilIcon,
-	PlayIcon,
-	PlusCircleIcon,
-	ShieldCheckIcon,
-	TrashIcon,
-} from "@heroicons/react/24/outline";
-import { NoSymbolIcon } from "@heroicons/react/24/solid";
+import { TagChips } from "components/labels/TagChips";
+import { Button } from "components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "components/ui/tooltip";
+import { Dialog, DialogContent, DialogFooter, DialogHeader } from "components/ui/dialog";
+import { Input } from "components/ui/input";
+import { Textarea } from "components/ui/textarea";
+import { toast } from "components/ui/sonner";
+import { withClass } from "lib/withClass";
+import { SlidersHorizontal, RefreshCw, Key, Pencil, Play, CirclePlus, ShieldCheck, Trash2, Ban, History } from "lucide-react";
+
+import { useDisclosure } from "hooks/useDisclosure";
+import { useIntervalRefresh } from "hooks/useIntervalRefresh";
+
+import { useBreakpointValue } from "hooks/useBreakpointValue";
+
+import type { ComponentPropsWithoutRef } from "react";
+import { cn } from "lib/cn";
 import type { SortingState } from "@tanstack/react-table";
-import classNames from "classnames";
 import { useAdminsStore } from "contexts/AdminsContext";
+import { AddTrafficDialog } from "components/AddTrafficDialog";
+import { AdminsOverviewBand } from "components/admins/AdminsOverviewBand";
+import { adminsOverviewSelection, nextAdminsFiltersForOverview } from "utils/adminsOverview";
+import { DataTableColumnMenu } from "components/ui/DataTableColumnMenu";
+import { RefreshSplitButton } from "components/users/RefreshSplitButton";
 import { useContainerMinWidths } from "hooks/useContainerMinWidths";
 import useGetUser from "hooks/useGetUser";
 import {
 	type FC,
 	type ReactNode,
-	useCallback,
 	useEffect,
 	useMemo,
 	useRef,
@@ -77,65 +56,35 @@ import { ConfirmDialog } from "./dialogs/ConfirmDialog";
 import { UserExpiryCountdown, UserUsageBar } from "./users";
 import {
 	DataTable,
-	ResourceListCard,
 	type DataTableColumn,
 	type DataTableRowAction,
 } from "./ui";
 
 const ADMIN_DATA_LIMIT_EXHAUSTED_REASON_KEY = "admin_data_limit_exhausted";
 const ADMIN_TIME_LIMIT_EXHAUSTED_REASON_KEY = "admin_time_limit_exhausted";
-const ADMIN_TRAFFIC_OPTIONS = [
-	{ label: "100GB", gigabytes: 100 },
-	{ label: "500GB", gigabytes: 500 },
-	{ label: "1TB", gigabytes: 1024 },
-	{ label: "2TB", gigabytes: 2048 },
-	{ label: "5TB", gigabytes: 5120 },
-];
-
 const QUICK_ACTIONS_MIN_TABLE_WIDTH = 1250;
-const SPEED_MIN_TABLE_WIDTH = 1100;
+const SPEED_MIN_TABLE_WIDTH = 1280;
 type AdminSpeedMap = Record<
 	string,
 	{ upload_speed: number; download_speed: number }
 >;
 
-const QUICK_ACTION_IDS = [
-	"edit",
-	"permissions",
-	"enable",
-	"disable",
-	"delete",
-];
-
-const iconProps = {
-	baseStyle: {
-		strokeWidth: "2px",
-		w: 3,
-		h: 3,
-	},
-};
-
-const ResetIcon = chakra(ArrowPathIcon, iconProps);
-const DisableIcon = chakra(NoSymbolIcon, iconProps);
-const EnableIcon = chakra(PlayIcon, iconProps);
-const DeleteIcon = chakra(TrashIcon, iconProps);
-const QuickPassIcon = chakra(KeyIcon, iconProps);
-const AddDataIcon = chakra(PlusCircleIcon, iconProps);
+const ResetIcon = withClass(RefreshCw, "[stroke-width:2px] w-3 h-3");
+const DisableIcon = withClass(Ban, "[stroke-width:2px] w-3 h-3");
+const EnableIcon = withClass(Play, "[stroke-width:2px] w-3 h-3");
+const DeleteIcon = withClass(Trash2, "[stroke-width:2px] w-3 h-3");
+const QuickPassIcon = withClass(Key, "[stroke-width:2px] w-3 h-3");
+const TrafficIcon = withClass(CirclePlus, "[stroke-width:2px] w-3 h-3");
 
 const AdminStatusBadge: FC<{ status: AdminStatus }> = ({ status }) => {
 	const { t } = useTranslation();
 
 	return (
-		<Text
-			fontSize="sm"
-			fontWeight="semibold"
-			color={status === AdminStatus.Active ? "green.400" : "red.400"}
-			textTransform="capitalize"
-		>
+		<p className={cn("text-[0.875rem] font-semibold capitalize", status === AdminStatus.Active ? "text-green-400" : "text-red-400")}>
 			{status === AdminStatus.Active
 				? t("status.active")
 				: t("admins.disabledLabel")}
-		</Text>
+		</p>
 	);
 };
 
@@ -143,38 +92,41 @@ const AdminRoleBadge: FC<{ role: AdminRole }> = ({ role }) => {
 	const { t } = useTranslation();
 	const roleStyles = {
 		[AdminRole.FullAccess]: {
-			color: "yellow.800",
-			darkColor: "yellow.200",
+			color: "text-yellow-800",
+			darkColor: "dark:text-yellow-200",
 			label: t("admins.roles.fullAccess"),
 		},
 		[AdminRole.Sudo]: {
-			color: "purple.800",
-			darkColor: "purple.200",
+			color: "text-purple-800",
+			darkColor: "dark:text-purple-200",
 			label: t("admins.roles.sudo"),
 		},
 		[AdminRole.Reseller]: {
-			color: "blue.800",
-			darkColor: "blue.200",
+			color: "text-blue-800",
+			darkColor: "dark:text-blue-200",
 			label: t("admins.roles.reseller"),
 		},
 		[AdminRole.Standard]: {
-			color: "gray.800",
-			darkColor: "gray.200",
+			color: "text-gray-800",
+			darkColor: "dark:text-gray-200",
 			label: t("admins.roles.standard"),
 		},
 	}[role];
 
 	return (
-		<Text
-			as="span"
-			fontSize="xs"
-			color={roleStyles.color}
-			fontWeight="medium"
-			_dark={{ color: roleStyles.darkColor }}
-		>
+		<span className={cn(roleStyles.color, roleStyles.darkColor, "text-[0.75rem] font-medium")}>
 			{roleStyles.label}
-		</Text>
+		</span>
 	);
+};
+
+const pickLeader = (list: Admin[], value: (admin: Admin) => number) => {
+	let best: { username: string; value: number } | null = null;
+	for (const admin of list) {
+		const current = value(admin);
+		if (current > 0 && (!best || current > best.value)) best = { username: admin.username, value: current };
+	}
+	return best;
 };
 
 const formatCount = (value: number | null | undefined, locale: string) =>
@@ -198,24 +150,23 @@ const getAdminIsLimited = (admin: Admin) =>
 		admin.data_limit > 0 &&
 		getAdminEffectiveUsage(admin) >= admin.data_limit);
 
-type AdminsTableProps = TableProps & {
+type AdminsTableProps = ComponentPropsWithoutRef<"table"> & {
 	toolbar?: ReactNode;
-	footerActions?: ReactNode;
+	headerActions?: ReactNode;
 };
 
 export const AdminsTable: FC<AdminsTableProps> = ({
 	toolbar,
-	footerActions,
+	headerActions,
 	...props
 }) => {
 	const { t, i18n } = useTranslation();
 	const isRTL = i18n.dir(i18n.language) === "rtl";
 	const locale = i18n.language || "en";
-	const toast = useToast();
+	
 	const { userData } = useGetUser();
-	const dialogBg = useColorModeValue("surface.light", "surface.dark");
-	const dialogBorderColor = useColorModeValue("light-border", "gray.700");
-	const inlineMenuBg = useColorModeValue("blackAlpha.50", "whiteAlpha.50");
+	const dialogBg = "bg-surface-light dark:bg-surface-dark";
+	const dialogBorderColor = "border-light-border! dark:border-gray-700!";
 	const adminOptions = useAdminsStore((state) => state.adminOptions);
 	const admins = useAdminsStore((state) => state.admins);
 	const loading = useAdminsStore((state) => state.loading);
@@ -223,6 +174,9 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 	const filters = useAdminsStore((state) => state.filters);
 	const onFilterChange = useAdminsStore((state) => state.onFilterChange);
 	const fetchAdmins = useAdminsStore((state) => state.fetchAdmins);
+	const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({});
+	const [autoRefreshInterval, setAutoRefreshInterval] = useState<number>(5_000);
+	useIntervalRefresh(autoRefreshInterval, true, () => void fetchAdmins(undefined, { force: true }));
 	const deleteAdmin = useAdminsStore((state) => state.deleteAdmin);
 	const resetUsage = useAdminsStore((state) => state.resetUsage);
 	const resetDeletedUsersUsage = useAdminsStore(
@@ -265,9 +219,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		null,
 	);
 	const [contextAction, setContextAction] = useState<string | null>(null);
-	const [openTrafficMenuFor, setOpenTrafficMenuFor] = useState<string | null>(
-		null,
-	);
+	const [trafficAdmin, setTrafficAdmin] = useState<Admin | null>(null);
 	const [quickPassInfo, setQuickPassInfo] = useState<{
 		username: string;
 		password: string;
@@ -421,9 +373,6 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		closePermissionsModal();
 	};
 
-	const closeContextMenu = useCallback(() => {
-		setOpenTrafficMenuFor(null);
-	}, []);
 	const closeDeleteDialogAndReset = () => {
 		closeDeleteDialog();
 		setAdminToDelete(null);
@@ -431,7 +380,6 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 	const startDeleteAdmin = (admin: Admin) => {
 		setAdminToDelete(admin);
 		openDeleteDialog();
-		closeContextMenu();
 	};
 	const confirmDeleteAdmin = async () => {
 		if (!adminToDelete) {
@@ -456,31 +404,14 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		fetchAdminOptions(undefined, { force: false });
 	}, [fetchAdminOptions]);
 
-	const handleAddDataLimit = async (
-		admin: Admin,
-		gigabytes: number,
-		onDone?: () => void,
-	) => {
-		if (
-			admin.data_limit === null ||
-			admin.data_limit === 0 ||
-			admin.data_limit === undefined
-		) {
-			return;
-		}
-		setContextAction(`addData-${gigabytes}`);
-		const delta = gigabytes * 1024 * 1024 * 1024;
-		const nextLimit = admin.data_limit + delta;
+	const handleAddTrafficToAdmin = async (admin: Admin, deltaBytes: number) => {
 		try {
-			await updateAdmin(admin.username, { data_limit: nextLimit });
+			await updateAdmin(admin.username, { data_limit: (admin.data_limit ?? 0) + deltaBytes });
 			generateSuccessMessage(t("admins.addTrafficSuccess"), toast);
 			fetchAdmins();
 		} catch (error) {
 			generateErrorMessage(error, toast);
-		} finally {
-			setContextAction(null);
-			onDone?.();
-			closeContextMenu();
+			throw error;
 		}
 	};
 
@@ -522,7 +453,6 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			return;
 		}
 		setQuickPassAdmin(admin);
-		closeContextMenu();
 		openQuickPassConfirm();
 	};
 
@@ -578,11 +508,10 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		return {
 			canManage,
 			showDisable: canChangeStatus && admin.status !== AdminStatus.Disabled,
-			showEnable:
-				canChangeStatus &&
-				admin.status === AdminStatus.Disabled &&
-				!hasDataLimitDisabledReason &&
-				!hasTimeLimitDisabledReason,
+			showEnable: canChangeStatus && admin.status === AdminStatus.Disabled,
+			enableBlocked:
+				getAdminIsLimited(admin) ||
+				getAdminIsExpired(admin, Math.floor(Date.now() / 1000)),
 			showDelete: canChangeStatus,
 			showAddTraffic:
 				canManage &&
@@ -594,90 +523,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			disabledReasonLabel,
 		};
 	};
-	const renderAddTrafficSubmenu = (admin: Admin, onDone?: () => void) => {
-		const isOpen = openTrafficMenuFor === admin.username;
-		const closeAfterSelection = () => {
-			setOpenTrafficMenuFor(null);
-			onDone?.();
-		};
-		return (
-			<Box>
-				<Button
-					variant="ghost"
-					justifyContent="flex-start"
-					w="full"
-					isLoading={contextAction?.startsWith("addData-")}
-					isDisabled={contextAction?.startsWith("addData-")}
-					aria-expanded={isOpen}
-					onClick={(event) => {
-						event.preventDefault();
-						event.stopPropagation();
-						setOpenTrafficMenuFor((current) =>
-							current === admin.username ? null : admin.username,
-						);
-					}}
-				>
-					<HStack w="full" justify="space-between" spacing={3}>
-						<HStack spacing={2} minW={0}>
-							<AddDataIcon />
-							<Text as="span" noOfLines={1}>
-								{t("services.userActions.traffic.add")}
-							</Text>
-						</HStack>
-						<ChevronRightIcon
-							width={14}
-							style={{
-								flexShrink: 0,
-								transform: isOpen
-									? "rotate(90deg)"
-									: isRTL
-										? "rotate(180deg)"
-										: undefined,
-								transition: "transform 0.15s ease",
-							}}
-						/>
-					</HStack>
-				</Button>
-				<Collapse in={isOpen} unmountOnExit>
-					<SimpleGrid
-						columns={{ base: 2, sm: 3 }}
-						spacing={1}
-						mt={1}
-						p={2}
-						bg={inlineMenuBg}
-						borderWidth="1px"
-						borderColor={dialogBorderColor}
-						borderRadius="md"
-					>
-						{ADMIN_TRAFFIC_OPTIONS.map((option) => (
-							<Button
-								key={option.label}
-								size="sm"
-								variant="ghost"
-								justifyContent="center"
-								onClick={(event) => {
-									event.stopPropagation();
-									handleAddDataLimit(
-										admin,
-										option.gigabytes,
-										closeAfterSelection,
-									);
-								}}
-								isLoading={contextAction === `addData-${option.gigabytes}`}
-								isDisabled={contextAction?.startsWith("addData-")}
-							>
-								{option.label}
-							</Button>
-						))}
-					</SimpleGrid>
-				</Collapse>
-			</Box>
-		);
-	};
-	const { className, sx, ...restProps } = props;
-	const normalizedSx = Array.isArray(sx)
-		? Object.assign({}, ...sx)
-		: (sx as Record<string, unknown> | undefined);
+	const { className, ...restProps } = props;
 	const baseTableSx: Record<string, unknown> = {
 		width: "100%",
 		"& th, & .rb-data-table-row > td": {
@@ -694,12 +540,12 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		},
 	};
 	const tableClassName = isRTL
-		? classNames(className, "rb-rtl-table")
+		? cn(className, "rb-rtl-table")
 		: className;
 	const tableProps = {
 		...restProps,
 		className: tableClassName,
-		sx: { ...baseTableSx, ...(normalizedSx || {}) },
+		sx: { ...baseTableSx },
 	};
 
 	const summaryData = useMemo(() => {
@@ -720,6 +566,9 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		const totals = hasCompleteSummary ? summarizeAdmins(summaryAdmins) : null;
 		return {
 			totalCount: adminOptions.length || total,
+			topUsage: totals ? pickLeader(summaryAdmins, getAdminEffectiveUsage) : null,
+			topUsers: totals ? pickLeader(summaryAdmins, (admin) => admin.users_count ?? 0) : null,
+			topOnline: totals ? pickLeader(summaryAdmins, (admin) => admin.online_users ?? 0) : null,
 			usersTotal: totals ? totals.users : null,
 			onlineUsersTotal: totals ? totals.online : null,
 			usageTotal: totals ? totals.usage : null,
@@ -758,73 +607,6 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 				: null,
 		};
 	}, [adminOptions, admins, total]);
-	const formatSummaryCount = (value: number | null) =>
-		value === null ? "-" : formatCount(value, locale);
-	const adminSummaryItems = [
-		{
-			label: t("total"),
-			value: formatCount(summaryData.totalCount, locale),
-			colorScheme: "gray",
-		},
-		{
-			label: t("admins.roles.fullAccess"),
-			value: formatSummaryCount(summaryData.fullAccessCount),
-			colorScheme: "yellow",
-		},
-		{
-			label: t("admins.roles.sudo"),
-			value: formatSummaryCount(summaryData.sudoCount),
-			colorScheme: "purple",
-		},
-		{
-			label: t("admins.roles.reseller"),
-			value: formatSummaryCount(summaryData.resellerCount),
-			colorScheme: "blue",
-		},
-		{
-			label: t("admins.roles.standard"),
-			value: formatSummaryCount(summaryData.standardCount),
-			colorScheme: "gray",
-		},
-		{
-			label: t("status.active"),
-			value: formatSummaryCount(summaryData.activeCount),
-			colorScheme: "green",
-		},
-		{
-			label: t("status.expired"),
-			value: formatSummaryCount(summaryData.expiredCount),
-			colorScheme: "orange",
-		},
-		{
-			label: t("status.limited"),
-			value: formatSummaryCount(summaryData.limitedCount),
-			colorScheme: "red",
-		},
-		{
-			label: t("status.disabled"),
-			value: formatSummaryCount(summaryData.disabledCount),
-			colorScheme: "gray",
-		},
-		{
-			label: t("users"),
-			value: formatSummaryCount(summaryData.usersTotal),
-			colorScheme: "orange",
-		},
-		{
-			label: t("onlineStatus.online"),
-			value: formatSummaryCount(summaryData.onlineUsersTotal),
-			colorScheme: "teal",
-		},
-		{
-			label: t("summary.usage"),
-			value:
-				summaryData.usageTotal === null
-					? "-"
-					: formatBytes(summaryData.usageTotal),
-			colorScheme: "blue",
-		},
-	];
 
 	const skeletonCount = filters.limit || 5;
 	const adminSorting = useMemo<SortingState>(() => {
@@ -833,22 +615,6 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		const id = desc ? currentSort.slice(1) : currentSort;
 		return id ? [{ id, desc }] : [];
 	}, [filters.sort]);
-
-	const handleAdminTableSorting = (nextSorting: SortingState) => {
-		const next = nextSorting[0];
-		if (!next) return;
-		const allowedSorts = new Set([
-			"username",
-			"users_count",
-			"data_usage",
-			"data_limit",
-		]);
-		if (!allowedSorts.has(next.id)) return;
-		onFilterChange({
-			sort: next.desc ? `-${next.id}` : next.id,
-			offset: 0,
-		});
-	};
 
 	const isWide = useBreakpointValue({ base: false, xl: true }) ?? false;
 	const [adminSpeeds, setAdminSpeeds] = useState<AdminSpeedMap>({});
@@ -868,7 +634,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			window.clearInterval(timer);
 		};
 	}, []);
-	const [tableSectionRef, [showQuickActions, showSpeed]] =
+	const [tableSectionRef, [, showSpeed]] =
 		useContainerMinWidths(QUICK_ACTIONS_MIN_TABLE_WIDTH, SPEED_MIN_TABLE_WIDTH);
 	const rowActionsRef = useRef<(admin: Admin) => DataTableRowAction<Admin>[]>(
 		() => [],
@@ -878,235 +644,221 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		() => [
 			{
 				id: "username",
+				width: "140px",
+				minWidth: "136px",
+				maxWidth: "176px",
 				header: t("username"),
+				menuLabel: t("username"),
 				accessor: "username",
 				sortable: true,
 				isPrimary: true,
 				priority: "primary",
-				width: "1%",
 				truncate: true,
 				tooltip: true,
 				cellAlign: "start",
 				mobilePriority: 0,
 				mobileMetaLabel: t("username"),
 				cell: (admin) => (
-					<Text
-						fontWeight="semibold"
-						noOfLines={1}
-						maxW="10rem"
-						dir="ltr"
-						sx={{ unicodeBidi: "isolate" }}
-						color="panel.text"
-					>
+					<p dir="ltr" className="font-semibold truncate max-w-[10rem] [unicode-bidi:isolate] text-panel-text">
 						{admin.username}
-					</Text>
+					</p>
 				),
 			},
 			{
 				id: "status",
+				width: "104px",
+				minWidth: "96px",
+				maxWidth: "120px",
 				header: t("status"),
+				menuLabel: t("status"),
 				priority: "high",
-				width: "1%",
 				headerAlign: "center",
 				mobilePriority: 1,
 				mobileMetaLabel: t("status"),
 				cell: (admin) => <AdminStatusBadge status={admin.status} />,
 			},
 			{
-				id: "role",
-				header: t("core.role"),
+				id: "group",
+				width: "120px",
+				minWidth: "96px",
+				maxWidth: "150px",
+				header: t("groups.group"),
+				menuLabel: t("groups.group"),
 				priority: "medium",
-				width: "1%",
+				truncate: true,
+				tooltip: true,
+				accessor: (admin) => admin.group?.name ?? "",
+				mobilePriority: 3,
+				mobileMetaLabel: t("groups.group"),
+				cell: (admin) => (
+					<p className={cn("text-[0.875rem] truncate max-w-full", admin.group ? "text-panel-text" : "text-panel-text-muted")}>
+						{admin.group?.name ?? "–"}
+					</p>
+				),
+			},
+			{
+				id: "tags",
+				width: "170px",
+				minWidth: "120px",
+				maxWidth: "220px",
+				header: t("tags.title"),
+				menuLabel: t("tags.title"),
+				priority: "low",
+				mobilePriority: 4,
+				mobileMetaLabel: t("tags.title"),
+				cell: (admin) => <TagChips tags={admin.tags} limit={2} />,
+			},
+			{
+				id: "role",
+				width: "104px",
+				minWidth: "92px",
+				maxWidth: "120px",
+				header: t("core.role"),
+				menuLabel: t("core.role"),
+				priority: "medium",
 				mobilePriority: 2,
 				mobileMetaLabel: t("core.role"),
 				cell: (admin) => <AdminRoleBadge role={admin.role} />,
 			},
 			{
 				id: "users_count",
+				width: "92px",
+				minWidth: "84px",
+				maxWidth: "112px",
 				header: t("admins.details.activeLabel"),
+				menuLabel: t("admins.details.activeLabel"),
 				sortable: true,
 				priority: "high",
-				width: "1%",
 				headerAlign: "center",
 				mobilePriority: 3,
 				mobileMetaLabel: t("admins.details.activeLabel"),
 				cell: (admin) => (
-					<Text
-						fontSize="sm"
-						fontWeight="semibold"
-						dir="ltr"
-						sx={{ unicodeBidi: "isolate" }}
-					>
+					<p dir="ltr" className="text-[0.875rem] font-semibold [unicode-bidi:isolate]">
 						{formatCount(admin.active_users ?? 0, locale)}
-						<chakra.span color="panel.textMuted" fontWeight="medium">
+						<span className="text-panel-text-muted font-medium">
 							/{formatCount(admin.users_count ?? 0, locale)}
-						</chakra.span>
-					</Text>
+						</span>
+					</p>
 				),
 			},
 			{
 				id: "online",
+				width: "72px",
+				minWidth: "68px",
+				maxWidth: "80px",
 				header: t("admins.details.onlineLabel"),
+				menuLabel: t("admins.details.onlineLabel"),
 				priority: "medium",
-				width: "1%",
 				headerAlign: "center",
 				mobilePriority: 4,
 				mobileMetaLabel: t("admins.details.onlineLabel"),
 				cell: (admin) => (
-					<Text
-						fontSize="sm"
-						color="green.600"
-						_dark={{ color: "green.400" }}
-						fontWeight="semibold"
-					>
+					<p className="text-[0.875rem] text-green-600 dark:text-green-400 font-semibold">
 						{formatCount(admin.online_users ?? 0, locale)}
-					</Text>
+					</p>
 				),
 			},
 			{
 				id: "services",
+				width: "104px",
+				minWidth: "92px",
+				maxWidth: "116px",
 				header: t("services.title"),
+				menuLabel: t("services.title"),
 				priority: "medium",
 				desktopVisible: isWide,
-				width: "1%",
 				mobilePriority: 5,
 				mobileMetaLabel: t("services.title"),
 				cell: (admin) => (
-					<Text fontSize="sm" noOfLines={1}>
+					<p className="text-[0.875rem] truncate">
 						{admin.services?.length
 							? formatCount(admin.services.length, locale)
 							: t("filters.advanced.serviceAll")}
-					</Text>
+					</p>
 				),
 			},
 			{
 				id: "data_usage",
+				width: "clamp(180px, 14vw, 220px)",
+				minWidth: "180px",
+				maxWidth: "220px",
 				header: t("usersTable.traffic"),
+				menuLabel: t("usersTable.traffic"),
 				sortable: true,
 				priority: "high",
-				minWidth: "120px",
 				cellAlign: "start",
 				mobilePriority: 6,
 				mobileSummary: true,
 				mobileMetaLabel: t("usersTable.traffic"),
 				cell: (admin) => (
-					<Box maxW="32rem">
+					<div className="w-full min-w-0">
 						<UserUsageBar
 							variant="stacked"
 							used={getAdminEffectiveUsage(admin)}
 							total={admin.data_limit ?? null}
 						/>
-					</Box>
+					</div>
 				),
 			},
 			{
 				id: "speed",
+				width: "112px",
+				minWidth: "104px",
+				maxWidth: "128px",
 				header: t("summary.speed"),
+				menuLabel: t("summary.speed"),
 				priority: "medium",
-				width: "1%",
 				desktopVisible: showSpeed,
 				hideOnMobile: true,
 				cell: (admin) => {
 					const speed = adminSpeeds[String(admin.id)];
 					return (
-						<Stack
-							spacing={0}
-							lineHeight="1.35"
-							whiteSpace="nowrap"
-							fontSize="xs"
-							dir="ltr"
-							sx={{
-								fontVariantNumeric: "tabular-nums",
-								unicodeBidi: "isolate",
-							}}
-						>
-							<Text color="teal.400">
+						<div dir="ltr" className="flex flex-col gap-0 whitespace-nowrap text-[0.75rem] [font-variant-numeric:tabular-nums] [unicode-bidi:isolate]">
+							<p className="text-teal-400">
 								↑ {formatBytes(speed?.upload_speed ?? 0)}/s
-							</Text>
-							<Text color="blue.400">
+							</p>
+							<p className="text-blue-400">
 								↓ {formatBytes(speed?.download_speed ?? 0)}/s
-							</Text>
-						</Stack>
+							</p>
+						</div>
 					);
 				},
 			},
 			{
 				id: "remaining_traffic",
+				width: "120px",
+				minWidth: "108px",
+				maxWidth: "132px",
 				header: t("usersTable.remainingTraffic"),
+				menuLabel: t("usersTable.remainingTraffic"),
 				priority: "medium",
 				desktopVisible: isWide,
-				width: "1%",
 				mobilePriority: 7,
 				mobileMetaLabel: t("usersTable.remainingTraffic"),
 				cell: (admin) => (
-					<Text
-						fontSize={!admin.data_limit ? "xl" : "sm"}
-						fontWeight={!admin.data_limit ? "semibold" : undefined}
-						lineHeight="1"
-						color={!admin.data_limit ? "panel.textMuted" : "panel.text"}
-						dir="ltr"
-						aria-label={!admin.data_limit ? t("unlimited") : undefined}
-					>
+					<p dir="ltr" className={cn("leading-[1]", !admin.data_limit ? "text-[1.25rem]" : "text-[0.875rem]", !admin.data_limit ? "font-semibold" : "", !admin.data_limit ? "text-panel-text-muted" : "text-panel-text")}>
 						{!admin.data_limit
-							? "∞"
+							? <><span aria-hidden="true">∞</span><span className="sr-only">{t("unlimited")}</span></>
 							: formatBytes(
 									Math.max(admin.data_limit - getAdminEffectiveUsage(admin), 0),
 								)}
-					</Text>
+					</p>
 				),
 			},
 			{
 				id: "expire",
+				width: "120px",
+				minWidth: "108px",
+				maxWidth: "132px",
 				header: t("expire"),
+				menuLabel: t("expire"),
 				priority: "medium",
-				width: "1%",
 				mobilePriority: 8,
 				mobileMetaLabel: t("expire"),
 				cell: (admin) => <UserExpiryCountdown expire={admin.expire} />,
 			},
-			{
-				id: "quick_actions",
-				header: "",
-				priority: "medium",
-				width: "1%",
-				desktopVisible: showQuickActions,
-				hideOnMobile: true,
-				cell: (admin) => (
-					<HStack spacing={0.5} onClick={(event) => event.stopPropagation()}>
-						{rowActionsRef
-							.current(admin)
-							.filter((action) => QUICK_ACTION_IDS.includes(action.id))
-							.map((action) => (
-								<Tooltip key={action.id} label={action.label}>
-									<span>
-										<IconButton
-											className="rb-row-action"
-											aria-label={String(action.label)}
-											icon={action.icon}
-											variant="ghost"
-											size="sm"
-											minW="28px"
-											h="28px"
-											isDisabled={
-												typeof action.isDisabled === "function"
-													? action.isDisabled(admin)
-													: action.isDisabled
-											}
-											onClick={() => action.onClick?.(admin)}
-											sx={
-												action.isDanger
-													? { "&&&:hover": { color: "red.400 !important" } }
-													: undefined
-											}
-										/>
-									</span>
-								</Tooltip>
-							))}
-					</HStack>
-				),
-			},
 		],
-		[adminSpeeds, isWide, showQuickActions, showSpeed, locale, t],
+		[adminSpeeds, isWide, showSpeed, locale, t],
 	);
 
 	const adminRowActions = (admin: Admin): DataTableRowAction<Admin>[] => {
@@ -1117,14 +869,22 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			actions.push(
 				{
 					id: "edit",
+					pinned: true,
 					label: t("edit"),
-					icon: <PencilIcon width={16} />,
+					icon: <Pencil className="w-[16px]" />,
 					onClick: () => openAdminDialog(admin),
 				},
 				{
+					id: "history",
+					label: t("adminHistory.tab"),
+					icon: <History className="w-[16px]" />,
+					onClick: () => openAdminDialog(admin, "history"),
+				},
+				{
 					id: "permissions",
+					pinned: true,
 					label: t("admins.editPermissionsButton"),
-					icon: <AdjustmentsHorizontalIcon width={16} />,
+					icon: <SlidersHorizontal className="w-[16px]" />,
 					onClick: () => handleOpenPermissionsModal(admin),
 				},
 				{
@@ -1132,7 +892,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 					label: t("admins.resetUsage"),
 					icon: <ResetIcon />,
 					onClick: () => setResetConfirmation({ admin, type: "usage" }),
-					isDisabled:
+					disabled:
 						actionState?.username === admin.username &&
 						actionState?.type === "reset",
 				},
@@ -1143,7 +903,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			actions.push({
 				id: "security",
 				label: t("admins.security.action"),
-				icon: <ShieldCheckIcon width={16} />,
+				icon: <ShieldCheck className="w-[16px]" />,
 				onClick: () => {
 					setSecurityAdmin(admin);
 					securityDialog.onOpen();
@@ -1155,7 +915,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			actions.push({
 				id: "apiKeys",
 				label: t("admins.apiKeys.action"),
-				icon: <KeyIcon width={16} />,
+				icon: <Key className="w-[16px]" />,
 				onClick: () => {
 					setAPIKeysAdmin(admin);
 					apiKeysDialog.onOpen();
@@ -1169,7 +929,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 				label: t("admins.resetDeletedUsage"),
 				icon: <QuickPassIcon />,
 				onClick: () => setResetConfirmation({ admin, type: "deleted" }),
-				isDisabled:
+				disabled:
 					actionState?.username === admin.username &&
 					actionState?.type === "resetDeleted",
 			});
@@ -1178,22 +938,28 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 		if (meta.showEnable) {
 			actions.push({
 				id: "enable",
+				pinned: true,
 				label: t("admins.enableAdmin"),
 				icon: <EnableIcon />,
 				onClick: () => handleEnableAdmin(admin),
-				isDisabled:
-					actionState?.username === admin.username &&
-					actionState?.type === "enableAdmin",
+				disabled:
+					meta.enableBlocked ||
+					(actionState?.username === admin.username &&
+						actionState?.type === "enableAdmin"),
+				disabledReason: meta.enableBlocked
+					? t("admins.enableBlockedByLimits")
+					: undefined,
 			});
 		}
 
 		if (meta.showDisable) {
 			actions.push({
 				id: "disable",
+				pinned: true,
 				label: t("admins.disableAdmin"),
 				icon: <DisableIcon />,
 				onClick: () => startDisableAdmin(admin),
-				isDisabled:
+				disabled:
 					actionState?.username === admin.username &&
 					actionState?.type === "disableAdmin",
 			});
@@ -1203,7 +969,8 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			actions.push({
 				id: "addTraffic",
 				label: t("services.userActions.traffic.add"),
-				render: (_row, onClose) => renderAddTrafficSubmenu(admin, onClose),
+				icon: <TrafficIcon />,
+				onClick: () => setTrafficAdmin(admin),
 			});
 		}
 
@@ -1213,17 +980,18 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 				label: t("admins.quickPassword"),
 				icon: <QuickPassIcon />,
 				onClick: () => handleQuickPassword(admin),
-				isDisabled: contextAction === "quickPassword",
+				disabled: contextAction === "quickPassword",
 			});
 		}
 
 		if (meta.showDelete) {
 			actions.push({
 				id: "delete",
+				pinned: true,
 				label: t("delete"),
 				icon: <DeleteIcon />,
 				onClick: () => startDeleteAdmin(admin),
-				isDisabled:
+				disabled:
 					actionState?.username === admin.username &&
 					actionState?.type === "deleteAdmin",
 				isDanger: true,
@@ -1239,66 +1007,83 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 	const renderExpandedAdmin = (admin: Admin) => {
 		const actions = adminRowActions(admin).filter(Boolean);
 		return (
-			<Box className="rb-resource-expanded">
+			<div className="rb-resource-expanded">
 				<AdminDetailsPanel
 					admin={admin}
 					actions={
-						<Flex
-							className="rb-resource-expanded-actions"
-							align="center"
-							justify="flex-end"
-							gap={1}
-							flexWrap="wrap"
-							onClick={(event) => event.stopPropagation()}
-						>
-							<HStack className="rb-inline-actions" spacing={1} flexWrap="wrap">
+						// biome-ignore lint/a11y/noStaticElementInteractions: wrapper only stops row clicks, it is not a control
+							// biome-ignore lint/a11y/useKeyWithClickEvents: same wrapper, no key action
+							<div onClick={(event) => event.stopPropagation()} className="flex items-center justify-end gap-1 flex-wrap rb-resource-expanded-actions">
+							<div className="flex flex-row items-center gap-1 flex-wrap rb-inline-actions">
 								{actions.map((action) => (
-									<Tooltip key={action.id} label={action.label}>
+									<Tooltip key={action.id}>
+<TooltipTrigger asChild>
 										<span>
-											<IconButton
-												aria-label={String(action.label)}
-												icon={action.icon}
-												variant="ghost"
-												size="sm"
-												minW="30px"
-												h="30px"
-												isDisabled={typeof action.isDisabled === "function" ? action.isDisabled(admin) : action.isDisabled}
-												onClick={() => action.onClick?.(admin)}
-											/>
+											<Button aria-label={String(action.label)} disabled={typeof action.disabled === "function" ? action.disabled(admin) : action.disabled} onClick={() => action.onClick?.(admin)} variant="ghost" size="sm" className={cn("size-8 p-0", "min-w-[30px]! h-[30px]")}>{action.icon}</Button>
 										</span>
-									</Tooltip>
+									</TooltipTrigger>
+<TooltipContent>{action.label}</TooltipContent>
+</Tooltip>
 								))}
-							</HStack>
-						</Flex>
+							</div>
+						</div>
 					}
 				/>
-			</Box>
+			</div>
 		);
 	};
 
 	return (
 		<>
-			<Stack spacing={3}>
-				<ResourceListCard
-					title={t("admins.listHeader")}
-					summaryItems={adminSummaryItems}
-					footerActions={footerActions}
-				>
-					{toolbar}
-				</ResourceListCard>
+			<div className="flex flex-col gap-3">
+				<div className="overflow-hidden rounded-xl border border-panel-border! bg-panel-surface">
+					<AdminsOverviewBand
+						total={summaryData.totalCount}
+						topUsage={summaryData.topUsage}
+						topUsers={summaryData.topUsers}
+						topOnline={summaryData.topOnline}
+						active={summaryData.activeCount}
+						expired={summaryData.expiredCount}
+						limited={summaryData.limitedCount}
+						disabled={summaryData.disabledCount}
+						fullAccess={summaryData.fullAccessCount}
+						sudo={summaryData.sudoCount}
+						reseller={summaryData.resellerCount}
+						standard={summaryData.standardCount}
+						locale={locale}
+					selection={adminsOverviewSelection(filters)}
+					onSelect={(target) => onFilterChange(nextAdminsFiltersForOverview(filters, target))}
+					/>
+					<div className="border-t border-panel-border! p-3">
+						<div className="flex flex-wrap items-center gap-2">
+							<div className="max-sm:contents sm:flex-[1_1_240px] min-w-0!">{toolbar}</div>
+							<div className="flex flex-row items-center gap-1 shrink-0">
+								<DataTableColumnMenu columns={adminColumns} visibility={columnVisibility} onChange={setColumnVisibility} />
+								<RefreshSplitButton
+									onRefresh={() => void fetchAdmins(undefined, { force: true })}
+									loading={loading}
+									interval={autoRefreshInterval}
+									onIntervalChange={setAutoRefreshInterval}
+								/>
+								{headerActions}
+							</div>
+						</div>
+					</div>
+				</div>
 
-				<Box className="rb-admins-section" ref={tableSectionRef}>
+				<div ref={tableSectionRef} className="rb-admins-section">
 				<DataTable
 					ariaLabel={t("admins")}
 					data={admins}
 					columns={adminColumns}
+					columnVisibility={columnVisibility}
 					getRowId={(admin) => admin.username}
-					isLoading={loading}
+					loading={loading}
 					loadingRows={skeletonCount}
 					emptyState={
-						<Text fontSize="sm" color="panel.textMuted" textAlign="center">
+						<p className="text-[0.875rem] text-panel-text-muted text-center">
 							{t("admins.noAdmins")}
-						</Text>
+						</p>
 					}
 					enableSelection
 					selectedRowIds={selectedAdminUsernames}
@@ -1309,25 +1094,26 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 						count: selectedAdminUsernames.length,
 					})}
 					rowActions={adminRowActions}
-					actionsDisplay="menu"
+
 					actionsPlacement="end"
-					actionsColumnWidth={showQuickActions ? "40px" : "60px"}
-					showActionsOnHover
+					actionsColumnWidth="max-content"
+					actionsAlwaysVisible
+
 									onRowClick={isDesktop ? (admin) => setExpandedAdminUsername((current) => (current === admin.username ? null : admin.username)) : undefined}
 									isRowExpanded={isDesktop ? (admin) => expandedAdminUsername === admin.username : undefined}
 									renderExpandedRow={isDesktop ? renderExpandedAdmin : undefined}
 					sorting={adminSorting}
-					onSortingChange={handleAdminTableSorting}
 					manualSorting
+					showSortMenu={false}
 					dir={isRTL ? "rtl" : "ltr"}
 					mobileBreakpoint="md"
 					tableProps={tableProps}
 				/>
-				</Box>
-			</Stack>
+				</div>
+			</div>
 
 			<ConfirmDialog
-				isOpen={Boolean(resetConfirmation)}
+				open={Boolean(resetConfirmation)}
 				onClose={() => setResetConfirmation(null)}
 				onConfirm={confirmUsageReset}
 				title={t(
@@ -1340,13 +1126,13 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 					username: resetConfirmation?.admin.username ?? "",
 				})}
 				confirmLabel={t("reset")}
-				isLoading={
+				loading={
 					actionState?.type === "reset" || actionState?.type === "resetDeleted"
 				}
 			/>
 
 			<ConfirmDialog
-				isOpen={isDeleteDialogOpen}
+				open={isDeleteDialogOpen}
 				onClose={closeDeleteDialogAndReset}
 				onConfirm={confirmDeleteAdmin}
 				title={t("delete")}
@@ -1355,12 +1141,12 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 				})}
 				confirmLabel={t("delete")}
 				colorScheme="red"
-				isLoading={actionState?.type === "deleteAdmin"}
+				loading={actionState?.type === "deleteAdmin"}
 				isConfirmDisabled={!adminToDelete}
 			/>
 
 			<ConfirmDialog
-				isOpen={isQuickPassConfirmOpen}
+				open={isQuickPassConfirmOpen}
 				onClose={() => {
 					if (contextAction === "quickPassword") return;
 					closeQuickPassConfirm();
@@ -1373,132 +1159,94 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 				})}
 				confirmLabel={t("admins.quickPasswordAction")}
 				colorScheme="primary"
-				isLoading={contextAction === "quickPassword"}
+				loading={contextAction === "quickPassword"}
 			/>
 
-			<Modal isOpen={isQuickPassOpen} onClose={handleCloseQuickPass} isCentered>
-				<ModalOverlay bg="blackAlpha.500" />
-				<ModalContent
-					bg={dialogBg}
-					borderWidth="1px"
-					borderColor={dialogBorderColor}
-					borderRadius="2xl"
-					boxShadow="2xl"
-					overflow="hidden"
-					mx={{ base: 4, sm: 0 }}
-					maxW={{ base: "calc(100vw - 32px)", sm: "440px" }}
-				>
-					<ModalHeader px={6} pt={6} pb={2}>
-						<HStack spacing={3}>
-							<Box
-								display="inline-flex"
-								alignItems="center"
-								justifyContent="center"
-								w={10}
-								h={10}
-								borderRadius="full"
-								bg="primary.50"
-								color="primary.600"
-								_dark={{ bg: "primary.900", color: "primary.200" }}
-							>
+			<Dialog open={isQuickPassOpen} onOpenChange={(open) => { if (!open) (handleCloseQuickPass)(); }}>
+				
+				<DialogContent className={cn("border rounded-2xl shadow-2xl overflow-hidden mx-4 sm:mx-0 max-w-[calc(100vw_-_32px)] sm:max-w-[440px]", dialogBg, dialogBorderColor)}>
+					<DialogHeader className="px-6 pt-6 pb-2">
+						<div className="flex flex-row items-center gap-3">
+							<div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-primary-50 text-primary-600 dark:bg-primary-900 dark:text-primary-200">
 								<QuickPassIcon />
-							</Box>
-							<Text>{t("admins.quickPasswordModal.title")}</Text>
-						</HStack>
-					</ModalHeader>
-					<ModalCloseButton />
-					<ModalBody px={6} pb={2}>
-						<Stack spacing={3}>
-							<Box>
-								<Text fontSize="sm" color="gray.500">
+							</div>
+							<p>{t("admins.quickPasswordModal.title")}</p>
+						</div>
+					</DialogHeader>
+					
+					<div className={cn("px-5 py-4 overflow-y-auto", "px-6 pb-2")}>
+						<div className="flex flex-col gap-3">
+							<div>
+								<p className="text-[0.875rem] text-gray-500">
 									{t("username")}
-								</Text>
-								<Input value={quickPassInfo?.username ?? ""} isReadOnly />
-							</Box>
-							<Box>
-								<Text fontSize="sm" color="gray.500">
+								</p>
+								<Input value={quickPassInfo?.username ?? ""} readOnly />
+							</div>
+							<div>
+								<p className="text-[0.875rem] text-gray-500">
 									{t("admins.quickPasswordModal.password")}
-								</Text>
-								<InputGroup>
-									<Input value={quickPassInfo?.password ?? ""} isReadOnly />
-									<InputRightElement>
-										<Button
-											size="sm"
-											variant="ghost"
-											onClick={async () => {
+								</p>
+								<div className="relative flex w-full items-center">
+									<Input value={quickPassInfo?.password ?? ""} readOnly />
+									<div className="absolute inset-y-0 end-0 z-10 flex items-center pe-3">
+										<Button onClick={async () => {
 												if (quickPassInfo?.password) {
 													try {
 														await copyTextToClipboard(quickPassInfo.password);
-														toast({
-															title: t("copied"),
-															status: "success",
-															duration: 1200,
-														});
+														toast.success(t("copied"), { duration: 1200 });
 													} catch (error) {
 														generateErrorMessage(error, toast);
 													}
 												}
-											}}
-										>
+											}} variant="ghost" size="sm">
 											{t("copy")}
 										</Button>
-									</InputRightElement>
-								</InputGroup>
-							</Box>
-							<Text fontSize="xs" color="orange.400">
+									</div>
+								</div>
+							</div>
+							<p className="text-[0.75rem] text-orange-400">
 								{t("admins.quickPasswordModal.notice")}
-							</Text>
-						</Stack>
-					</ModalBody>
-					<ModalFooter
-						bg="blackAlpha.50"
-						_dark={{ bg: "whiteAlpha.50" }}
-						borderTopWidth="1px"
-						borderColor={dialogBorderColor}
-						px={6}
-						py={4}
-					>
-						<Button colorScheme="primary" onClick={handleCloseQuickPass}>
+							</p>
+						</div>
+					</div>
+					<DialogFooter className={cn("bg-blackAlpha-50 dark:bg-whiteAlpha-50 border-t px-6 py-4", dialogBorderColor)}>
+						<Button onClick={handleCloseQuickPass}>
 							{t("close")}
 						</Button>
-					</ModalFooter>
-				</ModalContent>
-			</Modal>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
 			<ConfirmDialog
-				isOpen={isDisableDialogOpen}
+				open={isDisableDialogOpen}
 				onClose={closeDisableDialogAndReset}
 				onConfirm={confirmDisableAdmin}
 				title={t("admins.disableAdminTitle")}
 				description={
-					<Stack spacing={3}>
-						<Text fontSize="sm" color="gray.500" _dark={{ color: "gray.300" }}>
+					<div className="flex flex-col gap-3">
+						<p className="text-[0.875rem] text-gray-500 dark:text-gray-300">
 							{t("admins.disableAdminMessage", {
 								username: adminToDisable?.username ?? "",
 							})}
-						</Text>
-						<Textarea
-							value={disableReason}
-							onChange={(event) => setDisableReason(event.target.value)}
-							placeholder={t("admins.disableAdminReasonPlaceholder")}
-						/>
-					</Stack>
+						</p>
+						<Textarea value={disableReason} onChange={(event) => setDisableReason(event.target.value)} />
+					</div>
 				}
 				confirmLabel={t("admins.disableAdminConfirm")}
 				colorScheme="red"
 				isConfirmDisabled={disableReason.trim().length < 3}
-				isLoading={
+				loading={
 					actionState?.type === "disableAdmin" &&
 					actionState?.username === adminToDisable?.username
 				}
 			/>
 			<AdminPermissionsModal
-				isOpen={isPermissionsModalOpen}
+				open={isPermissionsModalOpen}
 				onClose={handleClosePermissionsModal}
 				admin={adminForPermissions}
 			/>
 			<AdminSecurityDialog
 				admin={securityAdmin}
-				isOpen={securityDialog.isOpen}
+				open={securityDialog.isOpen}
 				onClose={() => {
 					securityDialog.onClose();
 					setSecurityAdmin(null);
@@ -1509,11 +1257,16 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 			/>
 			<AdminApiKeysDialog
 				admin={apiKeysAdmin}
-				isOpen={apiKeysDialog.isOpen}
+				open={apiKeysDialog.isOpen}
 				onClose={() => {
 					apiKeysDialog.onClose();
 					setAPIKeysAdmin(null);
 				}}
+			/>
+			<AddTrafficDialog
+				target={trafficAdmin ? { kind: "admin", name: trafficAdmin.username } : null}
+				onClose={() => setTrafficAdmin(null)}
+				onApply={(deltaBytes) => (trafficAdmin ? handleAddTrafficToAdmin(trafficAdmin, deltaBytes) : Promise.resolve())}
 			/>
 		</>
 	);

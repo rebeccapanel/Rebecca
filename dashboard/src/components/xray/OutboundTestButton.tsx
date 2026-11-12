@@ -1,5 +1,7 @@
-import { IconButton, Spinner, Tooltip } from "@chakra-ui/react";
-import { BoltIcon } from "@heroicons/react/24/outline";
+import { Button } from "components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "components/ui/tooltip";
+import { Zap } from "lucide-react";
+
 import type { FC } from "react";
 
 type OutboundTestButtonProps = {
@@ -18,15 +20,11 @@ export const OutboundTestButton: FC<OutboundTestButtonProps> = ({
 	if (!onTest || !tag || tag.trim().toLowerCase() === "blocked") return null;
 
 	return (
-		<Tooltip hasArrow label={label}>
-			<IconButton
-				aria-label={label}
-				icon={isTesting ? <Spinner size="xs" /> : <BoltIcon />}
-				size="xs"
-				variant="ghost"
-				isDisabled={isTesting}
-				onClick={() => onTest(tag)}
-			/>
-		</Tooltip>
+		<Tooltip>
+<TooltipTrigger asChild>
+			<Button aria-label={label} loading={isTesting} onClick={() => onTest(tag)} variant="ghost" size="xs" className="size-7 p-0"><Zap /></Button>
+		</TooltipTrigger>
+<TooltipContent>{label}</TooltipContent>
+</Tooltip>
 	);
 };

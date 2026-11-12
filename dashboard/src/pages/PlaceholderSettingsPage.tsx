@@ -1,37 +1,20 @@
-import {
-	Alert,
-	AlertIcon,
-	Badge,
-	Box,
-	Button,
-	Card,
-	CardBody,
-	FormControl,
-	FormHelperText,
-	FormLabel,
-	Heading,
-	HStack,
-	Input,
-	SimpleGrid,
-	Stack,
-	Switch,
-	Tab,
-	TabList,
-	TabPanel,
-	TabPanels,
-	Tabs,
-	Text,
-	useColorModeValue,
-	useToast,
-	Wrap,
-	WrapItem,
-} from "@chakra-ui/react";
-import { DocumentDuplicateIcon } from "@heroicons/react/24/outline";
+import { Alert } from "components/ui/alert";
+import { Button } from "components/ui/button";
+import { toast } from "components/ui/sonner";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+import { Copy } from "lucide-react";
+
 import { PanelSelect } from "components/common/PanelSelect";
-import { PageLoadingSkeleton } from "components/ui";
+import { OverviewBand } from "components/ui/overview-band";
+import { FormField } from "components/ui/form-field";
+import { Input as UiInput } from "components/ui/input";
+import { Switch as UiSwitch } from "components/ui/switch";
+
+import { PageHeader, PageLoadingSkeleton } from "components/ui";
+import { cn } from "lib/cn";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useMutation, useQuery } from "react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
 	getSubscriptionPlaceholderSettings,
 	type SubscriptionPlaceholderSetting,
@@ -42,17 +25,13 @@ const keyFor = (
 	item: Pick<SubscriptionPlaceholderSetting, "admin_id" | "service_id">,
 ) => `${item.admin_id ?? "default"}:${item.service_id}`;
 
+const VARIABLES = ["{USERNAME}", "{STATUS_TEXT}", "{DATA_USAGE}", "{DATA_LIMIT}", "{EXPIRE_DATE}"];
+
 const PlaceholderSettingsPage = () => {
-	const { t } = useTranslation();
-	const toast = useToast();
-	const panelBg = useColorModeValue("whiteAlpha.800", "whiteAlpha.50");
-	const subtleBg = useColorModeValue("blackAlpha.50", "whiteAlpha.50");
-	const borderColor = useColorModeValue("blackAlpha.200", "whiteAlpha.200");
-	const query = useQuery(
-		"subscription-placeholder-settings",
-		getSubscriptionPlaceholderSettings,
-		{ refetchOnWindowFocus: false },
-	);
+	const { t, i18n } = useTranslation();
+	const locale = i18n.language || "en";
+	
+	const query = useQuery({ queryKey: ["subscription-placeholder-settings"], queryFn: getSubscriptionPlaceholderSettings, refetchOnWindowFocus: false });
 	const [selectedKey, setSelectedKey] = useState("");
 	const [draft, setDraft] = useState<SubscriptionPlaceholderSetting | null>(
 		null,
@@ -87,26 +66,37 @@ const PlaceholderSettingsPage = () => {
 		? items.filter((item) => item.admin_id === selected.admin_id)
 		: [];
 
-	const save = useMutation(updateSubscriptionPlaceholderSetting, {
-		onSuccess: async (updated) => {
+	const overview = useMemo(() => {
+		const enabled = items.filter((item) => item.enabled && !item.inherited).length;
+		const inherited = items.filter((item) => item.inherited).length;
+		const disabled = Math.max(items.length - enabled - inherited, 0);
+		return {
+			total: { label: t("placeholders.service"), value: items.length, caption: `${t("placeholders.admin")}: ${admins.length}` },
+			rows: [
+				{ key: "enabled", label: t("placeholders.enabled"), value: enabled, tone: "bg-panel-success" },
+				{ key: "inherited", label: t("placeholders.inherit"), value: inherited, tone: "bg-panel-info" },
+			],
+			distribution: {
+				label: t("placeholders.variables"),
+				segments: [
+					{ key: "enabled", label: t("placeholders.enabled"), value: enabled, tone: "bg-panel-success" },
+					{ key: "inherited", label: t("placeholders.inherit"), value: inherited, tone: "bg-panel-info" },
+					{ key: "disabled", label: t("status.disabled"), value: disabled, tone: "bg-panel-text-muted/60" },
+				],
+			},
+			extra: { label: t("placeholders.serviceDefaults"), value: items.filter((item) => item.admin_id === null).length },
+		};
+	}, [items, admins.length, t]);
+
+	const save = useMutation({ mutationFn: updateSubscriptionPlaceholderSetting, onSuccess: async (updated) => {
 			setDraft(updated);
 			setSelectedKey(keyFor(updated));
 			await query.refetch();
-			toast({
-				title: t("placeholders.saved"),
-				status: "success",
-				duration: 2500,
-			});
+			toast.success(t("placeholders.saved"), { duration: 2500 });
 		},
 		onError: (error: Error) => {
-			toast({
-				title: t("placeholders.saveFailed"),
-				description: error.message,
-				status: "error",
-				duration: 5000,
-			});
-		},
-	});
+			toast.error(t("placeholders.saveFailed"), { description: error.message, duration: 5000 });
+		}, });
 
 	const selectAdmin = (value: string | string[]) => {
 		const raw = Array.isArray(value) ? value[0] : value;
@@ -130,240 +120,140 @@ const PlaceholderSettingsPage = () => {
 	}
 	if (query.isError) {
 		return (
-			<Alert status="error" borderRadius="xl">
-				<AlertIcon />
+			<Alert variant="destructive" className="rounded-xl">
+				<CircleAlert className="size-4" aria-hidden="true" />
 				{t("placeholders.loadFailed")}
 			</Alert>
 		);
 	}
 
 	return (
-		<Stack spacing={5} maxW="1180px" mx="auto">
-			<Box>
-				<Heading size="lg">{t("placeholders.title")}</Heading>
-				<Text mt={2} color="panel.textSecondary" maxW="760px">
-					{t("placeholders.subtitle")}
-				</Text>
-			</Box>
+		<div className="flex flex-col gap-5 max-w-[1180px] mx-auto">
+			<PageHeader title={t("placeholders.title")} description={t("placeholders.subtitle")} />
 
-			<Tabs variant="soft-rounded" colorScheme="pink">
-				<TabList>
-					<Tab>{t("placeholders.tab")}</Tab>
-				</TabList>
-				<TabPanels>
-					<TabPanel px={0} pb={0}>
-						<Card
-							bg={panelBg}
-							border="1px solid"
-							borderColor={borderColor}
-							borderRadius="2xl"
-							boxShadow="0 18px 50px rgba(0,0,0,.12)"
-							backdropFilter="blur(18px)"
-						>
-							<CardBody p={{ base: 4, md: 7 }}>
-								{!draft ? (
-									<Box textAlign="center" py={14}>
-										<DocumentDuplicateIcon
-											width="42"
-											style={{ margin: "0 auto" }}
-										/>
-										<Heading size="sm" mt={4}>
-											{t("placeholders.noServices")}
-										</Heading>
-										<Text color="panel.textSecondary" mt={2}>
-											{t("placeholders.noServicesHint")}
-										</Text>
-									</Box>
-								) : (
-									<Stack spacing={7}>
-										<SimpleGrid
-											columns={{ base: 1, md: query.data?.manage_all ? 2 : 1 }}
-											spacing={4}
-										>
-											{query.data?.manage_all && (
-												<FormControl>
-													<FormLabel>{t("placeholders.scope")}</FormLabel>
-													<PanelSelect
-														value={draft.admin_id === null ? "default" : String(draft.admin_id)}
-														onValueChange={selectAdmin}
-														options={[
-															{ value: "default", label: t("placeholders.serviceDefaults") },
-															...admins.map(([id, username]) => ({ value: String(id), label: username })),
-														]}
-													/>
-												</FormControl>
-											)}
-											<FormControl>
-												<FormLabel>{t("placeholders.service")}</FormLabel>
-												<PanelSelect
-													value={String(draft.service_id)}
-													onValueChange={selectService}
-													options={adminItems.map((item) => ({
-														value: String(item.service_id),
-														label: item.service_name,
-													}))}
-												/>
-											</FormControl>
-										</SimpleGrid>
+			<div className="border border-panel-border! bg-panel-surface rounded-xl overflow-hidden">
+				<OverviewBand
+					total={overview.total}
+					rows={overview.rows}
+					distribution={overview.distribution}
+					extra={overview.extra}
+					locale={locale}
+				/>
+				{draft ? (
+					<div className="border-t border-panel-border! p-3">
+						<div className={cn("grid grid-cols-1 gap-3", query.data?.manage_all ? "md:grid-cols-2" : "md:grid-cols-1")}>
+							{query.data?.manage_all && (
+								<FormField label={t("placeholders.scope")}>
+									<PanelSelect
+										value={draft.admin_id === null ? "default" : String(draft.admin_id)}
+										onValueChange={selectAdmin}
+										options={[
+											{ value: "default", label: t("placeholders.serviceDefaults") },
+											...admins.map(([id, username]) => ({ value: String(id), label: username })),
+										]}
+									/>
+								</FormField>
+							)}
+							<FormField label={t("placeholders.service")}>
+								<PanelSelect
+									value={String(draft.service_id)}
+									onValueChange={selectService}
+									options={adminItems.map((item) => ({
+										value: String(item.service_id),
+										label: item.service_name,
+									}))}
+								/>
+							</FormField>
+						</div>
+					</div>
+				) : null}
+			</div>
 
-										{!draft.is_default && (
-											<HStack
-												bg={subtleBg}
-												border="1px solid"
-												borderColor={borderColor}
-												borderRadius="xl"
-												p={4}
-												justify="space-between"
-											>
-												<Box>
-													<Text fontWeight="semibold">{t("placeholders.inherit")}</Text>
-													<Text fontSize="sm" color="panel.textSecondary" mt={1}>{t("placeholders.inheritHint")}</Text>
-												</Box>
-												<Switch
-													colorScheme="pink"
-													isChecked={draft.inherited}
-													onChange={(event) => updateDraft("inherited", event.target.checked)}
-												/>
-											</HStack>
-										)}
+			{!draft ? (
+				<div className="rounded-xl border border-panel-border! bg-panel-surface py-14 text-center">
+					<Copy style={{ margin: "0 auto" }} className="w-[42px]" />
+					<h2 className="font-heading font-bold text-[1rem] leading-[1.2] mt-4">
+						{t("placeholders.noServices")}
+					</h2>
+					<p className="text-panel-text-secondary mt-2">
+						{t("placeholders.noServicesHint")}
+					</p>
+				</div>
+			) : (
+				<div className="flex flex-col gap-5 rounded-xl border border-panel-border! bg-panel-surface p-4 md:p-5">
+					{!draft.is_default && (
+						<label className="flex items-center justify-between gap-4 rounded-lg border bg-card/40 px-3 py-2.5">
+							<span className="min-w-0">
+								<span className="block text-sm font-semibold">{t("placeholders.inherit")}</span>
+								<span className="block text-xs text-muted-foreground mt-0.5">{t("placeholders.inheritHint")}</span>
+							</span>
+							<UiSwitch checked={draft.inherited} onCheckedChange={(next) => updateDraft("inherited", next)} />
+						</label>
+					)}
 
-										<HStack
-											bg={subtleBg}
-											border="1px solid"
-											borderColor={borderColor}
-											borderRadius="xl"
-											p={4}
-											justify="space-between"
-											align="center"
-										>
-											<Box>
-												<Text fontWeight="semibold">
-													{t("placeholders.enabled")}
-												</Text>
-												<Text fontSize="sm" color="panel.textSecondary" mt={1}>
-													{t("placeholders.enabledHint")}
-												</Text>
-											</Box>
-											<Switch
-												colorScheme="pink"
-												isChecked={draft.enabled}
-												isDisabled={draft.inherited}
-												onChange={(event) =>
-													updateDraft("enabled", event.target.checked)
-												}
-											/>
-										</HStack>
+					<label className="flex items-center justify-between gap-4 rounded-lg border bg-card/40 px-3 py-2.5">
+						<span className="min-w-0">
+							<span className="block text-sm font-semibold">{t("placeholders.enabled")}</span>
+							<span className="block text-xs text-muted-foreground mt-0.5">{t("placeholders.enabledHint")}</span>
+						</span>
+						<UiSwitch checked={draft.enabled} disabled={draft.inherited} onCheckedChange={(next) => updateDraft("enabled", next)} />
+					</label>
 
-										<Stack spacing={5}>
-											<PlaceholderField
-												label={t("placeholders.expired")}
-												hint={t("placeholders.expiredHint")}
-												color="orange.400"
-												value={draft.expired_remark}
-												isDisabled={draft.inherited}
-												onChange={(value) =>
-													updateDraft("expired_remark", value)
-												}
-											/>
-											<PlaceholderField
-												label={t("placeholders.limited")}
-												hint={t("placeholders.limitedHint")}
-												color="red.400"
-												value={draft.limited_remark}
-												isDisabled={draft.inherited}
-												onChange={(value) =>
-													updateDraft("limited_remark", value)
-												}
-											/>
-											<PlaceholderField
-												label={t("placeholders.disabled")}
-												hint={t("placeholders.disabledHint")}
-												color="gray.400"
-												value={draft.disabled_remark}
-												isDisabled={draft.inherited}
-												onChange={(value) =>
-													updateDraft("disabled_remark", value)
-												}
-											/>
-										</Stack>
+					<div className="grid grid-cols-1 gap-4">
+						<PlaceholderField label={t("placeholders.expired")} hint={t("placeholders.expiredHint")} value={draft.expired_remark} disabled={draft.inherited} dotClass="text-orange-400" onChange={(value) => updateDraft("expired_remark", value)} />
+						<PlaceholderField label={t("placeholders.limited")} hint={t("placeholders.limitedHint")} value={draft.limited_remark} disabled={draft.inherited} dotClass="text-red-400" onChange={(value) => updateDraft("limited_remark", value)} />
+						<PlaceholderField label={t("placeholders.disabled")} hint={t("placeholders.disabledHint")} value={draft.disabled_remark} disabled={draft.inherited} dotClass="text-gray-400" onChange={(value) => updateDraft("disabled_remark", value)} />
+					</div>
 
-										<Box>
-											<Text fontSize="sm" fontWeight="semibold" mb={2}>
-												{t("placeholders.variables")}
-											</Text>
-											<Wrap>
-												{[
-													"{USERNAME}",
-													"{STATUS_TEXT}",
-													"{DATA_USAGE}",
-													"{DATA_LIMIT}",
-													"{EXPIRE_DATE}",
-												].map((variable) => (
-													<WrapItem key={variable}>
-														<Badge
-															px={2.5}
-															py={1}
-															borderRadius="full"
-															textTransform="none"
-														>
-															{variable}
-														</Badge>
-													</WrapItem>
-												))}
-											</Wrap>
-											<Text color="panel.textSecondary" fontSize="sm" mt={2}>
-												{t("placeholders.variablesHint")}
-											</Text>
-										</Box>
+					<div className="flex flex-col gap-2">
+						<p className="text-sm font-semibold">{t("placeholders.variables")}</p>
+						<div className="flex flex-wrap gap-1.5">
+							{VARIABLES.map((variable) => (
+								<code key={variable} className="rounded-md border bg-muted px-2 py-0.5 font-mono text-xs">
+									{variable}
+								</code>
+							))}
+						</div>
+						<p className="text-xs text-muted-foreground">{t("placeholders.variablesHint")}</p>
+					</div>
 
-										<HStack justify="flex-end">
-											<Button
-												colorScheme="pink"
-												isLoading={save.isLoading}
-												onClick={() => save.mutate({ ...draft, inherit_default: draft.inherited })}
-											>
-												{t("placeholders.save")}
-											</Button>
-										</HStack>
-									</Stack>
-								)}
-							</CardBody>
-						</Card>
-					</TabPanel>
-				</TabPanels>
-			</Tabs>
-		</Stack>
+					<div className="flex justify-end">
+						<Button onClick={() => save.mutate({ ...draft, inherit_default: draft.inherited })} loading={save.isPending}>
+							{t("placeholders.save")}
+						</Button>
+					</div>
+				</div>
+			)}
+		</div>
 	);
 };
 
 const PlaceholderField = ({
 	label,
 	hint,
-	color,
+	dotClass,
 	value,
-	isDisabled,
+	disabled: isDisabled,
 	onChange,
 }: {
 	label: string;
 	hint: string;
-	color: string;
+	dotClass?: string;
 	value: string;
-	isDisabled?: boolean;
+	disabled?: boolean;
 	onChange: (value: string) => void;
 }) => (
-	<FormControl>
-		<HStack mb={2} spacing={2}>
-			<Box boxSize="8px" borderRadius="full" bg={color} />
-			<FormLabel mb={0}>{label}</FormLabel>
-		</HStack>
-		<Input
-			value={value}
-			isDisabled={isDisabled}
-			maxLength={255}
-			onChange={(event) => onChange(event.target.value)}
-		/>
-		<FormHelperText>{hint}</FormHelperText>
-	</FormControl>
+	<FormField
+		label={
+			<span className="inline-flex items-center gap-2">
+				<span className={cn("size-2 rounded-full bg-current", dotClass)} />
+				{label}
+			</span>
+		}
+		description={hint}
+	>
+		<UiInput value={value} disabled={isDisabled} maxLength={255} onChange={(event) => onChange(event.target.value)} />
+	</FormField>
 );
 
 export default PlaceholderSettingsPage;

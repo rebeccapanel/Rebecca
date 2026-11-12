@@ -1,42 +1,16 @@
-import {
-	Badge,
-	Box,
-	Button,
-	Divider,
-	FormControl,
-	FormHelperText,
-	FormLabel,
-	HStack,
-	IconButton,
-	Input,
-	Modal,
-	ModalCloseButton,
-	ModalOverlay,
-	SimpleGrid,
-	Spinner,
-	Switch,
-	Table,
-	Tag,
-	Tbody,
-	Td,
-	Text,
-	Th,
-	Thead,
-	Tooltip,
-	Tr,
-	useToast,
-	VStack,
-	Wrap,
-	WrapItem,
-} from "@chakra-ui/react";
-import {
-	ArrowDownIcon,
-	ArrowPathIcon,
-	ArrowUpIcon,
-	EyeIcon,
-	PlusIcon,
-	TrashIcon,
-} from "@heroicons/react/24/outline";
+import { Field, FieldDescription, FieldLabel } from "components/ui/field";
+import { Input } from "components/ui/input";
+import { Switch } from "components/ui/switch";
+import { Badge } from "components/ui/badge";
+import { Button } from "components/ui/button";
+import { Spinner } from "components/ui/spinner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "components/ui/tooltip";
+import { Dialog } from "components/ui/dialog";
+import { toast } from "components/ui/sonner";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+import { cn } from "lib/cn";
+import { ArrowDown, RefreshCw, ArrowUp, Eye, Plus, Trash2 } from "lucide-react";
+
 import {
 	type FC,
 	useCallback,
@@ -90,7 +64,7 @@ const blankForm: OutboundSubForm = {
 };
 
 type Props = {
-	isOpen: boolean;
+	open: boolean;
 	onClose: () => void;
 	onChanged?: () => void | Promise<void>;
 };
@@ -104,12 +78,12 @@ const parseAPIError = (error: any, fallback: string) =>
 const responseOK = (response: any) => response?.success !== false;
 
 export const OutboundSubscriptionsModal: FC<Props> = ({
-	isOpen,
+	open: isOpen,
 	onClose,
 	onChanged,
 }) => {
 	const { t } = useTranslation();
-	const toast = useToast();
+	
 	const [items, setItems] = useState<OutboundSub[]>([]);
 	const [form, setForm] = useState<OutboundSubForm>(blankForm);
 	const [editingID, setEditingID] = useState<number | null>(null);
@@ -134,15 +108,10 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 				setItems(Array.isArray(response.obj) ? response.obj : []);
 			}
 		} catch (error: any) {
-			toast({
-				title: parseAPIError(
+			toast.error(parseAPIError(
 					error,
 					t("pages.xray.outboundSub.toastLoadFailed"),
-				),
-				status: "error",
-				isClosable: true,
-				position: "top",
-			});
+				));
 		} finally {
 			setLoading(false);
 		}
@@ -181,12 +150,7 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 
 	const save = async () => {
 		if (!form.url.trim()) {
-			toast({
-				title: t("pages.xray.outboundSub.toastUrlRequired"),
-				status: "warning",
-				isClosable: true,
-				position: "top",
-			});
+			toast.warning(t("pages.xray.outboundSub.toastUrlRequired"));
 			return;
 		}
 		setSaving(true);
@@ -197,28 +161,17 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 					: `/panel/xray/outbound-subs/${editingID}`;
 			const response = await apiFetch(path, { method: "POST", body: form });
 			if (responseOK(response)) {
-				toast({
-					title:
-						editingID === null
+				toast.success(editingID === null
 							? t("pages.xray.outboundSub.toastAdded")
-							: t("pages.xray.outboundSub.toastUpdated"),
-					status: "success",
-					isClosable: true,
-					position: "top",
-				});
+							: t("pages.xray.outboundSub.toastUpdated"));
 				resetForm();
 				await notifyChanged();
 			}
 		} catch (error: any) {
-			toast({
-				title: parseAPIError(
+			toast.error(parseAPIError(
 					error,
 					t("pages.xray.outboundSub.toastAddFailed"),
-				),
-				status: "error",
-				isClosable: true,
-				position: "top",
-			});
+				));
 		} finally {
 			setSaving(false);
 		}
@@ -243,15 +196,10 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 				setPreview(Array.isArray(response.obj) ? response.obj : []);
 			}
 		} catch (error: any) {
-			toast({
-				title: parseAPIError(
+			toast.error(parseAPIError(
 					error,
 					t("pages.xray.outboundSub.previewEmpty"),
-				),
-				status: "error",
-				isClosable: true,
-				position: "top",
-			});
+				));
 		} finally {
 			setPreviewing(false);
 		}
@@ -314,287 +262,194 @@ export const OutboundSubscriptionsModal: FC<Props> = ({
 	};
 
 	return (
-		<Modal
-			isOpen={isOpen}
-			onClose={onClose}
-			size="4xl"
-			scrollBehavior="inside"
-		>
-			<ModalOverlay bg="blackAlpha.400" />
-			<XrayModalContent mx="3">
+		<Dialog open={isOpen} onOpenChange={(open) => { if (!open) (onClose)(); }}>
+			
+			<XrayModalContent className="mx-3">
 				<XrayModalHeader>
 					{t("pages.xray.outboundSub.title")}
 				</XrayModalHeader>
-				<ModalCloseButton />
+				
 				<XrayModalBody>
-					<VStack align="stretch" spacing={4}>
-						<Box className="xray-section">
-							<SimpleGrid columns={{ base: 1, md: 2 }} spacing={3}>
-								<FormControl>
-									<FormLabel>{t("hostsDialog.remark")}</FormLabel>
-									<Input
-										size="sm"
-										value={form.remark}
-										onChange={(event) =>
+					<div className="flex flex-col items-stretch gap-4">
+						<div className="xray-section">
+							<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+								<Field>
+									<FieldLabel>{t("hostsDialog.remark")}</FieldLabel>
+									<Input value={form.remark} onChange={(event) =>
 											setForm((prev) => ({ ...prev, remark: event.target.value }))
-										}
-										placeholder={t("pages.xray.outboundSub.remarkPlaceholder")}
-									/>
-								</FormControl>
-								<FormControl isRequired>
-									<FormLabel>{t("pages.xray.outboundSub.url")}</FormLabel>
-									<Input
-										size="sm"
-										value={form.url}
-										onChange={(event) =>
+										} />
+								</Field>
+								<Field>
+									<FieldLabel>{t("pages.xray.outboundSub.url")}</FieldLabel>
+									<Input value={form.url} onChange={(event) =>
 											setForm((prev) => ({ ...prev, url: event.target.value }))
-										}
-										placeholder="https://example.com/sub"
-									/>
-								</FormControl>
-								<FormControl>
-									<FormLabel>{t("pages.xray.tor.tagPrefix")}</FormLabel>
-									<Input
-										size="sm"
-										value={form.tagPrefix}
-										onChange={(event) =>
+										} />
+								</Field>
+								<Field>
+									<FieldLabel>{t("pages.xray.tor.tagPrefix")}</FieldLabel>
+									<Input value={form.tagPrefix} onChange={(event) =>
 											setForm((prev) => ({ ...prev, tagPrefix: event.target.value }))
-										}
-										placeholder="sub1-"
-									/>
-									<FormHelperText>
+										} />
+									<FieldDescription>
 										{t("pages.xray.outboundSub.tagPrefixHint")}
-									</FormHelperText>
-								</FormControl>
-								<FormControl>
-									<FormLabel>{t("pages.xray.outboundSub.interval")}</FormLabel>
-									<Input
-										size="sm"
-										type="number"
-										min={1}
-										value={intervalMinutes}
-										onChange={(event) =>
+									</FieldDescription>
+								</Field>
+								<Field>
+									<FieldLabel>{t("pages.xray.outboundSub.interval")}</FieldLabel>
+									<Input type="number" min={1} value={intervalMinutes} onChange={(event) =>
 											setForm((prev) => ({
 												...prev,
 												updateInterval: Math.max(60, Number(event.target.value || 10) * 60),
 											}))
-										}
-									/>
-									<FormHelperText>
+										} />
+									<FieldDescription>
 										{t("pages.xray.outboundSub.intervalHint")}
-									</FormHelperText>
-								</FormControl>
-							</SimpleGrid>
-							<HStack mt={3} spacing={5} wrap="wrap">
-								<HStack>
-									<Switch
-										size="sm"
-										isChecked={form.enabled}
-										onChange={(event) =>
-											setForm((prev) => ({ ...prev, enabled: event.target.checked }))
-										}
-									/>
-									<Text fontSize="sm">{t("nodes.enabled")}</Text>
-								</HStack>
-								<HStack>
-									<Switch
-										size="sm"
-										isChecked={form.prepend}
-										onChange={(event) =>
-											setForm((prev) => ({ ...prev, prepend: event.target.checked }))
-										}
-									/>
-									<Text fontSize="sm">{t("pages.xray.outboundSub.prepend")}</Text>
-								</HStack>
-								<HStack>
-									<Switch
-										size="sm"
-										isChecked={form.allowPrivate}
-										onChange={(event) =>
-											setForm((prev) => ({ ...prev, allowPrivate: event.target.checked }))
-										}
-									/>
-									<Text fontSize="sm">{t("pages.xray.outboundSub.allowPrivate")}</Text>
-								</HStack>
-							</HStack>
+									</FieldDescription>
+								</Field>
+							</div>
+							<div className="flex flex-row items-center mt-3 gap-5 flex-wrap">
+								<div className="flex flex-row items-center gap-2">
+									<Switch checked={form.enabled} onCheckedChange={(checked: boolean) => setForm((prev) => ({ ...prev, enabled: checked }))} />
+									<p className="text-[0.875rem]">{t("nodes.enabled")}</p>
+								</div>
+								<div className="flex flex-row items-center gap-2">
+									<Switch checked={form.prepend} onCheckedChange={(checked: boolean) => setForm((prev) => ({ ...prev, prepend: checked }))} />
+									<p className="text-[0.875rem]">{t("pages.xray.outboundSub.prepend")}</p>
+								</div>
+								<div className="flex flex-row items-center gap-2">
+									<Switch checked={form.allowPrivate} onCheckedChange={(checked: boolean) => setForm((prev) => ({ ...prev, allowPrivate: checked }))} />
+									<p className="text-[0.875rem]">{t("pages.xray.outboundSub.allowPrivate")}</p>
+								</div>
+							</div>
 							{preview.length > 0 && (
-								<Wrap mt={3} spacing={2}>
+								<div className="flex flex-wrap mt-3 gap-2">
 									{preview.map((item, index) => (
-										<WrapItem key={`${item.tag}-${index}`}>
-											<Tag size="sm" colorScheme="green">
+										<div key={`${item.tag}-${index}`}>
+											<Badge className="bg-green-600 text-white">
 												{item.tag || "-"} · {item.protocol || "-"}
-											</Tag>
-										</WrapItem>
+											</Badge>
+										</div>
 									))}
-								</Wrap>
+								</div>
 							)}
-						</Box>
+						</div>
 
-						<Box className="xray-section">
-							<HStack justify="space-between" mb={3}>
-								<Box>
-									<Text fontWeight="semibold">
+						<div className="xray-section">
+							<div className="flex flex-row items-center gap-2 justify-between mb-3">
+								<div>
+									<p className="font-semibold">
 										{t("pages.xray.outboundSub.active")}
-									</Text>
-									<Text color="gray.500" fontSize="xs">
+									</p>
+									<p className="text-gray-500 text-[0.75rem]">
 										{t("pages.xray.outboundSub.restartHint")}
-									</Text>
-								</Box>
-								<Button
-									size="xs"
-									variant="ghost"
-									leftIcon={<ArrowPathIcon width={14} />}
-									isLoading={loading}
-									onClick={load}
-								>
+									</p>
+								</div>
+								<Button onClick={load} variant="ghost" size="xs" loading={loading}>{<RefreshCw className="w-[14px]" />}
 									{t("refresh")}
 								</Button>
-							</HStack>
-							<Divider mb={3} />
+							</div>
+							<hr className="mb-3 w-full border-0 border-b border-panel-border! opacity-60" />
 							{loading ? (
-								<HStack justify="center" py={6}>
-									<Spinner size="sm" />
-								</HStack>
+								<div className="flex flex-row items-center gap-2 justify-center py-6">
+									<Spinner />
+								</div>
 							) : items.length === 0 ? (
-								<Text color="gray.500" fontSize="sm">
+								<p className="text-gray-500 text-[0.875rem]">
 									{t("pages.xray.outboundSub.empty")}
-								</Text>
+								</p>
 							) : (
-								<Table size="sm">
-									<Thead>
-										<Tr>
-											<Th w="70px">#</Th>
-											<Th>{t("hostsDialog.remark")}</Th>
-											<Th>{t("pages.xray.Outbounds")}</Th>
-											<Th>{t("status")}</Th>
-											<Th>{t("nodes.enabled")}</Th>
-											<Th>{t("actions")}</Th>
-										</Tr>
-									</Thead>
-									<Tbody>
+								<table className="w-full border-separate border-spacing-0">
+									<thead>
+										<tr>
+											<th className="bg-panel-elevated px-6 py-3 text-start text-[0.75rem] font-bold uppercase leading-4 tracking-wider text-panel-text w-[70px]">#</th>
+											<th className="bg-panel-elevated px-6 py-3 text-start text-[0.75rem] font-bold uppercase leading-4 tracking-wider text-panel-text">{t("hostsDialog.remark")}</th>
+											<th className="bg-panel-elevated px-6 py-3 text-start text-[0.75rem] font-bold uppercase leading-4 tracking-wider text-panel-text">{t("pages.xray.Outbounds")}</th>
+											<th className="bg-panel-elevated px-6 py-3 text-start text-[0.75rem] font-bold uppercase leading-4 tracking-wider text-panel-text">{t("status")}</th>
+											<th className="bg-panel-elevated px-6 py-3 text-start text-[0.75rem] font-bold uppercase leading-4 tracking-wider text-panel-text">{t("nodes.enabled")}</th>
+											<th className="bg-panel-elevated px-6 py-3 text-start text-[0.75rem] font-bold uppercase leading-4 tracking-wider text-panel-text">{t("actions")}</th>
+										</tr>
+									</thead>
+									<tbody>
 										{items.map((item, index) => (
-											<Tr key={item.id}>
-												<Td>
-													<HStack spacing={0}>
-														<IconButton
-																aria-label={t("a11y.moveUp")}
-															size="xs"
-															variant="ghost"
-															icon={<ArrowUpIcon width={14} />}
-															isDisabled={index === 0 || busyID === item.id}
-															onClick={() => move(item.id, "up")}
-														/>
-														<IconButton
-																aria-label={t("a11y.moveDown")}
-															size="xs"
-															variant="ghost"
-															icon={<ArrowDownIcon width={14} />}
-															isDisabled={index === items.length - 1 || busyID === item.id}
-															onClick={() => move(item.id, "down")}
-														/>
-													</HStack>
-												</Td>
-												<Td maxW="260px">
-													<Text fontWeight="semibold" noOfLines={1}>
+											<tr key={item.id}>
+												<td className="px-6 py-4 text-[0.875rem] leading-5 text-panel-text">
+													<div className="flex flex-row items-center gap-0">
+														<Button aria-label={t("a11y.moveUp")} disabled={index === 0 || busyID === item.id} onClick={() => move(item.id, "up")} variant="ghost" size="xs" className="size-7 p-0">{<ArrowUp className="w-[14px]" />}</Button>
+														<Button aria-label={t("a11y.moveDown")} disabled={index === items.length - 1 || busyID === item.id} onClick={() => move(item.id, "down")} variant="ghost" size="xs" className="size-7 p-0">{<ArrowDown className="w-[14px]" />}</Button>
+													</div>
+												</td>
+												<td className="px-6 py-4 text-[0.875rem] leading-5 text-panel-text max-w-[260px]">
+													<p className="font-semibold truncate">
 														<AppleEmojiText>
 															{item.remark || item.url || ""}
 														</AppleEmojiText>
-													</Text>
-													<Text color="gray.500" fontSize="xs" noOfLines={1}>
+													</p>
+													<p className="text-gray-500 text-[0.75rem] truncate">
 														{item.tagPrefix || "sub-"} · {item.url}
-													</Text>
-												</Td>
-												<Td>
-													<Badge colorScheme="blue">{item.outboundCount ?? 0}</Badge>
-												</Td>
-												<Td>
+													</p>
+												</td>
+												<td className="px-6 py-4 text-[0.875rem] leading-5 text-panel-text">
+													<Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200 dark:bg-blue-500/20 dark:text-blue-200">{item.outboundCount ?? 0}</Badge>
+												</td>
+												<td className="px-6 py-4 text-[0.875rem] leading-5 text-panel-text">
 													{item.lastError ? (
-														<Tooltip label={item.lastError}>
-															<Badge colorScheme="red">error</Badge>
-														</Tooltip>
+														<Tooltip>
+<TooltipTrigger asChild>
+															<Badge className="bg-destructive/10 text-destructive">error</Badge>
+														</TooltipTrigger>
+<TooltipContent>{item.lastError}</TooltipContent>
+</Tooltip>
 													) : (
-														<Badge colorScheme="green">
+														<Badge className="bg-green-600 text-white">
 															{item.lastUpdated
 																? new Date(item.lastUpdated * 1000).toLocaleString()
 																: t("myaccount.never")}
 														</Badge>
 													)}
-												</Td>
-												<Td>
-													<Switch
-														size="sm"
-														isChecked={!!item.enabled}
-														isDisabled={busyID === item.id}
-														onChange={() => toggle(item)}
-													/>
-												</Td>
-												<Td>
-													<HStack spacing={1}>
-														<Button size="xs" variant="ghost" onClick={() => edit(item)}>
+												</td>
+												<td className="px-6 py-4 text-[0.875rem] leading-5 text-panel-text">
+													<Switch checked={!!item.enabled} disabled={busyID === item.id} onCheckedChange={() => toggle(item)} />
+												</td>
+												<td className="px-6 py-4 text-[0.875rem] leading-5 text-panel-text">
+													<div className="flex flex-row items-center gap-1">
+														<Button onClick={() => edit(item)} variant="ghost" size="xs">
 															{t("edit")}
 														</Button>
-														<IconButton
-																aria-label={t("refresh")}
-															size="xs"
-															variant="ghost"
-															icon={<ArrowPathIcon width={14} />}
-															isLoading={busyID === item.id}
-															onClick={() => refreshOne(item.id)}
-														/>
-														<IconButton
-																aria-label={t("delete")}
-															size="xs"
-															variant="ghost"
-															colorScheme="red"
-															icon={<TrashIcon width={14} />}
-															isDisabled={busyID === item.id}
-															onClick={() => deleteOne(item.id)}
-														/>
-													</HStack>
-												</Td>
-											</Tr>
+														<Button aria-label={t("refresh")} onClick={() => refreshOne(item.id)} variant="ghost" size="xs" loading={busyID === item.id} className="size-7 p-0">{<RefreshCw className="w-[14px]" />}</Button>
+														<Button aria-label={t("delete")} disabled={busyID === item.id} onClick={() => deleteOne(item.id)} variant="ghost" size="xs" className="text-destructive hover:bg-destructive/10 size-7 p-0">{<Trash2 className="w-[14px]" />}</Button>
+													</div>
+												</td>
+											</tr>
 										))}
-									</Tbody>
-								</Table>
+									</tbody>
+								</table>
 							)}
-						</Box>
-					</VStack>
+						</div>
+					</div>
 				</XrayModalBody>
 				<XrayModalFooter>
-					<HStack w="full" justify="space-between" spacing={2} wrap="wrap">
-						<Box>
+					<div className="flex flex-row items-center w-full justify-between gap-2 flex-wrap">
+						<div>
 							{editingID !== null && (
-								<Button size="sm" variant="ghost" onClick={resetForm}>
+								<Button onClick={resetForm} variant="ghost" size="sm">
 									{t("cancel")}
 								</Button>
 							)}
-						</Box>
-						<HStack spacing={2} wrap="wrap">
-							<Button
-								size="sm"
-								variant="ghost"
-								leftIcon={<EyeIcon width={16} />}
-								isLoading={previewing}
-								onClick={previewURL}
-							>
+						</div>
+						<div className="flex flex-row items-center gap-2 flex-wrap">
+							<Button onClick={previewURL} variant="ghost" size="sm" loading={previewing}>{<Eye className="w-[16px]" />}
 								{t("bulkActions.preview")}
 							</Button>
-							<Button
-								size="sm"
-								colorScheme="primary"
-								leftIcon={<PlusIcon width={16} />}
-								isLoading={saving}
-								onClick={save}
-							>
+							<Button onClick={save} size="sm" loading={saving}>{<Plus className="w-[16px]" />}
 								{editingID === null ? t("add") : t("save")}
 							</Button>
-							<Button size="sm" variant="ghost" onClick={onClose}>
+							<Button onClick={onClose} variant="ghost" size="sm">
 								{t("close")}
 							</Button>
-						</HStack>
-					</HStack>
+						</div>
+					</div>
 				</XrayModalFooter>
 			</XrayModalContent>
-		</Modal>
+		</Dialog>
 	);
 };

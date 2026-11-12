@@ -1,4 +1,7 @@
-import { Badge, Flex, HStack, Text } from "@chakra-ui/react";
+import { cn } from "lib/cn";
+import { toneClass } from "lib/tone";
+import { Badge } from "components/ui/badge";
+
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { AdminRole, AdminTrafficLimitMode, type Admin } from "types/Admin";
@@ -63,31 +66,25 @@ export const AdminDetailsPanel = ({
 
 	return (
 		<>
-			<Flex align="center" justify="space-between" gap={3} wrap="wrap" mb={3}>
-				<HStack spacing={2}>
-					<Badge
-						fontSize="xs"
-						px={2}
-						py={0.5}
-						borderRadius="full"
-						colorScheme={
+			<div className="flex-wrap flex items-center justify-between gap-3 mb-3">
+				<div className="flex flex-row items-center gap-2">
+					<Badge className={cn(toneClass(
 							admin.role === AdminRole.FullAccess
 								? "orange"
 								: admin.role === AdminRole.Sudo
 								? "purple"
 								: "gray"
-						}
-					>
+						), "text-[0.75rem] px-2 py-0.5 rounded-full")}>
 						{roleLabel}
 					</Badge>
-				</HStack>
-				<Text fontSize="xs" color="panel.textMuted">
+				</div>
+				<p className="text-[0.75rem] text-panel-text-muted">
 					{t("admins.details.summary", {
 						active: activeUsers,
 						limit: usersLimitLabel,
 					})}
-				</Text>
-			</Flex>
+				</p>
+			</div>
 
 			<ExpandedDetails>
 				<ExpandedHeading title={t("users")} first />

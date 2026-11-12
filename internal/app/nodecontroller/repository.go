@@ -65,7 +65,7 @@ const (
 	operationRetryBackoff       = 15 * time.Second
 )
 
-var runtimeProxyProtocolList = []string{"vmess", "vless", "trojan", "shadowsocks", "hysteria", "ssh"}
+var runtimeProxyProtocolList = []string{"vmess", "vless", "trojan", "shadowsocks", "hysteria", "masque", "ssh"}
 
 func NewRepository(db *sql.DB, dialect string, certificateBase ...string) Repository {
 	base := ""

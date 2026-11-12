@@ -1,4 +1,4 @@
-FROM node:20-bookworm-slim AS dashboard
+FROM node:22-bookworm-slim AS dashboard
 
 WORKDIR /src/dashboard
 COPY dashboard/package*.json ./

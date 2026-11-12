@@ -1687,7 +1687,7 @@ add_phpmyadmin_to_compose() {
     # Add phpMyAdmin service to docker-compose.yml
     if command -v yq >/dev/null 2>&1; then
         yq eval '.services.phpmyadmin = {
-            "image": "phpmyadmin/phpmyadmin:latest",
+            "image": "phpmyadmin:latest",
             "restart": "always",
             "env_file": ".env",
             "network_mode": "host",
@@ -1702,7 +1702,7 @@ add_phpmyadmin_to_compose() {
         cat >> "$compose_file" <<EOF
 
   phpmyadmin:
-    image: phpmyadmin/phpmyadmin:latest
+    image: phpmyadmin:latest
     restart: always
     env_file: .env
     network_mode: host

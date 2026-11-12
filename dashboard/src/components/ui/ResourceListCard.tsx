@@ -1,15 +1,12 @@
-import {
-	Box,
-	Divider,
-	HStack,
-	IconButton,
-	Stack,
-	type StackProps,
-	Tag,
-	Text,
-	Tooltip,
-	VStack,
-} from "@chakra-ui/react";
+import { toneClass } from "lib/tone";
+import { Badge } from "components/ui/badge";
+import { Tooltip, TooltipContent, TooltipTrigger } from "components/ui/tooltip";
+import { Button } from "components/ui/button";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+import { cn } from "lib/cn";
+
+
+import type { ComponentPropsWithoutRef } from "react";
 import type { FC, ReactElement, ReactNode } from "react";
 
 export type ResourceSummaryItem = {
@@ -19,7 +16,7 @@ export type ResourceSummaryItem = {
 	colorScheme?: string;
 };
 
-type ResourceListCardProps = Omit<StackProps, "title"> & {
+type ResourceListCardProps = Omit<ComponentPropsWithoutRef<"div">, "title"> & {
 	title: ReactNode;
 	summaryItems?: ResourceSummaryItem[];
 	actions?: ReactNode;
@@ -34,45 +31,26 @@ export const ResourceSummaryPills: FC<{ items: ResourceSummaryItem[] }> = ({
 		return null;
 	}
 	return (
-		<HStack spacing={2} flexWrap="wrap">
+		<div className="flex flex-row items-center gap-2 flex-wrap">
 			{items.map((item) => {
 				const tag = (
-					<Tag
-						key={item.label}
-						size="md"
-						borderRadius="full"
-						px={3}
-						py={1}
-						colorScheme={item.colorScheme ?? "gray"}
-						variant="subtle"
-						fontWeight="medium"
-					>
+					<Badge key={item.label} className={cn(toneClass(item.colorScheme ?? "gray"), "rounded-full px-3 py-1 font-medium")}>
 						{item.label}:{" "}
-						<Text
-							as="span"
-							fontWeight="bold"
-							ms={1}
-							dir="ltr"
-							sx={{ unicodeBidi: "isolate" }}
-						>
+						<span dir="ltr" className="font-bold ms-1 [unicode-bidi:isolate]">
 							{item.value}
-						</Text>
-					</Tag>
+						</span>
+					</Badge>
 				);
 				return item.helper ? (
-					<Tooltip
-						key={item.label}
-						label={item.helper}
-						hasArrow
-						placement="top"
-					>
-						{tag}
-					</Tooltip>
+					<Tooltip key={item.label}>
+<TooltipTrigger asChild><span className="inline-flex max-w-full">{tag}</span></TooltipTrigger>
+<TooltipContent>{item.helper}</TooltipContent>
+</Tooltip>
 				) : (
 					tag
 				);
 			})}
-		</HStack>
+		</div>
 	);
 };
 
@@ -87,73 +65,39 @@ export const ResourceListCard: FC<ResourceListCardProps> = ({
 	const hasFooter = Boolean(children || footerActions);
 	const titleContent =
 		typeof title === "string" || typeof title === "number" ? (
-			<Text fontWeight="bold" fontSize="lg">
+			<p className="font-bold text-[1.125rem]">
 				{title}
-			</Text>
+			</p>
 		) : (
-			<Box w="full">{title}</Box>
+			<div className="w-full">{title}</div>
 		);
 
 	return (
-		<Stack
-			spacing={4}
-			w="full"
-			borderWidth="1px"
-			borderColor="panel.border"
-			borderRadius="2xl"
-			bg="panel.surface"
-			p={{ base: 4, md: 5 }}
-			transition="border-color 0.25s ease, box-shadow 0.25s ease"
-			_hover={{
-				"@media (min-width: 768px)": {
-					boxShadow: "sm",
-					borderColor: "panel.borderStrong",
-				},
-			}}
-			{...props}
-		>
-			<Stack
-				direction={{ base: "column", xl: "row" }}
-				spacing={4}
-				align={{ base: "stretch", xl: "flex-start" }}
-				justify="space-between"
-			>
-				<VStack
-					align="flex-start"
-					spacing={3}
-					minW={{ base: "0", xl: "210px" }}
-				>
+		<div {...props} className="hover:md:shadow-sm hover:md:border-panel-border-strong! flex flex-col gap-4 w-full border border-panel-border! rounded-2xl bg-panel-surface p-4 md:p-5 [transition:border-color_0.25s_ease,_box-shadow_0.25s_ease]">
+			<div className="flex flex-col xl:flex-row gap-4 items-stretch xl:items-start justify-between">
+				<div className="flex flex-col items-start gap-3 min-w-0! xl:min-w-[210px]!">
 					{titleContent}
 					<ResourceSummaryPills items={summaryItems} />
-				</VStack>
-				{actions && <Box>{actions}</Box>}
-			</Stack>
+				</div>
+				{actions && <div>{actions}</div>}
+			</div>
 
 			{hasFooter && (
 				<>
-					<Divider borderColor="panel.border" />
-					<Stack
-						direction={{ base: "column", xl: "row" }}
-						spacing={4}
-						align={{ base: "stretch", xl: "center" }}
-						justify="space-between"
-					>
-						<Stack flex="1" minW={0} className="rb-resource-card-controls">
+					<hr className="w-full border-0 border-b border-panel-border! opacity-60" />
+					<div className="flex flex-col xl:flex-row gap-4 items-stretch xl:items-center justify-between">
+						<div className="flex flex-col gap-2 flex-1 min-w-0! rb-resource-card-controls">
 							{children}
-						</Stack>
+						</div>
 						{footerActions && (
-							<HStack
-								spacing={2}
-								flexWrap="wrap"
-								justify={{ base: "flex-start", xl: "flex-end" }}
-							>
+							<div className="flex flex-row items-center gap-2 flex-wrap justify-start xl:justify-end">
 								{footerActions}
-							</HStack>
+							</div>
 						)}
-					</Stack>
+					</div>
 				</>
 			)}
-		</Stack>
+		</div>
 	);
 };
 
@@ -161,23 +105,20 @@ export const ResourceRefreshButton: FC<{
 	"aria-label": string;
 	icon: ReactElement;
 	label?: ReactNode;
-	isLoading?: boolean;
+	loading?: boolean;
 	onClick: () => void;
 }> = ({ icon, label, ...props }) => {
 	const button = (
-		<IconButton
-			variant="ghost"
-			size="sm"
-			borderRadius="md"
-			icon={icon}
-			{...props}
-		/>
+		<Button {...props} variant="ghost" size="sm" className={cn("size-8 p-0", "rounded-md")}>{icon}</Button>
 	);
 
 	return label ? (
-		<Tooltip label={label} hasArrow placement="top">
+		<Tooltip>
+<TooltipTrigger asChild>
 			<span>{button}</span>
-		</Tooltip>
+		</TooltipTrigger>
+<TooltipContent>{label}</TooltipContent>
+</Tooltip>
 	) : (
 		button
 	);

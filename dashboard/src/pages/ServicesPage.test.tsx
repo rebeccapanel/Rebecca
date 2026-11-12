@@ -1,4 +1,4 @@
-import { ChakraProvider } from "@chakra-ui/react";
+import { ColorModeProvider } from "lib/color-mode";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { StaticRouter } from "react-router-dom";
@@ -54,11 +54,11 @@ describe("services page", () => {
 		});
 
 		const markup = renderToStaticMarkup(
-			<ChakraProvider>
+			<ColorModeProvider>
 				<StaticRouter location="/services">
 					<ServicesPage />
 				</StaticRouter>
-			</ChakraProvider>,
+			</ColorModeProvider>,
 		);
 
 		expect(markup).toContain("service-2");

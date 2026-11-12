@@ -1,21 +1,18 @@
-import {
-	Box,
-	Button,
-	chakra,
-	HStack,
-	Text,
-	type BoxProps,
-	type ButtonProps,
-	usePrefersReducedMotion,
-} from "@chakra-ui/react";
-import { CheckIcon, XMarkIcon } from "@heroicons/react/24/outline";
-import { AnimatePresence, motion } from "framer-motion";
+import type { ButtonProps } from "components/ui/button";
+import { Button } from "components/ui/button";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+import { withClass } from "lib/withClass";
+import { Check, LoaderCircle, X } from "lucide-react";
+
+import type { ComponentPropsWithoutRef } from "react";
+import { cn } from "lib/cn";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { FC, ReactNode } from "react";
 
 export type AnimatedSubmitStatus = "idle" | "loading" | "success" | "error";
 
-type AnimatedSubmitButtonProps = Omit<ButtonProps, "children" | "isLoading"> & {
-	containerProps?: BoxProps;
+type AnimatedSubmitButtonProps = { h?: string; px?: number | string } & Omit<ButtonProps, "children" | "isLoading"> & {
+	containerProps?: ComponentPropsWithoutRef<"div">;
 	compactWidth?: number;
 	idleContent: ReactNode;
 	status: AnimatedSubmitStatus;
@@ -24,19 +21,15 @@ type AnimatedSubmitButtonProps = Omit<ButtonProps, "children" | "isLoading"> & {
 	successWidth?: number;
 };
 
-const SuccessIcon = chakra(CheckIcon, {
-	baseStyle: { w: 4, h: 4, strokeWidth: "2.4px" },
-});
+const SuccessIcon = withClass(Check, "w-4 h-4 [stroke-width:2.4px]");
 
-const ErrorIcon = chakra(XMarkIcon, {
-	baseStyle: { w: 5, h: 5, strokeWidth: "2.4px" },
-});
+const ErrorIcon = withClass(X, "w-5 h-5 [stroke-width:2.4px]");
 
 const renderTextContent = (content: ReactNode) =>
 	typeof content === "string" ? (
-		<Text as="span" fontWeight="700" whiteSpace="nowrap">
+		<span className="font-bold whitespace-nowrap">
 			{content}
-		</Text>
+		</span>
 	) : (
 		content
 	);
@@ -46,7 +39,7 @@ export const AnimatedSubmitButton: FC<AnimatedSubmitButtonProps> = ({
 	containerProps,
 	h = "44px",
 	idleContent,
-	isDisabled,
+	disabled: isDisabled,
 	px,
 	status,
 	successContent,
@@ -54,92 +47,49 @@ export const AnimatedSubmitButton: FC<AnimatedSubmitButtonProps> = ({
 	successWidth = 154,
 	...buttonProps
 }) => {
-	const reduceMotion = usePrefersReducedMotion();
+	const reduceMotion = useReducedMotion();
 	const isFeedbackState = status !== "idle";
 	const isCompact = status === "loading" || status === "error";
 	const targetWidth = status === "success" ? successWidth : isCompact ? compactWidth : "100%";
 	const buttonBg =
-		status === "success"
-			? "green.500"
-			: status === "error"
-				? "red.500"
-				: "primary.500";
+		status === "success" ? "bg-green-500" : status === "error" ? "bg-red-500" : "bg-primary-500";
 	const buttonHoverBg =
-		status === "success"
-			? "green.500"
-			: status === "error"
-				? "red.500"
-				: "primary.600";
+		status === "success" ? "hover:bg-green-500" : status === "error" ? "hover:bg-red-500" : "hover:bg-primary-600";
 
 	const content = (() => {
 		if (status === "loading") {
 			return (
-				<Box
-					aria-hidden
-					border="2px solid"
-					borderColor="whiteAlpha.600"
-					borderTopColor="white"
-					className="animate-spin"
-					h="20px"
-					rounded="full"
-					w="20px"
+				<LoaderCircle
+					aria-hidden="true"
+					className="size-5 animate-spin text-white"
 				/>
 			);
 		}
 		if (status === "success") {
 			return (
 				successContent ?? (
-					<HStack spacing={2}>
-						<SuccessIcon color="white" />
-						<Text as="span" fontWeight="800" whiteSpace="nowrap">
+					<div className="flex flex-row items-center gap-2">
+						<SuccessIcon className="text-white" />
+						<span className="font-extrabold whitespace-nowrap">
 							{successLabel}
-						</Text>
-					</HStack>
+						</span>
+					</div>
 				)
 			);
 		}
 		if (status === "error") {
-			return <ErrorIcon color="white" />;
+			return <ErrorIcon className="text-white" />;
 		}
 		return renderTextContent(idleContent);
 	})();
 
 	return (
-		<Box
-			display="flex"
-			justifyContent="center"
-			w="full"
-			{...containerProps}
-		>
+		<div {...containerProps} className="flex justify-center w-full">
 			<motion.div
 				initial={false}
 				style={{ display: "flex", justifyContent: "center", width: targetWidth }}
 			>
-				<Button
-					aria-disabled={Boolean(isDisabled || isFeedbackState)}
-					bg={buttonBg}
-					borderRadius={status === "idle" ? "8px" : "999px"}
-					color="white"
-					cursor={isDisabled ? "not-allowed" : "pointer"}
-					h={h}
-					isDisabled={Boolean(isDisabled)}
-					minH={h}
-					opacity={isDisabled && status === "idle" ? 0.65 : 1}
-					overflow="hidden"
-					pointerEvents={isFeedbackState ? "none" : "auto"}
-					px={px ?? (status === "success" ? 4 : isCompact ? 0 : 8)}
-					w="full"
-					_hover={{ bg: buttonHoverBg }}
-					_active={{
-						transform: status === "idle" ? "scale(0.97)" : "none",
-					}}
-					_disabled={{
-						opacity: isDisabled && status === "idle" ? 0.65 : 1,
-						cursor: "not-allowed",
-						boxShadow: "none",
-					}}
-					{...buttonProps}
-				>
+				<Button aria-disabled={Boolean(isDisabled || isFeedbackState)} disabled={Boolean(isDisabled)} {...buttonProps} style={{ height: h, minHeight: h, paddingInline: px === undefined ? (status === "success" ? "1rem" : isCompact ? "0" : "2rem") : typeof px === "number" ? `${px * 0.25}rem` : px }} className={cn(cn("text-white overflow-hidden w-full disabled:cursor-not-allowed disabled:shadow-none", buttonBg, status === "idle" ? "rounded-[8px]" : "rounded-[999px]", isDisabled ? "cursor-not-allowed" : "cursor-pointer", isDisabled && status === "idle" ? "opacity-65" : "opacity-100", isFeedbackState ? "pointer-events-none" : "pointer-events-auto", buttonHoverBg, status === "idle" ? "active:[transform:scale(0.97)]" : "active:[transform:none]", isDisabled && status === "idle" ? "disabled:opacity-65" : "disabled:opacity-100"))}>
 					<AnimatePresence initial={false} mode="wait">
 						<motion.span
 							animate={{
@@ -173,6 +123,6 @@ export const AnimatedSubmitButton: FC<AnimatedSubmitButtonProps> = ({
 					</AnimatePresence>
 				</Button>
 			</motion.div>
-		</Box>
+		</div>
 	);
 };

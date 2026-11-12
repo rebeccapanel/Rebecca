@@ -1,14 +1,9 @@
-import {
-	Alert,
-	AlertIcon,
-	AlertDescription,
-	Button,
-	FormControl,
-	FormHelperText,
-	FormLabel,
-	Stack,
-	Text,
-} from "@chakra-ui/react";
+import { Button } from "components/ui/button";
+import { Field, FieldDescription, FieldLabel } from "components/ui/field";
+import { Alert, AlertDescription } from "components/ui/alert";
+import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
+
+
 import { PanelSelect as Select } from "components/common/PanelSelect";
 import { AppDialog } from "components/dialogs/AppDialog";
 import { useEffect, useState } from "react";
@@ -21,7 +16,7 @@ import {
 export type NodeServiceUpdateChannel = "current" | "latest" | "dev";
 
 type NodeServiceUpdateDialogProps = {
-	isOpen: boolean;
+	open: boolean;
 	title: string;
 	description?: string;
 	currentChannel?: string;
@@ -35,7 +30,7 @@ type NodeServiceUpdateDialogProps = {
 };
 
 export const NodeServiceUpdateDialog = ({
-	isOpen,
+	open: isOpen,
 	title,
 	description,
 	currentChannel,
@@ -73,46 +68,36 @@ export const NodeServiceUpdateDialog = ({
 
 	return (
 		<AppDialog
-			isOpen={isOpen}
+			open={isOpen}
 			onClose={onClose}
-			isCentered
 			size="md"
 			title={title}
 			footer={
 				<>
-					<Button
-						variant="ghost"
-						mr={3}
-						onClick={onClose}
-						isDisabled={isSubmitting}
-					>
+					<Button onClick={onClose} disabled={isSubmitting} variant="ghost" className="me-3">
 						{t("cancel")}
 					</Button>
-					<Button
-						colorScheme="primary"
-						onClick={() => onSubmit(channel, version || undefined)}
-						isLoading={isSubmitting}
-					>
+					<Button onClick={() => onSubmit(channel, version || undefined)} loading={isSubmitting}>
 						{t("nodes.updateServiceAction")}
 					</Button>
 				</>
 			}
 		>
-			<Stack spacing={4}>
+			<div className="flex flex-col gap-4">
 				{description && (
-					<Text color="panel.textMuted" fontSize="sm">
+					<p className="text-panel-text-muted text-[0.875rem]">
 						{description}
-					</Text>
+					</p>
 				)}
 				{currentChannel && (
-					<Text fontSize="xs" color="panel.textMuted">
+					<p className="text-[0.75rem] text-panel-text-muted">
 						{t("nodes.serviceUpdateCurrentChannel", {
 							channel: currentChannelLabel,
 						})}
-					</Text>
+					</p>
 				)}
-				<FormControl>
-					<FormLabel>{t("dashboard.maintenance.updateChannel")}</FormLabel>
+				<Field>
+					<FieldLabel>{t("dashboard.maintenance.updateChannel")}</FieldLabel>
 					<Select
 						value={channel}
 						onChange={(event) => {
@@ -130,14 +115,14 @@ export const NodeServiceUpdateDialog = ({
 							{t("dashboard.maintenance.updateChannelDev")}
 						</option>
 					</Select>
-					<FormHelperText>
+					<FieldDescription>
 						{selectedVersion
 							? t("dashboard.maintenance.updateTargetHint", {
 									version: selectedVersion,
 								})
 							: t("dashboard.maintenance.updateTargetUnknown")}
-					</FormHelperText>
-					</FormControl>
+					</FieldDescription>
+					</Field>
 					<BuildVersionSelect
 						catalog={catalog}
 						value={version}
@@ -150,22 +135,22 @@ export const NodeServiceUpdateDialog = ({
 						}}
 					/>
 					{version && version !== targetVersion && (
-						<Alert status="warning" borderRadius="xl" fontSize="sm">
-							<AlertIcon />
+						<Alert className="rounded-xl text-[0.875rem]">
+							<TriangleAlert className="size-4" aria-hidden="true" />
 							<AlertDescription>
 								{t("dashboard.maintenance.versionSwitchWarning")}
 							</AlertDescription>
 						</Alert>
 					)}
 				{channel === "dev" && (
-					<Alert status="warning" borderRadius="xl" fontSize="sm">
-						<AlertIcon />
+					<Alert className="rounded-xl text-[0.875rem]">
+						<TriangleAlert className="size-4" aria-hidden="true" />
 						<AlertDescription>
 							{t("dashboard.maintenance.devChannelWarning")}
 						</AlertDescription>
 					</Alert>
 				)}
-			</Stack>
+			</div>
 		</AppDialog>
 	);
 };

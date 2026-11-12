@@ -423,3 +423,31 @@ func firstRuntimeCertificate(t *testing.T, raw map[string]any) map[string]any {
 	}
 	return certificates[0]
 }
+
+func TestIncludeDBUsersBuildsMasqueClientWithPass(t *testing.T) {
+	raw := map[string]any{"inbounds": []any{
+		map[string]any{"tag": "mq", "protocol": "masque", "settings": map[string]any{"clients": []any{}}, "streamSettings": map[string]any{"network": "masque", "security": "tls"}},
+	}}
+	data := &runtimeConfigData{
+		users: []runtimeUserRow{{
+			ID: 1, Username: "alice", CredentialKey: "05bfddf81eb418fa1edbce7cd286eee1", Protocol: "masque",
+			ServiceID: sql.NullInt64{Int64: 7, Valid: true}, Settings: map[string]any{},
+		}},
+		serviceTags: map[int64]map[string]bool{7: {"mq": true}},
+		masks:       map[string][]byte{},
+	}
+	if err := (Controller{}).includeDBUsers(context.Background(), raw, data); err != nil {
+		t.Fatal(err)
+	}
+	clients := interfaceSlice(mapValue(listOfMaps(raw["inbounds"])[0]["settings"])["clients"])
+	if len(clients) != 1 {
+		t.Fatalf("clients = %#v", clients)
+	}
+	client := mapValue(clients[0])
+	if stringValue(client["email"]) != inboundRuntimeUserEmail(1, "alice", "mq") || stringValue(client["pass"]) == "" {
+		t.Fatalf("masque client = %#v, want the tagged email and a pass", client)
+	}
+	if _, hasPassword := client["password"]; hasPassword {
+		t.Fatalf("Xray reads pass for masque; password must not be sent: %#v", client)
+	}
+}

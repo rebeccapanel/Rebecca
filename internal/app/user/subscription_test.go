@@ -2204,7 +2204,7 @@ func TestSubscriptionPageTemplateIncludesLinks(t *testing.T) {
 		Status:                 "active",
 		UsedTraffic:            1024 * 1024,
 		DataLimitResetStrategy: "no_reset",
-	}, []string{"vless://id@example.com:443#alice"}, "/sub/token/usage", "", "token")
+	}, []string{"vless://id@example.com:443#alice"}, "/sub/token/usage", "", "", "token")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2221,7 +2221,7 @@ func TestSubscriptionPageTemplateIncludesOnHoldLinks(t *testing.T) {
 		Status:                 "on_hold",
 		UsedTraffic:            1024,
 		DataLimitResetStrategy: "no_reset",
-	}, []string{"vless://id@example.com:443#alice"}, "/sub/token/usage", "", "token")
+	}, []string{"vless://id@example.com:443#alice"}, "/sub/token/usage", "", "", "token")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2251,7 +2251,7 @@ func TestBundledSubscriptionPageTemplateRendersPanelStyleContext(t *testing.T) {
 	}, []string{
 		"vless://id@example.com:443?security=tls&type=ws#Alpha",
 		"ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpwYXNz@example.net:8388#Beta",
-	}, "/sub/token/usage", "https://support.example", "token", map[string]any{
+	}, "/sub/token/usage", "https://support.example", "Netiva", "token", map[string]any{
 		"wireguard": map[string]any{
 			"profiles": []WGProfile{{
 				HostTag:     "wg-edge",
@@ -2273,6 +2273,7 @@ func TestBundledSubscriptionPageTemplateRendersPanelStyleContext(t *testing.T) {
 		`data-created-at="2026-06-30 09:10:11"`,
 		`data-online-at="2026-07-01 10:20:30"`,
 		`data-service-name="Premium Plan"`,
+		`data-profile-title="Netiva"`,
 		`href="https://support.example"`,
 		`id="langMenu"`,
 		`data-lang-choice="zh"`,
@@ -2301,7 +2302,7 @@ func TestBundledSubscriptionPageTemplateRendersPanelStyleContext(t *testing.T) {
 
 func TestSubscriptionPageTemplateExposesRemoteAccessPlaceholders(t *testing.T) {
 	template := `{% for item in ikev2 %}{{ item.Server }}:{{ item.Port }} {{ item.Username }} {{ item.Password }}{% endfor %}|{% for item in anyconnect %}{{ item.Server }}:{{ item.Port }} {{ item.Username }} {{ item.Password }}{% endfor %}`
-	html, err := renderSubscriptionPageTemplate(template, UserDetail{Username: "alice", Status: "active"}, nil, "", "", "token", map[string]any{
+	html, err := renderSubscriptionPageTemplate(template, UserDetail{Username: "alice", Status: "active"}, nil, "", "", "", "token", map[string]any{
 		"ikev2":      []RemoteAccessInfo{{Server: "ike.example.com", Port: 500, Username: "alice", Password: "ike-secret"}},
 		"anyconnect": []RemoteAccessInfo{{Server: "cisco.example.com", Port: 443, Username: "alice", Password: "cisco-secret"}},
 	})
@@ -2336,7 +2337,7 @@ never
 		Expire:                 &expire,
 		UsedTraffic:            1024 * 1024,
 		DataLimitResetStrategy: "no_reset",
-	}, []string{"vless://id@example.com:443#alice"}, "/sub/token/usage", "", "token")
+	}, []string{"vless://id@example.com:443#alice"}, "/sub/token/usage", "", "", "token")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2362,7 +2363,7 @@ func TestSubscriptionPageTemplateAcceptsLegacyInlineRemainingDaysClamp(t *testin
 		Status:                 "active",
 		Expire:                 &expire,
 		DataLimitResetStrategy: "no_reset",
-	}, nil, "/sub/token/usage", "", "token")
+	}, nil, "/sub/token/usage", "", "", "token")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2380,7 +2381,7 @@ func TestSubscriptionPageTemplateRendersDirectUserLinksForLegacyJavascript(t *te
 	}, []string{
 		"vless://id@example.com:443?security=tls&type=ws#alice",
 		"ss://method:pass@example.net:8388#ss",
-	}, "/sub/token/usage", "", "token")
+	}, "/sub/token/usage", "", "", "token")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2400,7 +2401,7 @@ func TestSubscriptionPageTemplateIncludesVPNContext(t *testing.T) {
 		Username:               "alice",
 		Status:                 "active",
 		DataLimitResetStrategy: "no_reset",
-	}, []string{"vless://id@example.com:443#alice"}, "/sub/token/usage", "", "token", map[string]any{
+	}, []string{"vless://id@example.com:443#alice"}, "/sub/token/usage", "", "", "token", map[string]any{
 		"openvpn": map[string]any{
 			"downloads": []string{"https://vpn.example/sub/token/ov/edge.ovpn"},
 		},
@@ -2434,6 +2435,42 @@ func TestSubscriptionPageTemplateIncludesVPNContext(t *testing.T) {
 		if !strings.Contains(html, expected) {
 			t.Fatalf("expected %q in html:\n%s", expected, html)
 		}
+	}
+}
+
+func TestSubscriptionPageTemplateIncludesProfileTitle(t *testing.T) {
+	template := `<div data-title="{{ subscription_profile_title }}" data-alias="{{ profile_title }}" data-brand="{{ brand_name }}" data-user-title="{{ user.subscription_profile_title }}" data-user-alias="{{ user.profile_title }}"></div>`
+	html, err := renderSubscriptionPageTemplate(template, UserDetail{
+		Username: "alice",
+		Status:   "active",
+	}, nil, "/sub/token/usage", "https://t.me/support", "My Netiva Brand", "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, expected := range []string{
+		`data-title="My Netiva Brand"`,
+		`data-alias="My Netiva Brand"`,
+		`data-brand="My Netiva Brand"`,
+		`data-user-title="My Netiva Brand"`,
+		`data-user-alias="My Netiva Brand"`,
+	} {
+		if !strings.Contains(html, expected) {
+			t.Fatalf("expected %q in rendered html:\n%s", expected, html)
+		}
+	}
+
+	// Test when profile title is empty
+	emptyHTML, err := renderSubscriptionPageTemplate(template, UserDetail{
+		Username: "alice",
+		Status:   "active",
+	}, nil, "/sub/token/usage", "", "", "token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectedEmpty := `<div data-title="" data-alias="" data-brand="" data-user-title="" data-user-alias=""></div>`
+	if emptyHTML != expectedEmpty {
+		t.Fatalf("expected %q, got %q", expectedEmpty, emptyHTML)
 	}
 }
 

@@ -1,4 +1,4 @@
-import { ChakraProvider } from "@chakra-ui/react";
+import { ColorModeProvider } from "lib/color-mode";
 import * as React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { StaticRouter } from "react-router-dom";
@@ -21,11 +21,11 @@ vi.mock("react-i18next", () => ({
 
 const render = (element: React.ReactElement) =>
 	renderToStaticMarkup(
-		<ChakraProvider>
+		<ColorModeProvider>
 			<StaticRouter basename="/dashboard" location="/dashboard/">
 				{element}
 			</StaticRouter>
-		</ChakraProvider>,
+		</ColorModeProvider>,
 	);
 
 describe("dashboard diagnostic navigation", () => {

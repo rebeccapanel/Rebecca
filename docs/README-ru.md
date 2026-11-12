@@ -15,9 +15,6 @@
     <a href="#">
         <img src="https://img.shields.io/github/actions/workflow/status/rebeccapanel/Rebecca/build.yml?style=flat-square" />
     </a>
-    <a href="https://hub.docker.com/r/rebeccapanel/rebecca" target="_blank">
-        <img src="https://img.shields.io/docker/pulls/rebeccapanel/rebecca?style=flat-square&logo=docker" />
-    </a>
     <a href="#">
         <img src="https://img.shields.io/github/license/rebeccapanel/Rebecca?style=flat-square" />
     </a>
