@@ -589,7 +589,7 @@ func inboundValueEmpty(value any) bool {
 }
 
 func copyInbound(inbound ResolvedInbound) ResolvedInbound {
-	result := make(ResolvedInbound, len(inbound)+8)
+	result := make(ResolvedInbound, len(inbound))
 	for key, value := range inbound {
 		result[key] = value
 	}
