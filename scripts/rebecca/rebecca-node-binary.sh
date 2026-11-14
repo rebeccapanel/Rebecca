@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -e
 
+if [ -f "/etc/environment" ]; then
+    # shellcheck disable=SC1091
+    . /etc/environment || true
+fi
+
 APP_NAME_FROM_ARG=0
 INSTALL_DIR="/opt"
 NODE_DISCOVERY_BASE="/opt"
@@ -1058,7 +1063,7 @@ get_node_binary_release_asset_metadata() {
         release_payload=$(curl -fsSL "$release_api" 2>/dev/null) || release_payload=""
         resolved_tag=$(echo "$release_payload" | jq -r '.tag_name // empty')
         node_asset_name="rebecca-node-${resolved_tag}-linux-${binary_arch}"
-        node_asset_url=$(echo "$release_payload" | jq -r --arg name "$node_asset_name" --arg arch "$binary_arch" '
+        IFS='|' read -r node_asset_url node_asset_api_url < <(echo "$release_payload" | jq -r --arg name "$node_asset_name" --arg arch "$binary_arch" '
             [
                 .assets[]?
                 | select(
@@ -1068,10 +1073,10 @@ get_node_binary_release_asset_metadata() {
                 | select(.browser_download_url != null)
             ]
             | sort_by(if .name == $name then 0 else 1 end, .name)
-            | .[0].browser_download_url // empty
-        ')
+            | if length > 0 then (.[0].browser_download_url // "") + "|" + (.[0].url // "") else empty end
+        ') || true
         if [ -n "$node_asset_url" ] && [ "$node_asset_url" != "null" ]; then
-            printf '%s|%s\n' "${resolved_tag:-$node_version}" "$node_asset_url"
+            printf '%s|%s|%s\n' "${resolved_tag:-$node_version}" "$node_asset_url" "${node_asset_api_url:-}"
             return 0
         fi
         if [ "$attempt" -lt "$attempts" ]; then
@@ -1111,17 +1116,19 @@ get_node_binary_dev_artifact_metadata() {
     release_asset_name="rebecca-node-dev-linux-${binary_arch}"
     release_api="https://api.github.com/repos/${REBECCA_NODE_RELEASE_REPO}/releases/tags/${REBECCA_NODE_BINARY_DEV_RELEASE_TAG}"
     if release_payload=$(curl -fsSL "$release_api" 2>/dev/null); then
-        release_asset_url=$(echo "$release_payload" | jq -r --arg name "$release_asset_name" '
-            .assets[]?
-            | select(.name == $name)
-            | .browser_download_url
-        ' | head -n 1)
+        IFS='|' read -r release_asset_url release_asset_api_url < <(echo "$release_payload" | jq -r --arg name "$release_asset_name" '
+            [
+                .assets[]?
+                | select(.name == $name)
+            ]
+            | if length > 0 then (.[0].browser_download_url // "") + "|" + (.[0].url // "") else empty end
+        ') || true
         if [ -n "$release_asset_url" ] && [ "$release_asset_url" != "null" ]; then
             release_target=$(echo "$release_payload" | jq -r '.target_commitish // empty')
             if [[ "$release_target" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
-                printf '%s|%s\n' "dev-${release_target:0:7}" "$release_asset_url"
+                printf '%s|%s|%s\n' "dev-${release_target:0:7}" "$release_asset_url" "${release_asset_api_url:-}"
             else
-                printf '%s|%s\n' "dev-${REBECCA_NODE_BINARY_DEV_BRANCH}" "$release_asset_url"
+                printf '%s|%s|%s\n' "dev-${REBECCA_NODE_BINARY_DEV_BRANCH}" "$release_asset_url" "${release_asset_api_url:-}"
             fi
             return 0
         fi
@@ -1400,13 +1407,46 @@ normalize_node_dev_artifact() {
     fi
 }
 
+download_node_binary_file() {
+    local target_path="$1"
+    local primary_url="$2"
+    local fallback_api_url="${3:-}"
+
+    if [ -n "$primary_url" ] && [ "$primary_url" != "null" ]; then
+        if curl -fL --connect-timeout 8 --max-time 180 "$primary_url" -o "$target_path" 2>/dev/null; then
+            return 0
+        fi
+    fi
+
+    if [ -n "$fallback_api_url" ] && [ "$fallback_api_url" != "null" ]; then
+        local auth_headers=()
+        if [ -n "${GITHUB_TOKEN:-}" ]; then
+            auth_headers=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
+        elif [ -n "${GH_TOKEN:-}" ]; then
+            auth_headers=(-H "Authorization: Bearer ${GH_TOKEN}")
+        fi
+        if curl -fL --connect-timeout 8 --max-time 180 "${auth_headers[@]}" -H "Accept: application/octet-stream" "$fallback_api_url" -o "$target_path" 2>/dev/null; then
+            return 0
+        fi
+    fi
+
+    if [ -n "$primary_url" ] && [ "$primary_url" != "null" ]; then
+        curl -fL "$primary_url" -o "$target_path"
+        return $?
+    fi
+
+    return 1
+}
+
 install_binary_rebecca_node() {
     local node_version="$1"
     local configure="${2:-1}"
     local binary_arch
     local resolved_version
     local node_asset_url
+    local node_asset_api_url
     local artifact_url
+    local artifact_api_url
     local tmp_dir
     local package_path
 
@@ -1432,25 +1472,25 @@ install_binary_rebecca_node() {
         resolved_version="${REBECCA_NODE_BINARY_OVERRIDE_VERSION:-custom}"
         artifact_url="local-override"
     elif [[ "$node_version" =~ ^dev-[0-9a-fA-F]{7,40}$ ]]; then
-        IFS='|' read -r resolved_version artifact_url < <(get_node_binary_dev_artifact_metadata_for_version "$node_version" "$binary_arch")
+        IFS='|' read -r resolved_version artifact_url artifact_api_url < <(get_node_binary_dev_artifact_metadata_for_version "$node_version" "$binary_arch")
         package_path="$tmp_dir/rebecca-node-binaries.zip"
-        ui_spinner_run "Downloading Rebecca-node dev binary artifact" curl -fL "$artifact_url" -o "$package_path"
+        ui_spinner_run "Downloading Rebecca-node dev binary artifact" download_node_binary_file "$package_path" "$artifact_url" "${artifact_api_url:-}"
         ui_spinner_run "Extracting Rebecca-node dev artifact" unzip -j -o "$package_path" -d "$tmp_dir"
         normalize_node_dev_artifact "$tmp_dir" "$binary_arch"
     elif [ "$node_version" = "dev" ]; then
-        IFS='|' read -r resolved_version artifact_url < <(get_node_binary_dev_artifact_metadata "$binary_arch")
+        IFS='|' read -r resolved_version artifact_url artifact_api_url < <(get_node_binary_dev_artifact_metadata "$binary_arch")
         if [[ "$artifact_url" == *.zip ]]; then
             package_path="$tmp_dir/rebecca-node-binaries.zip"
-            ui_spinner_run "Downloading Rebecca-node dev binary artifact" curl -fL "$artifact_url" -o "$package_path"
+            ui_spinner_run "Downloading Rebecca-node dev binary artifact" download_node_binary_file "$package_path" "$artifact_url" "${artifact_api_url:-}"
             ui_spinner_run "Extracting Rebecca-node dev artifact" unzip -j -o "$package_path" -d "$tmp_dir"
             normalize_node_dev_artifact "$tmp_dir" "$binary_arch"
         else
-            ui_spinner_run "Downloading Rebecca-node dev binary" curl -fL "$artifact_url" -o "$tmp_dir/rebecca-node"
+            ui_spinner_run "Downloading Rebecca-node dev binary" download_node_binary_file "$tmp_dir/rebecca-node" "$artifact_url" "${artifact_api_url:-}"
             chmod +x "$tmp_dir/rebecca-node"
         fi
     else
-        IFS='|' read -r resolved_version node_asset_url < <(get_node_binary_release_asset_metadata "$node_version" "$binary_arch")
-        ui_spinner_run "Downloading Rebecca-node binary" curl -fL "$node_asset_url" -o "$tmp_dir/rebecca-node"
+        IFS='|' read -r resolved_version node_asset_url node_asset_api_url < <(get_node_binary_release_asset_metadata "$node_version" "$binary_arch")
+        ui_spinner_run "Downloading Rebecca-node binary" download_node_binary_file "$tmp_dir/rebecca-node" "$node_asset_url" "${node_asset_api_url:-}"
     fi
 
     if [ ! -f "$tmp_dir/rebecca-node" ]; then
@@ -1707,6 +1747,9 @@ follow_rebecca_node_logs() {
 }
 
 update_rebecca_node_script() {
+    if [ "${REBECCA_NODE_SKIP_REEXEC:-0}" = "1" ] || [ "${REBECCA_NODE_SKIP_SCRIPT_UPDATE:-0}" = "1" ]; then
+        return
+    fi
     colorized_echo blue "Updating $APP_NAME script from $SCRIPT_URL"
     install_rebecca_node_script
 }

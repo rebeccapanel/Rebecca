@@ -21,6 +21,7 @@ import { AddTrafficDialog } from "components/AddTrafficDialog";
 import { AdminsOverviewBand } from "components/admins/AdminsOverviewBand";
 import { adminsOverviewSelection, nextAdminsFiltersForOverview } from "utils/adminsOverview";
 import { DataTableColumnMenu } from "components/ui/DataTableColumnMenu";
+import { usePersistedColumnVisibility } from "hooks/usePersistedColumnVisibility";
 import { RefreshSplitButton } from "components/users/RefreshSplitButton";
 import { useContainerMinWidths } from "hooks/useContainerMinWidths";
 import useGetUser from "hooks/useGetUser";
@@ -174,7 +175,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 	const filters = useAdminsStore((state) => state.filters);
 	const onFilterChange = useAdminsStore((state) => state.onFilterChange);
 	const fetchAdmins = useAdminsStore((state) => state.fetchAdmins);
-	const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>({});
+	const [columnVisibility, setColumnVisibility] = usePersistedColumnVisibility("admins");
 	const [autoRefreshInterval, setAutoRefreshInterval] = useState<number>(5_000);
 	useIntervalRefresh(autoRefreshInterval, true, () => void fetchAdmins(undefined, { force: true }));
 	const deleteAdmin = useAdminsStore((state) => state.deleteAdmin);
