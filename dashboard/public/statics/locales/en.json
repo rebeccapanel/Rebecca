@@ -4217,6 +4217,8 @@
 	"a11y.sponsor": "Sponsor",
 	"login.invalidCredentials": "Invalid username or password",
 	"login.invalidCode": "Invalid authentication code",
+	"login.codeAlreadyUsed": "This authentication code has already been used.",
+	"login.tooManyAttempts": "Too many invalid attempts. Please try again later.",
 	"login.secretKey": "Secret key",
 	"login.loading": "Signing in...",
 	"dashboard.system.panelCpuUsage": "Panel CPU Usage",

@@ -468,6 +468,39 @@ export const Login: FC = () => {
 		navigate("/");
 	}, [navigate]);
 
+	const mapAuthError = useCallback(
+		(err: unknown, defaultKey: string) => {
+			const detail = (err as { response?: { _data?: { detail?: string } } })
+				?.response?._data?.detail;
+			if (!detail) return t(defaultKey);
+			const lower = detail.toLowerCase();
+			if (
+				lower.includes("username") ||
+				lower.includes("password") ||
+				lower.includes("credential") ||
+				lower.includes("unauthorized")
+			) {
+				return t("login.invalidCredentials");
+			}
+			if (lower.includes("already used") || lower.includes("replay")) {
+				return t("login.codeAlreadyUsed");
+			}
+			if (lower.includes("too many") || lower.includes("rate limit")) {
+				return t("login.tooManyAttempts");
+			}
+			if (
+				lower.includes("code") ||
+				lower.includes("totp") ||
+				lower.includes("authenticat") ||
+				lower.includes("2fa")
+			) {
+				return t("login.invalidCode");
+			}
+			return detail;
+		},
+		[t],
+	);
+
 	const openRequiredSetup = async () => {
 		setSetup(await start2FASetup());
 		setStep("setup");
@@ -489,9 +522,7 @@ export const Login: FC = () => {
 				completeLogin();
 			}
 		} catch (err: unknown) {
-			const detail = (err as { response?: { _data?: { detail?: string } } })
-				?.response?._data?.detail;
-			setError(detail || t("login.invalidCredentials"));
+			setError(mapAuthError(err, "login.invalidCredentials"));
 		}
 	};
 
@@ -505,14 +536,12 @@ export const Login: FC = () => {
 				await verify2FA(targetCode);
 				completeLogin();
 			} catch (err: unknown) {
-				const detail = (err as { response?: { _data?: { detail?: string } } })
-					?.response?._data?.detail;
-				setError(detail || t("login.invalidCode"));
+				setError(mapAuthError(err, "login.invalidCode"));
 			} finally {
 				setChallengeLoading(false);
 			}
 		},
-		[otp, challengeLoading, t, completeLogin],
+		[otp, challengeLoading, mapAuthError, completeLogin],
 	);
 
 	const confirmSetup = useCallback(
@@ -525,14 +554,12 @@ export const Login: FC = () => {
 				await confirm2FASetup(targetCode);
 				completeLogin();
 			} catch (err: unknown) {
-				const detail = (err as { response?: { _data?: { detail?: string } } })
-					?.response?._data?.detail;
-				setError(detail || t("login.invalidCode"));
+				setError(mapAuthError(err, "login.invalidCode"));
 			} finally {
 				setChallengeLoading(false);
 			}
 		},
-		[otp, challengeLoading, t, completeLogin],
+		[otp, challengeLoading, mapAuthError, completeLogin],
 	);
 
 	const cancelChallenge = async () => {

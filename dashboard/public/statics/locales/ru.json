@@ -1025,6 +1025,8 @@
 	"admins.showPassword": "Показать пароль",
 	"login.invalidCredentials": "Неверное имя пользователя или пароль",
 	"login.invalidCode": "Неверный код подтверждения",
+	"login.codeAlreadyUsed": "Этот код подтверждения уже был использован.",
+	"login.tooManyAttempts": "Слишком много неверных попыток. Пожалуйста, попробуйте позже.",
 	"login.secretKey": "Секретный ключ",
 	"login.loading": "Вход...",
 	"login.authenticationCode": "Код подтверждения",

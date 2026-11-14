@@ -4216,6 +4216,8 @@
 	"a11y.sponsor": "حامی مالی",
 	"login.invalidCredentials": "نام کاربری یا رمز عبور اشتباه است",
 	"login.invalidCode": "کد احراز هویت نامعتبر است",
+	"login.codeAlreadyUsed": "این کد احراز هویت قبلاً استفاده شده است.",
+	"login.tooManyAttempts": "تلاش‌های ناموفق بیش از حد مجاز. لطفاً بعداً دوباره امتحان کنید.",
 	"login.secretKey": "کلید اختصاصی",
 	"login.loading": "در حال ورود...",
 	"dashboard.system.panelCpuUsage": "مصرف پردازنده‌ی پنل",
