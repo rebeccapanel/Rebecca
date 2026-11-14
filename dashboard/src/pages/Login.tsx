@@ -170,8 +170,8 @@ const DotMatrixBackground: FC<DotMatrixBackgroundProps> = ({ colorMode }) => {
 		const baseR = isDark ? 255 : 15;
 		const baseG = isDark ? 255 : 23;
 		const baseB = isDark ? 255 : 42;
-		const baseAlpha = isDark ? 0.08 : 0.18;
-		const attractionRadius = 165;
+		const baseAlpha = isDark ? 0.08 : 0.26;
+		const attractionRadius = 190;
 
 		const render = (currentTime: number) => {
 			const delta = Math.min((currentTime - lastTime) / 1000, 0.1);
@@ -215,11 +215,11 @@ const DotMatrixBackground: FC<DotMatrixBackgroundProps> = ({ colorMode }) => {
 						if (dist < attractionRadius && dist > 0.001) {
 							const factor = 1 - dist / attractionRadius;
 							const ease = factor * factor * mouseInfluence;
-							const pull = ease * 30;
+							const pull = ease * 34;
 							drawX += (dx / dist) * pull;
 							drawY += (dy / dist) * pull;
 
-							alpha = Math.min(baseAlpha + ease * 0.26, isDark ? 0.38 : 0.48);
+							alpha = Math.min(baseAlpha + ease * 0.28, isDark ? 0.38 : 0.58);
 							dotR = Math.round(baseR * (1 - ease) + 59 * ease);
 							dotG = Math.round(baseG * (1 - ease) + 130 * ease);
 							dotB = Math.round(baseB * (1 - ease) + 246 * ease);
@@ -230,7 +230,7 @@ const DotMatrixBackground: FC<DotMatrixBackgroundProps> = ({ colorMode }) => {
 								const wave = Math.sin(currentTime * 0.003 + x * 0.06 + y * 0.06) * 4;
 								const midX = drawX + (dx / dist) * (14 + wave);
 								const midY = drawY + (dy / dist) * (14 + wave);
-								const subAlpha = subEase * (isDark ? 0.34 : 0.42);
+								const subAlpha = subEase * (isDark ? 0.34 : 0.48);
 
 								ctx.beginPath();
 								ctx.arc(midX, midY, 1.4, 0, Math.PI * 2);
