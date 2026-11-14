@@ -60,7 +60,7 @@ export const Language: FC<LanguageProps> = ({
 				</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent
-				align={isRTL ? "start" : "end"}
+				align="end"
 				sideOffset={8}
 				className="z-[9999] min-w-[180px]! rounded-[16px] border border-panel-border! bg-panel-surface p-1.5 text-panel-text shadow-[0_12px_32px_rgba(0,0,0,0.24)] select-none"
 			>

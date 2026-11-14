@@ -15,7 +15,7 @@ import {
 } from "components/ui/input-otp";
 import { useColorMode } from "lib/color-mode";
 import { cn } from "lib/cn";
-import { AnimatePresence, motion, useMotionValue, useSpring } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
 	ArrowLeft,
 	ArrowRight,
@@ -35,6 +35,7 @@ import {
 	type ReactNode,
 	useCallback,
 	useEffect,
+	useRef,
 	useState,
 } from "react";
 import {
@@ -96,6 +97,143 @@ const applyLoginThemeMode = (theme: LoginThemeMode) => {
 		target.style.colorScheme = theme;
 	});
 	updateThemeColor(theme);
+};
+
+interface DotMatrixBackgroundProps {
+	colorMode: string;
+}
+
+const DotMatrixBackground: FC<DotMatrixBackgroundProps> = ({ colorMode }) => {
+	const canvasRef = useRef<HTMLCanvasElement | null>(null);
+	const mouseRef = useRef<{ x: number; y: number; active: boolean }>({
+		x: -9999,
+		y: -9999,
+		active: false,
+	});
+
+	useEffect(() => {
+		const canvas = canvasRef.current;
+		if (!canvas) return;
+		const ctx = canvas.getContext("2d");
+		if (!ctx) return;
+
+		let animationFrameId: number;
+		let width = 0;
+		let height = 0;
+		const spacing = 38;
+		let offsetX = 0;
+		let offsetY = 0;
+		let lastTime = performance.now();
+
+		const resize = () => {
+			const dpr = window.devicePixelRatio || 1;
+			width = window.innerWidth;
+			height = window.innerHeight;
+			canvas.width = Math.floor(width * dpr);
+			canvas.height = Math.floor(height * dpr);
+			canvas.style.width = `${width}px`;
+			canvas.style.height = `${height}px`;
+			ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+		};
+
+		resize();
+		window.addEventListener("resize", resize, { passive: true });
+
+		const handleMouseMove = (e: MouseEvent) => {
+			if (window.innerWidth <= 768) {
+				mouseRef.current.active = false;
+				return;
+			}
+			mouseRef.current.x = e.clientX;
+			mouseRef.current.y = e.clientY;
+			mouseRef.current.active = true;
+		};
+
+		const handleMouseLeave = () => {
+			mouseRef.current.active = false;
+			mouseRef.current.x = -9999;
+			mouseRef.current.y = -9999;
+		};
+
+		window.addEventListener("mousemove", handleMouseMove, { passive: true });
+		window.addEventListener("mouseleave", handleMouseLeave, { passive: true });
+
+		const isDark = colorMode === "dark";
+		const baseR = isDark ? 255 : 0;
+		const baseG = isDark ? 255 : 0;
+		const baseB = isDark ? 255 : 0;
+		const baseAlpha = isDark ? 0.08 : 0.07;
+		const repulseRadius = 90;
+
+		const render = (currentTime: number) => {
+			const delta = Math.min((currentTime - lastTime) / 1000, 0.1);
+			lastTime = currentTime;
+
+			offsetX = (offsetX - delta * 2.4) % spacing;
+			offsetY = (offsetY - delta * 2.4) % spacing;
+
+			ctx.clearRect(0, 0, width, height);
+
+			const startX = offsetX < 0 ? offsetX : offsetX - spacing;
+			const startY = offsetY < 0 ? offsetY : offsetY - spacing;
+
+			const mouse = mouseRef.current;
+			const mouseActive = mouse.active && window.innerWidth > 768;
+
+			for (let x = startX; x < width + spacing; x += spacing) {
+				for (let y = startY; y < height + spacing; y += spacing) {
+					let drawX = x;
+					let drawY = y;
+					let alpha = baseAlpha;
+					let dotR = baseR;
+					let dotG = baseG;
+					let dotB = baseB;
+
+					if (mouseActive) {
+						const dx = drawX - mouse.x;
+						const dy = drawY - mouse.y;
+						const dist = Math.hypot(dx, dy);
+
+						if (dist < repulseRadius && dist > 0.001) {
+							const factor = 1 - dist / repulseRadius;
+							const ease = factor * factor;
+							const push = ease * 16;
+							drawX += (dx / dist) * push;
+							drawY += (dy / dist) * push;
+
+							alpha = Math.min(baseAlpha + ease * 0.18, 0.32);
+							dotR = Math.round(baseR * (1 - ease) + 59 * ease);
+							dotG = Math.round(baseG * (1 - ease) + 130 * ease);
+							dotB = Math.round(baseB * (1 - ease) + 246 * ease);
+						}
+					}
+
+					ctx.beginPath();
+					ctx.arc(drawX, drawY, 1.4, 0, Math.PI * 2);
+					ctx.fillStyle = `rgba(${dotR},${dotG},${dotB},${alpha})`;
+					ctx.fill();
+				}
+			}
+
+			animationFrameId = requestAnimationFrame(render);
+		};
+
+		animationFrameId = requestAnimationFrame(render);
+
+		return () => {
+			cancelAnimationFrame(animationFrameId);
+			window.removeEventListener("resize", resize);
+			window.removeEventListener("mousemove", handleMouseMove);
+			window.removeEventListener("mouseleave", handleMouseLeave);
+		};
+	}, [colorMode]);
+
+	return (
+		<canvas
+			ref={canvasRef}
+			className="pointer-events-none absolute inset-0 size-full select-none"
+		/>
+	);
 };
 
 interface LoginFieldProps {
@@ -264,33 +402,6 @@ export const Login: FC = () => {
 	const [setup, setSetup] = useState<TOTPSetup | null>(null);
 	const [challengeLoading, setChallengeLoading] = useState(false);
 	const [copiedSecret, setCopiedSecret] = useState(false);
-	const mouseX = useMotionValue(0);
-	const mouseY = useMotionValue(0);
-	const smoothX = useSpring(mouseX, { damping: 24, stiffness: 120 });
-	const smoothY = useSpring(mouseY, { damping: 24, stiffness: 120 });
-
-	useEffect(() => {
-		const handlePointerMove = (event: globalThis.MouseEvent) => {
-			if (window.innerWidth <= 768) return;
-			const { innerWidth, innerHeight } = window;
-			const offsetX = (event.clientX - innerWidth / 2) / (innerWidth / 2);
-			const offsetY = (event.clientY - innerHeight / 2) / (innerHeight / 2);
-			mouseX.set(offsetX * 12);
-			mouseY.set(offsetY * 12);
-		};
-
-		const handlePointerLeave = () => {
-			mouseX.set(0);
-			mouseY.set(0);
-		};
-
-		window.addEventListener("mousemove", handlePointerMove, { passive: true });
-		window.addEventListener("mouseleave", handlePointerLeave, { passive: true });
-		return () => {
-			window.removeEventListener("mousemove", handlePointerMove);
-			window.removeEventListener("mouseleave", handlePointerLeave);
-		};
-	}, [mouseX, mouseY]);
 
 	const navigate = useNavigate();
 	const { t, i18n } = useTranslation();
@@ -451,11 +562,7 @@ export const Login: FC = () => {
 			dir={dir}
 			className="relative flex min-h-[100dvh] w-full items-center justify-center overflow-hidden bg-panel-main px-4 py-8 select-none [touch-action:manipulation] sm:px-6 md:py-12"
 		>
-			<motion.div
-				aria-hidden="true"
-				style={{ x: smoothX, y: smoothY }}
-				className="rb-login-pattern"
-			/>
+			<DotMatrixBackground colorMode={colorMode} />
 			<div className="relative z-10 w-full max-w-[420px]">
 				<div className="relative overflow-hidden rounded-[24px] border border-panel-border! bg-panel-surface p-6 shadow-[0_24px_64px_-16px_rgba(0,0,0,0.32),inset_0_1px_0_0_rgba(255,255,255,0.7)] transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] sm:p-8 dark:shadow-[0_28px_72px_-16px_rgba(0,0,0,0.7),inset_0_1px_0_0_rgba(255,255,255,0.08)]">
 					<div className="mb-8 flex items-center justify-between">
