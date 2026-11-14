@@ -60,8 +60,9 @@ export const Language: FC<LanguageProps> = ({
 			<DropdownMenuContent
 				align="start"
 				sideOffset={8}
+				collisionPadding={12}
 				onCloseAutoFocus={(e) => e.preventDefault()}
-				className="z-[9999] min-w-[180px]! rounded-[16px] border border-panel-border! bg-panel-surface p-1.5 text-panel-text shadow-[0_12px_32px_rgba(0,0,0,0.24)] select-none"
+				className="z-[9999] min-w-[180px]! max-w-[calc(100vw-24px)] rounded-[16px] border border-panel-border! bg-panel-surface p-1.5 text-panel-text shadow-[0_12px_32px_rgba(0,0,0,0.24)] select-none"
 			>
 				{LANGUAGE_OPTIONS.map(({ code, label, flag }) => {
 					const isActive = activeLanguage === code;

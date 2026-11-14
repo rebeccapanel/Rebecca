@@ -120,10 +120,11 @@ const DotMatrixBackground: FC<DotMatrixBackgroundProps> = ({ colorMode }) => {
 		let animationFrameId: number;
 		let width = 0;
 		let height = 0;
-		const spacing = 42;
+		const spacing = 35;
 		let offsetX = 0;
 		let offsetY = 0;
 		let lastTime = performance.now();
+		let mouseInfluence = 0;
 
 		const resize = () => {
 			const dpr = window.devicePixelRatio || 1;
@@ -139,7 +140,7 @@ const DotMatrixBackground: FC<DotMatrixBackgroundProps> = ({ colorMode }) => {
 		resize();
 		window.addEventListener("resize", resize, { passive: true });
 
-		const handleMouseMove = (e: MouseEvent) => {
+		const handleMouseMove = (e: globalThis.MouseEvent) => {
 			if (window.innerWidth <= 768) {
 				mouseRef.current.active = false;
 				return;
@@ -151,26 +152,43 @@ const DotMatrixBackground: FC<DotMatrixBackgroundProps> = ({ colorMode }) => {
 
 		const handleMouseLeave = () => {
 			mouseRef.current.active = false;
-			mouseRef.current.x = -9999;
-			mouseRef.current.y = -9999;
+		};
+
+		const handleWindowOut = (e: globalThis.MouseEvent) => {
+			if (!e.relatedTarget && !(e as unknown as { toElement?: unknown }).toElement) {
+				mouseRef.current.active = false;
+			}
 		};
 
 		window.addEventListener("mousemove", handleMouseMove, { passive: true });
-		window.addEventListener("mouseleave", handleMouseLeave, { passive: true });
+		document.addEventListener("mouseleave", handleMouseLeave, { passive: true });
+		document.documentElement.addEventListener("mouseleave", handleMouseLeave, { passive: true });
+		window.addEventListener("blur", handleMouseLeave);
+		window.addEventListener("mouseout", handleWindowOut, { passive: true });
 
 		const isDark = colorMode === "dark";
 		const baseR = isDark ? 255 : 15;
 		const baseG = isDark ? 255 : 23;
 		const baseB = isDark ? 255 : 42;
 		const baseAlpha = isDark ? 0.08 : 0.18;
-		const attractionRadius = 150;
+		const attractionRadius = 165;
 
 		const render = (currentTime: number) => {
 			const delta = Math.min((currentTime - lastTime) / 1000, 0.1);
 			lastTime = currentTime;
 
-			offsetX = (offsetX - delta * 2.5) % spacing;
-			offsetY = (offsetY - delta * 2.5) % spacing;
+			offsetX = (offsetX - delta * 2.75) % spacing;
+			offsetY = (offsetY - delta * 2.75) % spacing;
+
+			const targetInfluence =
+				mouseRef.current.active && window.innerWidth > 768 ? 1 : 0;
+			mouseInfluence +=
+				(targetInfluence - mouseInfluence) * Math.min(delta * 12, 1);
+			if (!mouseRef.current.active && mouseInfluence < 0.005) {
+				mouseInfluence = 0;
+				mouseRef.current.x = -9999;
+				mouseRef.current.y = -9999;
+			}
 
 			ctx.clearRect(0, 0, width, height);
 
@@ -178,7 +196,7 @@ const DotMatrixBackground: FC<DotMatrixBackgroundProps> = ({ colorMode }) => {
 			const startY = offsetY < 0 ? offsetY : offsetY - spacing;
 
 			const mouse = mouseRef.current;
-			const mouseActive = mouse.active && window.innerWidth > 768;
+			const hasMouse = mouseInfluence > 0.001;
 
 			for (let x = startX; x < width + spacing; x += spacing) {
 				for (let y = startY; y < height + spacing; y += spacing) {
@@ -189,31 +207,33 @@ const DotMatrixBackground: FC<DotMatrixBackgroundProps> = ({ colorMode }) => {
 					let dotG = baseG;
 					let dotB = baseB;
 
-					if (mouseActive) {
+					if (hasMouse) {
 						const dx = mouse.x - drawX;
 						const dy = mouse.y - drawY;
 						const dist = Math.hypot(dx, dy);
 
 						if (dist < attractionRadius && dist > 0.001) {
 							const factor = 1 - dist / attractionRadius;
-							const ease = factor * factor;
-							const pull = ease * 20;
+							const ease = factor * factor * mouseInfluence;
+							const pull = ease * 30;
 							drawX += (dx / dist) * pull;
 							drawY += (dy / dist) * pull;
 
-							alpha = Math.min(baseAlpha + ease * 0.22, isDark ? 0.36 : 0.45);
+							alpha = Math.min(baseAlpha + ease * 0.26, isDark ? 0.38 : 0.48);
 							dotR = Math.round(baseR * (1 - ease) + 59 * ease);
 							dotG = Math.round(baseG * (1 - ease) + 130 * ease);
 							dotB = Math.round(baseB * (1 - ease) + 246 * ease);
 
-							if (dist < attractionRadius * 0.72) {
-								const subFactor = 1 - dist / (attractionRadius * 0.72);
-								const subEase = subFactor * subFactor;
-								const midX = drawX + (dx / dist) * 14 + ((Math.abs(Math.sin(x * 12.9898 + y * 78.233)) * 12) - 6);
-								const midY = drawY + (dy / dist) * 14 + ((Math.abs(Math.cos(x * 78.233 + y * 12.9898)) * 12) - 6);
-								const subAlpha = subEase * (isDark ? 0.32 : 0.38);
+							if (dist < attractionRadius * 0.75) {
+								const subFactor = 1 - dist / (attractionRadius * 0.75);
+								const subEase = subFactor * subFactor * mouseInfluence;
+								const wave = Math.sin(currentTime * 0.003 + x * 0.06 + y * 0.06) * 4;
+								const midX = drawX + (dx / dist) * (14 + wave);
+								const midY = drawY + (dy / dist) * (14 + wave);
+								const subAlpha = subEase * (isDark ? 0.34 : 0.42);
+
 								ctx.beginPath();
-								ctx.arc(midX, midY, 1.2, 0, Math.PI * 2);
+								ctx.arc(midX, midY, 1.4, 0, Math.PI * 2);
 								ctx.fillStyle = `rgba(59,130,246,${subAlpha})`;
 								ctx.fill();
 							}
@@ -236,7 +256,10 @@ const DotMatrixBackground: FC<DotMatrixBackgroundProps> = ({ colorMode }) => {
 			cancelAnimationFrame(animationFrameId);
 			window.removeEventListener("resize", resize);
 			window.removeEventListener("mousemove", handleMouseMove);
-			window.removeEventListener("mouseleave", handleMouseLeave);
+			document.removeEventListener("mouseleave", handleMouseLeave);
+			document.documentElement.removeEventListener("mouseleave", handleMouseLeave);
+			window.removeEventListener("blur", handleMouseLeave);
+			window.removeEventListener("mouseout", handleWindowOut);
 		};
 	}, [colorMode]);
 
@@ -377,8 +400,9 @@ const LoginThemeMenu: FC = () => {
 			<DropdownMenuContent
 				align="start"
 				sideOffset={8}
+				collisionPadding={12}
 				onCloseAutoFocus={(e) => e.preventDefault()}
-				className="z-[9999] min-w-36 rounded-[16px] border border-panel-border! bg-panel-surface p-1.5 text-panel-text shadow-[0_12px_32px_rgba(0,0,0,0.24)] select-none"
+				className="z-[9999] min-w-36 max-w-[calc(100vw-24px)] rounded-[16px] border border-panel-border! bg-panel-surface p-1.5 text-panel-text shadow-[0_12px_32px_rgba(0,0,0,0.24)] select-none"
 			>
 				{options.map((option) => (
 					<DropdownMenuItem
