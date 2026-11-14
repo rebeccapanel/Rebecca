@@ -105,11 +105,16 @@ interface DotMatrixBackgroundProps {
 
 const DotMatrixBackground: FC<DotMatrixBackgroundProps> = ({ colorMode }) => {
 	const canvasRef = useRef<HTMLCanvasElement | null>(null);
+	const colorModeRef = useRef(colorMode);
 	const mouseRef = useRef<{ x: number; y: number; active: boolean }>({
 		x: -9999,
 		y: -9999,
 		active: false,
 	});
+
+	useEffect(() => {
+		colorModeRef.current = colorMode;
+	}, [colorMode]);
 
 	useEffect(() => {
 		const canvas = canvasRef.current;
@@ -166,19 +171,19 @@ const DotMatrixBackground: FC<DotMatrixBackgroundProps> = ({ colorMode }) => {
 		window.addEventListener("blur", handleMouseLeave);
 		window.addEventListener("mouseout", handleWindowOut, { passive: true });
 
-		const isDark = colorMode === "dark";
-		const baseR = isDark ? 255 : 15;
-		const baseG = isDark ? 255 : 23;
-		const baseB = isDark ? 255 : 42;
-		const baseAlpha = isDark ? 0.08 : 0.26;
-		const attractionRadius = 190;
-
 		const render = (currentTime: number) => {
 			const delta = Math.min((currentTime - lastTime) / 1000, 0.1);
 			lastTime = currentTime;
 
 			offsetX = (offsetX - delta * 2.75) % spacing;
 			offsetY = (offsetY - delta * 2.75) % spacing;
+
+			const isDark = colorModeRef.current === "dark";
+			const baseR = isDark ? 255 : 15;
+			const baseG = isDark ? 255 : 23;
+			const baseB = isDark ? 255 : 42;
+			const baseAlpha = isDark ? 0.08 : 0.26;
+			const attractionRadius = 190;
 
 			const targetInfluence =
 				mouseRef.current.active && window.innerWidth > 768 ? 1 : 0;
@@ -261,7 +266,7 @@ const DotMatrixBackground: FC<DotMatrixBackgroundProps> = ({ colorMode }) => {
 			window.removeEventListener("blur", handleMouseLeave);
 			window.removeEventListener("mouseout", handleWindowOut);
 		};
-	}, [colorMode]);
+	}, []);
 
 	return (
 		<canvas
