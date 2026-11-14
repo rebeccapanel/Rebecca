@@ -55,7 +55,7 @@ import {
 	verify2FA,
 } from "service/auth";
 import { toast } from "sonner";
-import { clearClientSession } from "utils/session";
+import { clearClientSession, resetAccentToDefault } from "utils/session";
 import { updateThemeColor } from "utils/themeColor";
 import { z } from "zod";
 
@@ -120,7 +120,7 @@ const DotMatrixBackground: FC<DotMatrixBackgroundProps> = ({ colorMode }) => {
 		let animationFrameId: number;
 		let width = 0;
 		let height = 0;
-		const spacing = 38;
+		const spacing = 42;
 		let offsetX = 0;
 		let offsetY = 0;
 		let lastTime = performance.now();
@@ -159,18 +159,18 @@ const DotMatrixBackground: FC<DotMatrixBackgroundProps> = ({ colorMode }) => {
 		window.addEventListener("mouseleave", handleMouseLeave, { passive: true });
 
 		const isDark = colorMode === "dark";
-		const baseR = isDark ? 255 : 0;
-		const baseG = isDark ? 255 : 0;
-		const baseB = isDark ? 255 : 0;
-		const baseAlpha = isDark ? 0.08 : 0.07;
-		const repulseRadius = 90;
+		const baseR = isDark ? 255 : 15;
+		const baseG = isDark ? 255 : 23;
+		const baseB = isDark ? 255 : 42;
+		const baseAlpha = isDark ? 0.08 : 0.18;
+		const attractionRadius = 150;
 
 		const render = (currentTime: number) => {
 			const delta = Math.min((currentTime - lastTime) / 1000, 0.1);
 			lastTime = currentTime;
 
-			offsetX = (offsetX - delta * 2.4) % spacing;
-			offsetY = (offsetY - delta * 2.4) % spacing;
+			offsetX = (offsetX - delta * 2.5) % spacing;
+			offsetY = (offsetY - delta * 2.5) % spacing;
 
 			ctx.clearRect(0, 0, width, height);
 
@@ -190,21 +190,33 @@ const DotMatrixBackground: FC<DotMatrixBackgroundProps> = ({ colorMode }) => {
 					let dotB = baseB;
 
 					if (mouseActive) {
-						const dx = drawX - mouse.x;
-						const dy = drawY - mouse.y;
+						const dx = mouse.x - drawX;
+						const dy = mouse.y - drawY;
 						const dist = Math.hypot(dx, dy);
 
-						if (dist < repulseRadius && dist > 0.001) {
-							const factor = 1 - dist / repulseRadius;
+						if (dist < attractionRadius && dist > 0.001) {
+							const factor = 1 - dist / attractionRadius;
 							const ease = factor * factor;
-							const push = ease * 16;
-							drawX += (dx / dist) * push;
-							drawY += (dy / dist) * push;
+							const pull = ease * 20;
+							drawX += (dx / dist) * pull;
+							drawY += (dy / dist) * pull;
 
-							alpha = Math.min(baseAlpha + ease * 0.18, 0.32);
+							alpha = Math.min(baseAlpha + ease * 0.22, isDark ? 0.36 : 0.45);
 							dotR = Math.round(baseR * (1 - ease) + 59 * ease);
 							dotG = Math.round(baseG * (1 - ease) + 130 * ease);
 							dotB = Math.round(baseB * (1 - ease) + 246 * ease);
+
+							if (dist < attractionRadius * 0.72) {
+								const subFactor = 1 - dist / (attractionRadius * 0.72);
+								const subEase = subFactor * subFactor;
+								const midX = drawX + (dx / dist) * 14 + ((Math.abs(Math.sin(x * 12.9898 + y * 78.233)) * 12) - 6);
+								const midY = drawY + (dy / dist) * 14 + ((Math.abs(Math.cos(x * 78.233 + y * 12.9898)) * 12) - 6);
+								const subAlpha = subEase * (isDark ? 0.32 : 0.38);
+								ctx.beginPath();
+								ctx.arc(midX, midY, 1.2, 0, Math.PI * 2);
+								ctx.fillStyle = `rgba(59,130,246,${subAlpha})`;
+								ctx.fill();
+							}
 						}
 					}
 
@@ -318,7 +330,8 @@ const LoginField: FC<LoginFieldProps> = ({
 };
 
 const LoginThemeMenu: FC = () => {
-	const { t } = useTranslation();
+	const { t, i18n } = useTranslation();
+	const isRTL = i18n.dir(i18n.language) === "rtl";
 	const { colorMode, setColorMode } = useColorMode();
 	const activeTheme: LoginThemeMode = colorMode === "light" ? "light" : "dark";
 
@@ -345,14 +358,14 @@ const LoginThemeMenu: FC = () => {
 	];
 
 	return (
-		<DropdownMenu>
+		<DropdownMenu dir={isRTL ? "rtl" : "ltr"}>
 			<DropdownMenuTrigger asChild>
 				<Button
 					type="button"
 					aria-label={t("header.theme")}
 					variant="ghost"
 					size="icon-sm"
-					className="size-9 rounded-[12px] text-panel-text-muted transition-colors hover:text-panel-text"
+					className="size-9 rounded-[12px] text-panel-text-muted transition-colors hover:text-panel-text focus:outline-none! focus-visible:ring-0! focus-visible:border-transparent!"
 				>
 					{activeTheme === "dark" ? (
 						<Moon className="size-4" strokeWidth={2} />
@@ -362,17 +375,15 @@ const LoginThemeMenu: FC = () => {
 				</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent
-				align="end"
+				align="start"
 				sideOffset={8}
+				onCloseAutoFocus={(e) => e.preventDefault()}
 				className="z-[9999] min-w-36 rounded-[16px] border border-panel-border! bg-panel-surface p-1.5 text-panel-text shadow-[0_12px_32px_rgba(0,0,0,0.24)] select-none"
 			>
 				{options.map((option) => (
 					<DropdownMenuItem
 						key={option.key}
-						onSelect={(e) => {
-							e.preventDefault();
-							selectTheme(option.key);
-						}}
+						onSelect={() => selectTheme(option.key)}
 						className={cn(
 							"flex cursor-pointer items-center justify-between gap-2.5 rounded-[10px] px-2.5 py-2 text-[13px] transition-[background-color,transform] duration-150 active:scale-[0.98] min-[769px]:hover:bg-panel-elevated",
 							activeTheme === option.key
@@ -433,6 +444,7 @@ export const Login: FC = () => {
 	}, [usernameValue, passwordValue]);
 
 	useEffect(() => {
+		resetAccentToDefault();
 		getSession()
 			.then(async (session) => {
 				if (session.state === "active") {
@@ -446,7 +458,9 @@ export const Login: FC = () => {
 					setStep("setup");
 				}
 			})
-			.catch(() => undefined);
+			.catch(() => {
+				resetAccentToDefault();
+			});
 	}, [navigate]);
 
 	const completeLogin = useCallback(() => {
@@ -590,7 +604,7 @@ export const Login: FC = () => {
 						</div>
 
 						<div className="flex items-center gap-1 text-panel-text-muted">
-							<Language triggerVariant="ghost" closeOnSelect={false} />
+							<Language triggerVariant="ghost" />
 							<LoginThemeMenu />
 						</div>
 					</div>
