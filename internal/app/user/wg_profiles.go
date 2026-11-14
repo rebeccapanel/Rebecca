@@ -284,7 +284,7 @@ func wgHostDNSServers(host Host) []string {
 }
 
 func normalizeWGProfileSettings(settings map[string]any) map[string]any {
-	out := make(map[string]any, len(settings)+8)
+	out := make(map[string]any, len(settings))
 	for key, value := range settings {
 		out[key] = value
 	}
