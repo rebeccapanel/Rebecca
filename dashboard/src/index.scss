@@ -2999,3 +2999,39 @@ input[type="number"] {
 [data-radix-popper-content-wrapper]:has([data-dock-settings-popover]) {
   pointer-events: none !important;
 }
+
+@keyframes rb-login-drift {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(14px, 14px, 0);
+  }
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.rb-login-pattern {
+  position: absolute;
+  inset: -30px;
+  width: calc(100% + 60px);
+  height: calc(100% + 60px);
+  pointer-events: none;
+  background-image: radial-gradient(var(--rb-login-dot, rgba(0, 0, 0, 0.08)) 1.5px, transparent 1.5px);
+  background-size: 28px 28px;
+  background-position: -5px -5px;
+  animation: rb-login-drift 24s ease-in-out infinite;
+  will-change: transform;
+}
+
+:root[data-theme="dark"] .rb-login-pattern,
+.dark .rb-login-pattern {
+  --rb-login-dot: rgba(255, 255, 255, 0.08);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rb-login-pattern {
+    animation: none;
+  }
+}

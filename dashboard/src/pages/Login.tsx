@@ -15,7 +15,7 @@ import {
 } from "components/ui/input-otp";
 import { useColorMode } from "lib/color-mode";
 import { cn } from "lib/cn";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useMotionValue, useSpring } from "framer-motion";
 import {
 	ArrowLeft,
 	ArrowRight,
@@ -35,7 +35,6 @@ import {
 	type ReactNode,
 	useCallback,
 	useEffect,
-	useId,
 	useState,
 } from "react";
 import {
@@ -195,8 +194,16 @@ const LoginThemeMenu: FC = () => {
 		label: string;
 		icon: ReactNode;
 	}> = [
-		{ key: "dark", label: t("theme.dark"), icon: <Moon className="size-4" /> },
-		{ key: "light", label: t("theme.light"), icon: <Sun className="size-4" /> },
+		{
+			key: "dark",
+			label: t("theme.dark"),
+			icon: <Moon className="size-4" strokeWidth={2} />,
+		},
+		{
+			key: "light",
+			label: t("theme.light"),
+			icon: <Sun className="size-4" strokeWidth={2} />,
+		},
 	];
 
 	return (
@@ -210,9 +217,9 @@ const LoginThemeMenu: FC = () => {
 					className="size-9 rounded-[12px] text-panel-text-muted transition-colors hover:text-panel-text"
 				>
 					{activeTheme === "dark" ? (
-						<Moon className="size-4" />
+						<Moon className="size-4" strokeWidth={2} />
 					) : (
-						<Sun className="size-4" />
+						<Sun className="size-4" strokeWidth={2} />
 					)}
 				</Button>
 			</DropdownMenuTrigger>
@@ -224,7 +231,10 @@ const LoginThemeMenu: FC = () => {
 				{options.map((option) => (
 					<DropdownMenuItem
 						key={option.key}
-						onSelect={() => selectTheme(option.key)}
+						onSelect={(e) => {
+							e.preventDefault();
+							selectTheme(option.key);
+						}}
 						className={cn(
 							"flex cursor-pointer items-center justify-between gap-2.5 rounded-[10px] px-2.5 py-2 text-[13px] transition-[background-color,transform] duration-150 active:scale-[0.98] min-[769px]:hover:bg-panel-elevated",
 							activeTheme === option.key
@@ -254,7 +264,33 @@ export const Login: FC = () => {
 	const [setup, setSetup] = useState<TOTPSetup | null>(null);
 	const [challengeLoading, setChallengeLoading] = useState(false);
 	const [copiedSecret, setCopiedSecret] = useState(false);
-	const qrId = useId();
+	const mouseX = useMotionValue(0);
+	const mouseY = useMotionValue(0);
+	const smoothX = useSpring(mouseX, { damping: 24, stiffness: 120 });
+	const smoothY = useSpring(mouseY, { damping: 24, stiffness: 120 });
+
+	useEffect(() => {
+		const handlePointerMove = (event: globalThis.MouseEvent) => {
+			if (window.innerWidth <= 768) return;
+			const { innerWidth, innerHeight } = window;
+			const offsetX = (event.clientX - innerWidth / 2) / (innerWidth / 2);
+			const offsetY = (event.clientY - innerHeight / 2) / (innerHeight / 2);
+			mouseX.set(offsetX * 12);
+			mouseY.set(offsetY * 12);
+		};
+
+		const handlePointerLeave = () => {
+			mouseX.set(0);
+			mouseY.set(0);
+		};
+
+		window.addEventListener("mousemove", handlePointerMove, { passive: true });
+		window.addEventListener("mouseleave", handlePointerLeave, { passive: true });
+		return () => {
+			window.removeEventListener("mousemove", handlePointerMove);
+			window.removeEventListener("mouseleave", handlePointerLeave);
+		};
+	}, [mouseX, mouseY]);
 
 	const navigate = useNavigate();
 	const { t, i18n } = useTranslation();
@@ -330,7 +366,7 @@ export const Login: FC = () => {
 		} catch (err: unknown) {
 			const detail = (err as { response?: { _data?: { detail?: string } } })
 				?.response?._data?.detail;
-			setError(detail || t("login.invalidCredentials", "Invalid username or password"));
+			setError(detail || t("login.invalidCredentials"));
 		}
 	};
 
@@ -346,7 +382,7 @@ export const Login: FC = () => {
 			} catch (err: unknown) {
 				const detail = (err as { response?: { _data?: { detail?: string } } })
 					?.response?._data?.detail;
-				setError(detail || t("login.invalidCode", "Invalid authentication code"));
+				setError(detail || t("login.invalidCode"));
 			} finally {
 				setChallengeLoading(false);
 			}
@@ -366,7 +402,7 @@ export const Login: FC = () => {
 			} catch (err: unknown) {
 				const detail = (err as { response?: { _data?: { detail?: string } } })
 					?.response?._data?.detail;
-				setError(detail || t("login.invalidCode", "Invalid authentication code"));
+				setError(detail || t("login.invalidCode"));
 			} finally {
 				setChallengeLoading(false);
 			}
@@ -389,7 +425,7 @@ export const Login: FC = () => {
 		if (!setup?.secret) return;
 		navigator.clipboard.writeText(setup.secret);
 		setCopiedSecret(true);
-		toast.success(t("copied", "Copied to clipboard"));
+		toast.success(t("copied"));
 		window.setTimeout(() => setCopiedSecret(false), 2000);
 	};
 
@@ -413,9 +449,14 @@ export const Login: FC = () => {
 	return (
 		<div
 			dir={dir}
-			className="relative flex min-h-[100dvh] w-full items-center justify-center overflow-x-hidden bg-panel-main px-4 py-8 select-none [touch-action:manipulation] sm:px-6 md:py-12"
+			className="relative flex min-h-[100dvh] w-full items-center justify-center overflow-hidden bg-panel-main px-4 py-8 select-none [touch-action:manipulation] sm:px-6 md:py-12"
 		>
-			<div className="relative w-full max-w-[420px]">
+			<motion.div
+				aria-hidden="true"
+				style={{ x: smoothX, y: smoothY }}
+				className="rb-login-pattern"
+			/>
+			<div className="relative z-10 w-full max-w-[420px]">
 				<div className="relative overflow-hidden rounded-[24px] border border-panel-border! bg-panel-surface p-6 shadow-[0_24px_64px_-16px_rgba(0,0,0,0.32),inset_0_1px_0_0_rgba(255,255,255,0.7)] transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] sm:p-8 dark:shadow-[0_28px_72px_-16px_rgba(0,0,0,0.7),inset_0_1px_0_0_rgba(255,255,255,0.08)]">
 					<div className="mb-8 flex items-center justify-between">
 						<div className="flex items-center gap-3">
@@ -436,24 +477,19 @@ export const Login: FC = () => {
 									className="pointer-events-none size-6 object-contain select-none [-webkit-user-drag:none]"
 								/>
 							</div>
-							<div className="flex flex-col text-start">
-								<span className="font-heading text-[17px] font-bold tracking-tight text-panel-text leading-tight">
-									Rebecca
-								</span>
-								<span className="text-[11px] font-medium tracking-wide text-panel-text-muted">
-									Panel
-								</span>
-							</div>
+							<span className="text-[18px] font-bold tracking-tight text-panel-text leading-none">
+								Rebecca
+							</span>
 						</div>
 
 						<div className="flex items-center gap-1 text-panel-text-muted">
-							<Language triggerVariant="ghost" />
+							<Language triggerVariant="ghost" closeOnSelect={false} />
 							<LoginThemeMenu />
 						</div>
 					</div>
 
 					<div className="mb-7 flex flex-col items-start gap-1 text-start">
-						<h1 className="font-heading text-[22px] font-bold tracking-tight text-panel-text sm:text-[24px]">
+						<h1 className="text-[22px] font-bold tracking-tight text-panel-text sm:text-[24px]">
 							{title}
 						</h1>
 						<p className="text-[13px] leading-relaxed text-panel-text-secondary sm:text-[14px]">
@@ -556,7 +592,6 @@ export const Login: FC = () => {
 								{step === "setup" && setup ? (
 									<div className="flex flex-col items-center gap-3 rounded-[16px] border border-panel-border! bg-panel-elevated/40 p-4">
 										<div
-											id={qrId}
 											className="relative flex items-center justify-center overflow-hidden rounded-[14px] border border-panel-border! bg-white p-2.5 shadow-xs"
 										>
 											<QRCodeCanvas
@@ -570,7 +605,7 @@ export const Login: FC = () => {
 										<div className="flex w-full items-center justify-between gap-2 rounded-[10px] border border-panel-border! bg-panel-surface px-3 py-2 text-start">
 											<div className="flex min-w-0 flex-1 flex-col">
 												<span className="text-[11px] font-medium text-panel-text-muted">
-													{t("myaccount.secretKey", "Secret key")}
+													{t("login.secretKey")}
 												</span>
 												<code
 													dir="ltr"
@@ -584,7 +619,7 @@ export const Login: FC = () => {
 												variant="ghost"
 												size="icon-sm"
 												onClick={copySecret}
-												aria-label={t("copy", "Copy")}
+												aria-label={t("copy")}
 												className="size-8 shrink-0 rounded-[8px] text-panel-text-muted hover:text-panel-text"
 											>
 												{copiedSecret ? (
