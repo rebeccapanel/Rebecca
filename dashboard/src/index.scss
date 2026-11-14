@@ -2585,16 +2585,16 @@ img.apple-emoji {
 
 /* Loading skeletons: the pulse that was a Chakra sx block on the page skeleton. */
 @keyframes pageSkeletonPulse {
-  0%, 100% { opacity: 0.52; }
-  50% { opacity: 0.9; }
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 0.88; }
 }
 .page-skeleton {
-  background-color: rgba(255, 255, 255, 0.09) !important;
-  animation: pageSkeletonPulse 1.8s ease-in-out infinite;
+  background-color: rgba(255, 255, 255, 0.08) !important;
+  animation: pageSkeletonPulse 1.6s ease-in-out infinite;
 }
 .rb-theme-light .page-skeleton,
 .chakra-ui-light .page-skeleton {
-  background-color: rgba(15, 23, 42, 0.085) !important;
+  background-color: rgba(15, 23, 42, 0.08) !important;
 }
 
 /* Native select popups (drawn by the browser) follow the panel surface instead of
@@ -2948,7 +2948,7 @@ input[type="number"] {
     rgba(255, 255, 255, 0.085) 50%,
     transparent 82%
   );
-  animation: rb-skeleton-sweep 1.55s cubic-bezier(0.23, 1, 0.32, 1) infinite;
+  animation: rb-skeleton-sweep 1.6s cubic-bezier(0.23, 1, 0.32, 1) infinite;
 }
 
 .rb-theme-light .rb-skeleton-sweep::after,
