@@ -1028,6 +1028,8 @@
 	"login.invalidCode": "验证码无效",
 	"login.codeAlreadyUsed": "此验证码已被使用。",
 	"login.tooManyAttempts": "尝试次数过多，请稍后再试。",
+	"login.enterUsername": "请输入用户名",
+	"login.enterPassword": "请输入密码",
 	"login.secretKey": "密钥",
 	"login.loading": "正在登录...",
 	"login.authenticationCode": "验证码",

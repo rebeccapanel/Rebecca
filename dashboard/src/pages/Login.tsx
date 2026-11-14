@@ -326,7 +326,7 @@ const LoginField: FC<LoginFieldProps> = ({
 					aria-invalid={invalid || undefined}
 					placeholder={placeholder}
 					className={cn(
-						"h-11 w-full rounded-[14px] border bg-panel-elevated/40 text-[14px] text-panel-text outline-none transition-[border-color,background-color,box-shadow,color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] select-text placeholder:text-panel-text-muted/40 [touch-action:manipulation]",
+						"h-11 w-full rounded-[14px] border bg-panel-elevated/40 text-[14px] text-panel-text outline-none transition-[border-color,background-color,box-shadow,color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] select-text placeholder:text-panel-text-muted/60 [touch-action:manipulation]",
 						icon ? "ps-10" : "ps-3.5",
 						endElement ? "pe-11" : "pe-3.5",
 						invalid
@@ -685,6 +685,7 @@ export const Login: FC = () => {
 									<LoginField
 										id="login-username"
 										label={t("username")}
+										placeholder={t("login.enterUsername")}
 										autoComplete="username"
 										dir={dir}
 										registration={register("username")}
@@ -698,6 +699,7 @@ export const Login: FC = () => {
 									<LoginField
 										id="login-password"
 										label={t("password")}
+										placeholder={t("login.enterPassword")}
 										type={showPassword ? "text" : "password"}
 										autoComplete="current-password"
 										dir={dir}
@@ -708,23 +710,56 @@ export const Login: FC = () => {
 												: undefined
 										}
 										endElement={
-											<button
-												type="button"
-												aria-label={
-													showPassword
-														? t("admins.hidePassword")
-														: t("admins.showPassword")
-												}
-												onMouseDown={(e) => e.preventDefault()}
-												onClick={() => setShowPassword((v) => !v)}
-												className="inline-flex size-8 items-center justify-center rounded-[8px] text-panel-text-muted transition-colors hover:text-panel-text active:scale-95"
-											>
-												{showPassword ? (
-													<EyeOff className="size-4" />
-												) : (
-													<Eye className="size-4" />
-												)}
-											</button>
+											<AnimatePresence>
+												{passwordValue.length > 0 ? (
+													<motion.button
+														initial={{ opacity: 0, scale: 0.8 }}
+														animate={{ opacity: 1, scale: 1 }}
+														exit={{ opacity: 0, scale: 0.8 }}
+														transition={{
+															duration: 0.15,
+															ease: [0.23, 1, 0.32, 1],
+														}}
+														type="button"
+														aria-label={
+															showPassword
+																? t("admins.hidePassword")
+																: t("admins.showPassword")
+														}
+														onMouseDown={(e) => e.preventDefault()}
+														onClick={() => setShowPassword((v) => !v)}
+														className="inline-flex size-8 items-center justify-center rounded-[8px] text-panel-text-muted transition-colors hover:text-panel-text active:scale-95"
+													>
+														<AnimatePresence mode="wait" initial={false}>
+															<motion.span
+																key={showPassword ? "eye-off" : "eye-on"}
+																initial={{
+																	opacity: 0,
+																	scale: 0.7,
+																	rotate: showPassword ? -15 : 15,
+																}}
+																animate={{ opacity: 1, scale: 1, rotate: 0 }}
+																exit={{
+																	opacity: 0,
+																	scale: 0.7,
+																	rotate: showPassword ? 15 : -15,
+																}}
+																transition={{
+																	duration: 0.14,
+																	ease: [0.23, 1, 0.32, 1],
+																}}
+																className="inline-flex items-center justify-center"
+															>
+																{showPassword ? (
+																	<EyeOff className="size-4" />
+																) : (
+																	<Eye className="size-4" />
+																)}
+															</motion.span>
+														</AnimatePresence>
+													</motion.button>
+												) : null}
+											</AnimatePresence>
 										}
 									/>
 

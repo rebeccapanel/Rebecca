@@ -1027,6 +1027,8 @@
 	"login.invalidCode": "Неверный код подтверждения",
 	"login.codeAlreadyUsed": "Этот код подтверждения уже был использован.",
 	"login.tooManyAttempts": "Слишком много неверных попыток. Пожалуйста, попробуйте позже.",
+	"login.enterUsername": "Введите имя пользователя",
+	"login.enterPassword": "Введите пароль",
 	"login.secretKey": "Секретный ключ",
 	"login.loading": "Вход...",
 	"login.authenticationCode": "Код подтверждения",
