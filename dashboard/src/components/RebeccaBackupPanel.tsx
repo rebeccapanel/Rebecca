@@ -266,10 +266,10 @@ export const DashboardBackupControls: FC<DashboardBackupControlsProps> = ({
 							className,
 						)}
 					>
-						<span className="inline-flex items-center justify-center gap-2">
+						<span className="inline-flex items-center justify-center gap-1.5">
 							<Archive
-								strokeWidth={1.85}
-								className="size-[15.5px] shrink-0 text-panel-text-secondary"
+								strokeWidth={1.9}
+								className="size-[13px] shrink-0 text-panel-text-secondary"
 							/>
 							<span className="text-[12px] font-semibold leading-none">
 								{t("dashboard.backup.tabTitle")}

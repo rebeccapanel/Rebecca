@@ -1,11 +1,15 @@
 import { Button } from "components/ui/button";
 import { setDashboardBase } from "utils/dashboardBase";
-import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
-import { cn } from "lib/cn";
 
 import { BootScreen } from "../components/BootScreen";
 import { PageLoadingSkeleton } from "../components/ui";
-import { type ComponentType, lazy, Suspense, useEffect } from "react";
+import {
+	type ComponentType,
+	type ReactNode,
+	lazy,
+	Suspense,
+	useEffect,
+} from "react";
 import { useTranslation } from "react-i18next";
 import {
 	createBrowserRouter,
@@ -26,6 +30,7 @@ const AppLayout = lazy(async () => ({
 const DashboardPage = lazy(async () => ({
 	default: (await import("./DashboardPage")).DashboardPage,
 }));
+void import("./DashboardPage");
 const UsersPage = lazy(async () => ({
 	default: (await import("./UsersPage")).UsersPage,
 }));
@@ -67,8 +72,14 @@ const NotificationsPage = lazy(() => import("./NotificationsPage"));
 
 const PageLoading = () => <PageLoadingSkeleton variant="box" />;
 
-const LazyPage = ({ Page }: { Page: ComponentType }) => (
-	<Suspense fallback={<PageLoading />}>
+const LazyPage = ({
+	Page,
+	fallback,
+}: {
+	Page: ComponentType;
+	fallback?: ReactNode;
+}) => (
+	<Suspense fallback={fallback ?? <PageLoading />}>
 		<Page />
 	</Suspense>
 );
@@ -244,11 +255,21 @@ export const router = createBrowserRouter(
 			children: [
 				{
 					index: true,
-					element: <LazyPage Page={DashboardPage} />,
+					element: (
+						<LazyPage
+							Page={DashboardPage}
+							fallback={<PageLoadingSkeleton variant="dashboard" />}
+						/>
+					),
 				},
 				{
 					path: "users",
-					element: <LazyPage Page={UsersPage} />,
+					element: (
+						<LazyPage
+							Page={UsersPage}
+							fallback={<PageLoadingSkeleton variant="entity" />}
+						/>
+					),
 				},
 				{
 					path: "groups",

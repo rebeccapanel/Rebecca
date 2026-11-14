@@ -2,6 +2,7 @@ import { Skeleton } from "components/ui/skeleton";
 import { cn } from "lib/cn";
 import { useRegisterShellLoading } from "lib/shellLoading";
 import type { FC } from "react";
+import { useTranslation } from "react-i18next";
 
 export interface PageLoadingSkeletonProps {
 	variant?: "box" | "dashboard" | "entity" | "settings" | "frame";
@@ -27,10 +28,13 @@ const cardShellClass = "rb-stat-card rb-skeleton-sweep";
 export const PageLoadingSkeleton: FC<PageLoadingSkeletonProps> = ({
 	variant = "entity",
 	canSeeGlobal = true,
-	isRTL = false,
+	isRTL,
 	syncShell = true,
 	className,
 }) => {
+	const { i18n } = useTranslation();
+	const effectiveRTL = isRTL ?? (i18n.dir(i18n.language) === "rtl");
+
 	useRegisterShellLoading(
 		syncShell,
 		variant === "box" ? "route-suspense" : "page-loading",
@@ -87,7 +91,7 @@ export const PageLoadingSkeleton: FC<PageLoadingSkeletonProps> = ({
 	if (variant === "settings") {
 		return (
 			<div
-				dir={isRTL ? "rtl" : "ltr"}
+				dir={effectiveRTL ? "rtl" : "ltr"}
 				aria-busy="true"
 				aria-live="polite"
 				className={cn(
@@ -139,7 +143,7 @@ export const PageLoadingSkeleton: FC<PageLoadingSkeletonProps> = ({
 	if (variant === "dashboard") {
 		return (
 			<div
-				dir={isRTL ? "rtl" : "ltr"}
+				dir={effectiveRTL ? "rtl" : "ltr"}
 				aria-busy="true"
 				aria-live="polite"
 				className={cn("flex w-full flex-col gap-4 min-[769px]:gap-5", className)}

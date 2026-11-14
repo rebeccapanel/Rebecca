@@ -1,14 +1,43 @@
-import { Button } from "components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "components/ui/dropdown-menu";
-import { LogIn, Check, Eye, EyeOff, Lock, Moon, Sun, User } from "lucide-react";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useColorMode } from "lib/color-mode";
 import logoUrl from "assets/logo.svg";
 import { Language } from "components/Language";
-
+import { Button } from "components/ui/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "components/ui/dropdown-menu";
+import {
+	InputOTP,
+	InputOTPSeparator,
+	InputOTPSlot,
+} from "components/ui/input-otp";
+import { useColorMode } from "lib/color-mode";
 import { cn } from "lib/cn";
-import { useEffect, useState } from "react";
-import type { ReactNode } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import {
+	ArrowLeft,
+	ArrowRight,
+	Check,
+	CircleAlert,
+	Copy,
+	Eye,
+	EyeOff,
+	Moon,
+	QrCode,
+	ShieldCheck,
+	Sun,
+} from "lucide-react";
+import { QRCodeCanvas } from "qrcode.react";
+import {
+	type FC,
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 import {
 	type FieldErrors,
 	useForm,
@@ -16,7 +45,6 @@ import {
 } from "react-hook-form";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { QRCodeCanvas } from "qrcode.react";
 import {
 	confirm2FASetup,
 	getSession,
@@ -26,11 +54,12 @@ import {
 	type TOTPSetup,
 	verify2FA,
 } from "service/auth";
-import { clearClientSession } from "utils/session";
+import { toast } from "sonner";
+import { clearClientSession, resetAccentToDefault } from "utils/session";
 import { updateThemeColor } from "utils/themeColor";
 import { z } from "zod";
 
-const schema = z.object({
+const credentialsSchema = z.object({
 	username: z.string().min(1, "login.fieldRequired"),
 	password: z.string().min(1, "login.fieldRequired"),
 });
@@ -70,85 +99,267 @@ const applyLoginThemeMode = (theme: LoginThemeMode) => {
 	updateThemeColor(theme);
 };
 
-type LoginFieldProps = {
-	autoComplete: string;
-	dir: "ltr" | "rtl";
-	endElement?: ReactNode;
-	errorMessage?: string;
-	icon: ReactNode;
-	id: string;
-	label: string;
-	placeholder: string;
-	registration: UseFormRegisterReturn;
-	type?: string;
+interface DotMatrixBackgroundProps {
+	colorMode: string;
+}
+
+const DotMatrixBackground: FC<DotMatrixBackgroundProps> = ({ colorMode }) => {
+	const canvasRef = useRef<HTMLCanvasElement | null>(null);
+	const colorModeRef = useRef(colorMode);
+	const mouseRef = useRef<{ x: number; y: number; active: boolean }>({
+		x: -9999,
+		y: -9999,
+		active: false,
+	});
+
+	useEffect(() => {
+		colorModeRef.current = colorMode;
+	}, [colorMode]);
+
+	useEffect(() => {
+		const canvas = canvasRef.current;
+		if (!canvas) return;
+		const ctx = canvas.getContext("2d");
+		if (!ctx) return;
+
+		let animationFrameId: number;
+		let width = 0;
+		let height = 0;
+		const spacing = 35;
+		let offsetX = 0;
+		let offsetY = 0;
+		let lastTime = performance.now();
+		let mouseInfluence = 0;
+
+		const resize = () => {
+			const dpr = window.devicePixelRatio || 1;
+			width = window.innerWidth;
+			height = window.innerHeight;
+			canvas.width = Math.floor(width * dpr);
+			canvas.height = Math.floor(height * dpr);
+			canvas.style.width = `${width}px`;
+			canvas.style.height = `${height}px`;
+			ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+		};
+
+		resize();
+		window.addEventListener("resize", resize, { passive: true });
+
+		const handleMouseMove = (e: globalThis.MouseEvent) => {
+			if (window.innerWidth <= 768) {
+				mouseRef.current.active = false;
+				return;
+			}
+			mouseRef.current.x = e.clientX;
+			mouseRef.current.y = e.clientY;
+			mouseRef.current.active = true;
+		};
+
+		const handleMouseLeave = () => {
+			mouseRef.current.active = false;
+		};
+
+		const handleWindowOut = (e: globalThis.MouseEvent) => {
+			if (!e.relatedTarget && !(e as unknown as { toElement?: unknown }).toElement) {
+				mouseRef.current.active = false;
+			}
+		};
+
+		window.addEventListener("mousemove", handleMouseMove, { passive: true });
+		document.addEventListener("mouseleave", handleMouseLeave, { passive: true });
+		document.documentElement.addEventListener("mouseleave", handleMouseLeave, { passive: true });
+		window.addEventListener("blur", handleMouseLeave);
+		window.addEventListener("mouseout", handleWindowOut, { passive: true });
+
+		const render = (currentTime: number) => {
+			const delta = Math.min((currentTime - lastTime) / 1000, 0.1);
+			lastTime = currentTime;
+
+			offsetX = (offsetX - delta * 2.75) % spacing;
+			offsetY = (offsetY - delta * 2.75) % spacing;
+
+			const isDark = colorModeRef.current === "dark";
+			const baseR = isDark ? 255 : 15;
+			const baseG = isDark ? 255 : 23;
+			const baseB = isDark ? 255 : 42;
+			const baseAlpha = isDark ? 0.08 : 0.26;
+			const attractionRadius = 190;
+
+			const targetInfluence =
+				mouseRef.current.active && window.innerWidth > 768 ? 1 : 0;
+			mouseInfluence +=
+				(targetInfluence - mouseInfluence) * Math.min(delta * 12, 1);
+			if (!mouseRef.current.active && mouseInfluence < 0.005) {
+				mouseInfluence = 0;
+				mouseRef.current.x = -9999;
+				mouseRef.current.y = -9999;
+			}
+
+			ctx.clearRect(0, 0, width, height);
+
+			const startX = offsetX < 0 ? offsetX : offsetX - spacing;
+			const startY = offsetY < 0 ? offsetY : offsetY - spacing;
+
+			const mouse = mouseRef.current;
+			const hasMouse = mouseInfluence > 0.001;
+
+			for (let x = startX; x < width + spacing; x += spacing) {
+				for (let y = startY; y < height + spacing; y += spacing) {
+					let drawX = x;
+					let drawY = y;
+					let alpha = baseAlpha;
+					let dotR = baseR;
+					let dotG = baseG;
+					let dotB = baseB;
+
+					if (hasMouse) {
+						const dx = mouse.x - drawX;
+						const dy = mouse.y - drawY;
+						const dist = Math.hypot(dx, dy);
+
+						if (dist < attractionRadius && dist > 0.001) {
+							const factor = 1 - dist / attractionRadius;
+							const ease = factor * factor * mouseInfluence;
+							const pull = ease * 34;
+							drawX += (dx / dist) * pull;
+							drawY += (dy / dist) * pull;
+
+							alpha = Math.min(baseAlpha + ease * 0.28, isDark ? 0.38 : 0.58);
+							dotR = Math.round(baseR * (1 - ease) + 59 * ease);
+							dotG = Math.round(baseG * (1 - ease) + 130 * ease);
+							dotB = Math.round(baseB * (1 - ease) + 246 * ease);
+
+							if (dist < attractionRadius * 0.75) {
+								const subFactor = 1 - dist / (attractionRadius * 0.75);
+								const subEase = subFactor * subFactor * mouseInfluence;
+								const wave = Math.sin(currentTime * 0.003 + x * 0.06 + y * 0.06) * 4;
+								const midX = drawX + (dx / dist) * (14 + wave);
+								const midY = drawY + (dy / dist) * (14 + wave);
+								const subAlpha = subEase * (isDark ? 0.34 : 0.48);
+
+								ctx.beginPath();
+								ctx.arc(midX, midY, 1.4, 0, Math.PI * 2);
+								ctx.fillStyle = `rgba(59,130,246,${subAlpha})`;
+								ctx.fill();
+							}
+						}
+					}
+
+					ctx.beginPath();
+					ctx.arc(drawX, drawY, 1.4, 0, Math.PI * 2);
+					ctx.fillStyle = `rgba(${dotR},${dotG},${dotB},${alpha})`;
+					ctx.fill();
+				}
+			}
+
+			animationFrameId = requestAnimationFrame(render);
+		};
+
+		animationFrameId = requestAnimationFrame(render);
+
+		return () => {
+			cancelAnimationFrame(animationFrameId);
+			window.removeEventListener("resize", resize);
+			window.removeEventListener("mousemove", handleMouseMove);
+			document.removeEventListener("mouseleave", handleMouseLeave);
+			document.documentElement.removeEventListener("mouseleave", handleMouseLeave);
+			window.removeEventListener("blur", handleMouseLeave);
+			window.removeEventListener("mouseout", handleWindowOut);
+		};
+	}, []);
+
+	return (
+		<canvas
+			ref={canvasRef}
+			className="pointer-events-none absolute inset-0 size-full select-none"
+		/>
+	);
 };
 
-/**
- * One labelled field. Tailwind + the panel tokens only — no Chakra, no `sx`.
- * The invalid state is carried by `aria-invalid` and a data attribute so the
- * styles stay declarative.
- */
-function LoginField({
-	autoComplete,
-	dir,
-	endElement,
-	errorMessage,
-	icon,
+interface LoginFieldProps {
+	id: string;
+	label: string;
+	type?: string;
+	placeholder?: string;
+	autoComplete: string;
+	dir: "ltr" | "rtl";
+	registration: UseFormRegisterReturn;
+	icon?: ReactNode;
+	errorMessage?: string;
+	endElement?: ReactNode;
+}
+
+const LoginField: FC<LoginFieldProps> = ({
 	id,
 	label,
-	placeholder,
-	registration,
 	type = "text",
-}: LoginFieldProps) {
+	placeholder,
+	autoComplete,
+	dir,
+	registration,
+	icon,
+	errorMessage,
+	endElement,
+}) => {
 	const invalid = Boolean(errorMessage);
 
 	return (
-		<div className="space-y-2">
-			<label htmlFor={id} className="block text-sm font-bold text-panel-text">
+		<div className="flex flex-col gap-1.5 text-start">
+			<label
+				htmlFor={id}
+				className="text-[12px] font-semibold text-panel-text-secondary select-none"
+			>
 				{label}
 			</label>
-			<div className="relative" dir={dir}>
-				<span
-					className={cn(
-						"pointer-events-none absolute start-3 top-1/2 -translate-y-1/2",
-						invalid ? "text-panel-danger" : "text-panel-text-muted",
-					)}
-				>
-					{icon}
-				</span>
+			<div className="relative w-full" dir={dir}>
+				{icon ? (
+					<span
+						aria-hidden="true"
+						className={cn(
+							"pointer-events-none absolute start-3.5 top-1/2 -translate-y-1/2 transition-colors duration-150",
+							invalid ? "text-red-500" : "text-panel-text-muted",
+						)}
+					>
+						{icon}
+					</span>
+				) : null}
 				<input
 					{...registration}
 					id={id}
+					type={type}
 					autoComplete={autoComplete}
 					aria-invalid={invalid || undefined}
-					type={type}
 					placeholder={placeholder}
 					className={cn(
-						"h-11 w-full rounded-lg border bg-panel-main ps-11 text-sm text-panel-text outline-none transition-colors placeholder:text-panel-text-muted",
-						endElement ? "pe-11" : "pe-3",
+						"h-11 w-full rounded-[14px] border bg-panel-elevated/40 text-[14px] text-panel-text outline-none transition-[border-color,background-color,box-shadow,color] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] select-text placeholder:text-panel-text-muted/60 [touch-action:manipulation]",
+						icon ? "ps-10" : "ps-3.5",
+						endElement ? "pe-11" : "pe-3.5",
 						invalid
-							? "border-panel-danger focus-visible:border-panel-danger focus-visible:ring-1 focus-visible:ring-panel-danger/60"
-							: "border-panel-border hover:border-panel-border-strong focus-visible:border-panel-accent focus-visible:ring-1 focus-visible:ring-panel-accent",
+							? "border-red-500! bg-red-500/5 focus-visible:ring-2 focus-visible:ring-red-500/30"
+							: "border-panel-border! hover:border-panel-border-strong! focus-visible:border-panel-accent! focus-visible:bg-panel-elevated/80 focus-visible:ring-2 focus-visible:ring-panel-accent/40",
 					)}
 				/>
 				{endElement ? (
-					<span className="absolute end-1 top-1/2 -translate-y-1/2">
+					<div className="absolute end-1.5 top-1/2 -translate-y-1/2">
 						{endElement}
-					</span>
+					</div>
 				) : null}
 			</div>
 			{errorMessage ? (
-				<p role="alert" className="text-xs text-panel-danger">
+				<p
+					role="alert"
+					className="text-[12px] font-medium text-red-500 [overflow-wrap:anywhere]"
+				>
 					{errorMessage}
 				</p>
 			) : null}
 		</div>
 	);
-}
+};
 
-/** Theme switcher for the sign-in screen, on the shadcn dropdown. */
-const LoginThemeMenu = () => {
-	const { t } = useTranslation();
+const LoginThemeMenu: FC = () => {
+	const { t, i18n } = useTranslation();
+	const isRTL = i18n.dir(i18n.language) === "rtl";
 	const { colorMode, setColorMode } = useColorMode();
 	const activeTheme: LoginThemeMode = colorMode === "light" ? "light" : "dark";
 
@@ -157,29 +368,64 @@ const LoginThemeMenu = () => {
 		setColorMode(theme);
 	};
 
-	const options: Array<{ key: LoginThemeMode; label: string; icon: ReactNode }> = [
-		{ key: "dark", label: t("theme.dark"), icon: <Moon className="size-4" /> },
-		{ key: "light", label: t("theme.light"), icon: <Sun className="size-4" /> },
+	const options: Array<{
+		key: LoginThemeMode;
+		label: string;
+		icon: ReactNode;
+	}> = [
+		{
+			key: "dark",
+			label: t("theme.dark"),
+			icon: <Moon className="size-4" strokeWidth={2} />,
+		},
+		{
+			key: "light",
+			label: t("theme.light"),
+			icon: <Sun className="size-4" strokeWidth={2} />,
+		},
 	];
 
 	return (
-		<DropdownMenu>
+		<DropdownMenu dir={isRTL ? "rtl" : "ltr"}>
 			<DropdownMenuTrigger asChild>
-				<Button type="button" aria-label={t("header.theme")} variant="ghost" size="icon">
+				<Button
+					type="button"
+					aria-label={t("header.theme")}
+					variant="ghost"
+					size="icon-sm"
+					className="size-9 rounded-[12px] text-panel-text-muted transition-colors hover:text-panel-text focus:outline-none! focus-visible:ring-0! focus-visible:border-transparent!"
+				>
 					{activeTheme === "dark" ? (
-						<Moon className="size-4" />
+						<Moon className="size-4" strokeWidth={2} />
 					) : (
-						<Sun className="size-4" />
+						<Sun className="size-4" strokeWidth={2} />
 					)}
 				</Button>
 			</DropdownMenuTrigger>
-			<DropdownMenuContent className="items-end min-w-40">
+			<DropdownMenuContent
+				align="start"
+				sideOffset={8}
+				collisionPadding={12}
+				onCloseAutoFocus={(e) => e.preventDefault()}
+				className="z-[9999] min-w-36 max-w-[calc(100vw-24px)] rounded-[16px] border border-panel-border! bg-panel-surface p-1.5 text-panel-text shadow-[0_12px_32px_rgba(0,0,0,0.24)] select-none"
+			>
 				{options.map((option) => (
-					<DropdownMenuItem key={option.key} onSelect={() => selectTheme(option.key)}>
-						{option.icon}
-						<span className="flex-1">{option.label}</span>
+					<DropdownMenuItem
+						key={option.key}
+						onSelect={() => selectTheme(option.key)}
+						className={cn(
+							"flex cursor-pointer items-center justify-between gap-2.5 rounded-[10px] px-2.5 py-2 text-[13px] transition-[background-color,transform] duration-150 active:scale-[0.98] min-[769px]:hover:bg-panel-elevated",
+							activeTheme === option.key
+								? "bg-panel-elevated/70 font-semibold text-panel-text"
+								: "font-medium text-panel-text-secondary",
+						)}
+					>
+						<span className="flex items-center gap-2">
+							{option.icon}
+							<span>{option.label}</span>
+						</span>
 						{activeTheme === option.key ? (
-							<Check className="size-4 text-panel-accent" />
+							<Check className="size-3.5 text-panel-accent" />
 						) : null}
 					</DropdownMenuItem>
 				))}
@@ -188,16 +434,20 @@ const LoginThemeMenu = () => {
 	);
 };
 
-export const Login = () => {
+export const Login: FC = () => {
 	const [error, setError] = useState("");
 	const [showPassword, setShowPassword] = useState(false);
 	const [step, setStep] = useState<"credentials" | "otp" | "setup">("credentials");
 	const [otp, setOTP] = useState("");
 	const [setup, setSetup] = useState<TOTPSetup | null>(null);
 	const [challengeLoading, setChallengeLoading] = useState(false);
+	const [copiedSecret, setCopiedSecret] = useState(false);
+
 	const navigate = useNavigate();
 	const { t, i18n } = useTranslation();
-	const dir = i18n.dir(i18n.language) === "rtl" ? "rtl" : "ltr";
+	const { colorMode } = useColorMode();
+	const isRTL = i18n.dir(i18n.language) === "rtl";
+	const dir = isRTL ? "rtl" : "ltr";
 
 	const {
 		register,
@@ -205,7 +455,7 @@ export const Login = () => {
 		handleSubmit,
 		watch,
 	} = useForm<LoginFormValues>({
-		resolver: zodResolver(schema),
+		resolver: zodResolver(credentialsSchema),
 		defaultValues: { password: "", username: "" },
 	});
 
@@ -219,10 +469,11 @@ export const Login = () => {
 	useEffect(() => {
 		void usernameValue;
 		void passwordValue;
-		setError((current) => (current ? "" : current));
+		setError("");
 	}, [usernameValue, passwordValue]);
 
 	useEffect(() => {
+		resetAccentToDefault();
 		getSession()
 			.then(async (session) => {
 				if (session.state === "active") {
@@ -236,13 +487,48 @@ export const Login = () => {
 					setStep("setup");
 				}
 			})
-			.catch(() => undefined);
+			.catch(() => {
+				resetAccentToDefault();
+			});
 	}, [navigate]);
 
-	const completeLogin = () => {
+	const completeLogin = useCallback(() => {
 		clearClientSession();
 		navigate("/");
-	};
+	}, [navigate]);
+
+	const mapAuthError = useCallback(
+		(err: unknown, defaultKey: string) => {
+			const detail = (err as { response?: { _data?: { detail?: string } } })
+				?.response?._data?.detail;
+			if (!detail) return t(defaultKey);
+			const lower = detail.toLowerCase();
+			if (
+				lower.includes("username") ||
+				lower.includes("password") ||
+				lower.includes("credential") ||
+				lower.includes("unauthorized")
+			) {
+				return t("login.invalidCredentials");
+			}
+			if (lower.includes("already used") || lower.includes("replay")) {
+				return t("login.codeAlreadyUsed");
+			}
+			if (lower.includes("too many") || lower.includes("rate limit")) {
+				return t("login.tooManyAttempts");
+			}
+			if (
+				lower.includes("code") ||
+				lower.includes("totp") ||
+				lower.includes("authenticat") ||
+				lower.includes("2fa")
+			) {
+				return t("login.invalidCode");
+			}
+			return detail;
+		},
+		[t],
+	);
 
 	const openRequiredSetup = async () => {
 		setSetup(await start2FASetup());
@@ -264,36 +550,46 @@ export const Login = () => {
 			} else {
 				completeLogin();
 			}
-		} catch (err: any) {
-			setError(err.response?._data?.detail || "Login failed");
+		} catch (err: unknown) {
+			setError(mapAuthError(err, "login.invalidCredentials"));
 		}
 	};
 
-	const submitOTP = async () => {
-		setError("");
-		setChallengeLoading(true);
-		try {
-			await verify2FA(otp);
-			completeLogin();
-		} catch (err: any) {
-			setError(err.response?._data?.detail || "Invalid authentication code");
-		} finally {
-			setChallengeLoading(false);
-		}
-	};
+	const submitOTP = useCallback(
+		async (codeToSubmit?: string) => {
+			const targetCode = codeToSubmit ?? otp;
+			if (targetCode.length !== 6 || challengeLoading) return;
+			setError("");
+			setChallengeLoading(true);
+			try {
+				await verify2FA(targetCode);
+				completeLogin();
+			} catch (err: unknown) {
+				setError(mapAuthError(err, "login.invalidCode"));
+			} finally {
+				setChallengeLoading(false);
+			}
+		},
+		[otp, challengeLoading, mapAuthError, completeLogin],
+	);
 
-	const confirmSetup = async () => {
-		setError("");
-		setChallengeLoading(true);
-		try {
-			await confirm2FASetup(otp);
-			completeLogin();
-		} catch (err: any) {
-			setError(err.response?._data?.detail || "Invalid authentication code");
-		} finally {
-			setChallengeLoading(false);
-		}
-	};
+	const confirmSetup = useCallback(
+		async (codeToSubmit?: string) => {
+			const targetCode = codeToSubmit ?? otp;
+			if (targetCode.length !== 6 || challengeLoading) return;
+			setError("");
+			setChallengeLoading(true);
+			try {
+				await confirm2FASetup(targetCode);
+				completeLogin();
+			} catch (err: unknown) {
+				setError(mapAuthError(err, "login.invalidCode"));
+			} finally {
+				setChallengeLoading(false);
+			}
+		},
+		[otp, challengeLoading, mapAuthError, completeLogin],
+	);
 
 	const cancelChallenge = async () => {
 		try {
@@ -306,7 +602,15 @@ export const Login = () => {
 		}
 	};
 
-	const handleInvalid = async (_errors: FieldErrors<LoginFormValues>) => {
+	const copySecret = () => {
+		if (!setup?.secret) return;
+		navigator.clipboard.writeText(setup.secret);
+		setCopiedSecret(true);
+		toast.success(t("copied"));
+		window.setTimeout(() => setCopiedSecret(false), 2000);
+	};
+
+	const handleInvalid = async (_fieldErrors: FieldErrors<LoginFormValues>) => {
 		setError("");
 	};
 
@@ -324,151 +628,306 @@ export const Login = () => {
 				: t("login.setupTwoFactorHint");
 
 	return (
-		<div className="flex min-h-[100dvh] w-full items-center justify-center bg-panel-main px-4 py-6 md:px-10 md:py-10">
-			<div className="w-full max-w-[400px]">
-				<div className="rounded-lg border border-panel-border bg-panel-surface p-5 shadow-[0_18px_60px_rgba(0,0,0,0.22)] sm:p-6">
-					{/* Brand, language and theme on one line, above the form. */}
-					<div className="mb-7 flex items-center justify-between gap-3">
-						<div className="flex min-w-0 items-center gap-3 text-panel-text">
-							<span className="inline-flex size-10 shrink-0 items-center justify-center rounded-lg border border-panel-border bg-panel-elevated">
+		<div
+			dir={dir}
+			className="relative flex min-h-[100dvh] w-full items-center justify-center overflow-hidden bg-panel-main px-4 py-8 select-none [touch-action:manipulation] sm:px-6 md:py-12"
+		>
+			<DotMatrixBackground colorMode={colorMode} />
+			<div className="relative z-10 w-full max-w-[420px]">
+				<div className="relative overflow-hidden rounded-[24px] border border-panel-border! bg-panel-surface p-6 shadow-[0_24px_64px_-16px_rgba(0,0,0,0.32),inset_0_1px_0_0_rgba(255,255,255,0.7)] transition-all duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] sm:p-8 dark:shadow-[0_28px_72px_-16px_rgba(0,0,0,0.7),inset_0_1px_0_0_rgba(255,255,255,0.08)]">
+					<div className="mb-8 flex items-center justify-between">
+						<div className="flex items-center gap-3">
+							<div className="flex size-10 shrink-0 items-center justify-center rounded-[12px] border border-panel-border/80! bg-panel-elevated/80 shadow-[0_1px_2px_rgba(0,0,0,0.06),inset_0_1px_0_0_rgba(255,255,255,0.08)]">
 								<img
-									alt={t("menu")}
 									src={logoUrl}
-									className="size-6 [filter:brightness(0)] dark:[filter:brightness(0)_invert(1)]"
+									alt=""
+									aria-hidden="true"
+									draggable={false}
+									loading="eager"
+									decoding="sync"
+									style={{
+										filter:
+											colorMode === "dark"
+												? "brightness(0) invert(1)"
+												: "brightness(0)",
+									}}
+									className="pointer-events-none size-6 object-contain select-none [-webkit-user-drag:none]"
 								/>
+							</div>
+							<span className="text-[18px] font-bold tracking-tight text-panel-text leading-none">
+								Rebecca
 							</span>
-							<span className="truncate text-lg font-extrabold">Rebecca</span>
 						</div>
-						<div className="flex shrink-0 items-center gap-1">
+
+						<div className="flex items-center gap-1 text-panel-text-muted">
 							<Language triggerVariant="ghost" />
 							<LoginThemeMenu />
 						</div>
 					</div>
 
-					<div className="space-y-1 text-center">
-						<h1 className="text-lg font-extrabold text-panel-text">{title}</h1>
-						<p className="text-sm text-panel-text-muted">{subtitle}</p>
+					<div className="mb-7 flex flex-col items-start gap-1 text-start">
+						<h1 className="text-[22px] font-bold tracking-tight text-panel-text sm:text-[24px]">
+							{title}
+						</h1>
+						<p className="text-[13px] leading-relaxed text-panel-text-secondary sm:text-[14px]">
+							{subtitle}
+						</p>
 					</div>
 
-					<div className="mt-6">
+					<AnimatePresence mode="wait" initial={false}>
 						{step === "credentials" ? (
-							<form onSubmit={handleSubmit(login, handleInvalid)}>
-								<div className="space-y-4">
+							<motion.div
+								key="credentials-step"
+								initial={{ opacity: 0, y: 10 }}
+								animate={{ opacity: 1, y: 0 }}
+								exit={{ opacity: 0, y: -10 }}
+								transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
+							>
+								<form
+									onSubmit={handleSubmit(login, handleInvalid)}
+									className="flex flex-col gap-4"
+								>
 									<LoginField
 										id="login-username"
+										label={t("username")}
+										placeholder={t("login.enterUsername")}
 										autoComplete="username"
 										dir={dir}
+										registration={register("username")}
 										errorMessage={
 											errors.username?.message
 												? t(errors.username.message as string)
 												: undefined
 										}
-										icon={<User className="size-4" />}
-										label={t("username")}
-										placeholder={t("username")}
-										registration={register("username")}
 									/>
+
 									<LoginField
 										id="login-password"
+										label={t("password")}
+										placeholder={t("login.enterPassword")}
+										type={showPassword ? "text" : "password"}
 										autoComplete="current-password"
 										dir={dir}
-										endElement={
-											<button
-												type="button"
-												aria-label={
-													showPassword
-														? t("admins.hidePassword")
-														: t("admins.showPassword")
-												}
-												onMouseDown={(event) => event.preventDefault()}
-												onClick={() => setShowPassword((visible) => !visible)}
-												className="inline-flex size-8 items-center justify-center rounded-md text-panel-text-muted transition-colors hover:text-panel-text"
-											>
-												{showPassword ? (
-													<EyeOff className="size-4" />
-												) : (
-													<Eye className="size-4" />
-												)}
-											</button>
-										}
+										registration={register("password")}
 										errorMessage={
 											errors.password?.message
 												? t(errors.password.message as string)
 												: undefined
 										}
-										icon={<Lock className="size-4" />}
-										label={t("password")}
-										placeholder={t("password")}
-										registration={register("password")}
-										type={showPassword ? "text" : "password"}
+										endElement={
+											<AnimatePresence>
+												{passwordValue.length > 0 ? (
+													<motion.button
+														initial={{ opacity: 0, scale: 0.8 }}
+														animate={{ opacity: 1, scale: 1 }}
+														exit={{ opacity: 0, scale: 0.8 }}
+														transition={{
+															duration: 0.15,
+															ease: [0.23, 1, 0.32, 1],
+														}}
+														type="button"
+														aria-label={
+															showPassword
+																? t("admins.hidePassword")
+																: t("admins.showPassword")
+														}
+														onMouseDown={(e) => e.preventDefault()}
+														onClick={() => setShowPassword((v) => !v)}
+														className="inline-flex size-8 items-center justify-center rounded-[8px] text-panel-text-muted transition-colors hover:text-panel-text active:scale-95"
+													>
+														<AnimatePresence mode="wait" initial={false}>
+															<motion.span
+																key={showPassword ? "eye-off" : "eye-on"}
+																initial={{
+																	opacity: 0,
+																	scale: 0.7,
+																	rotate: showPassword ? -15 : 15,
+																}}
+																animate={{ opacity: 1, scale: 1, rotate: 0 }}
+																exit={{
+																	opacity: 0,
+																	scale: 0.7,
+																	rotate: showPassword ? 15 : -15,
+																}}
+																transition={{
+																	duration: 0.14,
+																	ease: [0.23, 1, 0.32, 1],
+																}}
+																className="inline-flex items-center justify-center"
+															>
+																{showPassword ? (
+																	<EyeOff className="size-4" />
+																) : (
+																	<Eye className="size-4" />
+																)}
+															</motion.span>
+														</AnimatePresence>
+													</motion.button>
+												) : null}
+											</AnimatePresence>
+										}
 									/>
 
 									{error ? (
-										<div
+										<motion.div
+											initial={{ opacity: 0, y: -4 }}
+											animate={{ opacity: 1, y: 0 }}
 											role="alert"
-											className="rounded-lg border-s-2 border-panel-danger bg-panel-danger/10 px-3 py-2 text-sm text-panel-danger"
+											className="flex items-start gap-2.5 rounded-[12px] border border-red-500/20 bg-red-500/10 p-3 text-[13px] font-medium text-red-500"
 										>
-											{error}
-										</div>
+											<CircleAlert className="mt-0.5 size-4 shrink-0" />
+											<span className="flex-1 leading-snug text-start">
+												{error}
+											</span>
+										</motion.div>
 									) : null}
 
-									<Button type="submit" disabled={!canSubmit} className="mt-1 h-11 w-full rounded-lg text-sm">
-										<LogIn className="size-4" />
-										{isSubmitting ? t("login.loading") : t("login")}
+									<Button
+										type="submit"
+										disabled={!canSubmit}
+										loading={isSubmitting}
+										className="mt-2 h-11 w-full rounded-[14px] bg-panel-accent text-[14px] font-semibold text-white shadow-xs transition-all active:scale-[0.98] min-[769px]:hover:bg-panel-accent-hover"
+									>
+										<span>{isSubmitting ? t("login.loading") : t("login")}</span>
 									</Button>
-								</div>
-							</form>
+								</form>
+							</motion.div>
 						) : (
-							<div className="space-y-4">
+							<motion.div
+								key="challenge-step"
+								initial={{ opacity: 0, y: 10 }}
+								animate={{ opacity: 1, y: 0 }}
+								exit={{ opacity: 0, y: -10 }}
+								transition={{ duration: 0.18, ease: [0.23, 1, 0.32, 1] }}
+								className="flex flex-col gap-4"
+							>
 								{step === "setup" && setup ? (
-									<>
-										<div className="w-fit rounded-lg bg-white p-3">
-											<QRCodeCanvas value={setup.uri} size={180} />
+									<div className="flex flex-col items-center gap-3 rounded-[16px] border border-panel-border! bg-panel-elevated/40 p-4">
+										<div
+											className="relative flex items-center justify-center overflow-hidden rounded-[14px] border border-panel-border! bg-white p-2.5 shadow-xs"
+										>
+											<QRCodeCanvas
+												value={setup.uri}
+												size={160}
+												marginSize={1}
+												bgColor="#ffffff"
+												fgColor="#0a0a0a"
+											/>
 										</div>
-										<p className="break-all font-mono text-xs text-panel-text-muted">
-											{setup.secret}
-										</p>
-									</>
-								) : null}
-
-								<div className="space-y-2">
-									<label
-										htmlFor="login-otp"
-										className="block text-sm font-bold text-panel-text"
-									>
-										{t("login.authenticationCode")}
-									</label>
-									<input
-										id="login-otp"
-										inputMode="numeric"
-										autoComplete="one-time-code"
-										maxLength={6}
-										value={otp}
-										onChange={(event) =>
-											setOTP(event.target.value.replace(/\D/g, ""))
-										}
-										className="h-11 w-full rounded-lg border border-panel-border bg-panel-main text-center text-sm tracking-[0.4em] text-panel-text outline-none transition-colors hover:border-panel-border-strong focus-visible:border-panel-accent focus-visible:ring-1 focus-visible:ring-panel-accent"
-									/>
-								</div>
-
-								{error ? (
-									<div
-										role="alert"
-										className="rounded-lg border-s-2 border-panel-danger bg-panel-danger/10 px-3 py-2 text-sm text-panel-danger"
-									>
-										{error}
+										<div className="flex w-full items-center justify-between gap-2 rounded-[10px] border border-panel-border! bg-panel-surface px-3 py-2 text-start">
+											<div className="flex min-w-0 flex-1 flex-col">
+												<span className="text-[11px] font-medium text-panel-text-muted">
+													{t("login.secretKey")}
+												</span>
+												<code
+													dir="ltr"
+													className="truncate font-mono text-[12px] font-semibold text-panel-text select-all"
+												>
+													{setup.secret}
+												</code>
+											</div>
+											<Button
+												type="button"
+												variant="ghost"
+												size="icon-sm"
+												onClick={copySecret}
+												aria-label={t("copy")}
+												className="size-8 shrink-0 rounded-[8px] text-panel-text-muted hover:text-panel-text"
+											>
+												{copiedSecret ? (
+													<Check className="size-4 text-emerald-500" />
+												) : (
+													<Copy className="size-4" />
+												)}
+											</Button>
+										</div>
 									</div>
 								) : null}
 
-								<Button onClick={step === "otp" ? submitOTP : confirmSetup} disabled={otp.length !== 6} loading={challengeLoading} className="h-11 w-full rounded-lg text-sm">
-									{t("continue")}
-								</Button>
-								<Button onClick={cancelChallenge} variant="ghost" className="w-full rounded-lg">
-									{t("back")}
-								</Button>
-							</div>
+								<div className="flex flex-col items-center gap-2">
+									<label
+										htmlFor="login-otp"
+										className="text-[12px] font-semibold text-panel-text-secondary select-none"
+									>
+										{t("login.authenticationCode")}
+									</label>
+
+									<InputOTP
+										id="login-otp"
+										value={otp}
+										disabled={challengeLoading}
+										aria-invalid={Boolean(error) || undefined}
+										onValueChange={(val) => {
+											setOTP(val);
+											setError("");
+											if (val.length === 6) {
+												if (step === "otp") {
+													submitOTP(val);
+												} else {
+													confirmSetup(val);
+												}
+											}
+										}}
+									>
+										<InputOTPSlot index={0} />
+										<InputOTPSlot index={1} />
+										<InputOTPSlot index={2} />
+										<InputOTPSeparator />
+										<InputOTPSlot index={3} />
+										<InputOTPSlot index={4} />
+										<InputOTPSlot index={5} />
+									</InputOTP>
+								</div>
+
+								{error ? (
+									<motion.div
+										initial={{ opacity: 0, y: -4 }}
+										animate={{ opacity: 1, y: 0 }}
+										role="alert"
+										className="flex items-start gap-2.5 rounded-[12px] border border-red-500/20 bg-red-500/10 p-3 text-[13px] font-medium text-red-500"
+									>
+										<CircleAlert className="mt-0.5 size-4 shrink-0" />
+										<span className="flex-1 leading-snug text-start">
+											{error}
+										</span>
+									</motion.div>
+								) : null}
+
+								<div className="mt-2 flex flex-col gap-2">
+									<Button
+										type="button"
+										onClick={() =>
+											step === "otp" ? submitOTP() : confirmSetup()
+										}
+										disabled={otp.length !== 6 || challengeLoading}
+										loading={challengeLoading}
+										className="h-11 w-full rounded-[14px] bg-panel-accent text-[14px] font-semibold text-white shadow-xs transition-all active:scale-[0.98] min-[769px]:hover:bg-panel-accent-hover"
+									>
+										{step === "otp" ? (
+											<ShieldCheck className="size-4" />
+										) : (
+											<QrCode className="size-4" />
+										)}
+										<span>{t("continue")}</span>
+									</Button>
+									<Button
+										type="button"
+										variant="ghost"
+										onClick={cancelChallenge}
+										disabled={challengeLoading}
+										className="h-10 w-full rounded-[14px] text-[13px] font-medium text-panel-text-muted hover:text-panel-text"
+									>
+										{isRTL ? (
+											<ArrowRight className="size-3.5" />
+										) : (
+											<ArrowLeft className="size-3.5" />
+										)}
+										<span>{t("back")}</span>
+									</Button>
+								</div>
+							</motion.div>
 						)}
-					</div>
+					</AnimatePresence>
 				</div>
 			</div>
 		</div>

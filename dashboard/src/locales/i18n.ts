@@ -34,6 +34,7 @@ i18n
 			},
 			load: "languageOnly",
 			detection: {
+				order: ["localStorage", "sessionStorage", "cookie", "navigator"],
 				caches: ["localStorage", "sessionStorage", "cookie"],
 			},
 			backend: {

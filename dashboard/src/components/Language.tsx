@@ -17,6 +17,8 @@ type LanguageProps = {
 	actions?: ReactNode;
 	portalContainer?: MutableRefObject<HTMLElement | null>;
 	triggerVariant?: "outline" | "ghost";
+	size?: "default" | "sm" | "lg" | "icon" | "icon-sm" | "xs";
+	className?: string;
 };
 
 const LANGUAGE_OPTIONS = [
@@ -28,6 +30,8 @@ const LANGUAGE_OPTIONS = [
 
 export const Language: FC<LanguageProps> = ({
 	triggerVariant = "outline",
+	size,
+	className,
 }) => {
 	const { t, i18n } = useTranslation();
 	const isRTL = i18n.dir(i18n.language) === "rtl";
@@ -40,25 +44,37 @@ export const Language: FC<LanguageProps> = ({
 			<DropdownMenuTrigger asChild>
 				<Button
 					type="button"
-					size="sm"
+					size={size ?? (triggerVariant === "ghost" ? "icon-sm" : "sm")}
 					variant={triggerVariant}
 					aria-label={t("header.language")}
-					className="relative h-[34px] min-w-[34px]! rounded-[12px] border-panel-border! bg-panel-surface px-2.5 text-panel-text shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,box-shadow,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:bg-panel-surface dark:hover:bg-input/30 active:scale-[0.97] min-[769px]:hover:border-panel-border-strong! min-[769px]:hover:bg-panel-elevated min-[769px]:dark:hover:bg-panel-elevated min-[769px]:hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)]"
+					className={cn(
+						triggerVariant === "ghost"
+							? "size-9 rounded-[12px] text-panel-text-muted transition-colors hover:text-panel-text focus:outline-none! focus-visible:ring-0! focus-visible:border-transparent!"
+							: "relative h-[34px] min-w-[34px]! rounded-[12px] border-panel-border! bg-panel-surface px-2.5 text-panel-text shadow-[0_1px_2px_rgba(0,0,0,0.04)] transition-[background-color,border-color,box-shadow,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] hover:bg-panel-surface dark:hover:bg-input/30 active:scale-[0.97] min-[769px]:hover:border-panel-border-strong! min-[769px]:hover:bg-panel-elevated min-[769px]:dark:hover:bg-panel-elevated min-[769px]:hover:shadow-[0_4px_12px_rgba(0,0,0,0.08)] focus:outline-none! focus-visible:ring-0! focus-visible:border-transparent!",
+						className,
+					)}
 				>
-					<Languages className="size-4" strokeWidth={1.75} />
+					<Languages className="size-4" strokeWidth={2} />
 				</Button>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent
-				align={isRTL ? "start" : "end"}
+				align="start"
 				sideOffset={8}
-				className="z-[9999] min-w-[180px]! rounded-[16px] border border-panel-border! bg-panel-surface p-1.5 text-panel-text shadow-[0_12px_32px_rgba(0,0,0,0.24)] select-none"
+				collisionPadding={12}
+				onCloseAutoFocus={(e) => e.preventDefault()}
+				className="z-[9999] min-w-[180px]! max-w-[calc(100vw-24px)] rounded-[16px] border border-panel-border! bg-panel-surface p-1.5 text-panel-text shadow-[0_12px_32px_rgba(0,0,0,0.24)] select-none"
 			>
 				{LANGUAGE_OPTIONS.map(({ code, label, flag }) => {
 					const isActive = activeLanguage === code;
 					return (
 						<DropdownMenuItem
 							key={code}
-							onSelect={() => i18n.changeLanguage(code)}
+							onSelect={() => {
+								try {
+									localStorage.setItem("i18nextLng", code);
+								} catch {}
+								i18n.changeLanguage(code);
+							}}
 							className={cn(
 								"flex cursor-pointer items-center justify-between gap-3 rounded-[10px] px-3 py-2 text-[13px] transition-[background-color,transform] duration-150 ease-[cubic-bezier(0.23,1,0.32,1)] active:scale-[0.98] focus:bg-panel-elevated min-[769px]:hover:bg-panel-elevated",
 								isActive
