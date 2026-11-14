@@ -1,6 +1,4 @@
 import { Button } from "components/ui/button";
-import { CircleAlert, CircleCheck, Info, TriangleAlert } from "lucide-react";
-
 import type { ComponentPropsWithoutRef } from "react";
 import { cn } from "lib/cn";
 import {
@@ -13,6 +11,7 @@ import {
 
 export { BulkActionBar } from "./BulkActionBar";
 export { DataTable } from "./DataTable";
+export { InputOTP, InputOTPSlot, InputOTPSeparator, InputOTPHiddenInput } from "./input-otp";
 export { PageLoadingSkeleton } from "./PageLoadingSkeleton";
 export {
 	ResourceListCard,
