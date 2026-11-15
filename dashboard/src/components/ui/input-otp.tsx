@@ -1,10 +1,8 @@
-import {
-	HiddenInput,
-	Input as OTPInputSlot,
-	Root as OTPRoot,
-} from "@radix-ui/react-one-time-password-field";
 import { cn } from "lib/cn";
+import { unstable_OneTimePasswordField as OTPField } from "radix-ui";
 import { type ComponentPropsWithoutRef, forwardRef } from "react";
+
+const { HiddenInput, Input: OTPInputSlot, Root: OTPRoot } = OTPField;
 
 export interface InputOTPProps
 	extends ComponentPropsWithoutRef<typeof OTPRoot> {
