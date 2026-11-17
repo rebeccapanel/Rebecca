@@ -332,3 +332,29 @@ func TestBackoffForIsCapped(t *testing.T) {
 		t.Fatal("backoff schedule is wrong")
 	}
 }
+
+func TestCoordinatorTreatsAPartiallyFailingPassAsAFailure(t *testing.T) {
+	f := newFakeBackend()
+	f.process = func(nodeID int64) (ProcessOperationsResult, error) {
+		return ProcessOperationsResult{Processed: 5, Done: 4, Retrying: 1}, nil
+	}
+	co, _ := startCoordinator(t, f)
+	f.mu.Lock()
+	f.open[1] = 5
+	f.mu.Unlock()
+	co.Kick()
+	waitFor(t, "first pass", func() bool { return f.processedCount(1) >= 1 })
+	time.Sleep(30 * time.Millisecond)
+	co.mu.Lock()
+	failures := co.failures[1]
+	_, cooling := co.cooldown[1]
+	co.mu.Unlock()
+	if failures != 1 || !cooling {
+		t.Fatalf("a node that keeps failing part of its work must cool down, failures=%d cooling=%v", failures, cooling)
+	}
+	co.Kick()
+	time.Sleep(50 * time.Millisecond)
+	if f.processedCount(1) != 1 {
+		t.Fatal("the node must not be retried during its cooldown")
+	}
+}

@@ -195,7 +195,7 @@ func (co *Coordinator) drainNode(ctx context.Context, nodeID int64) {
 		result, err := co.backend.ProcessNode(nodeCtx, nodeID)
 		cancel()
 		<-co.sem
-		failed := err != nil || (result.Retrying > 0 && result.Done == 0)
+		failed := err != nil || result.Retrying > 0
 		co.mu.Lock()
 		if failed {
 			co.failures[nodeID]++
