@@ -577,9 +577,8 @@ VALUES ('add_user', 50, ?, '{}', 'pending', ?, CURRENT_TIMESTAMP, CURRENT_TIMEST
 	if result.Processed != 1 || result.Done != 0 || result.Retrying != 1 {
 		t.Fatalf("expected unavailable user delta to be retried, got %#v", result)
 	}
-	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE node_id = 24`, "done")
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 24`, 0)
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 50 AND status = 'retrying'`, 1)
-	assertRepositoryInt64(t, db, `SELECT attempts FROM node_operations WHERE node_id = 24`, 0)
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 50 AND attempts = 1`, 1)
 	assertRepositoryString(t, db, `SELECT status FROM nodes WHERE id = 50`, "connected")
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 50 AND operation_type = 'sync_config'`, 0)
@@ -721,8 +720,7 @@ VALUES ('add_user', 7, 200, '{}', 'pending', 'disabled-op', CURRENT_TIMESTAMP, C
 	if result.Processed != 0 || result.Failed != 0 || result.Retrying != 0 {
 		t.Fatalf("expected disabled node operation to be dropped without running, got %#v", result)
 	}
-	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE id = 1`, "done")
-	assertRepositoryInt64(t, db, `SELECT attempts FROM node_operations WHERE id = 1`, 0)
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE id = 1`, 0)
 }
 
 func TestControllerCompletesGlobalSyncConfigWhenNoNodesExist(t *testing.T) {

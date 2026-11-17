@@ -286,11 +286,8 @@ func (s *Server) withConfigSyncKick(next http.Handler) http.Handler {
 		}
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
-		if rec.status < 300 && s.configOperationsKick != nil {
-			select {
-			case s.configOperationsKick <- struct{}{}:
-			default:
-			}
+		if rec.status < 300 {
+			s.kickNodeOperationsSoon()
 		}
 	})
 }

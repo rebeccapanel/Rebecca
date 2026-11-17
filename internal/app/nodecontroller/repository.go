@@ -62,7 +62,7 @@ type OperationRow struct {
 const (
 	pendingOperationsPerNodeCap = 200
 	maxPendingOperationsLimit   = 10000
-	operationRetryBackoff       = 15 * time.Second
+	operationRetryBackoff       = 2 * time.Second
 )
 
 var runtimeProxyProtocolList = []string{"vmess", "vless", "trojan", "shadowsocks", "hysteria", "masque", "ssh"}
@@ -880,6 +880,65 @@ LIMIT ?`, retryCutoff, limit)
 		result = append(result, row)
 	}
 	return result, rows.Err()
+}
+
+func (r Repository) PendingGlobalOperations(ctx context.Context, limit int) ([]OperationRow, error) {
+	if limit <= 0 || limit > maxPendingOperationsLimit {
+		limit = maxPendingOperationsLimit
+	}
+	retryCutoff := r.timeArg(time.Now().UTC().Add(-operationRetryBackoff))
+	rows, err := r.db.QueryContext(ctx, `SELECT id, operation_type, node_id, user_id, payload, attempts, idempotency_key
+FROM node_operations
+WHERE node_id IS NULL AND (status = 'pending' OR (status = 'retrying' AND updated_at <= ?))
+ORDER BY id
+LIMIT ?`, retryCutoff, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := []OperationRow{}
+	for rows.Next() {
+		var row OperationRow
+		var payload []byte
+		if err := rows.Scan(&row.ID, &row.OperationType, &row.NodeID, &row.UserID, &payload, &row.Attempts, &row.IdempotencyKey); err != nil {
+			return nil, err
+		}
+		row.Payload = append(row.Payload[:0], payload...)
+		result = append(result, row)
+	}
+	return result, rows.Err()
+}
+
+func (r Repository) NodesWithOpenOperations(ctx context.Context) (nodeIDs []int64, hasGlobal bool, err error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT DISTINCT no.node_id
+FROM node_operations no
+JOIN nodes n ON n.id = no.node_id
+WHERE no.status IN ('pending', 'retrying')
+  AND LOWER(COALESCE(n.status, '')) = 'connected'
+ORDER BY no.node_id`)
+	if err != nil {
+		return nil, false, err
+	}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, false, err
+		}
+		nodeIDs = append(nodeIDs, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, false, err
+	}
+	var one int
+	switch err := r.db.QueryRowContext(ctx, `SELECT 1 FROM node_operations WHERE node_id IS NULL AND status IN ('pending', 'retrying') LIMIT 1`).Scan(&one); err {
+	case nil:
+		hasGlobal = true
+	case sql.ErrNoRows:
+	default:
+		return nodeIDs, false, err
+	}
+	return nodeIDs, hasGlobal, nil
 }
 
 func (r Repository) CompactBacklogs(ctx context.Context, threshold int) (int, error) {

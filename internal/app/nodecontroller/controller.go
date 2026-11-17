@@ -480,23 +480,17 @@ func notStartedSyncDue(nodeID int64, now time.Time) bool {
 }
 
 func (c Controller) ProcessQueue(ctx context.Context, req ProcessOperationsRequest) (ProcessOperationsResult, error) {
-	if !req.ConfigOnly {
-		if err := c.repo.RecoverStaleOperations(ctx, 2*time.Minute); err != nil {
+	if !req.ConfigOnly && !req.GlobalOnly && req.NodeID <= 0 {
+		if err := c.Maintain(ctx); err != nil {
 			return ProcessOperationsResult{}, err
 		}
-		if dropped, err := c.repo.CompactBacklogs(ctx, backlogCollapseThreshold); err != nil {
-			return ProcessOperationsResult{}, err
-		} else if dropped > 0 {
-			logging.Infof(logging.ComponentNode, "operation queue dropped %d user operations of nodes that are not connected; a full sync replaces them on connect", dropped)
-		}
-	}
-	if err := c.repo.QueueLaggingNodeSyncs(ctx); err != nil {
-		return ProcessOperationsResult{}, err
 	}
 	var operations []OperationRow
 	var err error
 	if req.ConfigOnly {
 		operations, err = c.repo.PendingConfigOperations(ctx, req.Limit)
+	} else if req.GlobalOnly {
+		operations, err = c.repo.PendingGlobalOperations(ctx, req.Limit)
 	} else {
 		operations, err = c.repo.PendingOperations(ctx, req.NodeID, req.Limit)
 	}
@@ -544,6 +538,30 @@ func (c Controller) ProcessQueue(ctx context.Context, req ProcessOperationsReque
 		return result, err
 	}
 	return result, nil
+}
+
+func (c Controller) Maintain(ctx context.Context) error {
+	if err := c.repo.RecoverStaleOperations(ctx, 2*time.Minute); err != nil {
+		return err
+	}
+	if dropped, err := c.repo.CompactBacklogs(ctx, backlogCollapseThreshold); err != nil {
+		return err
+	} else if dropped > 0 {
+		logging.Infof(logging.ComponentNode, "operation queue dropped %d user operations of nodes that are not connected; a full sync replaces them on connect", dropped)
+	}
+	if err := c.repo.QueueLaggingNodeSyncs(ctx); err != nil {
+		return err
+	}
+	_, err := c.repo.PruneFinishedOperations(ctx, 0, 1000)
+	return err
+}
+
+func (c Controller) NodesWithOpenOperations(ctx context.Context) ([]int64, bool, error) {
+	return c.repo.NodesWithOpenOperations(ctx)
+}
+
+func (c Controller) EscalateToFullSync(ctx context.Context, nodeID int64) error {
+	return c.repo.QueueSyncConfig(ctx, &nodeID, nil)
 }
 
 type operationGroup struct {
