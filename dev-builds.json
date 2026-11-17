@@ -1,9 +1,33 @@
 {
   "schema_version": 1,
   "project": "Rebecca",
-  "latest": "dev-8f19770",
-  "updated_at": "2026-11-17T19:14:26Z",
+  "latest": "dev-475aff1",
+  "updated_at": "2026-11-17T19:47:26Z",
   "builds": [
+    {
+      "tag": "dev-475aff1",
+      "sha": "475aff1580aeaaefa75ba11bf5ced9c4e5f5d0a0",
+      "branch": "dev",
+      "workflow": "Binary Build",
+      "run_id": "44161713843",
+      "run_number": "1109",
+      "created_at": "2026-11-17T19:47:26Z",
+      "release_tag": "dev-builds",
+      "assets": {
+        "linux-arm64": {
+          "name": "rebecca-linux-arm64-dev-475aff1.tar.gz",
+          "url": "https://github.com/rebeccapanel/Rebecca/releases/download/dev-builds/rebecca-linux-arm64-dev-475aff1.tar.gz"
+        },
+        "linux-amd64": {
+          "name": "rebecca-linux-amd64-dev-475aff1.tar.gz",
+          "url": "https://github.com/rebeccapanel/Rebecca/releases/download/dev-builds/rebecca-linux-amd64-dev-475aff1.tar.gz"
+        },
+        "windows-amd64": {
+          "name": "rebecca-windows-amd64-dev-475aff1.zip",
+          "url": "https://github.com/rebeccapanel/Rebecca/releases/download/dev-builds/rebecca-windows-amd64-dev-475aff1.zip"
+        }
+      }
+    },
     {
       "tag": "dev-8f19770",
       "sha": "8f19770073009b1f9f292720127ae1d0ffba2ea9",
@@ -1129,26 +1153,6 @@
         "windows-amd64": {
           "name": "rebecca-windows-amd64-dev-373394f.zip",
           "url": "https://github.com/rebeccapanel/Rebecca/releases/download/dev-builds/rebecca-windows-amd64-dev-373394f.zip"
-        }
-      }
-    },
-    {
-      "tag": "dev-09220f1",
-      "sha": "09220f1a5675c0308b1683e1e073a129f1e72539",
-      "branch": "dev",
-      "workflow": "Binary Build",
-      "run_id": "40554802364",
-      "run_number": "1026",
-      "created_at": "2026-10-27T17:56:47Z",
-      "release_tag": "dev-builds",
-      "assets": {
-        "windows-amd64": {
-          "name": "rebecca-windows-amd64-dev-09220f1.zip",
-          "url": "https://github.com/rebeccapanel/Rebecca/releases/download/dev-builds/rebecca-windows-amd64-dev-09220f1.zip"
-        },
-        "linux-amd64": {
-          "name": "rebecca-linux-amd64-dev-09220f1.tar.gz",
-          "url": "https://github.com/rebeccapanel/Rebecca/releases/download/dev-builds/rebecca-linux-amd64-dev-09220f1.tar.gz"
         }
       }
     }
