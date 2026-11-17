@@ -80,12 +80,36 @@ func (s *Server) processNodeOperations(ctx context.Context) {
 }
 
 func (s *Server) kickNodeOperationsSoon() {
+	if s.configOperationsKick != nil {
+		select {
+		case s.configOperationsKick <- struct{}{}:
+		default:
+		}
+	}
 	if s.nodeOperationsKick == nil {
 		return
 	}
 	select {
 	case s.nodeOperationsKick <- struct{}{}:
 	default:
+	}
+}
+
+func (s *Server) runConfigOperationsWorker(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-s.configOperationsKick:
+		}
+		workerCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		result, err := s.nodeController.ProcessQueue(workerCtx, nodecontroller.ProcessOperationsRequest{Limit: defaultNodeOperationsBatchSize, ConfigOnly: true})
+		cancel()
+		if err != nil && ctx.Err() == nil {
+			logging.Warnf(logging.ComponentNode, "config sync lane failed: %v", err)
+		} else if result.Processed > 0 {
+			logging.Debugf(logging.ComponentNode, "config sync lane processed=%d done=%d retrying=%d failed=%d", result.Processed, result.Done, result.Retrying, result.Failed)
+		}
 	}
 }
 

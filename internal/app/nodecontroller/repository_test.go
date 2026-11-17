@@ -577,7 +577,7 @@ VALUES ('add_user', 50, ?, '{}', 'pending', ?, CURRENT_TIMESTAMP, CURRENT_TIMEST
 	if result.Processed != 1 || result.Done != 0 || result.Retrying != 1 {
 		t.Fatalf("expected unavailable user delta to be retried, got %#v", result)
 	}
-	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE node_id = 24`, "pending")
+	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE node_id = 24`, "done")
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 50 AND status = 'retrying'`, 1)
 	assertRepositoryInt64(t, db, `SELECT attempts FROM node_operations WHERE node_id = 24`, 0)
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 50 AND attempts = 1`, 1)
@@ -667,7 +667,7 @@ VALUES ('add_user', 50, ?, '{}', 'pending', ?, CURRENT_TIMESTAMP, CURRENT_TIMEST
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 50 AND operation_type = 'sync_config'`, 1)
 }
 
-func TestControllerProcessQueuePausesDisabledNodeOperation(t *testing.T) {
+func TestControllerProcessQueueDropsUserOperationsOfDisabledNode(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "queue-disabled.db")+"?_pragma=busy_timeout(30000)")
 	if err != nil {
@@ -719,9 +719,9 @@ VALUES ('add_user', 7, 200, '{}', 'pending', 'disabled-op', CURRENT_TIMESTAMP, C
 		t.Fatal(err)
 	}
 	if result.Processed != 0 || result.Failed != 0 || result.Retrying != 0 {
-		t.Fatalf("expected disabled operation to stay paused, got %#v", result)
+		t.Fatalf("expected disabled node operation to be dropped without running, got %#v", result)
 	}
-	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE id = 1`, "pending")
+	assertRepositoryString(t, db, `SELECT status FROM node_operations WHERE id = 1`, "done")
 	assertRepositoryInt64(t, db, `SELECT attempts FROM node_operations WHERE id = 1`, 0)
 }
 
@@ -1863,3 +1863,105 @@ func assertRepositoryInt64(t *testing.T, db *sql.DB, query string, expected int6
 		t.Fatalf("%s: expected %d, got %d", query, expected, actual)
 	}
 }
+
+func newCompactionDB(t *testing.T) (*sql.DB, Repository) {
+	t.Helper()
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "compact.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	if _, err := db.ExecContext(ctx, `
+CREATE TABLE nodes (id INTEGER PRIMARY KEY, status TEXT);
+CREATE TABLE node_operations (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	operation_type TEXT NOT NULL,
+	node_id INTEGER NULL,
+	user_id INTEGER NULL,
+	payload TEXT NOT NULL,
+	status TEXT NOT NULL DEFAULT 'pending',
+	attempts INTEGER NOT NULL DEFAULT 0,
+	last_error TEXT NULL,
+	idempotency_key TEXT NOT NULL UNIQUE,
+	created_at DATETIME NOT NULL,
+	updated_at DATETIME NOT NULL
+);
+INSERT INTO nodes (id, status) VALUES (1, 'connected'), (2, 'error'), (3, 'deleted'), (4, 'connected');`); err != nil {
+		t.Fatal(err)
+	}
+	return db, NewRepository(db, "sqlite")
+}
+
+func TestRepositoryCompactBacklogsDropsOperationsOfNodesThatAreNotConnected(t *testing.T) {
+	ctx := context.Background()
+	db, repo := newCompactionDB(t)
+	for i, node := range []int{2, 2, 3, 1} {
+		if _, err := db.ExecContext(ctx, `INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES ('add_user', ?, ?, '{}', 'pending', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`, node, i+1, fmt.Sprintf("k%d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO node_operations (operation_type, node_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES ('sync_config', 2, '{}', 'pending', 'sync', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`); err != nil {
+		t.Fatal(err)
+	}
+	dropped, err := repo.CompactBacklogs(ctx, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dropped != 3 {
+		t.Fatalf("dropped %d", dropped)
+	}
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE status = 'pending' AND operation_type = 'add_user'`, 1)
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE status = 'pending' AND operation_type = 'sync_config'`, 1)
+}
+
+func TestRepositoryCompactBacklogsCollapsesAHugeBacklogIntoOneFullSync(t *testing.T) {
+	ctx := context.Background()
+	db, repo := newCompactionDB(t)
+	for i := 0; i < 30; i++ {
+		if _, err := db.ExecContext(ctx, `INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES ('update_user', 1, ?, '{}', 'pending', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`, i+1, fmt.Sprintf("big%d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 0; i < 5; i++ {
+		if _, err := db.ExecContext(ctx, `INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES ('update_user', 4, ?, '{}', 'pending', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`, i+1, fmt.Sprintf("small%d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := repo.CompactBacklogs(ctx, 10); err != nil {
+		t.Fatal(err)
+	}
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 1 AND operation_type = 'sync_config' AND status = 'pending'`, 1)
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 4 AND operation_type = 'sync_config'`, 0)
+	if _, err := repo.CompactBacklogs(ctx, 10); err != nil {
+		t.Fatal(err)
+	}
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 1 AND operation_type = 'sync_config' AND status = 'pending'`, 1)
+}
+
+func TestRepositoryPendingConfigOperationsIgnoresUserOperations(t *testing.T) {
+	ctx := context.Background()
+	db, repo := newCompactionDB(t)
+	for i := 0; i < 50; i++ {
+		if _, err := db.ExecContext(ctx, `INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES ('add_user', 1, ?, '{}', 'pending', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`, i+1, fmt.Sprintf("u%d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := repo.QueueSyncConfig(ctx, ptrInt64(1), map[string]any{"source": "inbound"}); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := repo.PendingConfigOperations(ctx, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 || rows[0].OperationType != "sync_config" {
+		t.Fatalf("config lane must only see config syncs: %+v", rows)
+	}
+}
+
+func ptrInt64(v int64) *int64 { return &v }

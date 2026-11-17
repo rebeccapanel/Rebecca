@@ -65,6 +65,7 @@ type Server struct {
 	sponsors             *sponsorManager
 	backgroundOnce       sync.Once
 	nodeOperationsKick   chan struct{}
+	configOperationsKick chan struct{}
 	userOpsKickMu        sync.Mutex
 	nodesBulkMu          sync.Mutex
 	userOpsKicking       bool
@@ -160,6 +161,7 @@ func New(cfg Config) (*Server, error) {
 		}, certificateManager),
 		sponsors:             newSponsorManager(cfg.SponsorManifestURL, cfg.SponsorCacheDir, nil),
 		nodeOperationsKick:   make(chan struct{}, 1),
+		configOperationsKick: make(chan struct{}, 1),
 		recentActionsEnabled: true,
 	}
 	server.configRepo = xrayconfig.NewRepository(pool.DB, pool.Dialect, xrayconfig.Options{
@@ -199,6 +201,7 @@ func (s *Server) StartBackground(ctx context.Context) {
 			logging.Infof(logging.ComponentNode, "startup operation queue replaced with full sync cleared=%d", cleared)
 		}
 		go s.runNodeOperationsWorker(ctx)
+		go s.runConfigOperationsWorker(ctx)
 		go s.runRuntimeUserOperationsWorker(ctx)
 		go s.runNodeRecoveryWorker(ctx)
 		go s.runNodeUsageCollector(ctx)

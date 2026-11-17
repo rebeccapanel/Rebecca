@@ -852,6 +852,90 @@ LIMIT ?`
 	return result, nil
 }
 
+func (r Repository) PendingConfigOperations(ctx context.Context, limit int) ([]OperationRow, error) {
+	if limit <= 0 || limit > maxPendingOperationsLimit {
+		limit = maxPendingOperationsLimit
+	}
+	retryCutoff := r.timeArg(time.Now().UTC().Add(-operationRetryBackoff))
+	rows, err := r.db.QueryContext(ctx, `SELECT no.id, no.operation_type, no.node_id, no.user_id, no.payload, no.attempts, no.idempotency_key
+FROM node_operations no
+LEFT JOIN nodes n ON n.id = no.node_id
+WHERE no.operation_type = 'sync_config'
+  AND (no.status = 'pending' OR (no.status = 'retrying' AND no.updated_at <= ?))
+  AND (no.node_id IS NULL OR LOWER(COALESCE(n.status, '')) = 'connected')
+ORDER BY no.id
+LIMIT ?`, retryCutoff, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := []OperationRow{}
+	for rows.Next() {
+		var row OperationRow
+		var payload []byte
+		if err := rows.Scan(&row.ID, &row.OperationType, &row.NodeID, &row.UserID, &payload, &row.Attempts, &row.IdempotencyKey); err != nil {
+			return nil, err
+		}
+		row.Payload = append(row.Payload[:0], payload...)
+		result = append(result, row)
+	}
+	return result, rows.Err()
+}
+
+func (r Repository) CompactBacklogs(ctx context.Context, threshold int) (int, error) {
+	if threshold <= 0 {
+		threshold = 200
+	}
+	now := r.timeArg(time.Now().UTC())
+	total := 0
+	res, err := r.db.ExecContext(ctx, `UPDATE node_operations
+SET status = 'done', last_error = NULL, updated_at = ?
+WHERE operation_type IN ('add_user', 'update_user', 'remove_user', 'disable_user', 'enable_user')
+  AND node_id IS NOT NULL
+  AND (
+	status IN ('pending', 'retrying')
+	OR (status = 'running' AND updated_at < ?)
+  )
+  AND node_id IN (
+	SELECT id FROM nodes WHERE LOWER(COALESCE(status, '')) NOT IN ('connected', 'connecting')
+  )`, now, r.timeArg(time.Now().UTC().Add(-2*time.Minute)))
+	if err != nil {
+		return 0, err
+	}
+	total += rowsAffectedOrDefault(res, 0)
+
+	rows, err := r.db.QueryContext(ctx, `SELECT no.node_id
+FROM node_operations no
+JOIN nodes n ON n.id = no.node_id
+WHERE no.operation_type IN ('add_user', 'update_user', 'remove_user', 'disable_user', 'enable_user')
+  AND no.status IN ('pending', 'retrying')
+  AND LOWER(COALESCE(n.status, '')) = 'connected'
+GROUP BY no.node_id
+HAVING COUNT(*) > ?`, threshold)
+	if err != nil {
+		return total, err
+	}
+	nodeIDs := []int64{}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return total, err
+		}
+		nodeIDs = append(nodeIDs, id)
+	}
+	if err := rows.Close(); err != nil {
+		return total, err
+	}
+	for _, id := range nodeIDs {
+		nodeID := id
+		if err := r.QueueSyncConfig(ctx, &nodeID, nil); err != nil {
+			return total, err
+		}
+	}
+	return total, nil
+}
+
 func (r Repository) pendingOperationsFair(ctx context.Context, limit int) ([]OperationRow, error) {
 	perNodeCap := pendingOperationsPerNodeCap
 	if limit < perNodeCap {

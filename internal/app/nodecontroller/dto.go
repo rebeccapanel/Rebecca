@@ -49,8 +49,9 @@ type File struct {
 }
 
 type ProcessOperationsRequest struct {
-	NodeID int64 `json:"node_id,omitempty"`
-	Limit  int   `json:"limit,omitempty"`
+	NodeID     int64 `json:"node_id,omitempty"`
+	Limit      int   `json:"limit,omitempty"`
+	ConfigOnly bool  `json:"config_only,omitempty"`
 }
 
 type ProcessOperationsResult struct {
