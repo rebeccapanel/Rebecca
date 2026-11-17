@@ -541,19 +541,25 @@ func (c Controller) ProcessQueue(ctx context.Context, req ProcessOperationsReque
 }
 
 func (c Controller) Maintain(ctx context.Context) error {
-	if err := c.repo.RecoverStaleOperations(ctx, 2*time.Minute); err != nil {
+	if err := retryOnLockConflict(ctx, func() error { return c.repo.RecoverStaleOperations(ctx, 2*time.Minute) }); err != nil {
 		return err
 	}
-	if dropped, err := c.repo.CompactBacklogs(ctx, backlogCollapseThreshold); err != nil {
+	if err := retryOnLockConflict(ctx, func() error {
+		dropped, err := c.repo.CompactBacklogs(ctx, backlogCollapseThreshold)
+		if err == nil && dropped > 0 {
+			logging.Infof(logging.ComponentNode, "operation queue dropped %d user operations of nodes that are not connected; a full sync replaces them on connect", dropped)
+		}
 		return err
-	} else if dropped > 0 {
-		logging.Infof(logging.ComponentNode, "operation queue dropped %d user operations of nodes that are not connected; a full sync replaces them on connect", dropped)
-	}
-	if err := c.repo.QueueLaggingNodeSyncs(ctx); err != nil {
+	}); err != nil {
 		return err
 	}
-	_, err := c.repo.PruneFinishedOperations(ctx, 0, 1000)
-	return err
+	if err := retryOnLockConflict(ctx, func() error { return c.repo.QueueLaggingNodeSyncs(ctx) }); err != nil {
+		return err
+	}
+	return retryOnLockConflict(ctx, func() error {
+		_, err := c.repo.PruneFinishedOperations(ctx, 0, 1000)
+		return err
+	})
 }
 
 func (c Controller) NodesWithOpenOperations(ctx context.Context) ([]int64, bool, error) {

@@ -1210,6 +1210,16 @@ WHERE status IN ('pending', 'retrying', 'running')
 }
 
 func (r Repository) MarkOperationsDone(ctx context.Context, ids []int64) (int, error) {
+	var total int
+	err := retryOnLockConflict(ctx, func() error {
+		var err error
+		total, err = r.markOperationsDone(ctx, ids)
+		return err
+	})
+	return total, err
+}
+
+func (r Repository) markOperationsDone(ctx context.Context, ids []int64) (int, error) {
 	if len(ids) == 0 {
 		return 0, nil
 	}
