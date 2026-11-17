@@ -1986,3 +1986,23 @@ VALUES ('sync_config', 1, '{}', 'pending', 'live', CURRENT_TIMESTAMP, CURRENT_TI
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 2 AND status = 'pending'`, 1)
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 1 AND status = 'pending'`, 1)
 }
+
+func TestRepositoryCompactBacklogsCollapsesOperationsThatKeepFailing(t *testing.T) {
+	ctx := context.Background()
+	db, repo := newCompactionDB(t)
+	for i := 0; i < 3; i++ {
+		if _, err := db.ExecContext(ctx, `INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, attempts, idempotency_key, created_at, updated_at)
+VALUES ('remove_user', 1, ?, '{}', 'retrying', 4, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`, i+1, fmt.Sprintf("stuck%d", i)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO node_operations (operation_type, node_id, user_id, payload, status, attempts, idempotency_key, created_at, updated_at)
+VALUES ('add_user', 4, 9, '{}', 'retrying', 1, 'fine', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.CompactBacklogs(ctx, 50); err != nil {
+		t.Fatal(err)
+	}
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 1 AND operation_type = 'sync_config' AND status = 'pending'`, 1)
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 4 AND operation_type = 'sync_config'`, 0)
+}

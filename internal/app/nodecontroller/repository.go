@@ -61,6 +61,7 @@ type OperationRow struct {
 
 const (
 	pendingOperationsPerNodeCap = 200
+	stuckUserOperationAttempts  = 3
 	maxPendingOperationsLimit   = 10000
 	operationRetryBackoff       = 2 * time.Second
 )
@@ -1012,10 +1013,10 @@ WHERE operation_type = 'sync_config' AND node_id = ? AND id < ? AND status IN ('
 FROM node_operations no
 JOIN nodes n ON n.id = no.node_id
 WHERE no.operation_type IN ('add_user', 'update_user', 'remove_user', 'disable_user', 'enable_user')
-  AND no.status IN ('pending', 'retrying')
+  AND no.status IN ('pending', 'retrying', 'running')
   AND LOWER(COALESCE(n.status, '')) = 'connected'
 GROUP BY no.node_id
-HAVING COUNT(*) > ?`, threshold)
+HAVING COUNT(*) > ? OR MAX(no.attempts) >= ?`, threshold, stuckUserOperationAttempts)
 	if err != nil {
 		return total, err
 	}

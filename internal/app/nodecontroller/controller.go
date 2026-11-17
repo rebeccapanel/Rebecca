@@ -466,7 +466,7 @@ func boundedLogLineLimit(maxLines int) uint32 {
 	return uint32(maxLines)
 }
 
-const backlogCollapseThreshold = 200
+const backlogCollapseThreshold = 50
 const notStartedSyncInterval = 5 * time.Minute
 
 var notStartedSyncAt sync.Map

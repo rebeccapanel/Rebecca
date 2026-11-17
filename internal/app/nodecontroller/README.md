@@ -35,7 +35,8 @@ crash never loses an update. Delivery does not go through a polling queue.
   are not connected are dropped (duplicate syncs of those nodes collapse to the
   newest, syncs of deleted nodes are dropped) (a connect, restart, update or recovery always
   runs a full sync that rebuilds everything from the database), a node with more
-  than 200 open user rows is collapsed into one full sync, nodes whose applied
+  than 50 open user rows, or with a user row that already failed 3 times, is
+  collapsed into one full sync, nodes whose applied
   revision lags get a full sync, and finished rows are deleted at once so the
   table stays small.
 - A node that comes back after a failure, or reports that xray is not started,
