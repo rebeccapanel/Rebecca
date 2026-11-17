@@ -963,6 +963,51 @@ WHERE operation_type IN ('add_user', 'update_user', 'remove_user', 'disable_user
 	}
 	total += rowsAffectedOrDefault(res, 0)
 
+	res, err = r.db.ExecContext(ctx, `UPDATE node_operations
+SET status = 'done', last_error = NULL, updated_at = ?
+WHERE operation_type = 'sync_config'
+  AND node_id IS NOT NULL
+  AND status IN ('pending', 'retrying')
+  AND node_id IN (SELECT id FROM nodes WHERE LOWER(COALESCE(status, '')) = 'deleted')`, now)
+	if err != nil {
+		return total, err
+	}
+	total += rowsAffectedOrDefault(res, 0)
+
+	dupRows, err := r.db.QueryContext(ctx, `SELECT no.node_id, MAX(no.id)
+FROM node_operations no
+JOIN nodes n ON n.id = no.node_id
+WHERE no.operation_type = 'sync_config'
+  AND no.status IN ('pending', 'retrying')
+  AND LOWER(COALESCE(n.status, '')) NOT IN ('connected', 'connecting', 'deleted')
+GROUP BY no.node_id
+HAVING COUNT(*) > 1`)
+	if err != nil {
+		return total, err
+	}
+	type keepRow struct{ node, id int64 }
+	keep := []keepRow{}
+	for dupRows.Next() {
+		var k keepRow
+		if err := dupRows.Scan(&k.node, &k.id); err != nil {
+			dupRows.Close()
+			return total, err
+		}
+		keep = append(keep, k)
+	}
+	if err := dupRows.Close(); err != nil {
+		return total, err
+	}
+	for _, k := range keep {
+		res, err := r.db.ExecContext(ctx, `UPDATE node_operations
+SET status = 'done', last_error = NULL, updated_at = ?
+WHERE operation_type = 'sync_config' AND node_id = ? AND id < ? AND status IN ('pending', 'retrying')`, now, k.node, k.id)
+		if err != nil {
+			return total, err
+		}
+		total += rowsAffectedOrDefault(res, 0)
+	}
+
 	rows, err := r.db.QueryContext(ctx, `SELECT no.node_id
 FROM node_operations no
 JOIN nodes n ON n.id = no.node_id

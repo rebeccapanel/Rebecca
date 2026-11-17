@@ -82,7 +82,6 @@ func startCoordinator(t *testing.T, f *fakeBackend) (*Coordinator, context.Cance
 	t.Helper()
 	co := newCoordinator(f)
 	co.safety = time.Hour
-	co.sleep = func(ctx context.Context, d time.Duration) bool { return ctx.Err() == nil }
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { co.Run(ctx); close(done) }()
@@ -217,34 +216,86 @@ func TestCoordinatorKickDuringProcessingTriggersAnotherPass(t *testing.T) {
 	})
 }
 
-func TestCoordinatorBacksOffThenEscalatesToFullSync(t *testing.T) {
+func TestCoordinatorCoolsDownFailingNodeAndEscalatesOnce(t *testing.T) {
 	f := newFakeBackend()
 	f.process = func(nodeID int64) (ProcessOperationsResult, error) {
 		return ProcessOperationsResult{}, errors.New("node unreachable")
 	}
 	co, _ := startCoordinator(t, f)
-	var waits []time.Duration
-	var wmu sync.Mutex
-	co.sleep = func(ctx context.Context, d time.Duration) bool {
-		wmu.Lock()
-		waits = append(waits, d)
-		wmu.Unlock()
-		return ctx.Err() == nil
+	var clock atomic.Int64
+	base := time.Now()
+	co.now = func() time.Time { return base.Add(time.Duration(clock.Load())) }
+	f.mu.Lock()
+	f.open[1] = 1
+	f.mu.Unlock()
+	pass := func(want int) {
+		t.Helper()
+		co.Kick()
+		waitFor(t, "pass", func() bool { return f.processedCount(1) >= want })
+		time.Sleep(30 * time.Millisecond)
 	}
+	pass(1)
+	co.Kick()
+	time.Sleep(50 * time.Millisecond)
+	if f.processedCount(1) != 1 {
+		t.Fatal("a failing node must not be retried during its cooldown")
+	}
+	clock.Add(int64(2 * time.Second))
+	pass(2)
+	clock.Add(int64(3 * time.Second))
+	pass(3)
+	f.mu.Lock()
+	escalated := f.escalated[1]
+	f.mu.Unlock()
+	if escalated != 1 {
+		t.Fatalf("the third consecutive failure queues one full sync, got %d", escalated)
+	}
+	clock.Add(int64(10 * time.Second))
+	pass(4)
+	f.mu.Lock()
+	escalated = f.escalated[1]
+	f.mu.Unlock()
+	if escalated != 1 {
+		t.Fatalf("escalation must not repeat on every failure, got %d", escalated)
+	}
+}
+
+func TestCoordinatorSuccessClearsTheCooldown(t *testing.T) {
+	f := newFakeBackend()
+	var fail atomic.Bool
+	fail.Store(true)
+	f.process = func(nodeID int64) (ProcessOperationsResult, error) {
+		if fail.Load() {
+			return ProcessOperationsResult{}, errors.New("down")
+		}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		n := f.open[nodeID]
+		f.open[nodeID] = 0
+		return ProcessOperationsResult{Processed: n, Done: n}, nil
+	}
+	co, _ := startCoordinator(t, f)
+	var clock atomic.Int64
+	base := time.Now()
+	co.now = func() time.Time { return base.Add(time.Duration(clock.Load())) }
 	f.mu.Lock()
 	f.open[1] = 1
 	f.mu.Unlock()
 	co.Kick()
-	waitFor(t, "escalation", func() bool {
+	waitFor(t, "first failure", func() bool { return f.processedCount(1) >= 1 })
+	fail.Store(false)
+	clock.Add(int64(time.Minute))
+	co.Kick()
+	waitFor(t, "recovery", func() bool {
 		f.mu.Lock()
 		defer f.mu.Unlock()
-		return f.escalated[1] >= 1
+		return f.open[1] == 0
 	})
-	waitFor(t, "give up after the failure cap", func() bool { return f.processedCount(1) >= coordinatorMaxFailures })
-	wmu.Lock()
-	defer wmu.Unlock()
-	if len(waits) < 3 || waits[0] != time.Second || waits[1] != 2*time.Second || waits[2] != 4*time.Second {
-		t.Fatalf("backoff must double: %v", waits)
+	co.mu.Lock()
+	_, cooling := co.cooldown[1]
+	co.mu.Unlock()
+	if cooling {
+		t.Fatal("a successful pass must clear the cooldown")
 	}
 }
 
@@ -277,7 +328,7 @@ func TestCoordinatorSafetyTickPicksUpWorkWithoutAKick(t *testing.T) {
 }
 
 func TestBackoffForIsCapped(t *testing.T) {
-	if backoffFor(0) != 0 || backoffFor(1) != time.Second || backoffFor(5) != 16*time.Second || backoffFor(6) != coordinatorMaxBackoff || backoffFor(60) != coordinatorMaxBackoff {
+	if backoffFor(0) != 0 || backoffFor(1) != time.Second || backoffFor(5) != 16*time.Second || backoffFor(9) != 256*time.Second || backoffFor(10) != coordinatorMaxBackoff || backoffFor(60) != coordinatorMaxBackoff {
 		t.Fatal("backoff schedule is wrong")
 	}
 }

@@ -14,8 +14,7 @@ const (
 	coordinatorNodeTimeout    = 2 * time.Minute
 	coordinatorMaxParallel    = 16
 	coordinatorEscalateAfter  = 3
-	coordinatorMaxFailures    = 6
-	coordinatorMaxBackoff     = 30 * time.Second
+	coordinatorMaxBackoff     = 5 * time.Minute
 	coordinatorBatch          = 5000
 )
 
@@ -46,7 +45,8 @@ type Coordinator struct {
 	backend      CoordinatorBackend
 	wake         chan struct{}
 	sem          chan struct{}
-	sleep        func(ctx context.Context, d time.Duration) bool
+	cooldown     map[int64]time.Time
+	now          func() time.Time
 	safety       time.Duration
 	mu           sync.Mutex
 	workers      map[int64]*nodeWorkerState
@@ -64,21 +64,11 @@ func newCoordinator(backend CoordinatorBackend) *Coordinator {
 		backend:  backend,
 		wake:     make(chan struct{}, 1),
 		sem:      make(chan struct{}, coordinatorMaxParallel),
-		sleep:    sleepContext,
 		safety:   coordinatorSafetyInterval,
 		workers:  map[int64]*nodeWorkerState{},
 		failures: map[int64]int{},
-	}
-}
-
-func sleepContext(ctx context.Context, d time.Duration) bool {
-	timer := time.NewTimer(d)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return false
-	case <-timer.C:
-		return true
+		cooldown: map[int64]time.Time{},
+		now:      time.Now,
 	}
 }
 
@@ -140,6 +130,10 @@ func (co *Coordinator) dispatch(ctx context.Context, tick bool) {
 
 func (co *Coordinator) notify(ctx context.Context, nodeID int64) {
 	co.mu.Lock()
+	if until, ok := co.cooldown[nodeID]; ok && co.now().Before(until) {
+		co.mu.Unlock()
+		return
+	}
 	state := co.workers[nodeID]
 	if state == nil {
 		state = &nodeWorkerState{}
@@ -162,6 +156,9 @@ func (co *Coordinator) notify(ctx context.Context, nodeID int64) {
 func backoffFor(failures int) time.Duration {
 	if failures <= 0 {
 		return 0
+	}
+	if failures > 20 {
+		return coordinatorMaxBackoff
 	}
 	d := time.Second << uint(failures-1)
 	if d > coordinatorMaxBackoff || d <= 0 {
@@ -202,8 +199,10 @@ func (co *Coordinator) drainNode(ctx context.Context, nodeID int64) {
 		co.mu.Lock()
 		if failed {
 			co.failures[nodeID]++
+			co.cooldown[nodeID] = co.now().Add(backoffFor(co.failures[nodeID]))
 		} else {
 			delete(co.failures, nodeID)
+			delete(co.cooldown, nodeID)
 		}
 		failures := co.failures[nodeID]
 		co.mu.Unlock()
@@ -218,14 +217,6 @@ func (co *Coordinator) drainNode(ctx context.Context, nodeID int64) {
 				logging.Warnf(logging.ComponentNode, "node %d could not queue a full sync: %v", nodeID, err)
 			}
 		}
-		if failures >= coordinatorMaxFailures {
-			co.mu.Lock()
-			delete(co.failures, nodeID)
-			co.mu.Unlock()
-			return
-		}
-		if !co.sleep(ctx, backoffFor(failures)) {
-			return
-		}
+		return
 	}
 }

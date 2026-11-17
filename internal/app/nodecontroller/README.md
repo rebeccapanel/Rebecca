@@ -27,11 +27,13 @@ crash never loses an update. Delivery does not go through a polling queue.
 - A pass is `ProcessQueue(NodeID)`: config syncs first, then user changes
   batched per node, only the latest change per user. A full sync supersedes every
   open row of that node.
-- A failing node backs off 1s, 2s, 4s ... up to 30s. The third consecutive
-  failure queues one full sync for that node, and the sixth ends the attempt until
-  the next safety tick.
+- A failing node cools down 1s, 2s, 4s ... up to 5 minutes and is skipped by
+  kicks and safety ticks until the cooldown ends, so a node that cannot finish a
+  sync is not hammered with full syncs. The third consecutive failure queues one
+  full sync for that node. A successful pass clears the cooldown.
 - Maintenance (every 10s): stale `running` rows are recovered, rows of nodes that
-  are not connected are dropped (a connect, restart, update or recovery always
+  are not connected are dropped (duplicate syncs of those nodes collapse to the
+  newest, syncs of deleted nodes are dropped) (a connect, restart, update or recovery always
   runs a full sync that rebuilds everything from the database), a node with more
   than 200 open user rows is collapsed into one full sync, nodes whose applied
   revision lags get a full sync, and finished rows are deleted at once so the

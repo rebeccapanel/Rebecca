@@ -1963,3 +1963,26 @@ VALUES ('add_user', 1, ?, '{}', 'pending', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTA
 }
 
 func ptrInt64(v int64) *int64 { return &v }
+
+func TestRepositoryCompactBacklogsCleansDuplicateSyncsOfInactiveNodes(t *testing.T) {
+	ctx := context.Background()
+	db, repo := newCompactionDB(t)
+	for i := 0; i < 4; i++ {
+		for _, node := range []int{2, 3} {
+			if _, err := db.ExecContext(ctx, `INSERT INTO node_operations (operation_type, node_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES ('sync_config', ?, '{}', 'pending', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`, node, fmt.Sprintf("s%d-%d", node, i)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if _, err := db.ExecContext(ctx, `INSERT INTO node_operations (operation_type, node_id, payload, status, idempotency_key, created_at, updated_at)
+VALUES ('sync_config', 1, '{}', 'pending', 'live', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repo.CompactBacklogs(ctx, 200); err != nil {
+		t.Fatal(err)
+	}
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 3 AND status = 'pending'`, 0)
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 2 AND status = 'pending'`, 1)
+	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 1 AND status = 'pending'`, 1)
+}
