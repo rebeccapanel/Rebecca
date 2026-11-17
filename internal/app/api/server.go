@@ -64,11 +64,8 @@ type Server struct {
 	externalApps         *externalapps.Manager
 	sponsors             *sponsorManager
 	backgroundOnce       sync.Once
-	nodeOperationsKick   chan struct{}
-	userOpsKickMu        sync.Mutex
+	nodeCoordinator      *nodecontroller.Coordinator
 	nodesBulkMu          sync.Mutex
-	userOpsKicking       bool
-	userOpsKickUserIDs   map[int64]struct{}
 	liveUserSpeedsMu     sync.RWMutex
 	liveUserSpeeds       map[string]liveUserSpeed
 	liveUserSpeedTotals  map[liveUserSpeedScope]liveUserSpeedTotal
@@ -159,9 +156,9 @@ func New(cfg Config) (*Server, error) {
 			MySQLRootPassword: cfg.MySQLRootPassword,
 		}, certificateManager),
 		sponsors:             newSponsorManager(cfg.SponsorManifestURL, cfg.SponsorCacheDir, nil),
-		nodeOperationsKick:   make(chan struct{}, 1),
 		recentActionsEnabled: true,
 	}
+	server.nodeCoordinator = nodecontroller.NewCoordinator(server.nodeController)
 	server.configRepo = xrayconfig.NewRepository(pool.DB, pool.Dialect, xrayconfig.Options{
 		MutationRecorder: server.recordXrayMutationTx,
 		RollbackMarker:   server.markRecentActionUndoneTx,
@@ -198,8 +195,7 @@ func (s *Server) StartBackground(ctx context.Context) {
 		} else if cleared > 0 {
 			logging.Infof(logging.ComponentNode, "startup operation queue replaced with full sync cleared=%d", cleared)
 		}
-		go s.runNodeOperationsWorker(ctx)
-		go s.runRuntimeUserOperationsWorker(ctx)
+		go s.runNodeCoordinator(ctx)
 		go s.runNodeRecoveryWorker(ctx)
 		go s.runNodeUsageCollector(ctx)
 		go s.runNodeUsageFlushWorker(ctx)

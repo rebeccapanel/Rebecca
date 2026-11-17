@@ -315,13 +315,14 @@ func (c Controller) RecoverNodes(ctx context.Context, req RecoverNodesRequest) (
 	result := RecoverNodesResult{Checked: len(nodeIDs)}
 	for _, nodeID := range nodeIDs {
 		metricsCtx, cancel := WithDefaultTimeout(ctx)
-		// A failed health poll is not a request to replace the live runtime.
-		// Restore control-plane health only; pending changes stay in the queue.
 		_, err := c.Health(metricsCtx, Request{NodeID: nodeID})
 		cancel()
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("node %d: %v", nodeID, err))
 			continue
+		}
+		if err := c.repo.QueueSyncConfig(ctx, &nodeID, nil); err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("node %d: %v", nodeID, err))
 		}
 		result.Recovered++
 	}
@@ -465,14 +466,34 @@ func boundedLogLineLimit(maxLines int) uint32 {
 	return uint32(maxLines)
 }
 
+const backlogCollapseThreshold = 50
+const notStartedSyncInterval = 5 * time.Minute
+
+var notStartedSyncAt sync.Map
+
+func notStartedSyncDue(nodeID int64, now time.Time) bool {
+	if last, ok := notStartedSyncAt.Load(nodeID); ok && now.Sub(last.(time.Time)) < notStartedSyncInterval {
+		return false
+	}
+	notStartedSyncAt.Store(nodeID, now)
+	return true
+}
+
 func (c Controller) ProcessQueue(ctx context.Context, req ProcessOperationsRequest) (ProcessOperationsResult, error) {
-	if err := c.repo.RecoverStaleOperations(ctx, 2*time.Minute); err != nil {
-		return ProcessOperationsResult{}, err
+	if !req.ConfigOnly && !req.GlobalOnly && req.NodeID <= 0 {
+		if err := c.Maintain(ctx); err != nil {
+			return ProcessOperationsResult{}, err
+		}
 	}
-	if err := c.repo.QueueLaggingNodeSyncs(ctx); err != nil {
-		return ProcessOperationsResult{}, err
+	var operations []OperationRow
+	var err error
+	if req.ConfigOnly {
+		operations, err = c.repo.PendingConfigOperations(ctx, req.Limit)
+	} else if req.GlobalOnly {
+		operations, err = c.repo.PendingGlobalOperations(ctx, req.Limit)
+	} else {
+		operations, err = c.repo.PendingOperations(ctx, req.NodeID, req.Limit)
 	}
-	operations, err := c.repo.PendingOperations(ctx, req.NodeID, req.Limit)
 	if err != nil {
 		return ProcessOperationsResult{}, err
 	}
@@ -500,14 +521,6 @@ func (c Controller) ProcessQueue(ctx context.Context, req ProcessOperationsReque
 		}
 		groups[idx].operations = append(groups[idx].operations, operation)
 	}
-	userResult, err := c.applyRuntimeUserOperationBatch(ctx, runtimeUserOperations)
-	result.Processed += userResult.Processed
-	result.Done += userResult.Done
-	result.Retrying += userResult.Retrying
-	result.Failed += userResult.Failed
-	if err != nil {
-		return result, err
-	}
 	if err := c.processOrderedOperationGroups(ctx, groups, blockedNodes, &result, maxConcurrentSingleNodeOperations); err != nil {
 		return result, err
 	}
@@ -516,7 +529,45 @@ func (c Controller) ProcessQueue(ctx context.Context, req ProcessOperationsReque
 			return result, err
 		}
 	}
+	userResult, err := c.applyRuntimeUserOperationBatch(ctx, runtimeUserOperations)
+	result.Processed += userResult.Processed
+	result.Done += userResult.Done
+	result.Retrying += userResult.Retrying
+	result.Failed += userResult.Failed
+	if err != nil {
+		return result, err
+	}
 	return result, nil
+}
+
+func (c Controller) Maintain(ctx context.Context) error {
+	if err := retryOnLockConflict(ctx, func() error { return c.repo.RecoverStaleOperations(ctx, 2*time.Minute) }); err != nil {
+		return err
+	}
+	if err := retryOnLockConflict(ctx, func() error {
+		dropped, err := c.repo.CompactBacklogs(ctx, backlogCollapseThreshold)
+		if err == nil && dropped > 0 {
+			logging.Infof(logging.ComponentNode, "operation queue dropped %d user operations of nodes that are not connected; a full sync replaces them on connect", dropped)
+		}
+		return err
+	}); err != nil {
+		return err
+	}
+	if err := retryOnLockConflict(ctx, func() error { return c.repo.QueueLaggingNodeSyncs(ctx) }); err != nil {
+		return err
+	}
+	return retryOnLockConflict(ctx, func() error {
+		_, err := c.repo.PruneFinishedOperations(ctx, 0, 1000)
+		return err
+	})
+}
+
+func (c Controller) NodesWithOpenOperations(ctx context.Context) ([]int64, bool, error) {
+	return c.repo.NodesWithOpenOperations(ctx)
+}
+
+func (c Controller) EscalateToFullSync(ctx context.Context, nodeID int64) error {
+	return c.repo.QueueSyncConfig(ctx, &nodeID, nil)
 }
 
 type operationGroup struct {
@@ -1104,6 +1155,11 @@ func (c Controller) reconcileRuntimeState(ctx context.Context, client *nodeclien
 	}
 	if err := c.repo.SetRuntimeState(ctx, nodeID, state); err != nil {
 		return err
+	}
+	if state.GetConnected() && !state.GetStarted() && notStartedSyncDue(nodeID, time.Now()) {
+		if err := c.repo.QueueSyncConfig(ctx, &nodeID, nil); err != nil {
+			return err
+		}
 	}
 	desired, err := c.repo.DesiredRevision(ctx, nodeID)
 	if err != nil {

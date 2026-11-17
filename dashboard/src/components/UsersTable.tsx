@@ -38,6 +38,7 @@ import { copyTextToClipboard } from "utils/clipboard";
 import { RowActionButton } from "components/ui/row-actions";
 import { formatBytes } from "utils/formatByte";
 import { DataTableColumnMenu } from "components/ui/DataTableColumnMenu";
+import { usePersistedColumnVisibility } from "hooks/usePersistedColumnVisibility";
 import { AddTrafficDialog } from "components/AddTrafficDialog";
 import { UsersOverviewBand } from "components/users/UsersOverviewBand";
 import { generateUserLinks } from "utils/userLinks";
@@ -1174,9 +1175,8 @@ export const UsersTable: FC<UsersTableProps> = ({
 		return actions;
 	};
 
-	const [columnVisibility, setColumnVisibility] = useState<
-		Record<string, boolean>
-	>({});
+	const [columnVisibility, setColumnVisibility] =
+		usePersistedColumnVisibility("users");
 	const filteredUsageTotal = usersResponse.usage_total ?? null;
 	const activeUsersCount =
 		statusBreakdown.active ?? usersResponse.active_total ?? 0;

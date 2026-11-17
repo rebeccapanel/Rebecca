@@ -73,6 +73,7 @@ func (s *Server) recoverStaleNodes(ctx context.Context) {
 		return
 	}
 	if result.Recovered > 0 {
+		s.kickNodeOperationsSoon()
 		logging.Infof(logging.ComponentNode, "recovered stale nodes checked=%d recovered=%d", result.Checked, result.Recovered)
 	}
 	if len(result.Errors) > 0 {

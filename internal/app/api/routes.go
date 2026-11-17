@@ -98,7 +98,7 @@ func (s *Server) Handler() http.Handler {
 	})
 
 	r.NotFound(s.handleHomeOrSubscriptionPath)
-	return &externalAppAwareHandler{apps: s.externalApps, next: withAPIRequestBodyLimit(r)}
+	return &externalAppAwareHandler{apps: s.externalApps, next: withAPIRequestBodyLimit(s.withConfigSyncKick(r))}
 }
 
 func (s *Server) registerAdminRoutes(r chi.Router) {
@@ -254,4 +254,40 @@ func (s *Server) registerNodeRoutes(r chi.Router) {
 	r.HandleFunc("/nodes", s.requireSudo(s.handleNodes))
 	r.HandleFunc("/node/*", s.requireSudo(s.handleNodePath))
 	r.HandleFunc("/node", s.requireSudo(s.handleNodeRoot))
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func (r *statusRecorder) Flush() {
+	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func (s *Server) withConfigSyncKick(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		default:
+			next.ServeHTTP(w, r)
+			return
+		}
+		if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
+		if rec.status < 300 {
+			s.kickNodeOperationsSoon()
+		}
+	})
 }
