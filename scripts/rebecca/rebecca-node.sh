@@ -2627,7 +2627,7 @@ dispatch_command() {
     esac
     case "$cmd" in
         install)
-            if [ ! -t 0 ] && [ -r /dev/tty ]; then
+            if [ ! -t 0 ] && [ -z "${REBECCA_NODE_NO_TTY:-}" ] && [ -r /dev/tty ] && { : </dev/tty; } 2>/dev/null; then
                 install_command </dev/tty
             else
                 install_command
