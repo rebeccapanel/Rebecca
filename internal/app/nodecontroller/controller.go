@@ -178,7 +178,7 @@ func (c Controller) Connect(ctx context.Context, req Request) (RuntimeResult, er
 		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("sync", req.NodeID, err)
 	}
-	state = syncRes.GetRuntime()
+	state = acknowledgedRuntime(syncRes.GetRuntime(), syncReq)
 	result, err := c.finishRuntime(ctx, node, state, "connected")
 	if err != nil {
 		return RuntimeResult{}, err
@@ -238,7 +238,7 @@ func (c Controller) restartNow(ctx context.Context, req Request) (RuntimeResult,
 		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("restart", req.NodeID, err)
 	}
-	result, err := c.finishRuntime(ctx, node, res.GetRuntime(), res.GetMessage())
+	result, err := c.finishRuntime(ctx, node, acknowledgedRuntime(res.GetRuntime(), runtimeReq), res.GetMessage())
 	if err != nil {
 		return RuntimeResult{}, err
 	}
@@ -918,7 +918,7 @@ func (c Controller) applyOperation(ctx context.Context, operation OperationRow, 
 			}
 			return err
 		}
-		_, err = c.finishRuntime(ctx, node, res.GetRuntime(), res.GetMessage())
+		_, err = c.finishRuntime(ctx, node, acknowledgedRuntime(res.GetRuntime(), runtimeReq), res.GetMessage())
 		return err
 	case "update_runtime", "update_geo", "restart_service", "update_service", "reboot_host", "apply_tor_proxy", "configure_windscribe", "configure_psiphon":
 		var req Request
@@ -1178,6 +1178,16 @@ func (c Controller) reconcileRuntimeState(ctx context.Context, client *nodeclien
 	}
 	result.DesiredRevision = desired
 	return nil
+}
+
+// A node builds the runtime state of its reply before it records the revision it just applied, so
+// the state of a successful sync reports the previous revision. Taking it at face value leaves the
+// node one revision behind and queues another sync every maintenance pass.
+func acknowledgedRuntime(runtime *nodev1.RuntimeState, req *nodev1.RuntimeConfigRequest) *nodev1.RuntimeState {
+	if runtime != nil && req != nil && req.GetDesiredRevision() > runtime.GetAppliedRevision() {
+		runtime.AppliedRevision = req.GetDesiredRevision()
+	}
+	return runtime
 }
 
 func (c Controller) prepareRuntimeRevision(ctx context.Context, client *nodeclient.Client, nodeID int64, req *nodev1.RuntimeConfigRequest) error {

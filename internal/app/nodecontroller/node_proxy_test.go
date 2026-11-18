@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	nodev1 "github.com/rebeccapanel/rebecca/internal/proto/node/v1"
 )
 
 func TestNodeProxyHTTPConnectCarriesTheNodeConnection(t *testing.T) {
@@ -61,5 +63,20 @@ func TestNodeProxyHTTPConnectCarriesTheNodeConnection(t *testing.T) {
 	}
 	if !strings.HasPrefix(<-gotAuth, "Basic ") {
 		t.Fatal("proxy credentials were not sent")
+	}
+}
+
+func TestAcknowledgedRuntimeRaisesAppliedRevisionToTheRequest(t *testing.T) {
+	state := &nodev1.RuntimeState{AppliedRevision: 9}
+	acknowledgedRuntime(state, &nodev1.RuntimeConfigRequest{DesiredRevision: 10})
+	if state.GetAppliedRevision() != 10 {
+		t.Fatalf("applied revision = %d, want 10", state.GetAppliedRevision())
+	}
+	acknowledgedRuntime(state, &nodev1.RuntimeConfigRequest{DesiredRevision: 4})
+	if state.GetAppliedRevision() != 10 {
+		t.Fatal("applied revision must never go down")
+	}
+	if acknowledgedRuntime(nil, nil) != nil {
+		t.Fatal("nil state stays nil")
 	}
 }
