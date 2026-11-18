@@ -663,6 +663,19 @@ func cloneBlockedNodes(blockedNodes map[int64]bool) map[int64]bool {
 	return clone
 }
 
+const hostActionMaxAttempts = 5
+
+// Host actions (runtime or geo updates, service restarts, proxy setup) change the machine, not the
+// user or config state of a node. One that keeps failing must neither hold back the user and
+// config operations queued behind it nor be retried forever.
+func isHostActionOperation(operationType string) bool {
+	switch operationType {
+	case "update_runtime", "update_geo", "restart_service", "update_service", "reboot_host", "apply_tor_proxy", "configure_windscribe", "configure_psiphon":
+		return true
+	}
+	return false
+}
+
 func (c Controller) processSingleOperation(ctx context.Context, operation OperationRow, blockedNodes map[int64]bool, result *ProcessOperationsResult) error {
 	if operation.NodeID.Valid && blockedNodes[operation.NodeID.Int64] {
 		return nil
@@ -680,6 +693,16 @@ func (c Controller) processSingleOperation(ctx context.Context, operation Operat
 		if isPermanentOperationError(err) {
 			_ = c.repo.MarkOperationFailed(ctx, operation.ID, err.Error())
 			result.Failed++
+			return nil
+		}
+		if isHostActionOperation(operation.OperationType) {
+			if operation.Attempts+1 >= hostActionMaxAttempts {
+				_ = c.repo.MarkOperationFailed(ctx, operation.ID, err.Error())
+				result.Failed++
+			} else {
+				_ = c.repo.MarkOperationRetrying(ctx, operation.ID, err.Error())
+				result.Retrying++
+			}
 			return nil
 		}
 		_ = c.repo.MarkOperationRetrying(ctx, operation.ID, err.Error())

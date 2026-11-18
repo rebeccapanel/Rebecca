@@ -80,3 +80,16 @@ func TestAcknowledgedRuntimeRaisesAppliedRevisionToTheRequest(t *testing.T) {
 		t.Fatal("nil state stays nil")
 	}
 }
+
+func TestHostActionsAreRecognised(t *testing.T) {
+	for _, kind := range []string{"update_runtime", "update_geo", "restart_service", "reboot_host"} {
+		if !isHostActionOperation(kind) {
+			t.Fatalf("%s must be a host action", kind)
+		}
+	}
+	for _, kind := range []string{"add_user", "sync_config", "remove_user"} {
+		if isHostActionOperation(kind) {
+			t.Fatalf("%s must not be a host action", kind)
+		}
+	}
+}
