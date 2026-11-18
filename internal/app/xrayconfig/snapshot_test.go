@@ -102,7 +102,7 @@ func TestRestoreMutationSnapshotPreservesHostFinalMask(t *testing.T) {
 			dns_primary TEXT, dns_secondary TEXT, address_options TEXT, address_selection_mode TEXT, address_ttl_seconds INTEGER,
 			port INTEGER, path TEXT, sni TEXT, sni_options TEXT, sni_selection_mode TEXT, sni_ttl_seconds INTEGER,
 			host TEXT, host_options TEXT, host_selection_mode TEXT, host_ttl_seconds INTEGER,
-			security TEXT, alpn TEXT, fingerprint TEXT, verify_peer_cert_by_name TEXT, pinned_peer_cert_sha256 TEXT,
+			security TEXT, alpn TEXT, fingerprint TEXT, verify_peer_cert_by_name TEXT, pinned_peer_cert_sha256 TEXT, host_encryption TEXT,
 			allowinsecure INTEGER, is_disabled INTEGER, mux_enable INTEGER,
 			fragment_setting TEXT, noise_setting TEXT, finalmask TEXT, random_user_agent INTEGER, use_sni_as_host INTEGER, client_settings TEXT
 		)`,

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
+	"maps"
 	"net"
 	"net/url"
 	"sort"
@@ -491,6 +492,19 @@ func effectiveInboundForHost(wildcardSalt string, variables map[string]string, i
 	}
 	if host.AllowInsecure != nil && *host.AllowInsecure {
 		effective["ais"] = *host.AllowInsecure
+	}
+	if value := strings.TrimSpace(host.HostEncryption); value != "" {
+		switch normalizeProxyProtocol(jsonvalue.String(inbound["protocol"])) {
+		case "vless":
+			effective["encryption"] = value
+		case "vmess":
+			effective["vmess_security"] = value
+		case "shadowsocks":
+			settings := map[string]any{}
+			maps.Copy(settings, mapValue(inbound["settings"]))
+			settings["method"] = value
+			effective["settings"] = settings
+		}
 	}
 	if len(host.FinalMask) > 0 {
 		effective["finalmask"] = mergeHostFinalMask(inbound["finalmask"], host.FinalMask)
