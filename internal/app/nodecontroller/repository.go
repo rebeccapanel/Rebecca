@@ -36,6 +36,7 @@ type NodeRow struct {
 	XrayConfigMode   string
 	XrayConfig       json.RawMessage
 	UsageCoefficient float64
+	Proxy            NodeProxy
 }
 
 type TLSRow struct {
@@ -80,6 +81,9 @@ func (r Repository) Node(ctx context.Context, nodeID int64) (NodeRow, error) {
 	var row NodeRow
 	var xrayVersion, message, cert, key, mode sql.NullString
 	var rawConfig sql.NullString
+	var proxyEnabled bool
+	var proxyType, proxyHost, proxyUser, proxyPass sql.NullString
+	var proxyPort sql.NullInt64
 	err := r.db.QueryRowContext(ctx, `SELECT
 	id,
 	COALESCE(name, ''),
@@ -93,7 +97,13 @@ func (r Repository) Node(ctx context.Context, nodeID int64) (NodeRow, error) {
 	certificate_key,
 	xray_config_mode,
 	xray_config,
-	usage_coefficient
+	usage_coefficient,
+	COALESCE(proxy_enabled, 0),
+	proxy_type,
+	proxy_host,
+	proxy_port,
+	proxy_username,
+	proxy_password
 FROM nodes WHERE id = ? AND LOWER(COALESCE(status, '')) <> 'deleted' LIMIT 1`, nodeID).Scan(
 		&row.ID,
 		&row.Name,
@@ -108,6 +118,12 @@ FROM nodes WHERE id = ? AND LOWER(COALESCE(status, '')) <> 'deleted' LIMIT 1`, n
 		&mode,
 		&rawConfig,
 		&row.UsageCoefficient,
+		&proxyEnabled,
+		&proxyType,
+		&proxyHost,
+		&proxyPort,
+		&proxyUser,
+		&proxyPass,
 	)
 	if err == sql.ErrNoRows {
 		return NodeRow{}, fmt.Errorf("node not found")
@@ -120,6 +136,9 @@ FROM nodes WHERE id = ? AND LOWER(COALESCE(status, '')) <> 'deleted' LIMIT 1`, n
 	row.Certificate = cert.String
 	row.CertificateKey = key.String
 	row.XrayConfigMode = mode.String
+	if proxyEnabled {
+		row.Proxy = NodeProxy{Type: strings.ToLower(strings.TrimSpace(proxyType.String)), Host: strings.TrimSpace(proxyHost.String), Port: int(proxyPort.Int64), Username: proxyUser.String, Password: proxyPass.String}
+	}
 	if rawConfig.Valid && strings.TrimSpace(rawConfig.String) != "" {
 		row.XrayConfig = json.RawMessage(rawConfig.String)
 	}

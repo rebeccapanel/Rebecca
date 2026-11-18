@@ -128,7 +128,13 @@ CREATE TABLE nodes (
 	xray_config_mode TEXT,
 	xray_config TEXT,
 	last_status_change DATETIME,
-	usage_coefficient REAL DEFAULT 1
+	usage_coefficient REAL DEFAULT 1,
+	proxy_enabled INTEGER DEFAULT 0,
+	proxy_type TEXT,
+	proxy_host TEXT,
+	proxy_port INTEGER,
+	proxy_username TEXT,
+	proxy_password TEXT
 );
 CREATE TABLE node_operations (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -223,7 +229,13 @@ CREATE TABLE nodes (
 	port INTEGER,
 	api_port INTEGER,
 	status TEXT,
-	usage_coefficient REAL DEFAULT 1
+	usage_coefficient REAL DEFAULT 1,
+	proxy_enabled INTEGER DEFAULT 0,
+	proxy_type TEXT,
+	proxy_host TEXT,
+	proxy_port INTEGER,
+	proxy_username TEXT,
+	proxy_password TEXT
 );
 CREATE TABLE node_operations (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -297,7 +309,13 @@ CREATE TABLE nodes (
 	xray_config_mode TEXT,
 	xray_config TEXT,
 	last_status_change DATETIME,
-	usage_coefficient REAL DEFAULT 1
+	usage_coefficient REAL DEFAULT 1,
+	proxy_enabled INTEGER DEFAULT 0,
+	proxy_type TEXT,
+	proxy_host TEXT,
+	proxy_port INTEGER,
+	proxy_username TEXT,
+	proxy_password TEXT
 );
 CREATE TABLE node_operations (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -363,7 +381,13 @@ CREATE TABLE nodes (
 	certificate_key TEXT,
 	xray_config_mode TEXT,
 	xray_config TEXT,
-	usage_coefficient REAL DEFAULT 1
+	usage_coefficient REAL DEFAULT 1,
+	proxy_enabled INTEGER DEFAULT 0,
+	proxy_type TEXT,
+	proxy_host TEXT,
+	proxy_port INTEGER,
+	proxy_username TEXT,
+	proxy_password TEXT
 );
 CREATE TABLE node_operations (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -422,7 +446,13 @@ CREATE TABLE nodes (
 	certificate_key TEXT,
 	xray_config_mode TEXT,
 	xray_config TEXT,
-	usage_coefficient REAL DEFAULT 1
+	usage_coefficient REAL DEFAULT 1,
+	proxy_enabled INTEGER DEFAULT 0,
+	proxy_type TEXT,
+	proxy_host TEXT,
+	proxy_port INTEGER,
+	proxy_username TEXT,
+	proxy_password TEXT
 );
 CREATE TABLE node_operations (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -528,7 +558,13 @@ CREATE TABLE nodes (
 	xray_config_mode TEXT,
 	xray_config TEXT,
 	last_status_change DATETIME,
-	usage_coefficient REAL DEFAULT 1
+	usage_coefficient REAL DEFAULT 1,
+	proxy_enabled INTEGER DEFAULT 0,
+	proxy_type TEXT,
+	proxy_host TEXT,
+	proxy_port INTEGER,
+	proxy_username TEXT,
+	proxy_password TEXT
 );
 CREATE TABLE default_certificates (
 	id INTEGER PRIMARY KEY,
@@ -607,7 +643,13 @@ CREATE TABLE nodes (
 	xray_config_mode TEXT,
 	xray_config TEXT,
 	last_status_change DATETIME,
-	usage_coefficient REAL DEFAULT 1
+	usage_coefficient REAL DEFAULT 1,
+	proxy_enabled INTEGER DEFAULT 0,
+	proxy_type TEXT,
+	proxy_host TEXT,
+	proxy_port INTEGER,
+	proxy_username TEXT,
+	proxy_password TEXT
 );
 CREATE TABLE default_certificates (
 	id INTEGER PRIMARY KEY,
@@ -688,7 +730,13 @@ CREATE TABLE nodes (
 	certificate_key TEXT,
 	xray_config_mode TEXT,
 	xray_config TEXT,
-	usage_coefficient REAL DEFAULT 1
+	usage_coefficient REAL DEFAULT 1,
+	proxy_enabled INTEGER DEFAULT 0,
+	proxy_type TEXT,
+	proxy_host TEXT,
+	proxy_port INTEGER,
+	proxy_username TEXT,
+	proxy_password TEXT
 );
 CREATE TABLE node_operations (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -745,7 +793,13 @@ CREATE TABLE nodes (
 	certificate_key TEXT,
 	xray_config_mode TEXT,
 	xray_config TEXT,
-	usage_coefficient REAL DEFAULT 1
+	usage_coefficient REAL DEFAULT 1,
+	proxy_enabled INTEGER DEFAULT 0,
+	proxy_type TEXT,
+	proxy_host TEXT,
+	proxy_port INTEGER,
+	proxy_username TEXT,
+	proxy_password TEXT
 );
 CREATE TABLE node_operations (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -828,7 +882,13 @@ CREATE TABLE nodes (
 	certificate_key TEXT,
 	xray_config_mode TEXT,
 	xray_config TEXT,
-	usage_coefficient REAL DEFAULT 1
+	usage_coefficient REAL DEFAULT 1,
+	proxy_enabled INTEGER DEFAULT 0,
+	proxy_type TEXT,
+	proxy_host TEXT,
+	proxy_port INTEGER,
+	proxy_username TEXT,
+	proxy_password TEXT
 );
 CREATE TABLE node_operations (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -922,7 +982,13 @@ CREATE TABLE nodes (
 	certificate_key TEXT,
 	xray_config_mode TEXT,
 	xray_config TEXT,
-	usage_coefficient REAL DEFAULT 1
+	usage_coefficient REAL DEFAULT 1,
+	proxy_enabled INTEGER DEFAULT 0,
+	proxy_type TEXT,
+	proxy_host TEXT,
+	proxy_port INTEGER,
+	proxy_username TEXT,
+	proxy_password TEXT
 );
 CREATE TABLE default_certificates (
 	id INTEGER PRIMARY KEY,
@@ -996,7 +1062,13 @@ CREATE TABLE nodes (
 	certificate_key TEXT,
 	xray_config_mode TEXT,
 	xray_config TEXT,
-	usage_coefficient REAL DEFAULT 1
+	usage_coefficient REAL DEFAULT 1,
+	proxy_enabled INTEGER DEFAULT 0,
+	proxy_type TEXT,
+	proxy_host TEXT,
+	proxy_port INTEGER,
+	proxy_username TEXT,
+	proxy_password TEXT
 );
 CREATE TABLE node_operations (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1080,7 +1152,13 @@ CREATE TABLE nodes (
 	certificate_key TEXT,
 	xray_config_mode TEXT,
 	xray_config TEXT,
-	usage_coefficient REAL DEFAULT 1
+	usage_coefficient REAL DEFAULT 1,
+	proxy_enabled INTEGER DEFAULT 0,
+	proxy_type TEXT,
+	proxy_host TEXT,
+	proxy_port INTEGER,
+	proxy_username TEXT,
+	proxy_password TEXT
 );
 CREATE TABLE node_operations (
 	id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1760,7 +1838,13 @@ CREATE TABLE nodes (
 	certificate_key TEXT,
 	xray_config_mode TEXT,
 	xray_config TEXT,
-	usage_coefficient REAL DEFAULT 1
+	usage_coefficient REAL DEFAULT 1,
+	proxy_enabled INTEGER DEFAULT 0,
+	proxy_type TEXT,
+	proxy_host TEXT,
+	proxy_port INTEGER,
+	proxy_username TEXT,
+	proxy_password TEXT
 );
 CREATE TABLE default_certificates (
 	id INTEGER PRIMARY KEY,
@@ -1808,7 +1892,13 @@ CREATE TABLE nodes (
 	certificate_key TEXT,
 	xray_config_mode TEXT,
 	xray_config TEXT,
-	usage_coefficient REAL DEFAULT 1
+	usage_coefficient REAL DEFAULT 1,
+	proxy_enabled INTEGER DEFAULT 0,
+	proxy_type TEXT,
+	proxy_host TEXT,
+	proxy_port INTEGER,
+	proxy_username TEXT,
+	proxy_password TEXT
 );
 CREATE TABLE default_certificates (id INTEGER PRIMARY KEY, certificate TEXT, private_key TEXT);
 INSERT INTO nodes (id, name, address, port, api_port, status, message, usage_coefficient) VALUES
