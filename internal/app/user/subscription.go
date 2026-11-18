@@ -1258,8 +1258,8 @@ func renderClashLikeYAML(username string, links []string, meta bool) (string, er
 		b.WriteString(yamlQuote(name))
 		b.WriteString("\n")
 	}
-	b.WriteString("rules:\n  - MATCH,")
-	b.WriteString(yamlQuote(username))
+	b.WriteString("rules:\n  - ")
+	b.WriteString(yamlQuote("MATCH," + username))
 	b.WriteString("\n")
 	return b.String(), nil
 }
