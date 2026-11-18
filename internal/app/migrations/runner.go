@@ -111,7 +111,10 @@ func (r Runner) run(ctx context.Context, targetVersion int64) error {
 	if err != nil {
 		return err
 	}
-	return repairUsernameIndex(ctx, r.DB, dialect)
+	if err := repairUsernameIndex(ctx, r.DB, dialect); err != nil {
+		return err
+	}
+	return repairOutboundTrafficIndex(ctx, r.DB, dialect)
 }
 
 // refuseNewerSchema stops an older build from running against a schema that
