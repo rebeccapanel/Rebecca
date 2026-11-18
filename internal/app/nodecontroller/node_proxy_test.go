@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+
+	nodev1 "github.com/rebeccapanel/rebecca/internal/proto/node/v1"
 )
 
 func TestNodeProxyHTTPConnectCarriesTheNodeConnection(t *testing.T) {
@@ -61,5 +63,33 @@ func TestNodeProxyHTTPConnectCarriesTheNodeConnection(t *testing.T) {
 	}
 	if !strings.HasPrefix(<-gotAuth, "Basic ") {
 		t.Fatal("proxy credentials were not sent")
+	}
+}
+
+func TestAcknowledgedRuntimeRaisesAppliedRevisionToTheRequest(t *testing.T) {
+	state := &nodev1.RuntimeState{AppliedRevision: 9}
+	acknowledgedRuntime(state, &nodev1.RuntimeConfigRequest{DesiredRevision: 10})
+	if state.GetAppliedRevision() != 10 {
+		t.Fatalf("applied revision = %d, want 10", state.GetAppliedRevision())
+	}
+	acknowledgedRuntime(state, &nodev1.RuntimeConfigRequest{DesiredRevision: 4})
+	if state.GetAppliedRevision() != 10 {
+		t.Fatal("applied revision must never go down")
+	}
+	if acknowledgedRuntime(nil, nil) != nil {
+		t.Fatal("nil state stays nil")
+	}
+}
+
+func TestHostActionsAreRecognised(t *testing.T) {
+	for _, kind := range []string{"update_runtime", "update_geo", "restart_service", "reboot_host"} {
+		if !isHostActionOperation(kind) {
+			t.Fatalf("%s must be a host action", kind)
+		}
+	}
+	for _, kind := range []string{"add_user", "sync_config", "remove_user"} {
+		if isHostActionOperation(kind) {
+			t.Fatalf("%s must not be a host action", kind)
+		}
 	}
 }

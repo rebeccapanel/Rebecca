@@ -35,7 +35,7 @@ func (c Controller) grpcApplyUserOperation(ctx context.Context, client *nodeclie
 			if syncErr != nil {
 				return syncErr
 			}
-			_, syncErr = c.finishRuntime(ctx, node, res.GetRuntime(), res.GetMessage())
+			_, syncErr = c.finishRuntime(ctx, node, acknowledgedRuntime(res.GetRuntime(), runtimeReq), res.GetMessage())
 			return syncErr
 		}
 		return err

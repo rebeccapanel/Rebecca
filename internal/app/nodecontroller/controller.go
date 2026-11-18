@@ -178,7 +178,7 @@ func (c Controller) Connect(ctx context.Context, req Request) (RuntimeResult, er
 		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("sync", req.NodeID, err)
 	}
-	state = syncRes.GetRuntime()
+	state = acknowledgedRuntime(syncRes.GetRuntime(), syncReq)
 	result, err := c.finishRuntime(ctx, node, state, "connected")
 	if err != nil {
 		return RuntimeResult{}, err
@@ -238,7 +238,7 @@ func (c Controller) restartNow(ctx context.Context, req Request) (RuntimeResult,
 		_ = c.repo.SetError(ctx, req.NodeID, err.Error())
 		return RuntimeResult{}, friendlyNodeError("restart", req.NodeID, err)
 	}
-	result, err := c.finishRuntime(ctx, node, res.GetRuntime(), res.GetMessage())
+	result, err := c.finishRuntime(ctx, node, acknowledgedRuntime(res.GetRuntime(), runtimeReq), res.GetMessage())
 	if err != nil {
 		return RuntimeResult{}, err
 	}
@@ -663,6 +663,19 @@ func cloneBlockedNodes(blockedNodes map[int64]bool) map[int64]bool {
 	return clone
 }
 
+const hostActionMaxAttempts = 5
+
+// Host actions (runtime or geo updates, service restarts, proxy setup) change the machine, not the
+// user or config state of a node. One that keeps failing must neither hold back the user and
+// config operations queued behind it nor be retried forever.
+func isHostActionOperation(operationType string) bool {
+	switch operationType {
+	case "update_runtime", "update_geo", "restart_service", "update_service", "reboot_host", "apply_tor_proxy", "configure_windscribe", "configure_psiphon":
+		return true
+	}
+	return false
+}
+
 func (c Controller) processSingleOperation(ctx context.Context, operation OperationRow, blockedNodes map[int64]bool, result *ProcessOperationsResult) error {
 	if operation.NodeID.Valid && blockedNodes[operation.NodeID.Int64] {
 		return nil
@@ -680,6 +693,16 @@ func (c Controller) processSingleOperation(ctx context.Context, operation Operat
 		if isPermanentOperationError(err) {
 			_ = c.repo.MarkOperationFailed(ctx, operation.ID, err.Error())
 			result.Failed++
+			return nil
+		}
+		if isHostActionOperation(operation.OperationType) {
+			if operation.Attempts+1 >= hostActionMaxAttempts {
+				_ = c.repo.MarkOperationFailed(ctx, operation.ID, err.Error())
+				result.Failed++
+			} else {
+				_ = c.repo.MarkOperationRetrying(ctx, operation.ID, err.Error())
+				result.Retrying++
+			}
 			return nil
 		}
 		_ = c.repo.MarkOperationRetrying(ctx, operation.ID, err.Error())
@@ -918,7 +941,7 @@ func (c Controller) applyOperation(ctx context.Context, operation OperationRow, 
 			}
 			return err
 		}
-		_, err = c.finishRuntime(ctx, node, res.GetRuntime(), res.GetMessage())
+		_, err = c.finishRuntime(ctx, node, acknowledgedRuntime(res.GetRuntime(), runtimeReq), res.GetMessage())
 		return err
 	case "update_runtime", "update_geo", "restart_service", "update_service", "reboot_host", "apply_tor_proxy", "configure_windscribe", "configure_psiphon":
 		var req Request
@@ -1178,6 +1201,16 @@ func (c Controller) reconcileRuntimeState(ctx context.Context, client *nodeclien
 	}
 	result.DesiredRevision = desired
 	return nil
+}
+
+// A node builds the runtime state of its reply before it records the revision it just applied, so
+// the state of a successful sync reports the previous revision. Taking it at face value leaves the
+// node one revision behind and queues another sync every maintenance pass.
+func acknowledgedRuntime(runtime *nodev1.RuntimeState, req *nodev1.RuntimeConfigRequest) *nodev1.RuntimeState {
+	if runtime != nil && req != nil && req.GetDesiredRevision() > runtime.GetAppliedRevision() {
+		runtime.AppliedRevision = req.GetDesiredRevision()
+	}
+	return runtime
 }
 
 func (c Controller) prepareRuntimeRevision(ctx context.Context, client *nodeclient.Client, nodeID int64, req *nodev1.RuntimeConfigRequest) error {
