@@ -294,6 +294,7 @@ type Host struct {
 	Fingerprint          string         `json:"fingerprint"`
 	VerifyPeerCertByName string         `json:"verify_peer_cert_by_name"`
 	PinnedPeerCertSHA256 string         `json:"pinned_peer_cert_sha256"`
+	HostEncryption       string         `json:"host_encryption"`
 	AllowInsecure        *bool          `json:"allowinsecure"`
 	IsDisabled           bool           `json:"is_disabled"`
 	MuxEnable            bool           `json:"mux_enable"`

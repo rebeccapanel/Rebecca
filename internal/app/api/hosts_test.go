@@ -344,6 +344,7 @@ func TestHostFinalMaskRoundTripAndValidation(t *testing.T) {
 	}
 	payload.VerifyPeerCertByName = "cert.example.com"
 	payload.PinnedPeerCertSHA256 = strings.Repeat("ab", 32)
+	payload.HostEncryption = "  mlkem768x25519plus.random.0rtt.GdOIY4aWLxkAK8IF_F4mp-ehETCl  "
 	if err := validateHostPayload(payload); err != nil {
 		t.Fatalf("documented FinalMask was rejected: %v", err)
 	}
@@ -357,7 +358,7 @@ func TestHostFinalMaskRoundTripAndValidation(t *testing.T) {
 		address_options TEXT, address_selection_mode TEXT, address_ttl_seconds INTEGER, port INTEGER, path TEXT,
 		sni TEXT, sni_options TEXT, sni_selection_mode TEXT, sni_ttl_seconds INTEGER, host TEXT, host_options TEXT,
 		host_selection_mode TEXT, host_ttl_seconds INTEGER, security TEXT, alpn TEXT, fingerprint TEXT,
-		verify_peer_cert_by_name TEXT, pinned_peer_cert_sha256 TEXT, inbound_tag TEXT,
+		verify_peer_cert_by_name TEXT, pinned_peer_cert_sha256 TEXT, host_encryption TEXT, inbound_tag TEXT,
 		allowinsecure INTEGER, is_disabled INTEGER, mux_enable INTEGER, fragment_setting TEXT, noise_setting TEXT,
 		finalmask TEXT, random_user_agent INTEGER, use_sni_as_host INTEGER, client_settings TEXT
 	)`); err != nil {
@@ -384,6 +385,9 @@ func TestHostFinalMaskRoundTripAndValidation(t *testing.T) {
 	}
 	if storedHost.VerifyPeerCertByName != payload.VerifyPeerCertByName || storedHost.PinnedPeerCertSHA256 != payload.PinnedPeerCertSHA256 {
 		t.Fatalf("TLS verification fields did not round-trip: %#v", storedHost)
+	}
+	if storedHost.HostEncryption != "mlkem768x25519plus.random.0rtt.GdOIY4aWLxkAK8IF_F4mp-ehETCl" {
+		t.Fatalf("VLESS encryption did not round-trip trimmed: %q", storedHost.HostEncryption)
 	}
 	stored, ok := hostFinalMaskValue(payload.FinalMask).(string)
 	if !ok || !strings.Contains(stored, `"realm"`) {
@@ -577,5 +581,25 @@ func TestHostFinalMaskBoundaryValidation(t *testing.T) {
 				t.Fatalf("error = %v, want substring %q", err, test.want)
 			}
 		})
+	}
+}
+
+func TestValidateHostEncryption(t *testing.T) {
+	for _, value := range []string{"", "none", "NONE", "mlkem768x25519plus.native.0rtt.GdOIY4aWLxkAK8IF_F4mp-ehETCl", "mlkem768x25519plus.random.1rtt.abc"} {
+		if !validHostEncryption(value) {
+			t.Fatalf("expected %q to be accepted", value)
+		}
+	}
+	for _, value := range []string{"mlkem768x25519plus.native 0rtt", "a&b=c", "a#b", "a?b", "a\nb", strings.Repeat("a", 8193)} {
+		if validHostEncryption(value) {
+			t.Fatalf("expected %q to be rejected", value)
+		}
+	}
+	if got := normalizeHostEncryption(" none "); got != "" {
+		t.Fatalf("none must normalize to inherit, got %q", got)
+	}
+	payload := hostPayload{Remark: "r", Address: "a.example.com", HostEncryption: "bad value"}
+	if err := validateHostPayload(payload); err == nil {
+		t.Fatal("expected host payload with invalid VLESS encryption to be rejected")
 	}
 }

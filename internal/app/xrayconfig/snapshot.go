@@ -80,6 +80,7 @@ type HostSnapshot struct {
 	Fingerprint          string  `json:"fingerprint"`
 	VerifyPeerCertByName string  `json:"verify_peer_cert_by_name,omitempty"`
 	PinnedPeerCertSHA256 string  `json:"pinned_peer_cert_sha256,omitempty"`
+	HostEncryption       string  `json:"host_encryption,omitempty"`
 	AllowInsecure        *bool   `json:"allowinsecure,omitempty"`
 	IsDisabled           bool    `json:"is_disabled"`
 	MuxEnable            bool    `json:"mux_enable"`
@@ -156,7 +157,7 @@ func (r Repository) CaptureMutationSnapshotTx(ctx context.Context, tx *sql.Tx, s
 		path, sni, sni_options, COALESCE(sni_selection_mode, 'random'), sni_ttl_seconds,
 		host, host_options, COALESCE(host_selection_mode, 'random'), host_ttl_seconds,
 		COALESCE(security, 'inbound_default'), COALESCE(alpn, 'none'), COALESCE(fingerprint, 'none'),
-		COALESCE(verify_peer_cert_by_name, ''), COALESCE(pinned_peer_cert_sha256, ''),
+		COALESCE(verify_peer_cert_by_name, ''), COALESCE(pinned_peer_cert_sha256, ''), COALESCE(host_encryption, ''),
 		allowinsecure, COALESCE(is_disabled, 0), COALESCE(mux_enable, 0), fragment_setting, noise_setting, finalmask,
 		COALESCE(random_user_agent, 0), COALESCE(use_sni_as_host, 0), client_settings
 		FROM hosts WHERE inbound_tag IN (`+placeholders+`) ORDER BY inbound_tag ASC, id ASC`, args...)
@@ -440,10 +441,10 @@ func restoreInboundHostsTx(ctx context.Context, tx *sql.Tx, snapshot MutationSna
 		if _, err := tx.ExecContext(ctx, `INSERT INTO hosts (
 			id, inbound_tag, remark, address, dns_primary, dns_secondary, address_options, address_selection_mode, address_ttl_seconds,
 			port, path, sni, sni_options, sni_selection_mode, sni_ttl_seconds, host, host_options, host_selection_mode,
-			host_ttl_seconds, security, alpn, fingerprint, verify_peer_cert_by_name, pinned_peer_cert_sha256, allowinsecure, is_disabled, mux_enable, fragment_setting, noise_setting, finalmask,
+			host_ttl_seconds, security, alpn, fingerprint, verify_peer_cert_by_name, pinned_peer_cert_sha256, host_encryption, allowinsecure, is_disabled, mux_enable, fragment_setting, noise_setting, finalmask,
 			random_user_agent, use_sni_as_host, client_settings
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			host.ID, host.InboundTag, host.Remark, host.Address, host.DNSPrimary, host.DNSSecondary, nullableString(host.AddressOptions), host.AddressMode, nullableInt64(host.AddressTTL), nullableInt64(host.Port), nullableString(host.Path), nullableString(host.SNI), nullableString(host.SNIOptions), host.SNIMode, nullableInt64(host.SNITTL), nullableString(host.Host), nullableString(host.HostOptions), host.HostMode, nullableInt64(host.HostTTL), host.Security, host.ALPN, host.Fingerprint, host.VerifyPeerCertByName, host.PinnedPeerCertSHA256, nullableBool(host.AllowInsecure), boolToDB(host.IsDisabled), boolToDB(host.MuxEnable), nullableString(host.FragmentSetting), nullableString(host.NoiseSetting), nullableString(host.FinalMask), boolToDB(host.RandomUserAgent), boolToDB(host.UseSNIAsHost), nullableString(host.ClientSettings)); err != nil {
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			host.ID, host.InboundTag, host.Remark, host.Address, host.DNSPrimary, host.DNSSecondary, nullableString(host.AddressOptions), host.AddressMode, nullableInt64(host.AddressTTL), nullableInt64(host.Port), nullableString(host.Path), nullableString(host.SNI), nullableString(host.SNIOptions), host.SNIMode, nullableInt64(host.SNITTL), nullableString(host.Host), nullableString(host.HostOptions), host.HostMode, nullableInt64(host.HostTTL), host.Security, host.ALPN, host.Fingerprint, host.VerifyPeerCertByName, host.PinnedPeerCertSHA256, host.HostEncryption, nullableBool(host.AllowInsecure), boolToDB(host.IsDisabled), boolToDB(host.MuxEnable), nullableString(host.FragmentSetting), nullableString(host.NoiseSetting), nullableString(host.FinalMask), boolToDB(host.RandomUserAgent), boolToDB(host.UseSNIAsHost), nullableString(host.ClientSettings)); err != nil {
 			return err
 		}
 	}
@@ -511,7 +512,7 @@ func scanHostSnapshot(scanner interface{ Scan(...any) error }) (HostSnapshot, er
 		&addressOptions, &host.AddressMode, &addressTTL, &port, &ignoredSort,
 		&path, &sni, &sniOptions, &host.SNIMode, &sniTTL,
 		&hostValue, &hostOptions, &host.HostMode, &hostTTL,
-		&host.Security, &host.ALPN, &host.Fingerprint, &host.VerifyPeerCertByName, &host.PinnedPeerCertSHA256, &allowInsecure,
+		&host.Security, &host.ALPN, &host.Fingerprint, &host.VerifyPeerCertByName, &host.PinnedPeerCertSHA256, &host.HostEncryption, &allowInsecure,
 		&disabled, &muxEnable, &fragment, &noise, &finalMask, &randomUA, &useSNI, &clientSettings)
 	if err != nil {
 		return HostSnapshot{}, err
