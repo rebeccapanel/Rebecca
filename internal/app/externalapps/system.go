@@ -3,6 +3,8 @@ package externalapps
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -300,6 +302,10 @@ func externalAppPoolConfig(record Record, mirza bool) string {
 		// Telegram bot database backups use exec; all other process-spawning APIs stay disabled.
 		disabledFunctions = "passthru,shell_exec,system,proc_open,popen,pcntl_exec"
 	}
+	maxChildren := 2
+	if record.Template == "faoxima" {
+		maxChildren = 6
+	}
 	return fmt.Sprintf(`[%s]
 user = %s
 group = %s
@@ -308,7 +314,7 @@ listen.owner = root
 listen.group = root
 listen.mode = 0600
 pm = ondemand
-pm.max_children = 2
+pm.max_children = %d
 pm.process_idle_timeout = 15s
 pm.max_requests = 500
 chdir = %s
@@ -329,7 +335,7 @@ php_admin_value[upload_tmp_dir] = %s/.tmp
 php_admin_value[upload_max_filesize] = 32M
 php_admin_value[post_max_size] = 32M
 php_admin_value[memory_limit] = 256M
-`, "rebecca-"+filepath.Base(record.Root), record.SystemUser, record.SystemUser, record.Socket, record.Root,
+`, "rebecca-"+filepath.Base(record.Root), record.SystemUser, record.SystemUser, record.Socket, maxChildren, record.Root,
 		disabledFunctions, record.Root, record.Root, record.Root, record.Root)
 }
 
@@ -474,33 +480,42 @@ func writeExternalAppSecretFile(root, name, value string, uid, gid int) error {
 type mirzaCronTask struct {
 	schedule string
 	path     string
+	dir      string
 }
 
 var mirzaCronTasks = []mirzaCronTask{
-	{"*/15 * * * *", "statusday.php"},
-	{"* * * * *", "croncard.php"},
-	{"* * * * *", "NoticationsService.php"},
-	{"*/5 * * * *", "payment_expire.php"},
-	{"* * * * *", "sendmessage.php"},
-	{"*/3 * * * *", "plisio.php"},
-	{"* * * * *", "activeconfig.php"},
-	{"* * * * *", "disableconfig.php"},
-	{"* * * * *", "iranpay1.php"},
-	{"0 */5 * * *", "backupbot.php"},
-	{"*/2 * * * *", "gift.php"},
-	{"*/30 * * * *", "expireagent.php"},
-	{"*/15 * * * *", "on_hold.php"},
-	{"*/2 * * * *", "configtest.php"},
-	{"*/15 * * * *", "uptime_node.php"},
-	{"*/15 * * * *", "uptime_panel.php"},
-	{"* * * * *", "lottery.php"},
+	{"*/15 * * * *", "statusday.php", ""},
+	{"* * * * *", "croncard.php", ""},
+	{"* * * * *", "NoticationsService.php", ""},
+	{"*/5 * * * *", "payment_expire.php", ""},
+	{"* * * * *", "sendmessage.php", ""},
+	{"*/3 * * * *", "plisio.php", ""},
+	{"* * * * *", "activeconfig.php", ""},
+	{"* * * * *", "disableconfig.php", ""},
+	{"* * * * *", "iranpay1.php", ""},
+	{"0 */5 * * *", "backupbot.php", ""},
+	{"*/2 * * * *", "gift.php", ""},
+	{"*/30 * * * *", "expireagent.php", ""},
+	{"*/15 * * * *", "on_hold.php", ""},
+	{"*/2 * * * *", "configtest.php", ""},
+	{"*/15 * * * *", "uptime_node.php", ""},
+	{"*/15 * * * *", "uptime_panel.php", ""},
+	{"* * * * *", "lottery.php", ""},
+	{"*/2 * * * *", "alert_balance.php", ""},
+	{"*/30 * * * *", "optimize_order.php", ""},
 }
 
 func writeMirzaCron(record Record) error {
+	if info, err := os.Stat(filepath.Join(record.Root, "cronbot", "run.php")); err == nil && !info.IsDir() {
+		return writeTelegramCron(record, []mirzaCronTask{{"* * * * *", "run.php", ""}})
+	}
 	return writeTelegramCron(record, mirzaCronTasks)
 }
 
 func writeFaoximaCron(record Record) error {
+	if info, err := os.Stat(filepath.Join(record.Root, "cron", "cron.php")); err == nil && !info.IsDir() {
+		return writeTelegramCron(record, []mirzaCronTask{{"* * * * *", "cron.php", "cron"}})
+	}
 	tasks := make([]mirzaCronTask, 0, len(mirzaCronTasks))
 	for _, task := range mirzaCronTasks {
 		if _, err := os.Stat(filepath.Join(record.Root, "cronbot", task.path)); err == nil {
@@ -517,6 +532,13 @@ func writeBotCron(record Record) error {
 	return writeMirzaCron(record)
 }
 
+func cronTaskDir(task mirzaCronTask) string {
+	if task.dir == "" {
+		return "cronbot"
+	}
+	return task.dir
+}
+
 func writeTelegramCron(record Record, tasks []mirzaCronTask) error {
 	secretPath := filepath.Join(record.Root, ".rebecca-cron-secret")
 	var content strings.Builder
@@ -524,8 +546,8 @@ func writeTelegramCron(record Record, tasks []mirzaCronTask) error {
 	for _, task := range tasks {
 		lockPath := filepath.Join(record.Root, ".locks", strings.TrimSuffix(task.path, ".php")+".lock")
 		fmt.Fprintf(&content,
-			"%s %s /usr/bin/flock -n %s /usr/bin/curl -fsS --max-time 50 --resolve %s:443:127.0.0.1 -H \"X-Rebecca-Cron-Secret: $(/bin/cat %s)\" %s/cronbot/%s >/dev/null 2>&1\n",
-			task.schedule, record.SystemUser, shellQuote(lockPath), record.Domain, shellQuote(secretPath), externalAppPublicURL(record), task.path,
+			"%s %s /usr/bin/flock -n %s /usr/bin/curl -fsS --max-time 50 --resolve %s:443:127.0.0.1 -H \"X-Rebecca-Cron-Secret: $(/bin/cat %s)\" %s/%s/%s >/dev/null 2>&1\n",
+			task.schedule, record.SystemUser, shellQuote(lockPath), record.Domain, shellQuote(secretPath), externalAppPublicURL(record), cronTaskDir(task), task.path,
 		)
 	}
 	return writeAtomicFile(record.CronConfig, []byte(content.String()), 0o644)
@@ -653,7 +675,14 @@ func (m *Manager) verifyExternalAppDatabase(ctx context.Context, database string
 }
 
 func (m *Manager) setExternalAppWebhookSecret(ctx context.Context, database, secret string) error {
+	probe, err := m.mysqlRoot(ctx, "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema="+sqlString(database)+" AND table_name='config';\n")
+	if err != nil {
+		return fmt.Errorf("store MirzaBot webhook secret: %w", err)
+	}
 	query := "UPDATE " + sqlIdentifier(database) + ".setting SET webhook_secret=" + sqlString(secret) + ";\n"
+	if strings.TrimSpace(string(probe)) != "0" {
+		query = "INSERT INTO " + sqlIdentifier(database) + ".config (scope,name,value) VALUES ('setting','webhook_secret'," + sqlString(secret) + ") ON DUPLICATE KEY UPDATE value=VALUES(value);\n"
+	}
 	if _, err := m.mysqlRoot(ctx, query); err != nil {
 		return fmt.Errorf("store MirzaBot webhook secret: %w", err)
 	}
@@ -1030,6 +1059,11 @@ func (m *Manager) setTelegramWebhook(ctx context.Context, token string, record R
 		return errors.New("Telegram rejected the webhook")
 	}
 	return nil
+}
+
+func faoximaWebhookSecret(botToken string) string {
+	sum := sha256.Sum256([]byte(botToken + "_faoxima_webhook_secret"))
+	return hex.EncodeToString(sum[:])
 }
 
 func telegramWebhookURL(record Record, secret string) string {

@@ -1059,6 +1059,9 @@ func (m *Manager) installTelegramBot(ctx context.Context, request InstallRequest
 	if err != nil {
 		return PublicRecord{}, err
 	}
+	if spec.template == "faoxima" {
+		webhookSecret = faoximaWebhookSecret(request.BotToken)
+	}
 	if err := m.ensureExternalAppDatabaseFree(ctx, record.Database, record.DatabaseUser); err != nil {
 		return PublicRecord{}, err
 	}
@@ -1166,7 +1169,12 @@ func subtleConstantStringEqual(left, right string) bool {
 func (m *Manager) AuthorizeMirzaRequest(r *http.Request, record Record, rel string) error {
 	rel = strings.ToLower(filepath.ToSlash(rel))
 	indexFile := strings.ToLower(externalAppIndexFile(record))
-	if rel != indexFile && !strings.HasPrefix(rel, "cronbot/") {
+	cronEntry := rel == "cron/cron.php"
+	if rel != indexFile && !strings.HasPrefix(rel, "cronbot/") && !cronEntry {
+		return nil
+	}
+	if record.Template == "faoxima" && strings.HasPrefix(rel, "cronbot/") &&
+		strings.TrimSpace(r.Header.Get("X-Cron-Source")) == "cron-orchestrator" && strings.TrimSpace(r.Header.Get("X-Cron-Token")) != "" {
 		return nil
 	}
 	secrets, err := m.readSecrets(record)
@@ -1177,7 +1185,7 @@ func (m *Manager) AuthorizeMirzaRequest(r *http.Request, record Record, rel stri
 	if rel == indexFile && r.Method == http.MethodPost {
 		actual = strings.TrimSpace(r.Header.Get("X-Telegram-Bot-Api-Secret-Token"))
 		expected = secrets.WebhookSecret
-	} else if strings.HasPrefix(rel, "cronbot/") {
+	} else if strings.HasPrefix(rel, "cronbot/") || cronEntry {
 		actual = strings.TrimSpace(r.Header.Get("X-Rebecca-Cron-Secret"))
 		expected = secrets.CronSecret
 	} else {

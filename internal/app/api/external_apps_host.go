@@ -206,6 +206,9 @@ func phpScriptAllowed(record externalapps.Record, rel string) bool {
 	if rel == strings.ToLower(filepath.ToSlash(record.IndexFile)) || (record.IndexFile == "" && rel == "index.php") {
 		return true
 	}
+	if rel == "cron/cron.php" {
+		return true
+	}
 	for _, prefix := range []string{"api/", "app/", "cronbot/", "panel/", "payment/", "sub/", "vpnbot/"} {
 		if strings.HasPrefix(rel, prefix) {
 			return true

@@ -196,6 +196,7 @@ func (s *Server) StartBackground(ctx context.Context) {
 			logging.Infof(logging.ComponentNode, "startup operation queue replaced with full sync cleared=%d", cleared)
 		}
 		go s.runNodeCoordinator(ctx)
+		go s.externalApps.RepairTelegramBots(ctx)
 		go s.runNodeRecoveryWorker(ctx)
 		go s.runNodeUsageCollector(ctx)
 		go s.runNodeUsageFlushWorker(ctx)
