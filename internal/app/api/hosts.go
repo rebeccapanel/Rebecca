@@ -63,6 +63,7 @@ type hostPayload struct {
 	Fingerprint          string         `json:"fingerprint"`
 	VerifyPeerCertByName string         `json:"verify_peer_cert_by_name"`
 	PinnedPeerCertSHA256 string         `json:"pinned_peer_cert_sha256"`
+	HostEncryption       string         `json:"host_encryption"`
 	AllowInsecure        *bool          `json:"allowinsecure"`
 	IsDisabled           *bool          `json:"is_disabled"`
 	MuxEnable            *bool          `json:"mux_enable"`
@@ -99,6 +100,7 @@ type hostResponse struct {
 	Fingerprint          string         `json:"fingerprint"`
 	VerifyPeerCertByName string         `json:"verify_peer_cert_by_name"`
 	PinnedPeerCertSHA256 string         `json:"pinned_peer_cert_sha256"`
+	HostEncryption       string         `json:"host_encryption"`
 	AllowInsecure        *bool          `json:"allowinsecure"`
 	IsDisabled           bool           `json:"is_disabled"`
 	MuxEnable            *bool          `json:"mux_enable"`
@@ -596,6 +598,7 @@ func sanitizeHostPayloadForInboundProtocol(payload hostPayload, protocol string)
 	payload.Fingerprint = "none"
 	payload.VerifyPeerCertByName = ""
 	payload.PinnedPeerCertSHA256 = ""
+	payload.HostEncryption = ""
 	payload.AllowInsecure = nil
 	payload.MuxEnable = boolPtr(false)
 	payload.FragmentSetting = nil
@@ -762,7 +765,7 @@ func hostSelectSQL() string {
 		port, path, sni, sni_options, COALESCE(sni_selection_mode, 'random'), sni_ttl_seconds,
 		host, host_options, COALESCE(host_selection_mode, 'random'), host_ttl_seconds,
 		COALESCE(security, 'inbound_default'), COALESCE(alpn, 'none'), COALESCE(fingerprint, 'none'),
-		COALESCE(verify_peer_cert_by_name, ''), COALESCE(pinned_peer_cert_sha256, ''),
+		COALESCE(verify_peer_cert_by_name, ''), COALESCE(pinned_peer_cert_sha256, ''), COALESCE(host_encryption, ''),
 		CASE WHEN allowinsecure IS NULL THEN NULL WHEN allowinsecure THEN 1 ELSE 0 END,
 		COALESCE(is_disabled, 0), COALESCE(mux_enable, 0), fragment_setting, noise_setting, finalmask,
 		COALESCE(random_user_agent, 0), COALESCE(use_sni_as_host, 0), client_settings
@@ -776,7 +779,7 @@ func hostSelectSQLWithInbound() string {
 		port, path, sni, sni_options, COALESCE(sni_selection_mode, 'random'), sni_ttl_seconds,
 		host, host_options, COALESCE(host_selection_mode, 'random'), host_ttl_seconds,
 		COALESCE(security, 'inbound_default'), COALESCE(alpn, 'none'), COALESCE(fingerprint, 'none'),
-		COALESCE(verify_peer_cert_by_name, ''), COALESCE(pinned_peer_cert_sha256, ''),
+		COALESCE(verify_peer_cert_by_name, ''), COALESCE(pinned_peer_cert_sha256, ''), COALESCE(host_encryption, ''),
 		CASE WHEN allowinsecure IS NULL THEN NULL WHEN allowinsecure THEN 1 ELSE 0 END,
 		COALESCE(is_disabled, 0), COALESCE(mux_enable, 0), fragment_setting, noise_setting, finalmask,
 		COALESCE(random_user_agent, 0), COALESCE(use_sni_as_host, 0), client_settings
@@ -835,6 +838,7 @@ func scanHostResponseWithInbound(scanner hostScanner, inboundTag *string) (hostR
 		&item.Fingerprint,
 		&item.VerifyPeerCertByName,
 		&item.PinnedPeerCertSHA256,
+		&item.HostEncryption,
 		&allowInsecure,
 		&disabled,
 		&muxEnable,
@@ -885,6 +889,7 @@ func scanHostResponse(scanner hostScanner) (hostResponse, error) {
 		&item.Fingerprint,
 		&item.VerifyPeerCertByName,
 		&item.PinnedPeerCertSHA256,
+		&item.HostEncryption,
 		&allowInsecure,
 		&disabled,
 		&muxEnable,
@@ -963,6 +968,9 @@ func validateHostPayload(host hostPayload) error {
 	}
 	if pin := strings.TrimSpace(host.PinnedPeerCertSHA256); pin != "" && !xrayconfig.ValidCertificatePins(pin) {
 		return statusError{status: http.StatusBadRequest, detail: "Certificate pins must be comma-separated SHA-256 fingerprints"}
+	}
+	if !validHostEncryption(host.HostEncryption) {
+		return statusError{status: http.StatusBadRequest, detail: "Encryption must be a single value without spaces (for example mlkem768x25519plus.native.0rtt.<key>, chacha20-poly1305 or aes-128-gcm)"}
 	}
 	for _, dns := range []struct {
 		name  string
@@ -2462,10 +2470,10 @@ func insertHostTx(ctx context.Context, tx *sql.Tx, inboundTag string, payload ho
 			remark, address, dns_primary, dns_secondary, address_options, address_selection_mode, address_ttl_seconds,
 			port, path, sni, sni_options, sni_selection_mode, sni_ttl_seconds,
 			host, host_options, host_selection_mode, host_ttl_seconds, security, alpn, fingerprint,
-			verify_peer_cert_by_name, pinned_peer_cert_sha256,
+			verify_peer_cert_by_name, pinned_peer_cert_sha256, host_encryption,
 			inbound_tag, allowinsecure, is_disabled, mux_enable, fragment_setting, noise_setting, finalmask,
 			random_user_agent, use_sni_as_host, client_settings
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		payload.Remark,
 		payload.Address,
 		payload.DNSPrimary,
@@ -2488,6 +2496,7 @@ func insertHostTx(ctx context.Context, tx *sql.Tx, inboundTag string, payload ho
 		normalizeHostFingerprint(payload.Fingerprint),
 		strings.TrimSpace(payload.VerifyPeerCertByName),
 		strings.TrimSpace(payload.PinnedPeerCertSHA256),
+		normalizeHostEncryption(payload.HostEncryption),
 		inboundTag,
 		nullableBoolInt(payload.AllowInsecure),
 		boolToInt(boolPtrValue(payload.IsDisabled)),
@@ -2512,7 +2521,7 @@ func updateHostTx(ctx context.Context, tx *sql.Tx, inboundTag string, payload ho
 			remark = ?, address = ?, dns_primary = ?, dns_secondary = ?, address_options = ?, address_selection_mode = ?, address_ttl_seconds = ?,
 			port = ?, path = ?, sni = ?, sni_options = ?, sni_selection_mode = ?, sni_ttl_seconds = ?,
 			host = ?, host_options = ?, host_selection_mode = ?, host_ttl_seconds = ?,
-			security = ?, alpn = ?, fingerprint = ?, verify_peer_cert_by_name = ?, pinned_peer_cert_sha256 = ?, inbound_tag = ?, allowinsecure = ?,
+			security = ?, alpn = ?, fingerprint = ?, verify_peer_cert_by_name = ?, pinned_peer_cert_sha256 = ?, host_encryption = ?, inbound_tag = ?, allowinsecure = ?,
 			is_disabled = ?, mux_enable = ?, fragment_setting = ?, noise_setting = ?, finalmask = ?,
 			random_user_agent = ?, use_sni_as_host = ?, client_settings = ?
 		WHERE id = ?`,
@@ -2538,6 +2547,7 @@ func updateHostTx(ctx context.Context, tx *sql.Tx, inboundTag string, payload ho
 		normalizeHostFingerprint(payload.Fingerprint),
 		strings.TrimSpace(payload.VerifyPeerCertByName),
 		strings.TrimSpace(payload.PinnedPeerCertSHA256),
+		normalizeHostEncryption(payload.HostEncryption),
 		inboundTag,
 		nullableBoolInt(payload.AllowInsecure),
 		boolToInt(boolPtrValue(payload.IsDisabled)),
@@ -2671,6 +2681,32 @@ func normalizeHostALPN(value string) string {
 	default:
 		return "none"
 	}
+}
+
+// normalizeHostEncryption returns the host-level client encryption override.
+// An empty value (or "none") means "inherit the inbound setting".
+func normalizeHostEncryption(value string) string {
+	value = strings.TrimSpace(value)
+	if strings.EqualFold(value, "none") {
+		return ""
+	}
+	return value
+}
+
+func validHostEncryption(value string) bool {
+	value = normalizeHostEncryption(value)
+	if value == "" {
+		return true
+	}
+	if len(value) > 8192 {
+		return false
+	}
+	for _, r := range value {
+		if r <= ' ' || r == 0x7f || r == '&' || r == '#' || r == '?' {
+			return false
+		}
+	}
+	return true
 }
 
 func normalizeHostFingerprint(value string) string {

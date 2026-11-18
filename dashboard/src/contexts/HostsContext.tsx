@@ -36,6 +36,7 @@ export type HostsSchema = Record<
 		fingerprint: string;
 		verify_peer_cert_by_name: string;
 		pinned_peer_cert_sha256: string;
+		host_encryption?: string;
 		use_sni_as_host: boolean | null;
 	}[]
 >;
