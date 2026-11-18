@@ -97,6 +97,12 @@ CREATE TABLE nodes (
 	xray_config_mode TEXT,
 	xray_config TEXT,
 	usage_coefficient REAL DEFAULT 1,
+	proxy_enabled INTEGER DEFAULT 0,
+	proxy_type TEXT,
+	proxy_host TEXT,
+	proxy_port INTEGER,
+	proxy_username TEXT,
+	proxy_password TEXT,
 	last_status_change DATETIME
 );
 CREATE TABLE inbounds (

@@ -188,7 +188,13 @@ CREATE TABLE nodes (
 	certificate_key TEXT,
 	xray_config_mode TEXT,
 	xray_config TEXT,
-	usage_coefficient REAL DEFAULT 1
+	usage_coefficient REAL DEFAULT 1,
+	proxy_enabled INTEGER DEFAULT 0,
+	proxy_type TEXT,
+	proxy_host TEXT,
+	proxy_port INTEGER,
+	proxy_username TEXT,
+	proxy_password TEXT
 );
 INSERT INTO nodes (id, name, address, port, api_port, status, usage_coefficient)
 VALUES

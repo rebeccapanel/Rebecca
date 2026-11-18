@@ -1069,7 +1069,7 @@ func (c Controller) dial(ctx context.Context, nodeID int64) (*nodeclient.Client,
 		return nil, NodeRow{}, err
 	}
 	addresses := NodeGRPCAddressCandidates(node.Address, node.Port, node.APIPort)
-	cacheKey := fmt.Sprintf("%s:%x", strings.Join(addresses, ","), sha256.Sum256([]byte(cert+key)))
+	cacheKey := fmt.Sprintf("%s:%x:%s", strings.Join(addresses, ","), sha256.Sum256([]byte(cert+key)), node.Proxy.cacheKey())
 	if c.nodeClients != nil {
 		if value, ok := c.nodeClients.Load(nodeID); ok {
 			cached := value.(cachedNodeClient)
@@ -1087,7 +1087,11 @@ func (c Controller) dial(ctx context.Context, nodeID int64) (*nodeclient.Client,
 	errors := make([]string, 0, len(addresses))
 	for _, address := range addresses {
 		attemptCtx, cancel := withNodeDialAttemptTimeout(ctx)
-		client, err := nodeclient.Dial(attemptCtx, address, tlsConfig, grpc.WithBlock())
+		dialOptions := []grpc.DialOption{grpc.WithBlock()}
+		if node.Proxy.enabled() {
+			dialOptions = append(dialOptions, grpc.WithContextDialer(node.Proxy.dialer()))
+		}
+		client, err := nodeclient.Dial(attemptCtx, address, tlsConfig, dialOptions...)
 		cancel()
 		if err == nil {
 			// The dial deadline only covers transport setup. Reusing that context
