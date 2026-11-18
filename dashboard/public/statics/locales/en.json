@@ -4236,5 +4236,8 @@
 	"dashboard.backup.importRestoring": "Restoring backup...",
 	"dashboard.backup.importCompleted": "Restore completed.",
 	"dashboard.backup.stepUpload": "Upload",
-	"dashboard.backup.stepRestore": "Restore"
+	"dashboard.backup.stepRestore": "Restore",
+	"nodes.syncError.title": "Config could not be applied to this node",
+	"nodes.syncError.attempts": "Failed {{count}} times. The node keeps running its previous config until this is fixed.",
+	"nodes.syncError.hint": "Fix the config named in the error, then save it again or restart the node."
 }

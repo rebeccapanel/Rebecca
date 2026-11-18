@@ -1,6 +1,9 @@
 package nodecontroller
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestSkipNodeMetricsClearsInactiveRuntimeState(t *testing.T) {
 	for _, status := range []string{"disabled", "limited"} {
@@ -47,5 +50,20 @@ func TestEnrichCertificateFieldsIncludesInstallBundleMaterial(t *testing.T) {
 	}
 	if custom.NodeCertificateKey == nil || *custom.NodeCertificateKey != customKey {
 		t.Fatalf("custom key was not exposed for install bundle: %#v", custom)
+	}
+}
+
+func TestSummarizeSyncErrorPicksTheXrayFailureLine(t *testing.T) {
+	raw := "rpc error: code = Unavailable desc = Xray replacement validation failed; running runtime preserved: exit status 23: Xray 26.5.9\nA unified platform.\n2026/11/18 17:14:24 [Warning] noise\nFailed to start: main: failed to load config files: [stdin:] > infra/conf: failed to build outbound config with tag usa 1 > infra/conf: invalid WireGuard secret key"
+	got := summarizeSyncError(raw)
+	want := "failed to build outbound config with tag usa 1 > invalid WireGuard secret key"
+	if got != want {
+		t.Fatalf("summary %q, want %q", got, want)
+	}
+	if summarizeSyncError("rpc error: code = Unavailable desc = node gRPC dial failed") != "node gRPC dial failed" {
+		t.Fatal("plain errors are shortened to their message")
+	}
+	if len(summarizeSyncError(strings.Repeat("x", 900))) > 504 {
+		t.Fatal("long errors are capped")
 	}
 }

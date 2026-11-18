@@ -4235,5 +4235,8 @@
 	"dashboard.backup.importRestoring": "در حال بازیابی پشتیبان...",
 	"dashboard.backup.importCompleted": "بازیابی پشتیبان با موفقیت انجام شد.",
 	"dashboard.backup.stepUpload": "ارسال فایل",
-	"dashboard.backup.stepRestore": "بازیابی"
+	"dashboard.backup.stepRestore": "بازیابی",
+	"nodes.syncError.title": "کانفیگ روی این نود اعمال نشد",
+	"nodes.syncError.attempts": "{{count}} بار شکست خورده. تا رفع خطا، نود با کانفیگ قبلی خودش کار می‌کند.",
+	"nodes.syncError.hint": "کانفیگی که در خطا نام برده شده را درست کنید، بعد دوباره ذخیره کنید یا نود را ری‌استارت کنید."
 }

@@ -1801,17 +1801,29 @@ export const NodesPage: FC = () => {
 	const renderNodeStatus = (node: NodeType) => {
 		const status = node.status || "error";
 		const statusBadge = <NodeModalStatusBadge status={status} compact />;
-		if (status !== "error" || !node.message) {
+		const showMessage = status === "error" && Boolean(node.message);
+		const syncError = node.sync_error || "";
+		if (!showMessage && !syncError) {
 			return statusBadge;
 		}
 		return (
 			<HoverCard openDelay={250} closeDelay={150}>
 				<HoverCardTrigger asChild>
-					<span>{statusBadge}</span>
+					<span className="inline-flex items-center gap-1.5">
+						{statusBadge}
+						{syncError ? <TriangleAlert className="size-4 text-[#f59e0b]" aria-label={t("nodes.syncError.title")} /> : null}
+					</span>
 				</HoverCardTrigger>
-				<HoverCardContent side="top" className="w-auto max-w-[360px] px-2 py-1 text-[0.875rem]">
-					
-					<div className="p-3">{node.message}</div>
+				<HoverCardContent side="top" className="w-auto max-w-[420px] px-2 py-1 text-[0.875rem]">
+					{syncError ? (
+						<div className="flex flex-col gap-1 p-3">
+							<span className="font-semibold">{t("nodes.syncError.title")}</span>
+							<span className="break-words">{syncError}</span>
+							{node.sync_error_attempts ? <span className="text-muted-foreground">{t("nodes.syncError.attempts", { count: node.sync_error_attempts })}</span> : null}
+							<span className="text-muted-foreground">{t("nodes.syncError.hint")}</span>
+						</div>
+					) : null}
+					{showMessage ? <div className="p-3">{node.message}</div> : null}
 				</HoverCardContent>
 			</HoverCard>
 		);
@@ -2227,6 +2239,7 @@ export const NodesPage: FC = () => {
 					<ExpandedMeta label={t("nodes.capabilities")} value={node.capabilities?.join(", ") || "-"} wide />
 					<ExpandedMeta label={t("nodes.note")} value={node.note || "-"} />
 					<ExpandedMeta label={t("nodes.lastMessage")} value={node.message || "-"} />
+					{node.sync_error ? <ExpandedMeta label={t("nodes.syncError.title")} value={node.sync_error} wide /> : null}
 					<ExpandedHeading title={t("nodes.protocolHealth")} />
 					<div className="[grid-column:1_/_-1]">
 						<ProtocolStatusList statuses={node.protocol_statuses} />

@@ -2006,3 +2006,33 @@ VALUES ('add_user', 4, 9, '{}', 'retrying', 1, 'fine', CURRENT_TIMESTAMP, CURREN
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 1 AND operation_type = 'sync_config' AND status = 'pending'`, 1)
 	assertRepositoryInt64(t, db, `SELECT COUNT(*) FROM node_operations WHERE node_id = 4 AND operation_type = 'sync_config'`, 0)
 }
+
+func TestRepositoryListNodeItemsReportsTheFailingSync(t *testing.T) {
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:"+filepath.Join(t.TempDir(), "sync-error.db")+"?_pragma=busy_timeout(30000)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.ExecContext(ctx, `
+CREATE TABLE nodes (id INTEGER PRIMARY KEY, name TEXT, note TEXT, address TEXT, port INTEGER, api_port INTEGER, usage_coefficient REAL, data_limit INTEGER, proxy_enabled INTEGER, proxy_type TEXT, proxy_host TEXT, proxy_port INTEGER, proxy_username TEXT, proxy_password TEXT, status TEXT, agent_status TEXT, xray_status TEXT, desired_revision INTEGER, applied_revision INTEGER, node_capabilities TEXT, message TEXT, xray_version TEXT, geo_mode TEXT, xray_config_mode TEXT, uplink INTEGER, downlink INTEGER, certificate TEXT, certificate_key TEXT);
+CREATE TABLE default_certificates (id INTEGER PRIMARY KEY, certificate TEXT, private_key TEXT);
+CREATE TABLE node_operations (id INTEGER PRIMARY KEY AUTOINCREMENT, operation_type TEXT NOT NULL, node_id INTEGER NULL, user_id INTEGER NULL, payload TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT NULL, idempotency_key TEXT NOT NULL UNIQUE, created_at DATETIME NOT NULL, updated_at DATETIME NOT NULL);
+INSERT INTO nodes (id, name, address, port, api_port, usage_coefficient, proxy_enabled, status) VALUES (1, 'bad', '1.1.1.1', 62050, 62051, 1, 0, 'connected'), (2, 'good', '2.2.2.2', 62050, 62051, 1, 0, 'connected');
+INSERT INTO node_operations (operation_type, node_id, payload, status, attempts, last_error, idempotency_key, created_at, updated_at) VALUES
+ ('sync_config', 1, '{}', 'retrying', 7, 'Failed to start: main: failed to load config files: [stdin:] > infra/conf: invalid WireGuard secret key', 'e1', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+ ('sync_config', 2, '{}', 'done', 0, 'old', 'e2', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP),
+ ('add_user', 2, '{}', 'retrying', 3, 'dial failed', 'e3', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`); err != nil {
+		t.Fatal(err)
+	}
+	items, _, _, err := NewRepository(db, "sqlite").ListNodeItems(ctx, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 || items[0].SyncError == nil || *items[0].SyncError != "invalid WireGuard secret key" || items[0].SyncErrorAttempts != 7 || items[0].SyncErrorDetail == nil {
+		t.Fatalf("the failing sync must be reported: %+v", items[0])
+	}
+	if items[1].SyncError != nil || items[1].SyncErrorAttempts != 0 {
+		t.Fatalf("a node without a failing sync must report nothing: %+v", items[1])
+	}
+}

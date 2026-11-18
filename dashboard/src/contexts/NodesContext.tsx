@@ -100,6 +100,9 @@ export const NodeSchema = z
 		applied_revision: z.number().optional(),
 		capabilities: z.array(z.string()).optional(),
 		message: z.string().nullable().optional(),
+		sync_error: z.string().nullable().optional(),
+		sync_error_detail: z.string().nullable().optional(),
+		sync_error_attempts: z.number().optional(),
 		usage_coefficient: z
 			.number()
 			.or(z.string().transform((v) => parseFloat(v))),
@@ -238,6 +241,9 @@ const liveMetricKeys: Array<keyof NodeType> = [
 const liveNodeKeys: Array<keyof NodeType> = [
 	"status",
 	"message",
+	"sync_error",
+	"sync_error_detail",
+	"sync_error_attempts",
 	"xray_version",
 	"node_service_version",
 	"node_install_mode",
