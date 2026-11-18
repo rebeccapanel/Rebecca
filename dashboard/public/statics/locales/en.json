@@ -882,6 +882,9 @@
 	"hostsPage.portHint": "Leave empty to use the inbound port.",
 	"hostsPage.inheritHint": "Leave empty to inherit the inbound value.",
 	"hostsPage.pathHint": "Use / unless your reverse proxy expects a different path.",
+	"hostsDialog.hostEncryption": "Encryption (client)",
+	"hostsDialog.hostEncryptionHint": "Client-side encryption written into links: VLESS encryption (e.g. mlkem768x25519plus.native.0rtt.<key>), VMess security (e.g. chacha20-poly1305) or Shadowsocks method (must match the server). Leave empty to inherit the inbound value.",
+	"hostsDialog.hostEncryptionInvalid": "Must be a single value without spaces, &, # or ?.",
 	"hostsPage.allowInsecureHint": "Skip certificate verification. Use only when the destination certificate cannot be verified.",
 	"hostsPage.muxHint": "Ask supported clients to multiplex connections. FinalMask patterns are configured separately above.",
 	"hostsPage.randomUserAgentHint": "Generate a different common User-Agent for exported configurations.",
@@ -4236,5 +4239,8 @@
 	"dashboard.backup.importRestoring": "Restoring backup...",
 	"dashboard.backup.importCompleted": "Restore completed.",
 	"dashboard.backup.stepUpload": "Upload",
-	"dashboard.backup.stepRestore": "Restore"
+	"dashboard.backup.stepRestore": "Restore",
+	"nodes.syncError.title": "Config could not be applied to this node",
+	"nodes.syncError.attempts": "Failed {{count}} times. The node keeps running its previous config until this is fixed.",
+	"nodes.syncError.hint": "Fix the config named in the error, then save it again or restart the node."
 }

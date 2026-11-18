@@ -48,6 +48,7 @@ import {
 	WsStreamSettings,
 	XHTTPStreamSettings,
 } from "../utils/outbound";
+import { parseWireguardImport } from "utils/wireguardImport";
 import { JsonEditor } from "./JsonEditor";
 import { SearchableTagSelect } from "./common/SearchableTagSelect";
 import { PropagationTargets } from "./xray/PropagationTargets";
@@ -1160,82 +1161,26 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 		}
 	};
 
-	const parseWireguardIni = (text: string) => {
-		if (!text.toLowerCase().includes("[interface]")) return null;
-		const lines = text.split(/\r?\n/);
-		let current: "interface" | "peer" | null = null;
-		const iface: Record<string, string> = {};
-		const peersRaw: Array<Record<string, string>> = [];
-
-		lines.forEach((raw) => {
-			const line = raw.trim();
-			if (!line || line.startsWith("#") || line.startsWith(";")) return;
-			const lower = line.toLowerCase();
-			if (lower === "[interface]") {
-				current = "interface";
-				return;
-			}
-			if (lower === "[peer]") {
-				current = "peer";
-				peersRaw.push({});
-				return;
-			}
-			const [key, ...rest] = line.split("=");
-			if (!key || rest.length === 0) return;
-			const value = rest.join("=").trim();
-			if (current === "interface") {
-				iface[key.trim().toLowerCase()] = value;
-			} else if (current === "peer") {
-				const target = peersRaw[peersRaw.length - 1];
-				if (target) {
-					target[key.trim().toLowerCase()] = value;
-				}
-			}
-		});
-
-		if (!iface.privatekey) return null;
-		const addresses = iface.address
-			? iface.address
-					.split(",")
-					.map((item) => item.trim())
-					.filter(Boolean)
-			: [];
-		const peers = peersRaw.map((peer) => ({
-			publicKey: peer.publickey || "",
-			preSharedKey: peer.presharedkey || peer.psk || "",
-			allowedIPs: (peer.allowedips || "")
-				.split(",")
-				.map((item) => item.trim())
-				.filter(Boolean),
-			endpoint: peer.endpoint || "",
-			keepAlive: peer.persistentkeepalive
-				? Number(peer.persistentkeepalive) || 0
-				: 0,
-		}));
-
-		return {
-			tag: "wireguard-import",
-			protocol: Protocols.Wireguard,
-			settings: {
-				secretKey: iface.privatekey,
-				address: addresses,
-				peers,
-			},
-		};
-	};
-
 	const handleConfigToJson = () => {
 		const trimmed = configInput.trim();
 		if (!trimmed) {
 			setJsonError(t("pages.outbound.configEmpty"));
 			return;
 		}
-		const wg = parseWireguardIni(trimmed);
+		const wg = parseWireguardImport(trimmed);
 		if (wg) {
-			const formatted = JSON.stringify(wg, null, 2);
+			if (!wg.ok) {
+				setJsonError(wg.error);
+				toast.error(t("pages.outbound.configParseFailedTitle"), { description: wg.error, duration: 4000 });
+				return;
+			}
+			const formatted = JSON.stringify(wg.outbound, null, 2);
 			setConfigInput("");
 			handleJsonEditorChange(formatted);
 			toast.success(t("pages.outbound.configConvertedTitle"), { description: t("pages.outbound.configConvertedDesc"), duration: 2000 });
+			if (wg.warnings.length > 0) {
+				toast.warning(wg.warnings.join(" "), { duration: 5000 });
+			}
 			return;
 		}
 		const outboundFromLink = Outbound.fromLink(trimmed);

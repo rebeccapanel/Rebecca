@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -2571,5 +2572,23 @@ func TestSubscriptionTokenAcceptsLegacyPythonAndRecentGoSignatures(t *testing.T)
 	generated := createSubscriptionToken("alice", secret, recentGo.CreatedAt)
 	if !strings.HasSuffix(generated, createSubscriptionTokenSignature(generated[:len(generated)-10], secret)) {
 		t.Fatalf("new tokens must use legacy python-compatible signatures: %s", generated)
+	}
+}
+
+func TestRenderClashLikeYAMLMatchRuleTargetsTheUserGroup(t *testing.T) {
+	for _, username := range []string{"alice", "Hs040", "bob smith", "carol_1"} {
+		for _, meta := range []bool{true, false} {
+			body := mustRenderClashLikeYAML(t, username, []string{"ss://Y2hhY2hhMjAtaWV0Zi1wb2x5MTMwNTpwYXNz@example.net:8388#ss"}, meta)
+			if strings.Contains(body, `MATCH,"`) {
+				t.Fatalf("the quotes must wrap the whole rule, not the group name:\n%s", body)
+			}
+			want := "  - " + strconv.Quote("MATCH,"+username) + "\n"
+			if !strings.HasSuffix(body, "rules:\n"+want) {
+				t.Fatalf("rule for %q must be %q:\n%s", username, want, body)
+			}
+			if !strings.Contains(body, "  - name: "+strconv.Quote(username)+"\n") {
+				t.Fatalf("the proxy group must carry the same name %q:\n%s", username, body)
+			}
+		}
 	}
 }

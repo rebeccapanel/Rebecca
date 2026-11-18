@@ -1769,3 +1769,36 @@ func TestPairedHostRotationValueFollowsTheSelectedSNI(t *testing.T) {
 		t.Fatalf("empty sni must not pair, got %q", got)
 	}
 }
+
+func TestHostOverridesHostEncryption(t *testing.T) {
+	const key = "mlkem768x25519plus.random.0rtt.GdOIY4aWLxkAK8IF_F4mp-ehETCl"
+	inbound := ResolvedInbound{"protocol": "vless", "port": 443, "tls": "none", "network": "tcp"}
+	settings := map[string]any{"id": "11111111-2222-3333-4444-555555555555"}
+
+	_, address, effective, ok := effectiveInboundForHost("alice", nil, inbound, Host{ID: 1, Address: "edge.example.com", HostEncryption: "  " + key + "  "})
+	if !ok || effective["encryption"] != key {
+		t.Fatalf("host VLESS encryption override was lost: %#v", effective)
+	}
+	link := vlessShareLink("r", address, "", effective, settings)
+	parsed, err := url.Parse(link)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := parsed.Query().Get("encryption"); got != key {
+		t.Fatalf("expected encryption=%s in link, got %q (%s)", key, got, link)
+	}
+
+	_, _, inherited, _ := effectiveInboundForHost("alice", nil, ResolvedInbound{"protocol": "vless", "port": 443, "encryption": "from-inbound"}, Host{ID: 2, Address: "edge.example.com"})
+	if inherited["encryption"] != "from-inbound" {
+		t.Fatalf("empty host value must inherit inbound encryption: %#v", inherited)
+	}
+	link = vlessShareLink("r", "edge.example.com", "", ResolvedInbound{"protocol": "vless", "port": 443, "tls": "none", "network": "tcp"}, settings)
+	if parsed, _ := url.Parse(link); parsed.Query().Get("encryption") != "none" {
+		t.Fatalf("default link must keep encryption=none: %s", link)
+	}
+
+	_, _, trojan, _ := effectiveInboundForHost("alice", nil, ResolvedInbound{"protocol": "trojan", "port": 443}, Host{ID: 3, Address: "edge.example.com", HostEncryption: key})
+	if _, exists := trojan["encryption"]; exists {
+		t.Fatalf("VLESS encryption must not leak into non-VLESS inbounds: %#v", trojan)
+	}
+}

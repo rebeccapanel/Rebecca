@@ -243,6 +243,7 @@ func NormalizePayloadForXrayVersion(payload map[string]any, coreVersion string) 
 	unsupportedRemoteDNSTags := make([]string, 0)
 	unsupportedCustomResponseTags := make([]string, 0)
 	unsupportedWireGuardDNSTags := make([]string, 0)
+	cleanedWireGuardKeyTags := make([]string, 0)
 	xdnsAdaptedTags := make([]string, 0)
 	vlessEncryptionTags := append(vlessEncryptionEndpointTags(inbounds), vlessEncryptionEndpointTags(outbounds)...)
 	vlessDefaultFlowTags := vlessDefaultFlowEndpointTags(inbounds)
@@ -295,6 +296,11 @@ func NormalizePayloadForXrayVersion(payload map[string]any, coreVersion string) 
 	for index, outbound := range outbounds {
 		stream := mapValue(outbound["streamSettings"])
 		label := configEndpointLabel(outbound, index)
+		if strings.EqualFold(jsonvalue.String(outbound["protocol"]), "wireguard") {
+			if normalizeWireGuardOutboundKeys(mapValue(outbound["settings"])) {
+				cleanedWireGuardKeyTags = append(cleanedWireGuardKeyTags, label)
+			}
+		}
 		if !atLeast2698 && strings.EqualFold(jsonvalue.String(outbound["protocol"]), "wireguard") {
 			settings := mapValue(outbound["settings"])
 			if _, exists := settings["remoteDNS"]; exists {
@@ -377,6 +383,9 @@ func NormalizePayloadForXrayVersion(payload map[string]any, coreVersion string) 
 	}
 	if len(updatedOutboundTags) > 0 {
 		warnings = append(warnings, fmt.Sprintf("Adapted removed outbound keys for Xray 26.9.8+: %s", strings.Join(updatedOutboundTags, ", ")))
+	}
+	if len(cleanedWireGuardKeyTags) > 0 {
+		warnings = append(warnings, fmt.Sprintf("Removed pasted \"PrivateKey =\" / \"PublicKey =\" labels and spaces from the WireGuard keys of: %s", strings.Join(cleanedWireGuardKeyTags, ", ")))
 	}
 	if len(updatedHopTags) > 0 {
 		warnings = append(warnings, fmt.Sprintf("Moved legacy QUIC UDP hopping to the Xray 26.9.9+ udphop mask for: %s", strings.Join(updatedHopTags, ", ")))

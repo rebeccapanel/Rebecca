@@ -221,6 +221,9 @@ type NodeListItem struct {
 	Capabilities           []string         `json:"capabilities,omitempty"`
 	ProtocolStatuses       []ProtocolStatus `json:"protocol_statuses,omitempty"`
 	Message                *string          `json:"message"`
+	SyncError              *string          `json:"sync_error"`
+	SyncErrorDetail        *string          `json:"sync_error_detail"`
+	SyncErrorAttempts      int              `json:"sync_error_attempts"`
 	XrayVersion            *string          `json:"xray_version"`
 	NodeServiceVersion     *string          `json:"node_service_version"`
 	NodeInstallMode        *string          `json:"node_install_mode"`

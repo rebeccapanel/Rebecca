@@ -129,7 +129,93 @@ WHERE LOWER(COALESCE(status, '')) <> 'deleted'`
 		}
 		result = append(result, item)
 	}
-	return result, defaultCert, defaultKey, rows.Err()
+	if err := rows.Err(); err != nil {
+		return result, defaultCert, defaultKey, err
+	}
+	rows.Close()
+	r.attachSyncErrors(ctx, result, nodeID)
+	return result, defaultCert, defaultKey, nil
+}
+
+const syncErrorDetailLimit = 6000
+
+func (r Repository) attachSyncErrors(ctx context.Context, items []NodeListItem, nodeID int64) {
+	if len(items) == 0 {
+		return
+	}
+	query := `SELECT node_id, attempts, COALESCE(last_error, '')
+FROM node_operations
+WHERE operation_type = 'sync_config'
+  AND node_id IS NOT NULL
+  AND status IN ('retrying', 'pending', 'running')
+  AND COALESCE(last_error, '') <> ''`
+	args := []any{}
+	if nodeID > 0 {
+		query += ` AND node_id = ?`
+		args = append(args, nodeID)
+	}
+	query += ` ORDER BY id`
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	type failure struct {
+		attempts int
+		detail   string
+	}
+	latest := map[int64]failure{}
+	for rows.Next() {
+		var id int64
+		var f failure
+		if err := rows.Scan(&id, &f.attempts, &f.detail); err != nil {
+			return
+		}
+		latest[id] = f
+	}
+	for index := range items {
+		f, ok := latest[items[index].ID]
+		if !ok {
+			continue
+		}
+		summary := summarizeSyncError(f.detail)
+		detail := strings.TrimSpace(f.detail)
+		if len(detail) > syncErrorDetailLimit {
+			detail = detail[:syncErrorDetailLimit] + "..."
+		}
+		items[index].SyncError = &summary
+		items[index].SyncErrorDetail = &detail
+		items[index].SyncErrorAttempts = f.attempts
+	}
+}
+
+func summarizeSyncError(raw string) string {
+	lines := strings.Split(strings.TrimSpace(raw), "\n")
+	chosen := ""
+	for _, line := range lines {
+		if strings.Contains(line, "Failed to start:") {
+			chosen = line
+		}
+	}
+	if chosen == "" {
+		for i := len(lines) - 1; i >= 0; i-- {
+			if strings.TrimSpace(lines[i]) != "" {
+				chosen = lines[i]
+				break
+			}
+		}
+	}
+	chosen = strings.TrimSpace(chosen)
+	if index := strings.Index(chosen, "Failed to start:"); index >= 0 {
+		chosen = strings.TrimSpace(chosen[index+len("Failed to start:"):])
+	}
+	chosen = strings.TrimPrefix(chosen, "rpc error: code = Unavailable desc = ")
+	chosen = strings.ReplaceAll(chosen, "main: failed to load config files: [stdin:] > ", "")
+	chosen = strings.ReplaceAll(chosen, "infra/conf: ", "")
+	if len(chosen) > 500 {
+		chosen = chosen[:500] + "..."
+	}
+	return chosen
 }
 
 func normalizeNodeListStatus(status string) string {

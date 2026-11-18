@@ -70,6 +70,8 @@ import {
 	sanitizeFinalMask,
 } from "utils/finalmask";
 import { getHostFormFields } from "utils/hostFormFields";
+import { Textarea } from "components/ui/textarea";
+import { HOST_ENCRYPTION_PLACEHOLDERS, normalizeHostEncryption, hostEncryptionValid } from "utils/hostEncryption";
 import { hostClientSettingsError, parseHostClientSettings } from "utils/hostClientSettings";
 import { HostClientSettingsEditor } from "./HostClientSettingsEditor";
 import {
@@ -135,6 +137,7 @@ type HostData = {
 	fingerprint: string;
 	verify_peer_cert_by_name: string;
 	pinned_peer_cert_sha256: string;
+	host_encryption: string;
 	use_sni_as_host: boolean;
 };
 
@@ -242,6 +245,7 @@ const EMPTY_HOST_DATA: HostData = {
 	fingerprint: "",
 	verify_peer_cert_by_name: "",
 	pinned_peer_cert_sha256: "",
+	host_encryption: "",
 	use_sni_as_host: false,
 };
 
@@ -579,6 +583,7 @@ const normalizeHostData = (host: HostsSchema[string][number]): HostData => ({
 	fingerprint: host.fingerprint ?? "",
 	verify_peer_cert_by_name: host.verify_peer_cert_by_name ?? "",
 	pinned_peer_cert_sha256: host.pinned_peer_cert_sha256 ?? "",
+	host_encryption: host.host_encryption ?? "",
 	use_sni_as_host: normalizeBoolean(host.use_sni_as_host),
 });
 
@@ -615,6 +620,7 @@ const cloneHostData = (data: HostData): HostData => ({
 	fingerprint: data.fingerprint,
 	verify_peer_cert_by_name: data.verify_peer_cert_by_name,
 	pinned_peer_cert_sha256: data.pinned_peer_cert_sha256,
+	host_encryption: data.host_encryption,
 	use_sni_as_host: data.use_sni_as_host,
 });
 
@@ -676,6 +682,9 @@ const validateHostState = (
 		errors.push(
 			"Certificate pins must be comma-separated SHA-256 fingerprints.",
 		);
+	}
+	if (!hostEncryptionValid(data.host_encryption)) {
+		errors.push("Encryption must be a single value without spaces, &, # or ?.");
 	}
 	const clientSettingsError = hostClientSettingsError(data.client_settings);
 	if (clientSettingsError) errors.push(clientSettingsError);
@@ -756,6 +765,7 @@ const formatHostForApi = (
 		fingerprint: data.fingerprint || "",
 		verify_peer_cert_by_name: data.verify_peer_cert_by_name.trim(),
 		pinned_peer_cert_sha256: data.pinned_peer_cert_sha256.trim(),
+		host_encryption: normalizeHostEncryption(data.host_encryption),
 		use_sni_as_host: data.use_sni_as_host,
 	};
 };
@@ -1046,8 +1056,10 @@ const HostForm: FC<HostFormProps> = ({
 		selectedInbound?.headerType,
 		selectedInbound?.protocol,
 	);
+	const inboundProtocol = (selectedInbound?.protocol ?? "").trim().toLowerCase();
+	const encryptionPlaceholder = HOST_ENCRYPTION_PLACEHOLDERS[inboundProtocol];
 	const hasAdvancedSettings =
-		usesTLS || capabilities.supported || capabilities.mux || showsRequestHost;
+		usesTLS || capabilities.supported || capabilities.mux || showsRequestHost || Boolean(encryptionPlaceholder);
 	const transport = selectedInbound?.network.trim().toLowerCase() ?? "";
 	const requestHostLabel =
 		transport === "grpc"
@@ -1290,6 +1302,24 @@ const HostForm: FC<HostFormProps> = ({
 									capabilities={capabilities}
 								/>
 							</Suspense>
+						</FormField>
+					) : null}
+
+					{encryptionPlaceholder ? (
+						<FormField
+							label={t("hostsDialog.hostEncryption")}
+							description={t("hostsDialog.hostEncryptionHint")}
+							error={hostEncryptionValid(data.host_encryption) ? undefined : t("hostsDialog.hostEncryptionInvalid")}
+						>
+							<Textarea
+								dir="ltr"
+								rows={3}
+								spellCheck={false}
+								className="font-mono text-xs break-all"
+								value={data.host_encryption}
+								placeholder={encryptionPlaceholder}
+								onChange={(event) => onChange("host_encryption", event.target.value)}
+							/>
 						</FormField>
 					) : null}
 
@@ -1693,6 +1723,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 			!finalMaskValid ||
 			hostClientSettingsError(formState.client_settings) ||
 			!certificatePinsValid(formState.pinned_peer_cert_sha256) ||
+			!hostEncryptionValid(formState.host_encryption) ||
 			!formState.inboundTag ||
 			!formState.remark.trim() ||
 			Boolean(remarkError) ||
@@ -1746,6 +1777,7 @@ const CreateHostModal: FC<CreateHostModalProps> = ({
 							!finalMaskValid ||
 							Boolean(hostClientSettingsError(formState.client_settings)) ||
 							!certificatePinsValid(formState.pinned_peer_cert_sha256) ||
+							!hostEncryptionValid(formState.host_encryption) ||
 							!formState.inboundTag ||
 							!formState.remark.trim() ||
 							Boolean(remarkError) ||
