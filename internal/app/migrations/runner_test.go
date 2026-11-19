@@ -99,7 +99,7 @@ func TestRunMigrationsFreshSQLiteAndDoubleRun(t *testing.T) {
 	assertTableColumns(t, ctx, db, "sqlite", "service_admins", []string{"admin_id", "service_id", "used_traffic", "lifetime_used_traffic", "created_traffic", "data_limit", "users_limit", "traffic_limit_mode", "show_user_traffic", "delete_user_usage_limit", "deleted_users_usage"})
 	assertTableColumns(t, ctx, db, "sqlite", "service_hosts", []string{"service_id", "host_id", "sort", "created_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "settings", []string{"dashboard_path", "record_node_usage", "phpmyadmin_enabled", "phpmyadmin_port", "phpmyadmin_path", "phpmyadmin_public_url", "phpmyadmin_login_mode", "phpmyadmin_username", "phpmyadmin_password"})
-	assertTableColumns(t, ctx, db, "sqlite", "subscription_settings", []string{"subscription_profile_title", "subscription_support_url", "subscription_aliases", "subscription_path", "subscription_ports", "happ_subscription_template", "incy_subscription_template", "client_routing_rules", "subscription_placeholder_enabled", "subscription_placeholder_remark"})
+	assertTableColumns(t, ctx, db, "sqlite", "subscription_settings", []string{"subscription_profile_title", "subscription_support_url", "subscription_aliases", "subscription_path", "subscription_ports", "happ_subscription_template", "incy_subscription_template", "client_routing_rules", "subscription_placeholder_enabled", "subscription_placeholder_remark", "subscription_web_push_enabled"})
 	assertTableColumns(t, ctx, db, "sqlite", "subscription_domains", []string{"domain", "admin_id", "email", "provider", "alt_names"})
 	assertTableColumns(t, ctx, db, "sqlite", "vpn_user_sessions", []string{"node_id", "user_id", "protocol", "session_id", "assigned_ip", "client_ip", "ended_at"})
 	assertTableColumns(t, ctx, db, "sqlite", "user_online_ips", []string{"node_id", "user_id", "protocol", "ip", "last_seen_at"})
@@ -117,6 +117,10 @@ func TestRunMigrationsFreshSQLiteAndDoubleRun(t *testing.T) {
 	assertNoIndex(t, ctx, db, "sqlite", "hosts", "ix_hosts_inbound_tag_sort_id")
 	assertIndex(t, ctx, db, "sqlite", "hosts", "ix_hosts_inbound_tag")
 	assertTableColumns(t, ctx, db, "sqlite", "warp_accounts", []string{"device_id", "access_token", "license_key", "private_key", "public_key"})
+	assertTableColumns(t, ctx, db, "sqlite", "user_push_subscriptions", []string{"id", "user_id", "endpoint_hash", "endpoint", "p256dh", "auth", "user_agent", "page_url", "lang", "created_at", "updated_at", "last_success_at"})
+	assertIndex(t, ctx, db, "sqlite", "user_push_subscriptions", "ux_user_push_subscriptions_endpoint")
+	assertIndex(t, ctx, db, "sqlite", "user_push_subscriptions", "ix_user_push_subscriptions_user")
+	assertTableColumns(t, ctx, db, "sqlite", "user_push_alert_states", []string{"user_id", "sent_mask", "alert_prefs", "updated_at"})
 
 	if err := RunMigrations(ctx, db, "sqlite"); err != nil {
 		t.Fatalf("second run migrations: %v", err)

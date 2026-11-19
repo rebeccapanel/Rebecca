@@ -33,6 +33,45 @@ self.addEventListener('notificationclick', function (event) {
 });
 `
 
+const UserServiceWorkerScript = `self.addEventListener('install', function () { self.skipWaiting(); });
+self.addEventListener('activate', function (event) { event.waitUntil(self.clients.claim()); });
+self.addEventListener('push', function (event) {
+  var data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (error) { data = { title: 'Subscription', body: event.data ? event.data.text() : '' }; }
+  var options = {
+    body: data.body || '',
+    tag: data.tag || undefined,
+    renotify: !!data.tag,
+    data: { url: data.url || '/' }
+  };
+  if (data.icon) {
+    options.icon = data.icon;
+    options.badge = data.icon;
+  }
+  if (data.dir === 'rtl' || data.dir === 'ltr') {
+    options.dir = data.dir;
+  }
+  if (data.lang) {
+    options.lang = data.lang;
+  }
+  event.waitUntil(self.registration.showNotification(data.title || 'Subscription', options));
+});
+self.addEventListener('notificationclick', function (event) {
+  event.notification.close();
+  var target = (event.notification.data && event.notification.data.url) || '/';
+  event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (windows) {
+    var targetURL = new URL(target, self.location.origin).href;
+    for (var i = 0; i < windows.length; i++) {
+      var client = windows[i];
+      if (client.url && (client.url === targetURL || client.url.indexOf(target) !== -1) && 'focus' in client) {
+        return client.focus();
+      }
+    }
+    if (self.clients.openWindow) { return self.clients.openWindow(targetURL); }
+  }));
+});
+`
+
 type manifestIcon struct {
 	Src   string `json:"src"`
 	Sizes string `json:"sizes"`
@@ -60,6 +99,35 @@ func ManifestJSON(basename string) ([]byte, error) {
 		Display:         "standalone",
 		BackgroundColor: "#ffffff",
 		ThemeColor:      "#3B81F6",
+		Icons: []manifestIcon{
+			{Src: "/statics/favicon/android-chrome-192x192.png", Sizes: "192x192", Type: "image/png"},
+			{Src: "/statics/favicon/android-chrome-512x512.png", Sizes: "512x512", Type: "image/png"},
+		},
+	})
+}
+
+func UserManifestJSON(brandName string, startURL string, scope string) ([]byte, error) {
+	name := strings.TrimSpace(brandName)
+	if name == "" {
+		name = "Subscription"
+	}
+	shortName := name
+	if runes := []rune(shortName); len(runes) > 24 {
+		shortName = string(runes[:24])
+	}
+	cleanStart := cleanPageURL(startURL)
+	cleanScope := cleanPageURL(scope)
+	if cleanScope == "/" && cleanStart != "/" {
+		cleanScope = cleanStart
+	}
+	return json.Marshal(manifest{
+		Name:            name,
+		ShortName:       shortName,
+		StartURL:        cleanStart,
+		Scope:           cleanScope,
+		Display:         "standalone",
+		BackgroundColor: "#060913",
+		ThemeColor:      "#060913",
 		Icons: []manifestIcon{
 			{Src: "/statics/favicon/android-chrome-192x192.png", Sizes: "192x192", Type: "image/png"},
 			{Src: "/statics/favicon/android-chrome-512x512.png", Sizes: "512x512", Type: "image/png"},

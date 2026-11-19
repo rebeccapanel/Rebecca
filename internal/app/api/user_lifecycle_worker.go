@@ -52,6 +52,12 @@ func (s *Server) reviewUserLifecycle(ctx context.Context) {
 		logging.Warnf(logging.ComponentUser, "lifecycle review failed: %v", err)
 		return
 	}
+	if s.subPushEnabled.Load() && (len(result.LimitedUserIDs) > 0 || len(result.ExpiredUserIDs) > 0) {
+		ids := make([]int64, 0, len(result.LimitedUserIDs)+len(result.ExpiredUserIDs))
+		ids = append(ids, result.LimitedUserIDs...)
+		ids = append(ids, result.ExpiredUserIDs...)
+		go s.runSubscriptionPushForUsers(ctx, ids)
+	}
 	if result.Limited > 0 || result.Expired > 0 || result.Reactivated > 0 || result.Corrected > 0 || result.AppliedNextPlan > 0 || result.ActivatedOnHold > 0 {
 		logging.Debugf(
 			logging.ComponentUser,

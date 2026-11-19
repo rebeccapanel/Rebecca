@@ -14,15 +14,17 @@ type LifecycleOptions struct {
 }
 
 type LifecycleResult struct {
-	CheckedActive   int64 `json:"checked_active"`
-	CheckedOnHold   int64 `json:"checked_on_hold"`
-	CheckedInactive int64 `json:"checked_inactive"`
-	Limited         int64 `json:"limited"`
-	Expired         int64 `json:"expired"`
-	Reactivated     int64 `json:"reactivated"`
-	Corrected       int64 `json:"corrected"`
-	AppliedNextPlan int64 `json:"applied_next_plan"`
-	ActivatedOnHold int64 `json:"activated_on_hold"`
+	CheckedActive   int64   `json:"checked_active"`
+	CheckedOnHold   int64   `json:"checked_on_hold"`
+	CheckedInactive int64   `json:"checked_inactive"`
+	Limited         int64   `json:"limited"`
+	Expired         int64   `json:"expired"`
+	Reactivated     int64   `json:"reactivated"`
+	Corrected       int64   `json:"corrected"`
+	AppliedNextPlan int64   `json:"applied_next_plan"`
+	ActivatedOnHold int64   `json:"activated_on_hold"`
+	LimitedUserIDs  []int64 `json:"-"`
+	ExpiredUserIDs  []int64 `json:"-"`
 }
 
 type UsageResetOptions struct {
@@ -139,8 +141,10 @@ func (r Repository) reviewUserLifecycle(ctx context.Context, opts LifecycleOptio
 		if limited {
 			targetStatus = UserStatusLimited
 			result.Limited++
+			result.LimitedUserIDs = append(result.LimitedUserIDs, row.ID)
 		} else {
 			result.Expired++
+			result.ExpiredUserIDs = append(result.ExpiredUserIDs, row.ID)
 		}
 		if _, err := tx.ExecContext(
 			ctx,

@@ -1152,5 +1152,7 @@
 	"dashboard.backup.importRestoring": "Восстановление из резервной копии...",
 	"dashboard.backup.importCompleted": "Восстановление завершено.",
 	"dashboard.backup.stepUpload": "Отправка",
-	"dashboard.backup.stepRestore": "Восстановление"
+	"dashboard.backup.stepRestore": "Восстановление",
+	"settings.subscriptions.webPushEnabled": "Web Push-уведомления на странице подписки",
+	"settings.subscriptions.webPushEnabledHint": "Разрешает пользователям включать браузерные уведомления о трафике (80% / 95%), скором истечении (24 ч.), исчерпании лимита и окончании срока подписки. В выключенном состоянии фоновая работа не выполняется."
 }

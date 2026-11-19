@@ -10,7 +10,7 @@ import (
 
 func (s *Server) handleSubscriptionPath(w http.ResponseWriter, r *http.Request) {
 	setSubscriptionNoCacheHeaders(w)
-	if r.Method != http.MethodGet {
+	if r.Method != http.MethodGet && r.Method != http.MethodPost {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
@@ -21,6 +21,14 @@ func (s *Server) handleSubscriptionPath(w http.ResponseWriter, r *http.Request) 
 	}
 	if !ok {
 		writeError(w, http.StatusNotFound, "Not Found")
+		return
+	}
+	if req.ClientType == "push" {
+		s.handleSubscriptionPush(w, r, req)
+		return
+	}
+	if r.Method != http.MethodGet {
+		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return
 	}
 	s.handleResolvedSubscription(w, r, req)
@@ -55,6 +63,9 @@ func (s *Server) handleResolvedSubscription(w http.ResponseWriter, r *http.Reque
 		}
 		writeJSON(w, http.StatusOK, payload)
 	default:
+		if s.subPushEnabled.Load() && req.ClientType == "" && userapp.WantsSubscriptionHTML(req) {
+			req.WebPushPublicKey = s.cachedWebPushPublicKey(r.Context())
+		}
 		response, err := s.userService.RenderSubscription(r.Context(), req)
 		if err != nil {
 			writeSubscriptionError(w, err)

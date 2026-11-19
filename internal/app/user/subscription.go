@@ -38,19 +38,21 @@ type SubscriptionClientConfig struct {
 const maxMKCPMTU int64 = 1<<32 - 1
 
 type SubscriptionRenderRequest struct {
-	Identifier string
-	Username   string
-	Key        string
-	ClientType string
-	InboundTag string
-	HostTag    string
-	UserAgent  string
-	Accept     string
-	URL        string
-	Start      string
-	End        string
-	ReadOnly   bool
-	Usage      usage.Service
+	Identifier       string
+	Username         string
+	Key              string
+	ClientType       string
+	PushAction       string
+	InboundTag       string
+	HostTag          string
+	UserAgent        string
+	Accept           string
+	URL              string
+	Start            string
+	End              string
+	ReadOnly         bool
+	WebPushPublicKey string
+	Usage            usage.Service
 }
 
 type SubscriptionHTTPResponse struct {
@@ -184,6 +186,10 @@ func (s Service) RenderSubscription(ctx context.Context, req SubscriptionRenderR
 		Headers:   subscriptionHeaders(user, req, settings),
 		Body:      []byte(body),
 	}, nil
+}
+
+func WantsSubscriptionHTML(req SubscriptionRenderRequest) bool {
+	return wantsSubscriptionHTML(req)
 }
 
 func wantsSubscriptionHTML(req SubscriptionRenderRequest) bool {
@@ -397,6 +403,14 @@ func (s Service) ResolveSubscriptionAlias(ctx context.Context, path string, quer
 		}
 	}
 	return SubscriptionRenderRequest{}, false, nil
+}
+
+func (s Service) ResolveSubscriptionUser(ctx context.Context, req SubscriptionRenderRequest) (UserDetail, SubscriptionSettings, error) {
+	user, err := s.resolveSubscriptionUser(ctx, req)
+	if err != nil {
+		return UserDetail{}, SubscriptionSettings{}, err
+	}
+	return user, s.effectiveSettings(ctx, user.AdminID, user.ServiceID), nil
 }
 
 func (s Service) resolveSubscriptionUser(ctx context.Context, req SubscriptionRenderRequest) (UserDetail, error) {
@@ -1001,6 +1015,13 @@ func resolvePrefixedSubscriptionPath(path string, prefix string) (SubscriptionRe
 		return SubscriptionRenderRequest{Username: segments[0], Key: segments[1]}, true
 	}
 	if len(segments) == 3 {
+		if segments[1] == "push" && isSubscriptionPushAction(segments[2]) {
+			return SubscriptionRenderRequest{
+				Identifier: segments[0],
+				ClientType: "push",
+				PushAction: segments[2],
+			}, true
+		}
 		if segments[1] == "ov" {
 			return SubscriptionRenderRequest{
 				Identifier: segments[0],
@@ -1025,6 +1046,14 @@ func resolvePrefixedSubscriptionPath(path string, prefix string) (SubscriptionRe
 			return SubscriptionRenderRequest{Username: segments[0], Key: segments[1], ClientType: client}, true
 		}
 	}
+	if len(segments) == 4 && segments[2] == "push" && isSubscriptionPushAction(segments[3]) {
+		return SubscriptionRenderRequest{
+			Username:   segments[0],
+			Key:        segments[1],
+			ClientType: "push",
+			PushAction: segments[3],
+		}, true
+	}
 	if len(segments) == 4 && segments[2] == "ov" {
 		return SubscriptionRenderRequest{
 			Username:   segments[0],
@@ -1045,6 +1074,15 @@ func resolvePrefixedSubscriptionPath(path string, prefix string) (SubscriptionRe
 		return SubscriptionRenderRequest{Username: segments[0], Key: segments[1], ClientType: "amneziawg", HostTag: strings.TrimSuffix(segments[3], ".conf")}, true
 	}
 	return SubscriptionRenderRequest{}, false
+}
+
+func isSubscriptionPushAction(action string) bool {
+	switch action {
+	case "config", "status", "subscribe", "unsubscribe", "preferences", "test", "sw.js", "manifest.webmanifest":
+		return true
+	default:
+		return false
+	}
 }
 
 func matchSubscriptionPathAlias(alias string, path string) string {
@@ -1158,6 +1196,10 @@ func (s Service) renderSubscriptionHTML(ctx context.Context, user UserDetail, re
 		return "", err
 	}
 	vpnInfo["placeholder"] = placeholderRemark != ""
+	if key := strings.TrimSpace(req.WebPushPublicKey); key != "" {
+		vpnInfo["web_push_public_key"] = key
+		vpnInfo["web_push_base_url"] = path + "/push"
+	}
 	if openvpn, ok := vpnInfo["openvpn"].(map[string]any); ok {
 		if downloadLinks, ok := openvpn["downloads"].([]string); ok {
 			rawLinks = append(rawLinks, downloadLinks...)
@@ -3775,6 +3817,17 @@ func subscriptionTemplateContext(user UserDetail, links []string, usageURL strin
 		vpn = vpnInfo[0]
 	}
 	placeholder, _ := vpn["placeholder"].(bool)
+	webPushPublicKey, _ := vpn["web_push_public_key"].(string)
+	webPushBaseURL, _ := vpn["web_push_base_url"].(string)
+	if webPushBaseURL == "" && strings.HasSuffix(usageURL, "/usage") {
+		webPushBaseURL = strings.TrimSuffix(usageURL, "/usage") + "/push"
+	}
+	webPushSWURL := "/rebecca-sub-sw.js"
+	webPushManifestURL := ""
+	if webPushBaseURL != "" {
+		webPushSWURL = webPushBaseURL + "/sw.js"
+		webPushManifestURL = webPushBaseURL + "/manifest.webmanifest"
+	}
 	context := pongo2.Context{
 		"user": map[string]any{
 			"username":                   user.Username,
@@ -3806,6 +3859,11 @@ func subscriptionTemplateContext(user UserDetail, links []string, usageURL strin
 		"token":                      token,
 		"current_timestamp":          time.Now().UTC().Unix(),
 		"remaining_days":             subscriptionRemainingDaysInt(user.Expire),
+		"web_push_enabled":           webPushPublicKey != "",
+		"web_push_public_key":        webPushPublicKey,
+		"web_push_base_url":          webPushBaseURL,
+		"web_push_sw_url":            webPushSWURL,
+		"web_push_manifest_url":      webPushManifestURL,
 	}
 	for _, key := range []string{"openvpn", "wireguard", "amneziawg", "l2tp", "pptp", "ikev2", "anyconnect", "sstp", "gre"} {
 		if value, ok := vpn[key]; ok {

@@ -4242,5 +4242,7 @@
 	"dashboard.backup.stepRestore": "Restore",
 	"nodes.syncError.title": "Config could not be applied to this node",
 	"nodes.syncError.attempts": "Failed {{count}} times. The node keeps running its previous config until this is fixed.",
-	"nodes.syncError.hint": "Fix the config named in the error, then save it again or restart the node."
+	"nodes.syncError.hint": "Fix the config named in the error, then save it again or restart the node.",
+	"settings.subscriptions.webPushEnabled": "Subscription web push alerts",
+	"settings.subscriptions.webPushEnabledHint": "Allow users to opt into browser push alerts on subscription pages for usage thresholds (80% / 95%), expiry warnings (24h), depletion, and expiration. Zero background work runs when disabled."
 }

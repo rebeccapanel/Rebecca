@@ -171,6 +171,7 @@ func (r Repository) subscriptionSettings(ctx context.Context) (SubscriptionSetti
 	result.ClientRoutingRules = normalizeClientRoutingRules(row["client_routing_rules"])
 	result.SubscriptionPlaceholderEnabled = truthy(row["subscription_placeholder_enabled"])
 	result.SubscriptionPlaceholderRemark = jsonvalue.FirstNonEmpty(jsonvalue.String(row["subscription_placeholder_remark"]), "disabled")
+	result.SubscriptionWebPushEnabled = truthy(row["subscription_web_push_enabled"])
 	result.RawSubscriptionSettings = json.RawMessage(mustJSON(row))
 	return result, nil
 }

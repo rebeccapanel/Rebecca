@@ -2592,3 +2592,61 @@ func TestRenderClashLikeYAMLMatchRuleTargetsTheUserGroup(t *testing.T) {
 		}
 	}
 }
+
+func TestResolvePrefixedSubscriptionPushPaths(t *testing.T) {
+	for _, tc := range []struct {
+		path       string
+		wantOK     bool
+		wantID     string
+		wantUser   string
+		wantKey    string
+		wantAction string
+	}{
+		{path: "/sub/tok123/push/config", wantOK: true, wantID: "tok123", wantAction: "config"},
+		{path: "/sub/tok123/push/subscribe", wantOK: true, wantID: "tok123", wantAction: "subscribe"},
+		{path: "/sub/tok123/push/unsubscribe", wantOK: true, wantID: "tok123", wantAction: "unsubscribe"},
+		{path: "/sub/tok123/push/status", wantOK: true, wantID: "tok123", wantAction: "status"},
+		{path: "/sub/tok123/push/preferences", wantOK: true, wantID: "tok123", wantAction: "preferences"},
+		{path: "/sub/tok123/push/test", wantOK: true, wantID: "tok123", wantAction: "test"},
+		{path: "/sub/tok123/push/sw.js", wantOK: true, wantID: "tok123", wantAction: "sw.js"},
+		{path: "/sub/tok123/push/manifest.webmanifest", wantOK: true, wantID: "tok123", wantAction: "manifest.webmanifest"},
+		{path: "/sub/alice/0123456789abcdef0123456789abcdef/push/subscribe", wantOK: true, wantUser: "alice", wantKey: "0123456789abcdef0123456789abcdef", wantAction: "subscribe"},
+		{path: "/sub/tok123/push/unknown", wantOK: false},
+	} {
+		req, ok := resolvePrefixedSubscriptionPath(tc.path, "/sub/")
+		if ok != tc.wantOK {
+			t.Fatalf("resolvePrefixedSubscriptionPath(%q) ok=%v, want %v (req=%+v)", tc.path, ok, tc.wantOK, req)
+		}
+		if !tc.wantOK {
+			continue
+		}
+		if req.ClientType != "push" || req.PushAction != tc.wantAction || req.Identifier != tc.wantID || req.Username != tc.wantUser || req.Key != tc.wantKey {
+			t.Fatalf("resolvePrefixedSubscriptionPath(%q) = %+v, want id=%q user=%q key=%q action=%q", tc.path, req, tc.wantID, tc.wantUser, tc.wantKey, tc.wantAction)
+		}
+	}
+}
+
+func TestSubscriptionPageTemplateIncludesWebPushContext(t *testing.T) {
+	template := `<div data-enabled="{% if web_push_enabled %}1{% else %}0{% endif %}" data-key="{{ web_push_public_key }}" data-base="{{ web_push_base_url }}" data-sw="{{ web_push_sw_url }}" data-manifest="{{ web_push_manifest_url }}"></div>`
+	html, err := renderSubscriptionPageTemplate(template, UserDetail{
+		Username: "alice",
+		Status:   "active",
+	}, nil, "/sub/tok/usage", "", "SkyLink", "tok", map[string]any{
+		"web_push_public_key": "BEl62iUYgUivxIkv69yViEuiBIa-Ib9",
+		"web_push_base_url":   "/sub/tok/push",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		`data-enabled="1"`,
+		`data-key="BEl62iUYgUivxIkv69yViEuiBIa-Ib9"`,
+		`data-base="/sub/tok/push"`,
+		`data-sw="/sub/tok/push/sw.js"`,
+		`data-manifest="/sub/tok/push/manifest.webmanifest"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("expected %q in rendered html:\n%s", want, html)
+		}
+	}
+}

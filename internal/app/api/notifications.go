@@ -34,7 +34,11 @@ func (s *Server) registerNotificationRoutes(r chi.Router) {
 }
 
 func (s *Server) notificationService() notifications.Service {
-	return notifications.NewService(s.db, s.dialect)
+	svc := notifications.NewService(s.db, s.dialect)
+	if s.pushClient != nil {
+		svc = svc.WithPushClient(s.pushClient)
+	}
+	return svc
 }
 
 func notificationPrincipal(r *http.Request) adminPrincipal {

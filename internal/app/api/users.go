@@ -481,6 +481,7 @@ func (s *Server) handleUserMutationAction(w http.ResponseWriter, r *http.Request
 		s.telegramReports.UserUsageReset(r.Context(), report)
 		s.enqueueWebhook(r.Context(), webhookUserEvent(webhookapp.ActionDataUsageReset, report))
 	case "revoke_sub":
+		_ = s.notificationService().ClearUserPushSubscriptions(r.Context(), result.UserID)
 		s.telegramReports.UserSubscriptionRevoked(r.Context(), report)
 		s.enqueueWebhook(r.Context(), webhookUserEvent(webhookapp.ActionSubscriptionRevoked, report))
 	case "active-next":

@@ -66,6 +66,8 @@ type pushMessage struct {
 	URL   string `json:"url"`
 	Tag   string `json:"tag"`
 	Icon  string `json:"icon"`
+	Dir   string `json:"dir,omitempty"`
+	Lang  string `json:"lang,omitempty"`
 }
 
 type pushTarget struct {
@@ -119,6 +121,17 @@ func cleanPageURL(raw string) string {
 	return raw
 }
 
+var defaultPushHTTPClient = func() *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.MaxIdleConns = 64
+	transport.MaxIdleConnsPerHost = 16
+	transport.IdleConnTimeout = 90 * time.Second
+	return &http.Client{
+		Timeout:   12 * time.Second,
+		Transport: transport,
+	}
+}()
+
 func (s Service) WithPushClient(client *http.Client) Service {
 	s.pushClient = client
 	return s
@@ -128,7 +141,7 @@ func (s Service) httpClient() *http.Client {
 	if s.pushClient != nil {
 		return s.pushClient
 	}
-	return &http.Client{Timeout: 12 * time.Second}
+	return defaultPushHTTPClient
 }
 
 func (s Service) pushConfig(ctx context.Context, key string) (string, error) {

@@ -63,6 +63,7 @@ id INTEGER PRIMARY KEY AUTOINCREMENT,
 			client_routing_rules TEXT NOT NULL DEFAULT '[]',
 			subscription_placeholder_enabled INTEGER NOT NULL DEFAULT 0,
 			subscription_placeholder_remark TEXT NOT NULL DEFAULT 'disabled',
+			subscription_web_push_enabled INTEGER NOT NULL DEFAULT 0,
 			subscription_aliases TEXT NOT NULL DEFAULT '[]',
 			created_at DATETIME NULL,
 			updated_at DATETIME NULL
