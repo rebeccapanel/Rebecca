@@ -33,6 +33,8 @@ export type DataTableColumn<TData> = {
 	hideBelow?: "base" | "sm" | "md" | "lg" | "xl";
 	showBelow?: "base" | "sm" | "md" | "lg" | "xl";
 	mobileVisible?: boolean;
+	/** Span the full row width inside the mobile expanded detail grid (e.g. progress bars). */
+	mobileWide?: boolean;
 	desktopVisible?: boolean;
 	collapseIntoMeta?: boolean;
 	mobileMetaLabel?: string;
