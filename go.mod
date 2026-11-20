@@ -12,7 +12,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.49
 	github.com/pires/go-proxyproto v0.15.0
 	github.com/pressly/goose/v3 v3.21.1
-	github.com/shirou/gopsutil/v4 v4.26.6
+	github.com/shirou/gopsutil/v4 v4.26.7
 	github.com/swaggest/swgui v1.8.9
 	golang.org/x/crypto v0.54.0
 	golang.org/x/net v0.57.0
@@ -25,7 +25,7 @@ require (
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/ebitengine/purego v0.10.0 // indirect
+	github.com/ebitengine/purego v0.10.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/golang-jwt/jwt/v5 v5.2.1 // indirect
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
