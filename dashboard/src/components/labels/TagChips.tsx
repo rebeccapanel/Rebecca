@@ -20,7 +20,7 @@ export const TagChips: FC<TagChipsProps> = ({ tags, limit = 3, className }) => {
 				<Badge
 					key={tag}
 					variant="secondary"
-					className="max-w-[9rem] truncate font-normal"
+					className="max-w-[min(100%,9rem)] truncate font-normal"
 				>
 					{tag}
 				</Badge>

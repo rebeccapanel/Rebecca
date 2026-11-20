@@ -146,6 +146,37 @@ const getResponsiveSize = (
 	return value[breakpoint] ?? value.xl ?? value.lg ?? value.md ?? value.sm ?? value.base;
 };
 
+export type MobileDetailWideMode = "true" | "auto" | undefined;
+
+/**
+ * Computes which mobile detail tiles span the full width of a 2-column grid.
+ * Columns with `mobileWide` always span full width ("true"). When an odd run of
+ * standard tiles immediately precedes a wide tile or ends the grid, its final
+ * tile gets "auto" so 2-column card layouts avoid half-empty gap rows.
+ */
+export const getMobileDetailWideModes = <TData,>(
+	columns: ReadonlyArray<Pick<DataTableColumn<TData>, "mobileWide">>,
+): MobileDetailWideMode[] => {
+	const modes: MobileDetailWideMode[] = columns.map((column) =>
+		column.mobileWide ? "true" : undefined,
+	);
+	let runLength = 0;
+	for (let index = 0; index < columns.length; index += 1) {
+		if (modes[index] === "true") {
+			if (runLength % 2 === 1 && index > 0) {
+				modes[index - 1] = "auto";
+			}
+			runLength = 0;
+		} else {
+			runLength += 1;
+		}
+	}
+	if (runLength % 2 === 1 && columns.length > 0) {
+		modes[columns.length - 1] = "auto";
+	}
+	return modes;
+};
+
 const shouldShowMobileColumn = <TData,>(column: DataTableColumn<TData>) => {
 	if (column.mobileVisible === false) return false;
 	if (column.mobileVisible === true) return true;
@@ -726,7 +757,8 @@ export function DataTable<TData>({
 			rest.find((column) => column.mobileSummary) ??
 			rest.find((column) => column.priority === "high") ??
 			rest[0];
-		return { primary, rest, summary };
+		const wideModes = getMobileDetailWideModes(rest);
+		return { primary, rest, summary, wideModes };
 	}, [activeColumns]);
 	const visibleColumnCount = table.getVisibleFlatColumns().length || 1;
 	const loadingRowKeys = useMemo(
@@ -923,8 +955,12 @@ export function DataTable<TData>({
 										{(isExpanded || hasExpandedRow) && (
 											<div className="rb-resource-expanded">
 												<div data-density={compactDetails ? "compact" : undefined} className="rb-resource-details">
-													{detailColumns.map((column) => (
-														<div key={`${row.id}-${column.id}`} className="rb-resource-meta">
+													{detailColumns.map((column, columnIndex) => (
+														<div
+															key={`${row.id}-${column.id}`}
+															data-wide={mobileVisibleColumns.wideModes[columnIndex]}
+															className="rb-resource-meta"
+														>
 															<span className="text-panel-text-muted shrink-0">
 																{column.mobileMetaLabel ?? column.mobileLabel ?? column.header}
 															</span>

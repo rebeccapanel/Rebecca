@@ -1014,6 +1014,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 		const actions: DataTableRowAction<UserListItem>[] = [
 			{
 				id: "copy-subscription",
+				pinned: true,
 				label: t("usersTable.copyLink"),
 				icon: <SubscriptionLinkIcon />,
 				disabled: !subscriptionLink,
@@ -1021,6 +1022,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 			},
 			{
 				id: "copy-configs",
+				pinned: true,
 				label: t("usersTable.copyConfigs"),
 				icon: <CopyIcon />,
 				disabled: configLinks.length === 0,
@@ -1047,6 +1049,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 		if (canOpenUserDialog && !rowManagementLocked) {
 			actions.push({
 				id: "edit",
+				pinned: true,
 				label: t("userDialog.editUser"),
 				icon: <EditIcon />,
 				onClick: () => onEditingUser(user),
@@ -1125,6 +1128,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 		if (canMutateRow) {
 			actions.push({
 				id: "set-data-limit",
+				pinned: true,
 				label: t("usersTable.setDataLimit"),
 				icon: <DataLimitIcon />,
 				onClick: () =>
@@ -1153,6 +1157,7 @@ export const UsersTable: FC<UsersTableProps> = ({
 		if (canMutateRow) {
 			actions.push({
 				id: "set-expiry",
+				pinned: true,
 				label: t("usersTable.setExpiry"),
 				icon: <ExpiryIcon />,
 				onClick: () =>

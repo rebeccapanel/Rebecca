@@ -2717,6 +2717,53 @@ input[type="number"] {
   border-top: 1px solid var(--rb-panel-border);
 }
 
+.rb-resource-details .rb-resource-meta[data-wide="true"] {
+  grid-column: 1 / -1;
+}
+
+/* Mobile Users & Admins cards: use a compact 2-column tile grid while keeping
+   explicit wide fields (such as the Admins traffic bar) and lone trailing items
+   spanning the full width. */
+:is(.rb-users-section, .rb-admins-section) .rb-resource-card .rb-resource-expanded {
+  padding: 0.75rem;
+}
+
+:is(.rb-users-section, .rb-admins-section) .rb-resource-card .rb-resource-details,
+:is(.rb-users-section, .rb-admins-section) .rb-resource-card .rb-resource-details[data-density="compact"] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+:is(.rb-users-section, .rb-admins-section) .rb-resource-card .rb-resource-details .rb-resource-meta {
+  padding: 0.45rem 0.6rem;
+}
+
+:is(.rb-users-section, .rb-admins-section) .rb-resource-card .rb-resource-details .rb-resource-meta:has(.rb-stat-pair) {
+  grid-column: auto;
+}
+
+:is(.rb-users-section, .rb-admins-section) .rb-resource-card .rb-resource-details .rb-resource-meta:is([data-wide="true"], [data-wide="auto"]) {
+  grid-column: 1 / -1;
+}
+
+:is(.rb-users-section, .rb-admins-section) .rb-resource-card .rb-resource-details .rb-resource-meta-value .rb-cell-content {
+  justify-content: flex-start;
+  text-align: start;
+}
+
+:is(.rb-users-section, .rb-admins-section) .rb-resource-card .rb-resource-details .rb-resource-meta-value .rb-cell-content .rb-cell-value {
+  flex: 1 1 auto;
+  text-align: start;
+}
+
+[dir="rtl"] :is(.rb-users-section, .rb-admins-section) .rb-resource-card .rb-resource-details .rb-resource-meta-value p:is([dir="ltr"], [dir="auto"]) {
+  text-align: right;
+}
+
+:is(.rb-users-section, .rb-admins-section) .rb-resource-card .rb-resource-expanded-actions {
+  margin-top: 0.75rem;
+  padding-top: 0.625rem;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   :is(.rb-users-section, .rb-admins-section, .rb-nodes-section, .rb-services-section) .rb-resource-expanded {
     animation: rb-users-expand-in var(--rb-duration-ui) var(--rb-ease-out);

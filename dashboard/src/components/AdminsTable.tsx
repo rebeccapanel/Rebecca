@@ -790,6 +790,7 @@ export const AdminsTable: FC<AdminsTableProps> = ({
 				cellAlign: "start",
 				mobilePriority: 6,
 				mobileSummary: true,
+				mobileWide: true,
 				mobileMetaLabel: t("usersTable.traffic"),
 				cell: (admin) => (
 					<div className="w-full min-w-0">
