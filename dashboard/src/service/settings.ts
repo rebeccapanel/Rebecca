@@ -176,6 +176,7 @@ export interface SubscriptionTemplateSettings {
 	client_routing_rules?: ClientRoutingRule[];
 	subscription_placeholder_enabled: boolean;
 	subscription_placeholder_remark: string;
+	subscription_web_push_enabled: boolean;
 }
 
 export type SubscriptionTemplateSettingsUpdatePayload =

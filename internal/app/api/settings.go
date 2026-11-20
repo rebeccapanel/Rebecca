@@ -97,6 +97,9 @@ func (s *Server) handleAllSettings(w http.ResponseWriter, r *http.Request) {
 	if response.Runtime != nil {
 		s.applyRuntimeSettings(*response.Runtime)
 	}
+	if response.Subscriptions != nil {
+		s.applySubscriptionSettings(*response.Subscriptions)
+	}
 	writeJSON(w, http.StatusOK, response)
 }
 
@@ -200,6 +203,7 @@ func (s *Server) handleSubscriptionSettings(w http.ResponseWriter, r *http.Reque
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		s.applySubscriptionSettings(settings)
 		writeJSON(w, http.StatusOK, settings)
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")

@@ -70,6 +70,7 @@ type SubscriptionSettings struct {
 	ClientRoutingRules             []ClientRoutingRule `json:"client_routing_rules"`
 	SubscriptionPlaceholderEnabled bool                `json:"subscription_placeholder_enabled"`
 	SubscriptionPlaceholderRemark  string              `json:"subscription_placeholder_remark"`
+	SubscriptionWebPushEnabled     bool                `json:"subscription_web_push_enabled"`
 }
 
 type SubscriptionSettingsUpdate struct {
@@ -95,6 +96,7 @@ type SubscriptionSettingsUpdate struct {
 	ClientRoutingRules             *[]ClientRoutingRule `json:"client_routing_rules,omitempty"`
 	SubscriptionPlaceholderEnabled *bool                `json:"subscription_placeholder_enabled,omitempty"`
 	SubscriptionPlaceholderRemark  *string              `json:"subscription_placeholder_remark,omitempty"`
+	SubscriptionWebPushEnabled     *bool                `json:"subscription_web_push_enabled,omitempty"`
 }
 
 type AdminSubscriptionSettings struct {

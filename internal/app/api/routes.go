@@ -78,6 +78,7 @@ func (s *Server) Handler() http.Handler {
 	r.HandleFunc("/hosts", s.requireAdmin(s.handleHostsRoot))
 	r.HandleFunc("/sub/*", s.handleSubscriptionPath)
 	r.Get(notifications.ServiceWorkerPath, s.handleNotificationPushServiceWorker)
+	r.Get(notifications.UserServiceWorkerPath, s.handleSubscriptionPushServiceWorker)
 
 	r.Route("/api", func(r chi.Router) {
 		s.registerAdminRoutes(r)
@@ -280,7 +281,7 @@ func (s *Server) withConfigSyncKick(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-		if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") {
+		if strings.EqualFold(r.Header.Get("Upgrade"), "websocket") || strings.Contains(r.URL.Path, "/push/") {
 			next.ServeHTTP(w, r)
 			return
 		}

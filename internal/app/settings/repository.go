@@ -201,6 +201,8 @@ func (r Repository) UpdateSubscriptionSettings(ctx context.Context, raw map[stri
 				remark = defaultSubscriptionPlaceholderRemark
 			}
 			add(key, remark)
+		case "subscription_web_push_enabled":
+			add(key, rawBoolDefault(value, false))
 		case "subscription_path":
 			add(key, normalizePath(rawStringDefault(value, "")))
 		case "subscription_aliases":
@@ -468,13 +470,15 @@ subscription_aliases,
 subscription_ports,
 COALESCE(client_routing_rules, '[]'),
 COALESCE(subscription_placeholder_enabled, 0),
-COALESCE(subscription_placeholder_remark, '')
+COALESCE(subscription_placeholder_remark, ''),
+COALESCE(subscription_web_push_enabled, 0)
 FROM subscription_settings ORDER BY id DESC LIMIT 1`)
 	var result SubscriptionSettings
 	var customDir sql.NullString
 	var aliasesRaw, portsRaw, clientRoutingRulesRaw sql.NullString
 	var placeholderEnabled sql.NullBool
 	var placeholderRemark sql.NullString
+	var webPushEnabled sql.NullBool
 	if err := row.Scan(
 		&result.SubscriptionURLPrefix,
 		&result.SubscriptionProfileTitle,
@@ -498,6 +502,7 @@ FROM subscription_settings ORDER BY id DESC LIMIT 1`)
 		&clientRoutingRulesRaw,
 		&placeholderEnabled,
 		&placeholderRemark,
+		&webPushEnabled,
 	); err != nil {
 		return SubscriptionSettings{}, err
 	}
@@ -508,6 +513,7 @@ FROM subscription_settings ORDER BY id DESC LIMIT 1`)
 	if placeholderRemark.Valid {
 		result.SubscriptionPlaceholderRemark = placeholderRemark.String
 	}
+	result.SubscriptionWebPushEnabled = webPushEnabled.Valid && webPushEnabled.Bool
 	result.SubscriptionURLPrefix = normalizePrefix(result.SubscriptionURLPrefix)
 	result.SubscriptionSupportURL = normalizeSupportURL(result.SubscriptionSupportURL)
 	result.SubscriptionPath = normalizePath(result.SubscriptionPath)
@@ -552,9 +558,10 @@ subscription_ports,
 client_routing_rules,
 subscription_placeholder_enabled,
 subscription_placeholder_remark,
+subscription_web_push_enabled,
 created_at,
 updated_at
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		"",
 		defaultSubscriptionProfileTitle,
 		defaultSubscriptionSupportURL,
@@ -577,6 +584,7 @@ updated_at
 		defaultClientRoutingRules,
 		false,
 		defaultSubscriptionPlaceholderRemark,
+		false,
 		now,
 		now,
 	)

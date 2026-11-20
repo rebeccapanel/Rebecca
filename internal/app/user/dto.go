@@ -324,6 +324,7 @@ type SubscriptionSettings struct {
 	ClientRoutingRules             []ClientRoutingRule            `json:"client_routing_rules"`
 	SubscriptionPlaceholderEnabled bool                           `json:"subscription_placeholder_enabled"`
 	SubscriptionPlaceholderRemark  string                         `json:"subscription_placeholder_remark"`
+	SubscriptionWebPushEnabled     bool                           `json:"subscription_web_push_enabled"`
 	SubscriptionPlaceholderPolicy  *SubscriptionPlaceholderPolicy `json:"-"`
 	RawPanelSettings               json.RawMessage                `json:"raw_panel_settings,omitempty"`
 	RawSubscriptionSettings        json.RawMessage                `json:"raw_subscription_settings,omitempty"`

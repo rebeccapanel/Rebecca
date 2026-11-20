@@ -600,6 +600,8 @@ const buildSubscriptionDefaults = (
 		settings?.subscription_placeholder_enabled ?? false,
 	subscription_placeholder_remark:
 		settings?.subscription_placeholder_remark ?? "disabled",
+	subscription_web_push_enabled:
+		settings?.subscription_web_push_enabled ?? false,
 	subscription_aliases_text: (settings?.subscription_aliases ?? []).join("\n"),
 	subscription_ports_text: formatSubscriptionPorts(
 		settings?.subscription_ports ?? [],
@@ -733,6 +735,7 @@ const buildSubscriptionPayload = (
 	subscription_placeholder_enabled: values.subscription_placeholder_enabled,
 	subscription_placeholder_remark:
 		values.subscription_placeholder_remark?.trim() || "disabled",
+	subscription_web_push_enabled: values.subscription_web_push_enabled,
 });
 
 const buildAdminSubscriptionPayload = (
@@ -959,6 +962,9 @@ export const IntegrationSettingsPage = () => {
 	}, [subscriptionBundle, resetSubscription]);
 
 	const subscriptionPortsText = watchSubscription("subscription_ports_text");
+	const subscriptionWebPushEnabled = watchSubscription(
+		"subscription_web_push_enabled",
+	);
 	const parsedSubscriptionPorts = useMemo(
 		() => parseSubscriptionPortsInput(subscriptionPortsText || ""),
 		[subscriptionPortsText],
@@ -2370,6 +2376,22 @@ export const IntegrationSettingsPage = () => {
 									<FormField label={t("settings.subscriptions.muxTemplate")}>
 										<UiInput {...subscriptionRegister("mux_template")} />
 									</FormField>
+								</div>
+
+								<div className="border-t border-panel-border! pt-4">
+									<ToggleRow
+										title={t("settings.subscriptions.webPushEnabled")}
+										hint={t("settings.subscriptions.webPushEnabledHint")}
+										checked={Boolean(subscriptionWebPushEnabled)}
+										disabled={saveAllMutation.isPending}
+										onChange={(next) =>
+											setSubscriptionValue(
+												"subscription_web_push_enabled",
+												next,
+												{ shouldDirty: true },
+											)
+										}
+									/>
 								</div>
 
 								<div className="grid grid-cols-1 gap-4 md:grid-cols-2 border-t border-panel-border! pt-4">
