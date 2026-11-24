@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { looksLikeWireguard, normalizeWireguardKey, parseWireguardImport } from "./wireguardImport";
+import { looksLikeWireguard, normalizeWireguardKey, parseWireguardImport, splitWireguardConfigs } from "./wireguardImport";
 
 const PRIV = "yAnz5TF+lXXJte14tji3zlMNq+hd2rYUIgJBgB3fBmk=";
 const PUB = "xTIBA5rboUvnH4htodjb6e697QjLERt1NAB4mZqp8Dg=";
@@ -36,6 +36,7 @@ describe("parseWireguardImport", () => {
 			secretKey: PRIV,
 			address: ["10.5.0.2/16", "fd00::2/128"],
 			mtu: 1280,
+			remoteDNS: ["1.1.1.1"],
 			peers: [{ publicKey: PUB, preSharedKey: PSK, allowedIPs: ["0.0.0.0/0", "::/0"], endpoint: "217.138.198.246:51820", keepAlive: 25 }],
 		});
 	});
@@ -166,5 +167,66 @@ describe("parseWireguardImport", () => {
 		expect(parseWireguardImport("vless://uuid@example.com:443?security=tls#x")).toBeNull();
 		expect(looksLikeWireguard("hello")).toBe(false);
 		expect(parseWireguardImport("")).toBeNull();
+	});
+
+	it("maps DNS to remoteDNS and keeps only IP addresses", () => {
+		const base = `[Interface]\nPrivateKey = ${PRIV}\nAddress = 10.0.0.2/32\n`;
+		const peer = `\n[Peer]\nPublicKey = ${PUB}\nEndpoint = h.example.com:1\n`;
+		expect(ok(`${base}DNS = 162.252.172.57, 149.154.159.92${peer}`).outbound.settings.remoteDNS).toEqual(["162.252.172.57", "149.154.159.92"]);
+		expect(ok(`${base}DNS = 10.255.255.2, 2606:4700:4700::1111${peer}`).outbound.settings.remoteDNS).toEqual(["10.255.255.2", "2606:4700:4700::1111"]);
+		const mixed = ok(`${base}DNS = 1.1.1.1, dns.example.com${peer}`);
+		expect(mixed.outbound.settings.remoteDNS).toEqual(["1.1.1.1"]);
+		expect(mixed.warnings.join(" ")).toMatch(/not IP addresses/);
+		const none = ok(`${base}DNS = dns.example.com${peer}`);
+		expect(none.outbound.settings.remoteDNS).toBeUndefined();
+		expect(ok(`${base}${peer}`).outbound.settings.remoteDNS).toBeUndefined();
+	});
+
+	it("keeps remoteDNS, noKernelTun, workers and domainStrategy from an Xray outbound JSON", () => {
+		const { outbound } = ok(
+			JSON.stringify({
+				protocol: "wireguard",
+				settings: {
+					secretKey: PRIV,
+					address: ["10.0.0.2/32"],
+					remoteDNS: ["1.1.1.1", "1.0.0.1"],
+					noKernelTun: true,
+					workers: 4,
+					domainStrategy: "ForceIPv4",
+					peers: [{ publicKey: PUB, endpoint: "h.example.com:1" }],
+				},
+			}),
+		);
+		expect(outbound.settings).toMatchObject({ remoteDNS: ["1.1.1.1", "1.0.0.1"], noKernelTun: true, workers: 4, domainStrategy: "ForceIPv4" });
+		const bad = ok(JSON.stringify({ protocol: "wireguard", settings: { secretKey: PRIV, domainStrategy: "nope", peers: [{ publicKey: PUB, endpoint: "h:1" }] } }));
+		expect(bad.outbound.settings.domainStrategy).toBeUndefined();
+		expect(bad.outbound.settings.noKernelTun).toBeUndefined();
+	});
+
+	it("reads dns from a wireguard:// link and a Mihomo proxy", () => {
+		const link = `wg://${PRIV}@1.2.3.4:51820?publickey=${PUB}&address=10.0.0.2/32&dns=1.1.1.1,8.8.8.8`;
+		expect(ok(link).outbound.settings.remoteDNS).toEqual(["1.1.1.1", "8.8.8.8"]);
+		const yaml = ["proxies:", "  - name: w", "    type: wireguard", "    server: h.example.com", "    port: 1", "    ip: 10.0.0.2", `    private-key: ${PRIV}`, `    public-key: ${PUB}`, "    dns: [1.1.1.1, 9.9.9.9]"].join("\n");
+		expect(ok(yaml).outbound.settings.remoteDNS).toEqual(["1.1.1.1", "9.9.9.9"]);
+	});
+
+	it("splits several pasted configs that carry labels and comment banners", () => {
+		const block = (priv: string, address: string, dns: string, endpoint: string) =>
+			`[Interface]\nPrivateKey = ${priv}\nAddress = ${address}\nDNS = ${dns}\n\n[Peer]\nPublicKey = ${PUB}\nAllowedIPs = 0.0.0.0/0\nEndpoint = ${endpoint}\n`;
+		const text = [
+			"\u20aa LABEL:",
+			block(PRIV, "10.101.231.72/32", "10.100.0.1", "91.132.92.113:250"),
+			"#\n# Use this configuration with WireGuard client\n#",
+			block(PRIV, "10.14.0.2/16", "162.252.172.57, 149.154.159.92", "al-tia.prod.surfshark.com:51820"),
+			block(PRIV, "100.101.194.50/32, fd54:4::e0ca:f7f5:d887:e824/128", "10.255.255.2", "tia-283-wg.whiskergalaxy.com:65142"),
+		].join("\n");
+		const parts = splitWireguardConfigs(text);
+		expect(parts).toHaveLength(3);
+		const results = parts.map((part) => ok(part).outbound.settings);
+		expect(results.map((item) => item.peers[0].endpoint)).toEqual(["91.132.92.113:250", "al-tia.prod.surfshark.com:51820", "tia-283-wg.whiskergalaxy.com:65142"]);
+		expect(results.map((item) => item.remoteDNS)).toEqual([["10.100.0.1"], ["162.252.172.57", "149.154.159.92"], ["10.255.255.2"]]);
+		expect(results[2].address).toEqual(["100.101.194.50/32", "fd54:4::e0ca:f7f5:d887:e824/128"]);
+		expect(splitWireguardConfigs(`[Interface]\nPrivateKey = ${PRIV}`)).toHaveLength(1);
+		expect(splitWireguardConfigs("wg://x@1.2.3.4:1")).toEqual(["wg://x@1.2.3.4:1"]);
 	});
 });

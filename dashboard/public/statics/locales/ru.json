@@ -548,6 +548,7 @@
 	"pages.outbound.blackhole": "Blackhole options",
 	"pages.outbound.concurrency": "Concurrency",
 	"pages.outbound.configConvertedDesc": "Configuration applied to the form.",
+	"pages.outbound.configMoreWireguard": "{{count}} more WireGuard config(s) are left in the box. Save this outbound, then convert again.",
 	"pages.outbound.configConvertedTitle": "Config converted",
 	"pages.outbound.dns": "DNS",
 	"pages.outbound.dnsSettings": "DNS settings",

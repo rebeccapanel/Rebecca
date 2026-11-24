@@ -14,6 +14,10 @@ export type WireguardOutboundJson = {
 		address: string[];
 		mtu?: number;
 		reserved?: number[];
+		remoteDNS?: string[];
+		noKernelTun?: boolean;
+		workers?: number;
+		domainStrategy?: string;
 		peers: WireguardPeerJson[];
 	};
 };
@@ -92,6 +96,20 @@ const parseReserved = (value: unknown): number[] | undefined => {
 	return undefined;
 };
 
+const IPV4 = /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/;
+const IPV6 = /^[0-9a-f:]*:[0-9a-f:.]*$/i;
+const isIp = (value: string): boolean => IPV4.test(value) || (IPV6.test(value) && value.includes(":"));
+
+const WG_DOMAIN_STRATEGIES = ["ForceIP", "ForceIPv4", "ForceIPv4v6", "ForceIPv6", "ForceIPv6v4"];
+
+const toBool = (value: unknown): boolean | undefined => {
+	if (typeof value === "boolean") return value;
+	const text = String(value ?? "").trim().toLowerCase();
+	if (text === "true" || text === "1" || text === "yes") return true;
+	if (text === "false" || text === "0" || text === "no") return false;
+	return undefined;
+};
+
 const toNumber = (value: unknown): number | undefined => {
 	const parsed = Number(String(value ?? "").trim());
 	return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : undefined;
@@ -105,6 +123,10 @@ type Raw = {
 	address: string[];
 	mtu?: number;
 	reserved?: number[];
+	dns?: string[];
+	noKernelTun?: boolean;
+	workers?: number;
+	domainStrategy?: string;
 	peers: RawPeer[];
 };
 
@@ -138,6 +160,14 @@ const finish = (raw: Raw): WireguardImport => {
 	const settings: WireguardOutboundJson["settings"] = { secretKey, address: raw.address, peers };
 	if (raw.mtu) settings.mtu = raw.mtu;
 	if (raw.reserved) settings.reserved = raw.reserved;
+	if (raw.dns && raw.dns.length) {
+		const ips = raw.dns.filter(isIp);
+		if (ips.length) settings.remoteDNS = ips;
+		if (ips.length < raw.dns.length) warnings.push("DNS entries that are not IP addresses were skipped (Xray remoteDNS accepts IPs only).");
+	}
+	if (raw.noKernelTun !== undefined) settings.noKernelTun = raw.noKernelTun;
+	if (raw.workers) settings.workers = raw.workers;
+	if (raw.domainStrategy && WG_DOMAIN_STRATEGIES.includes(raw.domainStrategy)) settings.domainStrategy = raw.domainStrategy;
 	return { ok: true, outbound: { tag: raw.tag?.trim() || "wireguard-import", protocol: "wireguard", settings }, warnings };
 };
 
@@ -185,6 +215,10 @@ const fromObject = (obj: Record<string, unknown>): Raw | null => {
 		address,
 		mtu: toNumber(settings.mtu),
 		reserved: parseReserved(settings.reserved),
+		dns: list(settings.remoteDNS ?? settings.remote_dns ?? settings["remote-dns"] ?? settings.dns ?? []),
+		noKernelTun: toBool(settings.noKernelTun ?? settings.no_kernel_tun ?? settings["no-kernel-tun"]),
+		workers: toNumber(settings.workers),
+		domainStrategy: typeof settings.domainStrategy === "string" ? settings.domainStrategy : undefined,
 		peers,
 	};
 };
@@ -243,6 +277,10 @@ const fromUri = (text: string): Raw | null => {
 		address: list(get("address", "ip", "addresses")),
 		mtu: toNumber(get("mtu")),
 		reserved: parseReserved(get("reserved")),
+		dns: list(get("dns", "remotedns", "remote_dns")),
+		noKernelTun: toBool(get("nokerneltun", "no_kernel_tun")),
+		workers: toNumber(get("workers")),
+		domainStrategy: get("domainstrategy", "domain_strategy") || undefined,
 		peers: [
 			{
 				publicKey: get("publickey", "peer_public_key", "public_key"),
@@ -313,6 +351,7 @@ const fromIni = (text: string): Raw | null => {
 		address: list(iface.address ?? iface.addresses ?? ""),
 		mtu: toNumber(iface.mtu),
 		reserved: parseReserved(iface.reserved),
+		dns: list(iface.dns ?? ""),
 		peers: peers.map((peer) => ({
 			publicKey: peer.publickey,
 			preSharedKey: peer.presharedkey || peer.psk,
@@ -363,4 +402,13 @@ export const parseWireguardImport = (input: string): WireguardImport | null => {
 	const raw = fromJsonText(text) ?? fromUri(text) ?? fromYamlLike(text) ?? fromIni(text);
 	if (!raw) return { ok: false, error: "The WireGuard config could not be read. Expected a .conf, a wireguard:// link or an outbound JSON." };
 	return finish(raw);
+};
+
+export const splitWireguardConfigs = (input: string): string[] => {
+	const text = input.replace(/^﻿/, "").trim();
+	const parts = text.split(/\r?\n(?=[ \t]*\[interface\][ \t]*(?:\r?\n|$))/i);
+	if (parts.length < 2) return [text];
+	const head = parts[0];
+	if (/^\s*\[interface\]/i.test(head)) return parts.map((part) => part.trim()).filter(Boolean);
+	return [`${head}\n${parts[1]}`.trim(), ...parts.slice(2).map((part) => part.trim())].filter(Boolean);
 };

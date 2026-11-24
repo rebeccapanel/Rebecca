@@ -48,7 +48,7 @@ import {
 	WsStreamSettings,
 	XHTTPStreamSettings,
 } from "../utils/outbound";
-import { parseWireguardImport } from "utils/wireguardImport";
+import { parseWireguardImport, splitWireguardConfigs } from "utils/wireguardImport";
 import { JsonEditor } from "./JsonEditor";
 import { SearchableTagSelect } from "./common/SearchableTagSelect";
 import { PropagationTargets } from "./xray/PropagationTargets";
@@ -1167,7 +1167,8 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 			setJsonError(t("pages.outbound.configEmpty"));
 			return;
 		}
-		const wg = parseWireguardImport(trimmed);
+		const wgConfigs = splitWireguardConfigs(trimmed);
+		const wg = parseWireguardImport(wgConfigs[0]);
 		if (wg) {
 			if (!wg.ok) {
 				setJsonError(wg.error);
@@ -1175,9 +1176,13 @@ export const OutboundModal: FC<OutboundModalProps> = ({
 				return;
 			}
 			const formatted = JSON.stringify(wg.outbound, null, 2);
-			setConfigInput("");
+			const remaining = wgConfigs.slice(1);
+			setConfigInput(remaining.join("\n\n"));
 			handleJsonEditorChange(formatted);
 			toast.success(t("pages.outbound.configConvertedTitle"), { description: t("pages.outbound.configConvertedDesc"), duration: 2000 });
+			if (remaining.length > 0) {
+				toast.info(t("pages.outbound.configMoreWireguard", { count: remaining.length }), { duration: 5000 });
+			}
 			if (wg.warnings.length > 0) {
 				toast.warning(wg.warnings.join(" "), { duration: 5000 });
 			}

@@ -1349,6 +1349,7 @@
 	"pages.outbound.blackhole": "Blackhole options",
 	"pages.outbound.concurrency": "Concurrency",
 	"pages.outbound.configConvertedDesc": "Configuration applied to the form.",
+	"pages.outbound.configMoreWireguard": "{{count}} more WireGuard config(s) are left in the box. Save this outbound, then convert again.",
 	"pages.outbound.configConvertedTitle": "Config converted",
 	"pages.outbound.configToJson": "Config / JSON",
 	"pages.outbound.configToJsonHint": "Paste a share link or edit the generated outbound JSON directly.",

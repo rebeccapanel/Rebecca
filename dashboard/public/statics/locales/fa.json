@@ -1348,6 +1348,7 @@
 	"pages.outbound.blackhole": "گزینه‌های Blackhole",
 	"pages.outbound.concurrency": "همزمانی",
 	"pages.outbound.configConvertedDesc": "تنظیمات به فرم اعمال شد.",
+	"pages.outbound.configMoreWireguard": "{{count}} کانفیگ وایرگارد دیگر در کادر مانده است. این اوتباند را ذخیره کن و دوباره تبدیل کن.",
 	"pages.outbound.configConvertedTitle": "کانفیگ تبدیل شد",
 	"pages.outbound.configToJson": "کانفیگ / JSON",
 	"pages.outbound.configToJsonHint": "لینک اشتراک‌گذاری را وارد کن یا JSON خروجی تولیدشده را مستقیم ویرایش کن.",
