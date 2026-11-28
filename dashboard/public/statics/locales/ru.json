@@ -1,4 +1,6 @@
 {
+	"finalMaskHint.xdnsDomains": "JSON-список. Поля: names (ваши домены туннеля), при желании types (1 A, 5 CNAME, 16 TXT, 28 AAAA), lenLimit, labelLimit, edns0.",
+	"finalMaskHint.xdnsResolvers": "Сторона клиента. JSON-список addrs (udp://, tcp:// или https://, порт 53) и необязательные worker, tlsConfig, quicConfig.",
 	"inbounds.xhttp.hint.host": "Заголовок Host клиента. Пусто — SNI, затем адрес.",
 	"inbounds.xhttp.hint.path": "Должен совпадать с путём отправки. Пусто — тот же.",
 	"inbounds.xhttp.hint.mode": "Режим XHTTP для соединения загрузки.",

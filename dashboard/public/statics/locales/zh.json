@@ -1,4 +1,6 @@
 {
+	"finalMaskHint.xdnsDomains": "JSON 列表。每项：names（你的隧道域名），可选 types（1 A、5 CNAME、16 TXT、28 AAAA）、lenLimit、labelLimit、edns0。",
+	"finalMaskHint.xdnsResolvers": "客户端使用。addrs 的 JSON 列表（udp://、tcp:// 或 https://，默认端口 53），可选 worker、tlsConfig、quicConfig。",
 	"inbounds.xhttp.hint.host": "客户端发送的 Host。留空依次使用 SNI、地址。",
 	"inbounds.xhttp.hint.path": "须与上传路径一致，留空则复制。",
 	"inbounds.xhttp.hint.mode": "下载连接使用的 XHTTP 模式。",

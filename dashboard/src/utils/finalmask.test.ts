@@ -317,7 +317,7 @@ describe("FinalMask host values", () => {
 		).toContain("length");
 		expect(
 			finalMaskValidationError({ udp: [{ type: "xdns", settings: {} }] }),
-		).toContain("resolvers");
+		).toBeNull();
 		expect(
 			finalMaskValidationError({
 				udp: [
@@ -426,10 +426,13 @@ describe("FinalMask structured validation", () => {
 		).toBeNull();
 		expect(
 			layerError("udp", "xdns", {
-				domains: ["mask.example:txt"],
-				resolvers: ["mask.example:aaaa+udp://[2001:4860:4860::8888]:53"],
+				domains: [{ names: ["mask.example"], types: [16] }],
+				resolvers: [{ addrs: ["udp://[2001:4860:4860::8888]:53"] }],
 			}),
 		).toBeNull();
+		expect(layerError("udp", "xdns", { domains: ["mask.example"] })).toContain(
+			"object",
+		);
 		expect(
 			layerError("udp", "xicmp", {
 				dgram: true,
@@ -438,7 +441,7 @@ describe("FinalMask structured validation", () => {
 		).toBeNull();
 		expect(
 			layerError("udp", "xdns", {
-				resolvers: ["mask.example+udp://dns.example:53"],
+				resolvers: [{ addrs: ["quic://dns.example"] }],
 			}),
 		).toContain("resolver");
 		expect(layerError("udp", "xicmp", { ips: ["example.com"] })).toContain(
@@ -569,5 +572,37 @@ describe("FinalMask structured validation", () => {
 				quicParams: { udpHop: { ports: "20000" } },
 			}),
 		).toContain("cannot be combined");
+	});
+});
+
+describe("legacy XDNS strings", () => {
+	it("become the object form that current Xray reads", () => {
+		const upgraded = hostFinalMaskValue({
+			udp: [
+				{
+					type: "xdns",
+					settings: {
+						domains: ["t.example.com:txt"],
+						resolvers: [
+							"t.example.com:txt+udp://8.8.8.8:53",
+							"u.example.com+udp://1.1.1.1:53",
+						],
+					},
+				},
+			],
+		});
+		expect(upgraded?.udp).toEqual([
+			{
+				type: "xdns",
+				settings: {
+					domains: [
+						{ names: ["t.example.com"], types: [16] },
+						{ names: ["u.example.com"] },
+					],
+					resolvers: [{ addrs: ["udp://8.8.8.8:53", "udp://1.1.1.1:53"] }],
+				},
+			},
+		]);
+		expect(finalMaskValidationError(upgraded)).toBeNull();
 	});
 });

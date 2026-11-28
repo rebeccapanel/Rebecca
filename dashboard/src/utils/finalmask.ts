@@ -294,7 +294,7 @@ export const hostFinalMaskValue = (
 					: layer,
 			);
 		}
-		return cloned;
+		return cloned && upgradeFinalMaskLayers(cloned);
 	}
 	return mergeLegacyFinalMask(null, fragment, noise);
 };
@@ -304,6 +304,7 @@ export const sanitizeFinalMask = (
 	capabilities: FinalMaskCapabilities,
 ): FinalMaskObject | null => {
 	if (!value || !capabilities.supported) return null;
+	value = upgradeFinalMaskLayers(value);
 	const next: FinalMaskObject = {};
 	if (capabilities.tcp && Array.isArray(value.tcp)) {
 		next.tcp = value.tcp
@@ -722,15 +723,6 @@ const isIPv6 = (value: string) => {
 
 const isIPAddress = (value: string) => isIPv4(value) || isIPv6(value);
 
-const splitDnsEntry = (value: string): string | null => {
-	const separator = value.lastIndexOf(":");
-	if (separator < 0) return value;
-	const method = value.slice(separator + 1).toLowerCase();
-	return ["txt", "a", "aaaa"].includes(method)
-		? value.slice(0, separator)
-		: null;
-};
-
 const isDnsName = (value: string) => {
 	if (!value) return false;
 	const normalized = value.endsWith(".") ? value.slice(0, -1) : value;
@@ -770,38 +762,113 @@ const splitHostPort = (
 	return host && port <= 65_535 ? { host, port } : null;
 };
 
+const XDNS_RECORD_TYPES = [1, 5, 16, 28];
+
 const validateXdns = (settings: FinalMaskSettings): string | null => {
 	if (hasOwn(settings, "domains")) {
-		const error = validateStringArray(settings.domains, "XDNS domains");
-		if (error) return error;
-		for (const entry of settings.domains as string[]) {
-			const domain = splitDnsEntry(entry);
-			if (!domain || !isDnsName(domain))
-				return `Invalid XDNS domain: ${entry}.`;
+		if (!Array.isArray(settings.domains)) return "XDNS domains must be a list.";
+		for (const domain of settings.domains) {
+			if (!isFinalMaskObject(domain))
+				return "Every XDNS domain must be an object with names.";
+			const error = validateStringArray(
+				domain.names,
+				"XDNS domain names",
+				true,
+			);
+			if (error) return error;
+			const invalid = (domain.names as string[]).find((name) => !isDnsName(name));
+			if (invalid) return `Invalid XDNS domain: ${invalid}.`;
+			if (
+				domain.types !== undefined &&
+				(!Array.isArray(domain.types) ||
+					domain.types.some(
+						(type) => !XDNS_RECORD_TYPES.includes(type as number),
+					))
+			)
+				return "XDNS record types must be 1 (A), 5 (CNAME), 16 (TXT) or 28 (AAAA).";
 		}
 	}
-	const resolversError = validateStringArray(
-		settings.resolvers,
-		"XDNS resolvers",
-		true,
-	);
-	if (resolversError) return resolversError;
-	for (const entry of settings.resolvers as string[]) {
-		const marker = "+udp://";
-		const separator = entry.indexOf(marker);
-		if (
-			separator <= 0 ||
-			entry.indexOf(marker, separator + marker.length) !== -1
-		) {
-			return `Invalid XDNS resolver: ${entry}.`;
-		}
-		const domain = splitDnsEntry(entry.slice(0, separator));
-		const server = splitHostPort(entry.slice(separator + marker.length));
-		if (!domain || !isDnsName(domain) || !server || !isIPAddress(server.host)) {
-			return `Invalid XDNS resolver: ${entry}.`;
-		}
+	if (!hasOwn(settings, "resolvers")) return null;
+	if (!Array.isArray(settings.resolvers))
+		return "XDNS resolvers must be a list.";
+	for (const resolver of settings.resolvers) {
+		if (!isFinalMaskObject(resolver))
+			return "Every XDNS resolver must be an object with addrs.";
+		const error = validateStringArray(
+			resolver.addrs,
+			"XDNS resolver addrs",
+			true,
+		);
+		if (error) return error;
+		const invalid = (resolver.addrs as string[]).find(
+			(address) =>
+				address.includes("://") && !/^(udp|tcp|https):\/\/./.test(address),
+		);
+		if (invalid) return `Invalid XDNS resolver: ${invalid}.`;
 	}
 	return null;
+};
+
+const LEGACY_XDNS_TYPES: Record<string, number> = { a: 1, txt: 16, aaaa: 28 };
+
+const legacyXdnsDomain = (entry: string) => {
+	const [name, method] = entry.split(":");
+	const type = LEGACY_XDNS_TYPES[method?.toLowerCase() ?? ""];
+	return type ? { names: [name], types: [type] } : { names: [entry] };
+};
+
+export const upgradeXdnsSettings = (
+	settings: FinalMaskSettings,
+): FinalMaskSettings => {
+	const next = { ...settings };
+	const domains = Array.isArray(next.domains) ? next.domains : [];
+	const resolvers = Array.isArray(next.resolvers) ? next.resolvers : [];
+	const legacyDomains = domains.filter((item) => typeof item === "string");
+	const legacyResolvers = resolvers.filter(
+		(item): item is string =>
+			typeof item === "string" && item.includes("+udp://"),
+	);
+	if (!legacyDomains.length && !legacyResolvers.length) return settings;
+	const names = new Set<string>(legacyDomains as string[]);
+	for (const entry of legacyResolvers) names.add(entry.split("+udp://")[0]);
+	next.domains = [
+		...domains.filter((item) => typeof item !== "string"),
+		...[...names].map(legacyXdnsDomain),
+	];
+	if (legacyResolvers.length) {
+		next.resolvers = [
+			...resolvers.filter((item) => typeof item !== "string"),
+			{
+				addrs: [
+					...new Set(
+						legacyResolvers.map(
+							(entry) => `udp://${entry.split("+udp://")[1]}`,
+						),
+					),
+				],
+			},
+		];
+	}
+	return next;
+};
+
+export const upgradeFinalMaskLayers = (
+	value: FinalMaskObject,
+): FinalMaskObject => {
+	if (!Array.isArray(value.udp)) return value;
+	return {
+		...value,
+		udp: value.udp.map((layer) =>
+			isFinalMaskObject(layer) &&
+			maskType(layer as FinalMaskLayer) === "xdns" &&
+			isFinalMaskObject(layer.settings)
+				? ({
+						...layer,
+						settings: upgradeXdnsSettings(layer.settings),
+					} as FinalMaskLayer)
+				: layer,
+		),
+	};
 };
 
 const validateRealmUrl = (value: unknown) => {

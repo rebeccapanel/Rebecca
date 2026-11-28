@@ -1,4 +1,6 @@
 {
+	"finalMaskHint.xdnsDomains": "لیست JSON. هر مورد: names (دامنه‌های تونل خودتان) و در صورت نیاز types (‏1=A، ‏5=CNAME، ‏16=TXT، ‏28=AAAA)، lenLimit، labelLimit و edns0.",
+	"finalMaskHint.xdnsResolvers": "سمت کلاینت. لیست JSON از addrs (‏udp://، ‏tcp:// یا https://، پورت پیش‌فرض 53) با worker، tlsConfig و quicConfig اختیاری.",
 	"inbounds.xhttp.hint.host": "هدر Host که کلاینت می‌فرستد. خالی یعنی SNI و بعد آدرس.",
 	"inbounds.xhttp.hint.path": "باید با مسیر آپلود یکی باشد. خالی یعنی همان مسیر.",
 	"inbounds.xhttp.hint.mode": "حالت XHTTP برای اتصال دانلود.",

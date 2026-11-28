@@ -3,6 +3,7 @@ import { sniffingDestinationsFor, supportsSniffing } from "./inboundCapabilities
 import { generateWireguardKeypair } from "./wireguard";
 import { pruneNulls } from "./xrayRawFields";
 import {
+	upgradeFinalMaskLayers,
 	finalMaskValidationError,
 	getFinalMaskCapabilities,
 } from "./finalmask";
@@ -3110,7 +3111,9 @@ export const rawInboundToFormValues = (raw: RawInbound): InboundFormValues => {
 			stream?.xhttpSettings?.downloadSettings,
 		),
 		xhttpRawSettings: stream.xhttpSettings ?? {},
-		finalmaskRaw: JSON.parse(JSON.stringify(stream.finalmask ?? {})),
+		finalmaskRaw: upgradeFinalMaskLayers(
+			JSON.parse(JSON.stringify(stream.finalmask ?? {})),
+		),
 		streamRaw: PASSTHROUGH_NETWORKS.includes(stream.network ?? "")
 			? JSON.parse(JSON.stringify(stream))
 			: {},

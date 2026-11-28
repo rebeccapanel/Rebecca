@@ -1,4 +1,6 @@
 {
+	"finalMaskHint.xdnsDomains": "JSON list. Each entry: names (your tunnel domains), optional types (1 A, 5 CNAME, 16 TXT, 28 AAAA), lenLimit, labelLimit, edns0.",
+	"finalMaskHint.xdnsResolvers": "Client side. JSON list of addrs (udp://, tcp:// or https://, port 53 by default) with optional worker, tlsConfig and quicConfig.",
 	"inbounds.xhttp.hint.host": "HTTP Host sent by the client. Empty uses the SNI, then the address.",
 	"inbounds.xhttp.hint.path": "Must be the same as the upload path. Empty copies it.",
 	"inbounds.xhttp.hint.mode": "XHTTP mode used for the download connection.",

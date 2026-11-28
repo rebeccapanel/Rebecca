@@ -203,8 +203,9 @@ const Hinted: FC<{ name: string; children: ReactNode }> = ({
 const JsonField: FC<{
 	label: string;
 	value: unknown;
+	placeholder?: string;
 	onChange: (value: unknown) => void;
-}> = ({ label, value, onChange }) => {
+}> = ({ label, value, placeholder, onChange }) => {
 	const [draft, setDraft] = useState<string | null>(null);
 	const text =
 		draft ?? (value === undefined ? "" : JSON.stringify(value, null, 2));
@@ -224,6 +225,7 @@ const JsonField: FC<{
 				dir="ltr"
 				aria-label={label}
 				aria-invalid={invalid}
+				placeholder={placeholder}
 				value={text}
 				onChange={(event) => {
 					const next = event.target.value;
@@ -1113,18 +1115,22 @@ const UdpSettings: FC<{
 		case "xdns":
 			return (
 				<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-					<StringArrayField
-						label="Domains"
-						value={settings.domains}
-						placeholder="t.example.com:txt"
-						onChange={(next) => update("domains", next)}
-					/>
-					<StringArrayField
-						label="Resolvers"
-						value={settings.resolvers}
-						placeholder="t.example.com+udp://8.8.8.8:53"
-						onChange={(next) => update("resolvers", next)}
-					/>
+					<Hinted name="xdnsDomains">
+						<JsonField
+							label="domains"
+							value={settings.domains}
+							placeholder='[{ "names": ["t.example.com"], "types": [16] }]'
+							onChange={(next) => update("domains", next)}
+						/>
+					</Hinted>
+					<Hinted name="xdnsResolvers">
+						<JsonField
+							label="resolvers"
+							value={settings.resolvers}
+							placeholder='[{ "addrs": ["udp://8.8.8.8:53"] }]'
+							onChange={(next) => update("resolvers", next)}
+						/>
+					</Hinted>
 					<Hinted name="extraPoll">
 						<NumberField
 							label="extraPoll"
