@@ -55,9 +55,20 @@ import {
 	generateMldsa65,
 	generateRealityKeypair,
 	generateRealityShortId,
+	generateSelfSignedCertificate,
 	getVlessEncAuthBlocks,
 	type VlessEncAuthBlock,
 } from "service/xray";
+import {
+	keepVlessEncOptions,
+	openvpnStaticKey,
+	randomBase64,
+	randomPassword,
+	randomShadowsocksPassword,
+	shadowsocksPasswordFor,
+} from "utils/generators";
+import { GenerateButton } from "./GenerateButton";
+import { VlessEncryptionOptions } from "./VlessEncryptionOptions";
 import { useQuery } from "@tanstack/react-query";
 import {
 	getSubscriptionSettings,
@@ -623,7 +634,9 @@ export const InboundFormModal: FC<Props> = ({
 	const computedVlessAuthOptions = useMemo(() => {
 		const labels = [
 			...defaultVlessAuthLabels,
-			...vlessAuthOptions.map((option) => option.label),
+			...vlessAuthOptions
+				.map((option) => option.label)
+				.filter((label) => label !== "none"),
 		].filter(Boolean);
 		const unique = Array.from(new Set(labels));
 		return unique.map((label) => ({ label, value: label }));
@@ -1176,6 +1189,47 @@ export const InboundFormModal: FC<Props> = ({
 		form.setValue("tlsEchConfigList", "", { shouldDirty: true });
 	}, [form]);
 
+	const [selfSignedLoading, setSelfSignedLoading] = useState<number | null>(null);
+	const handleGenerateSelfSigned = async (index: number) => {
+		const name = form.getValues("tlsServerName")?.trim();
+		if (!name) {
+			toast.warning(t("generate.sniRequired"));
+			return;
+		}
+		setSelfSignedLoading(index);
+		try {
+			const generated = await generateSelfSignedCertificate(name);
+			const options = { shouldDirty: true, shouldValidate: true };
+			form.setValue(`tlsCertificates.${index}.useFile`, false, options);
+			form.setValue(`tlsCertificates.${index}.cert`, generated.certificate, options);
+			form.setValue(`tlsCertificates.${index}.key`, generated.key, options);
+			if (form.getValues("tlsCertificates").length === 1) {
+				form.setValue("tlsPinnedPeerCertSha256", generated.sha256, options);
+			}
+			toast.success(t("generate.selfSignedDone"));
+		} catch (error: any) {
+			toast.error(t("generate.failed"), { description: error?.data?.detail || error?.message });
+		} finally {
+			setSelfSignedLoading(null);
+		}
+	};
+
+	const generateXrayWireguardKeys = async (peer?: number) => {
+		try {
+			const keys = await generateWGKeypair();
+			const options = { shouldDirty: true, shouldValidate: true };
+			if (peer === undefined) {
+				form.setValue("wgxSecretKey", keys.privateKey, options);
+				return;
+			}
+			form.setValue(`wgxPeers.${peer}.privateKey`, keys.privateKey, options);
+			form.setValue(`wgxPeers.${peer}.publicKey`, keys.publicKey, options);
+			form.setValue(`wgxPeers.${peer}.preSharedKey`, randomBase64(32), options);
+		} catch (error) {
+			toast.error(t("generate.failed"), { description: error instanceof Error ? error.message : undefined });
+		}
+	};
+
 	const handleGenerateOVSelfSigned = useCallback(async () => {
 		setOVCertLoading(true);
 		try {
@@ -1201,8 +1255,9 @@ export const InboundFormModal: FC<Props> = ({
 	}, [form, t, toast]);
 
 	const handleGenerateAnyConnectSelfSigned = useCallback(async () => {
-		const names = form
-			.getValues("raCertificateNames")
+		const identity =
+			form.getValues("protocol") === "ikev2" ? form.getValues("raServerIdentity") : "";
+		const names = (form.getValues("raCertificateNames") || identity || "")
 			.split(/[\n,]/)
 			.map((value) => value.trim())
 			.filter(Boolean);
@@ -1368,12 +1423,14 @@ export const InboundFormModal: FC<Props> = ({
 				toast.warning(t("inbounds.vless.authNotFound"));
 				return;
 			}
-			form.setValue("vlessDecryption", match.decryption ?? "", {
-				shouldDirty: true,
-			});
-			form.setValue("vlessEncryption", match.encryption ?? "", {
-				shouldDirty: true,
-			});
+			for (const [name, next] of [
+				["vlessDecryption", match.decryption ?? ""],
+				["vlessEncryption", match.encryption ?? ""],
+			] as const) {
+				form.setValue(name, keepVlessEncOptions(next, form.getValues(name)), {
+					shouldDirty: true,
+				});
+			}
 		},
 		[form, t, toast],
 	);
@@ -1411,6 +1468,15 @@ export const InboundFormModal: FC<Props> = ({
 		form.setValue("vlessEncryption", "", { shouldDirty: true });
 	}, [form]);
 
+	useEffect(() => {
+		if (!isOpen || mode !== "create" || currentProtocol !== "shadowsocks") return;
+		if (form.getValues("shadowsocksPassword")) return;
+		form.setValue(
+			"shadowsocksPassword",
+			randomShadowsocksPassword(form.getValues("shadowsocksMethod")),
+		);
+	}, [currentProtocol, form, isOpen, mode]);
+
 	const vlessAuthRequestedRef = useRef(false);
 	useEffect(() => {
 		if (!isOpen) {
@@ -1426,6 +1492,33 @@ export const InboundFormModal: FC<Props> = ({
 	const vlessDecryptionValue = useWatch({ control, name: "vlessDecryption" }) || "";
 	const showVlessAuthDetails =
 		Boolean(vlessSelectedAuth) || (vlessDecryptionValue !== "" && vlessDecryptionValue !== "none");
+	const remoteAccessCertificateTools = (
+		<div className="flex flex-col gap-2">
+														<FormControl isInvalid={Boolean(errors.raCertificateNames)}>
+															{ovLabel(
+																"inbounds.anyconnect.certificateNames",
+																"Certificate domains / IPs",
+																"inbounds.anyconnect.help.certificateNames",
+																"Domains and IPs stored in the generated certificate SAN, one per line.",
+															)}
+															<Textarea
+																rows={2}
+																{...register("raCertificateNames")}
+																placeholder={"vpn.example.com\n203.0.113.10"}
+															/>
+															{errors.raCertificateNames?.message && (
+																<p className="text-[0.75rem] text-red-500 mt-1">
+																	{String(errors.raCertificateNames.message)}
+																</p>
+															)}
+														</FormControl>
+														<div>
+															<Button onClick={handleGenerateAnyConnectSelfSigned} size="sm" loading={anyConnectCertLoading}>{<Sparkles className="w-[16px]" />}
+																{t("inbounds.anyconnect.generateSelfSigned")}
+															</Button>
+														</div>
+													</div>
+	);
 	const vlessAuthenticationSection =
 		currentProtocol === "vless" ? (
 			<div className="flex flex-col gap-4 xray-dialog-section">
@@ -1471,6 +1564,7 @@ export const InboundFormModal: FC<Props> = ({
 								<Input {...register("vlessEncryption")} />
 							</FormControl>
 						</div>
+						<VlessEncryptionOptions control={control} setValue={form.setValue} getValues={form.getValues} />
 						<div className="flex flex-row flex-wrap items-center gap-2">
 							<Button
 								type="button"
@@ -1927,6 +2021,8 @@ export const InboundFormModal: FC<Props> = ({
 														autoComplete="off"
 														{...register("shadowsocksPassword")}
 													/>
+													<FieldError>{fieldValidationErrors.shadowsocksPassword}</FieldError>
+													<GenerateButton onClick={() => form.setValue("shadowsocksPassword", randomShadowsocksPassword(form.getValues("shadowsocksMethod")), { shouldDirty: true, shouldValidate: true })} />
 												</FormControl>
 												<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 													<FormControl>
@@ -1935,16 +2031,15 @@ export const InboundFormModal: FC<Props> = ({
 															value={formValues.shadowsocksMethod || ""}
 															options={shadowsocksMethods}
 															placeholder={t("inbounds.shadowsocks.method")}
-															onChange={(value) =>
+															onChange={(value) => {
+																const method = String(value);
+																form.setValue("shadowsocksMethod", method, { shouldDirty: true });
 																form.setValue(
-																	"shadowsocksMethod",
-																	String(value),
-																	{
-																		shouldDirty: true,
-																		shouldValidate: true,
-																	},
-																)
-															}
+																	"shadowsocksPassword",
+																	shadowsocksPasswordFor(method, form.getValues("shadowsocksPassword")),
+																	{ shouldDirty: true, shouldValidate: true },
+																);
+															}}
 														/>
 													</FormControl>
 													<FormControl>
@@ -2238,6 +2333,7 @@ export const InboundFormModal: FC<Props> = ({
 													<FormControl required isInvalid={Boolean(fieldValidationErrors.wgxSecretKey)}>
 														<FormLabel helpKey="inbounds.wireguardXray.secretKeyHelp">{t("inbounds.wireguardXray.secretKey")}</FormLabel>
 														<Input {...register("wgxSecretKey")} />
+														<GenerateButton onClick={() => generateXrayWireguardKeys()} />
 														<FieldError>{fieldValidationErrors.wgxSecretKey}</FieldError>
 													</FormControl>
 													<FormControl>
@@ -2269,6 +2365,9 @@ export const InboundFormModal: FC<Props> = ({
 															<Button onClick={() => removeWgxPeer(index)} variant="ghost" size="xs" className="text-destructive hover:bg-destructive/10">
 																{t("delete")}
 															</Button>
+														</div>
+														<div className="mb-3">
+															<GenerateButton label={t("generate.peerKeys")} onClick={() => generateXrayWireguardKeys(index)} />
 														</div>
 														<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
 															<FormControl>
@@ -2831,6 +2930,11 @@ export const InboundFormModal: FC<Props> = ({
 															"Optional static key that encrypts and authenticates the OpenVPN control channel.",
 														)}
 														<Textarea rows={4} {...register("ovTlsCrypt")} />
+														<GenerateButton onClick={() => {
+															form.setValue("ovTlsCrypt", openvpnStaticKey(), { shouldDirty: true, shouldValidate: true });
+															form.setValue("ovTlsAuth", "", { shouldDirty: true, shouldValidate: true });
+														}} />
+														<p className="text-xs text-muted-foreground">{t("generate.openvpnStaticHint")}</p>
 													</FormControl>
 													<FormControl>
 														{ovLabel(
@@ -2840,6 +2944,11 @@ export const InboundFormModal: FC<Props> = ({
 															"Optional static HMAC key for authenticating the OpenVPN control channel.",
 														)}
 														<Textarea rows={4} {...register("ovTlsAuth")} />
+														<GenerateButton onClick={() => {
+															form.setValue("ovTlsAuth", openvpnStaticKey(), { shouldDirty: true, shouldValidate: true });
+															form.setValue("ovTlsCrypt", "", { shouldDirty: true, shouldValidate: true });
+														}} />
+														<p className="text-xs text-muted-foreground">{t("generate.openvpnStaticHint")}</p>
 													</FormControl>
 												</div>
 												<FormControl>
@@ -3104,6 +3213,7 @@ export const InboundFormModal: FC<Props> = ({
 														<Controller control={control} name={"raAccountingEnabled"} render={({ field }) => <Switch checked={Boolean(field.value)} onCheckedChange={field.onChange} />} />
 													</FormControl>
 												</div>
+												{remoteAccessCertificateTools}
 												<FormControl required isInvalid={Boolean(
 														fieldValidationErrors.raServerCertificate,
 													)}>
@@ -3346,33 +3456,7 @@ export const InboundFormModal: FC<Props> = ({
 														<Controller control={control} name={"raRedirectGateway"} render={({ field }) => <Switch checked={Boolean(field.value)} onCheckedChange={field.onChange} />} />
 													</FormControl>
 												</div>
-												{currentProtocol === "anyconnect" && (
-													<div className="flex flex-col gap-2">
-														<FormControl isInvalid={Boolean(errors.raCertificateNames)}>
-															{ovLabel(
-																"inbounds.anyconnect.certificateNames",
-																"Certificate domains / IPs",
-																"inbounds.anyconnect.help.certificateNames",
-																"Domains and IPs stored in the generated certificate SAN, one per line.",
-															)}
-															<Textarea
-																rows={2}
-																{...register("raCertificateNames")}
-																placeholder={"vpn.example.com\n203.0.113.10"}
-															/>
-															{errors.raCertificateNames?.message && (
-																<p className="text-[0.75rem] text-red-500 mt-1">
-																	{String(errors.raCertificateNames.message)}
-																</p>
-															)}
-														</FormControl>
-														<div>
-															<Button onClick={handleGenerateAnyConnectSelfSigned} size="sm" loading={anyConnectCertLoading}>{<Sparkles className="w-[16px]" />}
-																{t("inbounds.anyconnect.generateSelfSigned")}
-															</Button>
-														</div>
-													</div>
-												)}
+												{(currentProtocol === "anyconnect" || currentProtocol === "ikev2") && remoteAccessCertificateTools}
 												<FormControl required={
 														currentProtocol === "ikev2" ||
 														watch("raAuthMode") !== "password"
@@ -4197,6 +4281,7 @@ export const InboundFormModal: FC<Props> = ({
 															{...register("l2tpIPSecPSK")}
 															placeholder="change-this-secret"
 														/>
+														<GenerateButton onClick={() => form.setValue("l2tpIPSecPSK", randomPassword(32), { shouldDirty: true, shouldValidate: true })} />
 														{fieldValidationErrors.l2tpIPSecPSK && (
 															<p className="text-[0.75rem] text-red-500 mt-1">
 																{fieldValidationErrors.l2tpIPSecPSK}
@@ -4592,6 +4677,7 @@ export const InboundFormModal: FC<Props> = ({
 															{t("inbounds.kcp.seed")} (legacy)
 														</FormLabel>
 														<Input {...register("kcpSeed")} />
+														<GenerateButton onClick={() => form.setValue("kcpSeed", randomPassword(16), { shouldDirty: true, shouldValidate: true })} />
 													</FormControl>
 												</div>
 												<div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -4662,6 +4748,7 @@ export const InboundFormModal: FC<Props> = ({
 													<FormControl>
 														<FormLabel helpKey="inbounds.quic.keyHelp">{t("inbounds.quic.key")}</FormLabel>
 														<Input {...register("quicKey")} />
+														<GenerateButton onClick={() => form.setValue("quicKey", randomPassword(16), { shouldDirty: true, shouldValidate: true })} />
 													</FormControl>
 													<FormControl>
 														<FormLabel helpKey="inbounds.quic.headerTypeHelp">{t("inbounds.quic.headerType")}</FormLabel>
@@ -6305,6 +6392,8 @@ export const InboundFormModal: FC<Props> = ({
 																	</FormControl>
 																</div>
 															)}
+															<GenerateButton label={t("generate.selfSigned")} loading={selfSignedLoading === index} onClick={() => handleGenerateSelfSigned(index)} />
+															<p className="text-xs text-muted-foreground">{t("generate.selfSignedHint")}</p>
 															<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
 <FormControl>
 																	<FormLabel helpKey="inbounds.tls.usageHelp">{t("inbounds.tls.usage")}</FormLabel>

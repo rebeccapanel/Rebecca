@@ -83,6 +83,14 @@ export const generateAnyConnectSelfSigned = async (
 	);
 };
 
+export const generateSelfSignedCertificate = async (
+	name: string,
+): Promise<{ certificate: string; key: string; sha256: string }> =>
+	fetch<{ certificate: string; key: string; sha256: string }>(
+		"/xray/self-signed",
+		{ query: { name } },
+	);
+
 export const generateWGKeypair = async (): Promise<WGKeypairResponse> => {
 	return fetch<WGKeypairResponse>("/xray/wg-keypair");
 };

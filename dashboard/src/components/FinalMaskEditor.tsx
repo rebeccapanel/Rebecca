@@ -1,3 +1,5 @@
+import { GenerateButton } from "components/InboundsManager/GenerateButton";
+import { randomPassword } from "utils/generators";
 import { toneClass } from "lib/tone";
 import { Field, FieldLabel } from "components/ui/field";
 import { Input } from "components/ui/input";
@@ -197,6 +199,17 @@ const Hinted: FC<{ name: string; children: ReactNode }> = ({
 	<div className="flex flex-col gap-1">
 		{children}
 		<MaskHint name={name} />
+	</div>
+);
+
+const PasswordField: FC<{
+	label: string;
+	value: unknown;
+	onChange: (value: unknown) => void;
+}> = (props) => (
+	<div className="flex flex-col gap-2">
+		<TextField {...props} />
+		<GenerateButton onClick={() => props.onChange(randomPassword())} />
 	</div>
 );
 
@@ -683,7 +696,7 @@ const SudokuSettings: FC<{
 	return (
 		<div className="flex flex-col gap-3">
 			<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-				<TextField
+				<PasswordField
 					label="Password"
 					value={settings.password}
 					onChange={(next) => update("password", next)}
@@ -1060,11 +1073,16 @@ const UdpSettings: FC<{
 						]}
 						onChange={(next) => update("header", next ?? "")}
 					/>
-					<TextField
-						label="Password / domain"
-						value={settings.value}
-						onChange={(next) => update("value", next)}
-					/>
+					<div className="flex flex-col gap-2">
+						<TextField
+							label="Password / domain"
+							value={settings.value}
+							onChange={(next) => update("value", next)}
+						/>
+						{!settings.header && (
+							<GenerateButton onClick={() => update("value", randomPassword())} />
+						)}
+					</div>
 				</div>
 			);
 		case "noise":
@@ -1095,7 +1113,7 @@ const UdpSettings: FC<{
 		case "salamander":
 			return (
 				<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-					<TextField
+					<PasswordField
 						label="Password"
 						value={settings.password}
 						onChange={(next) => update("password", next)}
@@ -1230,7 +1248,7 @@ const LayerSettings: FC<{
 						/>
 					</Hinted>
 					<Hinted name="xmcPassword">
-						<TextField
+						<PasswordField
 							label="password"
 							value={settings.password}
 							onChange={(next) => update(setKey(settings, "password", next))}

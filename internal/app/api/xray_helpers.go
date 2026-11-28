@@ -53,7 +53,9 @@ func (s *Server) handleXrayHelperPath(w http.ResponseWriter, r *http.Request) {
 	case "/api/xray/mldsa65", "/xray/mldsa65":
 		s.handleMLDSA65(w)
 	case "/api/xray/ech", "/xray/ech":
-		writeError(w, http.StatusGone, "ECH certificate generation is node-only and is not available on the master")
+		s.handleECH(w, r)
+	case "/api/xray/self-signed", "/xray/self-signed":
+		s.handleSelfSigned(w, r)
 	default:
 		writeError(w, http.StatusNotFound, "not found")
 	}
