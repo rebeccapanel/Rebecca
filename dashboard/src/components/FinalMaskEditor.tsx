@@ -75,6 +75,9 @@ const typeLabel = (type: string) =>
 		xdns: "XDNS",
 		xicmp: "XICMP",
 		realm: "Realm",
+		filter: "Source IP filter",
+		xmc: "XMC (Minecraft)",
+		udphop: "UDP hop",
 	})[type] ?? type;
 
 const typeDescription = (type: string) =>
@@ -88,6 +91,9 @@ const typeDescription = (type: string) =>
 		xdns: "Carry traffic through DNS domains and resolvers.",
 		xicmp: "Carry UDP traffic through ICMP endpoints.",
 		realm: "Route UDP traffic through a Realm endpoint.",
+		filter: "Allow or block clients by source IP.",
+		xmc: "Make the connection look like a Minecraft session.",
+		udphop: "Switch UDP ports or server IPs while connected.",
 	})[type] ?? "Configure this mask layer.";
 
 const TextField: FC<{
@@ -176,6 +182,82 @@ const moveItem = <T,>(items: T[], from: number, to: number) => {
 	next.splice(to, 0, item);
 	return next;
 };
+
+const MaskHint: FC<{ name: string }> = ({ name }) => {
+	const { t } = useTranslation();
+	return (
+		<p className="text-xs text-muted-foreground">{t(`finalMaskHint.${name}`)}</p>
+	);
+};
+
+const Hinted: FC<{ name: string; children: ReactNode }> = ({
+	name,
+	children,
+}) => (
+	<div className="flex flex-col gap-1">
+		{children}
+		<MaskHint name={name} />
+	</div>
+);
+
+const JsonField: FC<{
+	label: string;
+	value: unknown;
+	onChange: (value: unknown) => void;
+}> = ({ label, value, onChange }) => {
+	const [draft, setDraft] = useState<string | null>(null);
+	const text =
+		draft ?? (value === undefined ? "" : JSON.stringify(value, null, 2));
+	let invalid = false;
+	if (draft?.trim()) {
+		try {
+			JSON.parse(draft);
+		} catch {
+			invalid = true;
+		}
+	}
+	return (
+		<Field>
+			<FieldLabel className="text-[0.875rem]">{label}</FieldLabel>
+			<Textarea
+				rows={4}
+				dir="ltr"
+				aria-label={label}
+				aria-invalid={invalid}
+				value={text}
+				onChange={(event) => {
+					const next = event.target.value;
+					setDraft(next);
+					if (!next.trim()) return onChange(undefined);
+					try {
+						onChange(JSON.parse(next));
+					} catch {}
+				}}
+				onBlur={() => {
+					if (!invalid) setDraft(null);
+				}}
+			/>
+		</Field>
+	);
+};
+
+const FilterSettings: FC<{
+	settings: FinalMaskSettings;
+	onChange: (value: FinalMaskSettings) => void;
+}> = ({ settings, onChange }) => (
+	<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+		{(["blockedSourceIPs", "allowedSourceIPs"] as const).map((key) => (
+			<Hinted key={key} name={key}>
+				<StringArrayField
+					label={key}
+					value={settings[key]}
+					placeholder="203.0.113.0/24"
+					onChange={(next) => onChange(setKey(settings, key, next))}
+				/>
+			</Hinted>
+		))}
+	</div>
+);
 
 const UDP_FIRST_TYPES = new Set(["realm", "xicmp"]);
 
@@ -917,6 +999,44 @@ const UdpSettings: FC<{
 	const update = (key: string, next: unknown) =>
 		onChange(setKey(settings, key, next));
 	switch (type) {
+		case "filter":
+			return <FilterSettings settings={settings} onChange={onChange} />;
+		case "udphop":
+			return (
+				<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+					<Hinted name="hopMode">
+						<TextField
+							label="mode"
+							value={settings.mode}
+							placeholder="intervalremote"
+							onChange={(next) => update("mode", next)}
+						/>
+					</Hinted>
+					<Hinted name="hopInterval">
+						<TextField
+							label="interval"
+							value={settings.interval}
+							placeholder="30"
+							onChange={(next) => update("interval", next)}
+						/>
+					</Hinted>
+					<Hinted name="hopRemoteIPs">
+						<StringArrayField
+							label="remoteIPs"
+							value={settings.remoteIPs}
+							onChange={(next) => update("remoteIPs", next)}
+						/>
+					</Hinted>
+					<Hinted name="hopRemotePorts">
+						<TextField
+							label="remotePorts"
+							value={settings.remotePorts}
+							placeholder="20000-50000"
+							onChange={(next) => update("remotePorts", next)}
+						/>
+					</Hinted>
+				</div>
+			);
 		case "header-custom":
 			return (
 				<HeaderCustomSettings settings={settings} onChange={onChange} direction="udp" />
@@ -954,6 +1074,13 @@ const UdpSettings: FC<{
 						placeholder="30-60"
 						onChange={(next) => update("reset", next)}
 					/>
+					<Hinted name="noiseScript">
+						<TextField
+							label="script"
+							value={settings.script}
+							onChange={(next) => update("script", next)}
+						/>
+					</Hinted>
 					<PacketListEditor
 						label="Noise packets"
 						value={settings.noise}
@@ -998,6 +1125,14 @@ const UdpSettings: FC<{
 						placeholder="t.example.com+udp://8.8.8.8:53"
 						onChange={(next) => update("resolvers", next)}
 					/>
+					<Hinted name="extraPoll">
+						<NumberField
+							label="extraPoll"
+							value={settings.extraPoll}
+							max={3}
+							onChange={(next) => update("extraPoll", next)}
+						/>
+					</Hinted>
 				</div>
 			);
 		case "xicmp":
@@ -1031,6 +1166,20 @@ const UdpSettings: FC<{
 						placeholder="stun.example.com:3478"
 						onChange={(next) => update("stunServers", next)}
 					/>
+					<Hinted name="ipMode">
+						<TextField
+							label="ipMode"
+							value={settings.ipMode}
+							onChange={(next) => update("ipMode", next)}
+						/>
+					</Hinted>
+					<Hinted name="portMapping">
+						<JsonField
+							label="portMapping"
+							value={settings.portMapping}
+							onChange={(next) => update("portMapping", next)}
+						/>
+					</Hinted>
 					<RealmTlsSettings
 						value={settings.tlsConfig}
 						onChange={(next) => update("tlsConfig", next)}
@@ -1062,6 +1211,34 @@ const LayerSettings: FC<{
 		);
 	}
 	switch (layer.type) {
+		case "filter":
+			return <FilterSettings settings={settings} onChange={update} />;
+		case "xmc":
+			return (
+				<div className="flex flex-col gap-3">
+					<Hinted name="xmcHostname">
+						<TextField
+							label="hostname"
+							value={settings.hostname}
+							onChange={(next) => update(setKey(settings, "hostname", next))}
+						/>
+					</Hinted>
+					<Hinted name="xmcPassword">
+						<TextField
+							label="password"
+							value={settings.password}
+							onChange={(next) => update(setKey(settings, "password", next))}
+						/>
+					</Hinted>
+					<Hinted name="xmcProfiles">
+						<JsonField
+							label="profiles"
+							value={settings.profiles}
+							onChange={(next) => update(setKey(settings, "profiles", next))}
+						/>
+					</Hinted>
+				</div>
+			);
 		case "header-custom":
 			return (
 				<HeaderCustomSettings settings={settings} onChange={update} direction="tcp" />
@@ -1246,6 +1423,7 @@ const QuicParamsEditor: FC<{
 	allowUdpHop: boolean;
 	allowNegotiatedBrutal: boolean;
 }> = ({ value, onChange, allowUdpHop, allowNegotiatedBrutal }) => {
+	const { t } = useTranslation();
 	const enabled =
 		typeof value === "object" && value !== null && !Array.isArray(value);
 	const params = asRecord(value);
@@ -1353,6 +1531,21 @@ const QuicParamsEditor: FC<{
 							value={params.disablePathMTUDiscovery}
 							onChange={(next) => update("disablePathMTUDiscovery", next)}
 						/>
+						{(
+							[
+								"brutalDisableLossCompensation",
+								"disableChromeParrot",
+								"disableGSO",
+								"disableStatelessReset",
+							] as const
+						).map((key) => (
+							<BooleanField
+								key={key}
+								label={key}
+								value={params[key]}
+								onChange={(next) => update(key, next)}
+							/>
+						))}
 						{allowUdpHop && (
 							<BooleanField
 								label="UDP port hopping"
@@ -1361,6 +1554,18 @@ const QuicParamsEditor: FC<{
 							/>
 						)}
 					</div>
+					<ul className="flex flex-col gap-1 text-xs text-muted-foreground">
+						{[
+							"brutalDisableLossCompensation",
+							"disableChromeParrot",
+							"disableGSO",
+							"disableStatelessReset",
+						].map((key) => (
+							<li key={key}>
+								<code dir="ltr">{key}</code>: {t(`xrayFields.hint.${key}`)}
+							</li>
+						))}
+					</ul>
 					{allowUdpHop && udpHopEnabled && (
 						<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
 							<TextField

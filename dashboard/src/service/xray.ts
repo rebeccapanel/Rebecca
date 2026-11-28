@@ -56,6 +56,13 @@ export const generateRealityShortId =
 		return fetch<RealityShortIdResponse>("/xray/reality-shortid");
 	};
 
+export const fetchCertificateHash = async (body: {
+	certificate?: string;
+	certificate_file?: string;
+	server_name?: string;
+}): Promise<{ sha256: string }> =>
+	fetch<{ sha256: string }>("/xray/cert-hash", { method: "POST", body });
+
 export const generateEchCert = async (
 	sni: string,
 ): Promise<EchCertResponse> => {

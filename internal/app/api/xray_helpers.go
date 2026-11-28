@@ -22,6 +22,11 @@ import (
 )
 
 func (s *Server) handleXrayHelperPath(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/xray/cert-hash") {
+		w.Header().Set("Cache-Control", "no-store")
+		s.handleCertificateHash(w, r)
+		return
+	}
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 		return

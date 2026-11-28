@@ -33,7 +33,7 @@ export type FinalMaskInbound = {
 	proxyNetwork?: string;
 };
 
-const TCP_TYPES = ["header-custom", "fragment", "sudoku"];
+const TCP_TYPES = ["header-custom", "fragment", "sudoku", "filter", "xmc"];
 const UDP_TYPES = [
 	"header-custom",
 	"mkcp-legacy",
@@ -43,6 +43,8 @@ const UDP_TYPES = [
 	"xdns",
 	"xicmp",
 	"realm",
+	"filter",
+	"udphop",
 ];
 const STREAM_PROTOCOLS = new Set([
 	"vmess",
@@ -1148,6 +1150,23 @@ const validateLayerSettings = (
 	if (typeName === "header-custom")
 		return validateHeaderCustom(settings, direction);
 	if (typeName === "sudoku") return validateSudoku(settings);
+	if (typeName === "filter") return null;
+	if (typeName === "xmc") {
+		return typeof settings.password === "string" &&
+			settings.password &&
+			Array.isArray(settings.profiles) &&
+			settings.profiles.length
+			? null
+			: "XMC requires a password and at least one profile.";
+	}
+	if (typeName === "udphop") {
+		const modes = String(settings.mode ?? "").toLowerCase().split(",");
+		return modes.every((mode) =>
+			["intervallocal", "intervalremote", "perconnremote"].includes(mode),
+		)
+			? null
+			: "UDP hop mode must use intervallocal, intervalremote or perconnremote.";
+	}
 	if (direction === "tcp") return validateFragment(settings);
 	if (typeName === "mkcp-legacy") {
 		if (

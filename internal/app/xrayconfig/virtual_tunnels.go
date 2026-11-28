@@ -140,6 +140,8 @@ func normalizeAWGSettings(settings map[string]any) map[string]any {
 		}
 		if value, ok := normalizedOptionalInt(out[key], 0, maximum); ok {
 			out[key] = value
+		} else if from, to, ok := awgRange(jsonvalue.String(out[key])); ok && strings.HasPrefix(key, "h") {
+			out[key] = fmt.Sprintf("%d-%d", from, to)
 		} else {
 			out[key] = fallback
 		}
@@ -644,15 +646,8 @@ func validateVirtualTunnelInbound(tag string, inbound map[string]any) error {
 			}
 		}
 		if protocol == AWGProtocol {
-			if err := validateRemoteAccessNumbers(tag, protocol, rawSettings, []remoteAccessNumberRule{
-				{"jc", 1, 128}, {"jmin", 1, 1280}, {"jmax", 1, 1280},
-				{"s1", 0, 65535}, {"s2", 0, 65535},
-				{"h1", 0, 2147483647}, {"h2", 0, 2147483647}, {"h3", 0, 2147483647}, {"h4", 0, 2147483647},
-			}); err != nil {
+			if err := validateAWGSettings(tag, rawSettings); err != nil {
 				return err
-			}
-			if jsonvalue.Int(settings["jmin"]) > jsonvalue.Int(settings["jmax"]) {
-				return fmt.Errorf("invalid inbound %q: AmneziaWG jmin must not exceed jmax", tag)
 			}
 		}
 	}

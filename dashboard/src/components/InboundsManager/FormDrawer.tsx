@@ -103,6 +103,22 @@ import {
 	getCustomNodeTargetIds,
 	sortInboundTargets,
 } from "utils/inboundTargets";
+import { AwgFields } from "./AwgFields";
+import {
+	CertificateHashTools,
+	InboundFinalMask,
+	RandomSpiderXButton,
+	RealClientIpPresets,
+} from "./InboundXrayTools";
+import { XrayRawFields } from "./XrayRawFields";
+import {
+	QUIC_RAW_FIELDS,
+	REALITY_RAW_FIELDS,
+	SOCKOPT_RAW_FIELDS,
+	TLS_RAW_FIELDS,
+	XDRIVE_RAW_FIELDS,
+} from "utils/xrayRawFields";
+import { XhttpDownloadFields } from "./XhttpDownloadFields";
 import { DeleteConfirmDialog } from "../dialogs/ConfirmDialog";
 
 const FormLabel = ({ helpKey, className, children, ...props }: ComponentPropsWithoutRef<typeof FieldLabel> & { helpKey?: string }) => {
@@ -1444,6 +1460,11 @@ export const InboundFormModal: FC<Props> = ({
 							<FormControl>
 								<FormLabel helpKey="inbounds.vless.decryptionHelp">{t("inbounds.vless.decryption")}</FormLabel>
 								<Input {...register("vlessDecryption")} />
+							</FormControl>
+							<FormControl isInvalid={Boolean(fieldValidationErrors.vlessTestseed)}>
+								<FormLabel>{t("xrayFields.testseed")}</FormLabel>
+								<Input dir="ltr" {...register("vlessTestseed")} placeholder="900, 500, 900, 256" />
+								<FieldDescription>{t("xrayFields.hint.testseed")}</FieldDescription>
 							</FormControl>
 							<FormControl>
 								<FormLabel helpKey="inbounds.vless.encryptionHelp">{t("inbounds.vless.encryption")}</FormLabel>
@@ -2970,6 +2991,7 @@ export const InboundFormModal: FC<Props> = ({
 																</FormControl>
 															))}
 														</div>
+														<AwgFields control={control} setValue={form.setValue} />
 													</div>
 												)}
 												<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -4917,7 +4939,7 @@ export const InboundFormModal: FC<Props> = ({
 															))}
 														</div>
 													</div>
-													{(xhttpMode === "packet-up" || xhttpMode === "auto") && (
+													{["", "auto", "packet-up"].includes(xhttpMode) && (
 														<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
 															<FormControl>
 																<FormLabel helpKey="inbounds.xhttp.maxBufferedHelp">{t("inbounds.xhttp.maxBuffered")}</FormLabel>
@@ -4942,15 +4964,17 @@ export const InboundFormModal: FC<Props> = ({
 															</FormControl>
 														</div>
 													)}
-													{xhttpMode === "stream-up" && (
+													{["", "auto", "stream-up"].includes(xhttpMode) && (
 														<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+															{xhttpMode === "stream-up" && (
 															<FormControl>
-																<FormLabel helpKey="inbounds.xhttp.maxBufferedHelp">{t("inbounds.xhttp.maxBuffered")}</FormLabel>
-																<Input
-																	{...register("xhttpScMaxBufferedPosts")}
-																	placeholder="30"
-																/>
-															</FormControl>
+																	<FormLabel helpKey="inbounds.xhttp.maxBufferedHelp">{t("inbounds.xhttp.maxBuffered")}</FormLabel>
+																	<Input
+																		{...register("xhttpScMaxBufferedPosts")}
+																		placeholder="30"
+																	/>
+																</FormControl>
+															)}
 															<FormControl>
 																<FormLabel helpKey="inbounds.xhttp.streamUpHelp">{t("inbounds.xhttp.streamUp")}</FormLabel>
 																<Input
@@ -4960,6 +4984,21 @@ export const InboundFormModal: FC<Props> = ({
 															</FormControl>
 														</div>
 													)}
+													{xhttpMode !== "packet-up" && (
+													<FormControl className="flex items-center">
+														<FormLabel className="mb-0">noGRPCHeader</FormLabel>
+														<Controller control={control} name={"xhttpNoGRPCHeader"} render={({ field }) => <Switch checked={Boolean(field.value)} onCheckedChange={field.onChange} />} />
+														<FieldDescription>{t("inbounds.xhttp.hint.noGRPCHeader")}</FieldDescription>
+													</FormControl>
+													)}
+													<FormControl isInvalid={Boolean(fieldValidationErrors.xhttpH2Params)}>
+														<FormLabel>h2Params (JSON)</FormLabel>
+														<Textarea dir="ltr" {...register("xhttpH2Params")} placeholder='{ "MaxConcurrentStreams": 250 }' />
+														{fieldValidationErrors.xhttpH2Params && (
+															<FieldError>{fieldValidationErrors.xhttpH2Params}</FieldError>
+														)}
+														<FieldDescription>{t("inbounds.xhttp.hint.h2Params")}</FieldDescription>
+													</FormControl>
 													<FormControl className="flex items-center">
 														<FormLabel className="mb-0" helpKey="inbounds.xhttp.noSSEHelp">{t("inbounds.xhttp.noSSE")}</FormLabel>
 														<Controller control={control} name={"xhttpNoSSEHeader"} render={({ field }) => <Switch checked={Boolean(field.value)} onCheckedChange={field.onChange} />} />
@@ -5306,9 +5345,18 @@ export const InboundFormModal: FC<Props> = ({
 																</FormControl>
 															</div>
 														</div>
+													<XhttpDownloadFields
+														control={control}
+														errors={fieldValidationErrors}
+														getValues={form.getValues}
+														setValue={form.setValue}
+													/>
 												</div>
 											)}
 
+											{streamNetwork === "xdrive" && (
+												<XrayRawFields control={control} base="streamRaw" fields={XDRIVE_RAW_FIELDS} />
+											)}
 											{streamNetwork === "hysteria" && (
 												<div className="flex flex-col gap-3">
 													<div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -5428,6 +5476,11 @@ export const InboundFormModal: FC<Props> = ({
 																		<FormControl className="flex items-center w-auto">
 																			<FormLabel className="mb-0" helpKey="inbounds.hysteria.rewriteHostHelp">{t("inbounds.hysteria.rewriteHost")}</FormLabel>
 																			<Controller control={control} name={"hysteriaMasqueradeRewriteHost"} render={({ field }) => <Switch checked={Boolean(field.value)} onCheckedChange={field.onChange} />} />
+																		</FormControl>
+																		<FormControl className="w-auto">
+																			<FormLabel className="mb-0">xForwarded</FormLabel>
+																			<Controller control={control} name={"hysteriaMasqueradeXForwarded"} render={({ field }) => <Switch checked={Boolean(field.value)} onCheckedChange={field.onChange} />} />
+																			<FieldDescription>{t("xrayFields.hint.xForwarded")}</FieldDescription>
 																		</FormControl>
 																		<FormControl className="flex items-center w-auto">
 																			<FormLabel className="mb-0" helpKey="inbounds.hysteria.insecureHelp">{t("inbounds.hysteria.insecure")}</FormLabel>
@@ -5650,6 +5703,7 @@ export const InboundFormModal: FC<Props> = ({
 															<FormLabel className="mb-0" helpKey="inbounds.hysteria.quicParamsHelp">{t("inbounds.hysteria.quicParams")}</FormLabel>
 															<Controller control={control} name={"hysteriaQuicParams.enabled"} render={({ field }) => <Switch checked={Boolean(field.value)} onCheckedChange={field.onChange} />} />
 														</FormControl>
+														<XrayRawFields control={control} base="finalmaskRaw.quicParams" fields={QUIC_RAW_FIELDS} />
 														<Collapsible open={Boolean(
 																formValues.hysteriaQuicParams?.enabled,
 															)}><CollapsibleContent forceMount className="data-[state=closed]:hidden">
@@ -5790,6 +5844,7 @@ export const InboundFormModal: FC<Props> = ({
 													</div>
 												</div>
 											)}
+											<InboundFinalMask control={control} setValue={form.setValue} error={fieldValidationErrors.finalmaskRaw} />
 											<div className="col-span-full flex flex-col xray-dialog-section" data-form-section="sockopt" data-form-section-title={t("hostsDialog.sockopt")}><FormControl className="flex items-center">
 												<FormLabel className="mb-0" helpKey="inbounds.sockopt.enableHelp">{t("inbounds.sockopt.enable")}</FormLabel>
 												<Controller
@@ -5800,6 +5855,10 @@ export const InboundFormModal: FC<Props> = ({
 													)}
 												/>
 											</FormControl>
+											<RealClientIpPresets setValue={form.setValue} />
+											{formValues.sockoptEnabled && (
+												<XrayRawFields control={control} base="sockoptRawSettings" fields={SOCKOPT_RAW_FIELDS} />
+											)}
 											<Collapsible open={Boolean(sockoptEnabled)}><CollapsibleContent forceMount className="data-[state=closed]:hidden">
 												<div className="flex flex-col gap-3 mt-2 xray-dialog-section">
 													<p className="text-[0.875rem] font-semibold">
@@ -6127,6 +6186,8 @@ export const InboundFormModal: FC<Props> = ({
 													</FieldError>
 												)}
 											</FormControl>
+											<CertificateHashTools setValue={form.setValue} getValues={form.getValues} />
+											<XrayRawFields control={control} base="tlsRawSettings" fields={TLS_RAW_FIELDS} />
 											<div data-form-section="certificates" data-form-section-title={t("settings.subscriptions.certificateTitle")} className="flex flex-col gap-3">
 												<div className="flex items-center justify-between">
 													<div className="font-medium">
@@ -6462,6 +6523,8 @@ export const InboundFormModal: FC<Props> = ({
 												<FormLabel helpKey="inbounds.reality.spiderXHelp">{t("inbounds.reality.spiderX")}</FormLabel>
 												<Input {...register("realitySpiderX")} />
 											</FormControl>
+											<RandomSpiderXButton setValue={form.setValue} />
+											<XrayRawFields control={control} base="realityRawSettings" fields={REALITY_RAW_FIELDS} />
 											<FormControl>
 												<FormLabel helpKey="inbounds.reality.publicKeyHelp">{t("inbounds.reality.publicKey")}</FormLabel>
 												<Input {...register("realityPublicKey")} />

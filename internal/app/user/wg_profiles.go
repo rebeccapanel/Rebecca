@@ -342,8 +342,8 @@ func buildAWGConfigBody(privateKey string, clientAddress string, serverPublicKey
 	if mtu := jsonvalue.Int(settings["mtu"]); mtu > 0 {
 		writeWGLine(&b, "MTU = "+fmt.Sprint(mtu))
 	}
-	for _, item := range []struct{ name, key string }{{"Jc", "jc"}, {"Jmin", "jmin"}, {"Jmax", "jmax"}, {"S1", "s1"}, {"S2", "s2"}, {"H1", "h1"}, {"H2", "h2"}, {"H3", "h3"}, {"H4", "h4"}} {
-		writeWGLine(&b, item.name+" = "+fmt.Sprint(jsonvalue.Int(settings[item.key])))
+	for _, line := range awgObfuscationLines(settings) {
+		writeWGLine(&b, line)
 	}
 	writeWGLine(&b, "")
 	writeWGLine(&b, "[Peer]")
@@ -354,6 +354,44 @@ func buildAWGConfigBody(privateKey string, clientAddress string, serverPublicKey
 		writeWGLine(&b, "PersistentKeepalive = "+fmt.Sprint(keepalive))
 	}
 	return b.String()
+}
+
+func awgObfuscationLines(settings map[string]any) []string {
+	text := func(key string) string {
+		return strings.TrimSpace(strings.NewReplacer("\r", "", "\n", "").Replace(jsonvalue.String(settings[key])))
+	}
+	lines := []string{}
+	for _, item := range []struct{ name, key string }{{"Jc", "jc"}, {"Jmin", "jmin"}, {"Jmax", "jmax"}, {"S1", "s1"}, {"S2", "s2"}} {
+		lines = append(lines, item.name+" = "+fmt.Sprint(jsonvalue.Int(settings[item.key])))
+	}
+	for _, item := range []struct{ name, key string }{{"S3", "s3"}, {"S4", "s4"}} {
+		if value := text(item.key); value != "" {
+			lines = append(lines, item.name+" = "+value)
+		}
+	}
+	for _, item := range []struct{ name, key string }{{"H1", "h1"}, {"H2", "h2"}, {"H3", "h3"}, {"H4", "h4"}} {
+		value := text(item.key)
+		if !strings.Contains(value, "-") {
+			value = fmt.Sprint(jsonvalue.Int(settings[item.key]))
+		}
+		lines = append(lines, item.name+" = "+value)
+	}
+	for _, item := range []struct{ name, key string }{
+		{"I1", "i1"}, {"I2", "i2"}, {"I3", "i3"}, {"I4", "i4"}, {"I5", "i5"},
+		{"HeaderProtectionKey", "header_protection_key"}, {"ContentPaddingAddition", "content_padding_addition"},
+		{"RekeyAfterTime", "rekey_after_time"}, {"RekeyTimeout", "rekey_timeout"}, {"RejectAfterTime", "reject_after_time"},
+		{"KeepaliveTimeout", "keepalive_timeout"}, {"MaxHandshakeAttempts", "max_handshake_attempts"},
+	} {
+		if value := text(item.key); value != "" {
+			lines = append(lines, item.name+" = "+value)
+		}
+	}
+	for _, item := range []struct{ name, key string }{{"RandomTrailers", "random_trailers"}, {"DisableCookies", "disable_cookies"}} {
+		if enabled, _ := settings[item.key].(bool); enabled {
+			lines = append(lines, item.name+" = on")
+		}
+	}
+	return lines
 }
 
 func buildWGURI(remark string, address string, port string, privateKey string, clientAddress string, serverPublicKey string, settings map[string]any) string {
